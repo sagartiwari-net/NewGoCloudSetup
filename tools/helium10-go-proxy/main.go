@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/hmac"
+	"errors"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -1610,30 +1611,20 @@ func patcherScript(cfg Config) string {
             var h = a.href.replace('https://'+T, O).replace('http://'+T, O);
             if (a.href !== h) a.href = h;
         });
-        document.querySelectorAll('a[href]').forEach(function(a) {
+        // Only store-looking hrefs — never scan every anchor textContent (kills dashboard).
+        document.querySelectorAll(
+          'a[href*="chromewebstore.google.com"],a[href*="chrome.google.com/webstore"],a[href*="'+H10_EXT_ID+'"]'
+        ).forEach(function(a) {
             var h = a.getAttribute('href') || '';
             if (isOfficialH10StoreURL(h) || isOfficialH10StoreURL(a.href)) {
                 forceExtInstallAnchor(a);
             }
         });
-        // "Install Now" near store icon — catch even if href not yet painted
-        document.querySelectorAll('a,button').forEach(function(el) {
-          var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-          if (!/^Install Now$/i.test(t)) return;
-          var a = el.tagName === 'A' ? el : (el.closest && el.closest('a'));
-          if (a && (isOfficialH10StoreURL(a.getAttribute('href') || '') || isOfficialH10StoreURL(a.href))) {
-            forceExtInstallAnchor(a);
-          }
-        });
     }
     rewriteLinks();
-    setInterval(rewriteLinks, 200);
-    try {
-      new MutationObserver(rewriteLinks).observe(document.documentElement, {
-        childList: true, subtree: true, attributes: true, attributeFilter: ['href']
-      });
-    } catch (e) {}
+    setInterval(rewriteLinks, 2000);
     // Capture-phase: React often restores chromewebstore href; never let the click leave.
+    // (Heavy MutationObserver lives in h10ExtInstallGuardScript — keep this light.)
     function blockStoreNav(e) {
       var t = e.target;
       if (!t || !t.closest) return;
@@ -1647,21 +1638,12 @@ func patcherScript(cfg Config) string {
       forceExtInstallAnchor(a);
       window.location.assign(H10_EXT_INSTALL);
     }
-    ['click','auxclick','mousedown'].forEach(function(type){
-      document.addEventListener(type, blockStoreNav, true);
-    });
+    document.addEventListener('click', blockStoreNav, true);
     var _open = window.open;
     window.open = function(url) {
         if (isOfficialH10StoreURL(url)) url = H10_EXT_INSTALL;
         return _open.apply(this, [url].concat(Array.prototype.slice.call(arguments, 1)));
     };
-    var _assign = window.location.assign.bind(window.location);
-    try {
-      window.location.assign = function(url) {
-        if (isOfficialH10StoreURL(String(url))) url = H10_EXT_INSTALL;
-        return _assign(url);
-      };
-    } catch (e) {}
 
     function patchURL(u) {
         if (typeof u !== 'string') return u;
@@ -2358,9 +2340,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			renderProxyProblem(w, r)
 			return
 		}
-		// Hop-by-hop header bug is local — do not rotate accounts for it.
-		if dbConnected && !strings.Contains(err.Error(), "invalid Connection request header") {
+		// Client abort / hop-by-hop header bugs are local — do not rotate accounts.
+		errStr := err.Error()
+		clientAbort := strings.Contains(errStr, "context canceled") ||
+			strings.Contains(errStr, "context deadline exceeded") ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded)
+		if dbConnected &&
+			!clientAbort &&
+			!strings.Contains(errStr, "invalid Connection request header") {
 			activeAcc, _ = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error")
+		}
+		if clientAbort {
+			return
 		}
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return

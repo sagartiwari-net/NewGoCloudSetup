@@ -42,75 +42,82 @@ func rewriteH10ChromeStoreURLs(body []byte, publicBase string) []byte {
 // h10ExtInstallGuardScript is a tiny standalone injector (no fmt.Sprintf) so a
 // broken patcher cannot leave Chrome Web Store "Install Now" links live.
 func h10ExtInstallGuardScript() string {
+	// Keep this light: scanning every <a>.textContent froze Helium's dashboard
+	// (context canceled on API posts + infinite skeleton load).
 	return `<script data-tm-h10-ext="1">
 (function(){
   if (window.__tmH10ExtGuard) return;
   window.__tmH10ExtGuard = true;
   var ID = "njmehopjdpcckochcggncklnlmikcbnb";
   var DEST = "/ext-install";
+  var scanning = false;
   function isStore(u){
     if (!u || typeof u !== "string") return false;
+    if (u.indexOf(DEST) !== -1) return false;
     if (u.indexOf(ID) !== -1) return true;
     return /chromewebstore\.google\.com|chrome\.google\.com\/webstore/i.test(u) && /helium/i.test(u);
   }
   function fix(a){
     if (!a) return;
     try {
+      var cur = a.getAttribute("href") || "";
+      if (cur === DEST || a.href.indexOf(DEST) !== -1) {
+        if (a.getAttribute("target") === "_blank") a.removeAttribute("target");
+        return;
+      }
       a.setAttribute("href", DEST);
-      a.href = DEST;
       a.removeAttribute("target");
       a.setAttribute("rel", "noopener");
     } catch (e) {}
   }
   function scan(){
+    if (scanning) return;
+    scanning = true;
     try {
-      document.querySelectorAll("a[href]").forEach(function(a){
+      document.querySelectorAll(
+        'a[href*="chromewebstore.google.com"],a[href*="chrome.google.com/webstore"],a[href*="'+ID+'"]'
+      ).forEach(function(a){
         var h = a.getAttribute("href") || "";
         if (isStore(h) || isStore(a.href)) fix(a);
       });
-      document.querySelectorAll("a").forEach(function(a){
-        var t = (a.textContent || "").replace(/\s+/g, " ").trim();
-        if (!/^Install Now$/i.test(t)) return;
-        if (isStore(a.getAttribute("href") || "") || isStore(a.href) ||
-            a.querySelector('svg[data-icon="arrow-up-right-from-square"]')) {
-          fix(a);
-        }
-      });
     } catch (e) {}
+    scanning = false;
   }
   function onClick(e){
     var t = e.target;
     if (!t || !t.closest) return;
     var a = t.closest("a");
-    var btn = t.closest("button");
-    if (btn && /^Install Now$/i.test((btn.textContent || "").replace(/\s+/g, " ").trim())) {
-      a = a || btn.closest("a");
-    }
     if (!a) return;
     var h = a.getAttribute("href") || a.href || "";
-    var installNow = /^Install Now$/i.test((a.textContent || "").replace(/\s+/g, " ").trim());
-    if (!(isStore(h) || isStore(a.href) || (installNow && a.querySelector('svg[data-icon="arrow-up-right-from-square"]')))) return;
+    if (!isStore(h) && !isStore(a.href)) return;
     e.preventDefault();
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     fix(a);
     window.location.href = DEST;
   }
-  ["click","auxclick","mousedown","pointerdown"].forEach(function(type){
-    document.addEventListener(type, onClick, true);
-  });
+  document.addEventListener("click", onClick, true);
   var _open = window.open;
   window.open = function(url){
     if (isStore(String(url || ""))) url = DEST;
     return _open.apply(this, [url].concat([].slice.call(arguments, 1)));
   };
   scan();
-  setInterval(scan, 150);
+  setInterval(scan, 2000);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan);
   try {
-    new MutationObserver(scan).observe(document.documentElement, {
-      childList: true, subtree: true, attributes: true, attributeFilter: ["href"]
-    });
+    new MutationObserver(function(muts){
+      for (var i = 0; i < muts.length; i++) {
+        var m = muts[i];
+        if (m.type === "attributes" && m.attributeName === "href" && m.target && m.target.tagName === "A") {
+          var a = m.target;
+          var h = a.getAttribute("href") || "";
+          if (isStore(h) || isStore(a.href)) fix(a);
+          continue;
+        }
+        if (m.addedNodes && m.addedNodes.length) { scan(); return; }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
   } catch (e) {}
 })();
 </script>`
