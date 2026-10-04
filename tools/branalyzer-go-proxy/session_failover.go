@@ -1,29 +1,13 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"net/url"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
-)
-
-const branAuth0Host = "dev-v3arhhay.us.auth0.com"
-
-var (
-	branAuthProbeMu sync.Mutex
-	branAuthProbe   = map[string]struct {
-		ok        bool
-		why       string
-		checkedAt time.Time
-	}{}
 )
 
 type branAuth0Cache struct {
@@ -54,6 +38,14 @@ func branDocumentNeedsSession(path string) bool {
 	return false
 }
 
+func branNormalizeExp(exp int64) int64 {
+	// auth0-spa-js uses unix seconds; some exports store milliseconds.
+	if exp > 1_000_000_000_000 {
+		return exp / 1000
+	}
+	return exp
+}
+
 func branAuth0CacheFromAccount(acc ToolAccount) (branAuth0Cache, bool) {
 	raw := localStorageJSONFromRaw([]byte(acc.Cookie))
 	if raw == "" {
@@ -67,14 +59,22 @@ func branAuth0CacheFromAccount(acc ToolAccount) (branAuth0Cache, bool) {
 		if !strings.Contains(strings.ToLower(k), "auth0spajs") {
 			continue
 		}
+		// Auth0 SPA cache: expiresAt lives on the WRAPPER, tokens in body.
 		var wrap struct {
-			Body branAuth0Cache `json:"body"`
+			Body      branAuth0Cache `json:"body"`
+			ExpiresAt int64          `json:"expiresAt"`
 		}
 		if err := json.Unmarshal([]byte(v), &wrap); err == nil && strings.TrimSpace(wrap.Body.AccessToken) != "" {
-			return wrap.Body, true
+			cache := wrap.Body
+			if cache.ExpiresAt <= 0 && wrap.ExpiresAt > 0 {
+				cache.ExpiresAt = wrap.ExpiresAt
+			}
+			cache.ExpiresAt = branNormalizeExp(cache.ExpiresAt)
+			return cache, true
 		}
 		var direct branAuth0Cache
 		if err := json.Unmarshal([]byte(v), &direct); err == nil && strings.TrimSpace(direct.AccessToken) != "" {
+			direct.ExpiresAt = branNormalizeExp(direct.ExpiresAt)
 			return direct, true
 		}
 	}
@@ -83,7 +83,8 @@ func branAuth0CacheFromAccount(acc ToolAccount) (branAuth0Cache, bool) {
 
 func jwtExpUnix(token string) (int64, bool) {
 	parts := strings.Split(token, ".")
-	if len(parts) < 2 {
+	if len(parts) != 3 {
+		// JWE access tokens (5 parts) have no readable exp — ignore.
 		return 0, false
 	}
 	payload := parts[1]
@@ -116,101 +117,32 @@ func branAuth0AccessExpired(cache branAuth0Cache) bool {
 	if exp, ok := jwtExpUnix(cache.AccessToken); ok {
 		return exp <= now+30
 	}
-	if cache.ExpiresIn > 0 {
-		if exp, ok := jwtExpUnix(cache.IDToken); ok {
-			// approx: id iat/exp window is useless; prefer presence of refresh below
-			_ = exp
-		}
-	}
+	// JWE access + missing wrapper expiresAt: not enough signal to kill the paste.
 	return false
 }
 
+// branAccountAuthAlive only validates the GoAuto Auth0 dump shape.
+// Never call Auth0 from the VPS — userinfo/refresh from Hetzner false-marked
+// fresh pastes as dead (JWE access tokens / datacenter IP) → Contact Admin.
+// Real logout is detected in-browser (Auth0 /authorize) via branAuthWatchScript.
 func branAccountAuthAlive(cfg Config, acc ToolAccount) (bool, string) {
+	_ = cfg
 	cache, ok := branAuth0CacheFromAccount(acc)
 	if !ok || strings.TrimSpace(cache.AccessToken) == "" {
 		return false, "missing Auth0 localStorage (GoAuto must include storage/@@auth0spajs@@)"
 	}
-	key := fmt.Sprintf("%d:%s:%s", acc.ID, cache.AccessToken, strings.TrimSpace(acc.Proxy))
-	branAuthProbeMu.Lock()
-	if prev, hit := branAuthProbe[key]; hit && time.Since(prev.checkedAt) < 45*time.Second {
-		branAuthProbeMu.Unlock()
-		return prev.ok, prev.why
+	if strings.TrimSpace(cache.RefreshToken) != "" {
+		return true, "ok (auth0 cache+refresh)"
 	}
-	branAuthProbeMu.Unlock()
-
-	alive, why := branProbeAuth0(cfg, acc, cache)
-	branAuthProbeMu.Lock()
-	branAuthProbe[key] = struct {
-		ok        bool
-		why       string
-		checkedAt time.Time
-	}{ok: alive, why: why, checkedAt: time.Now()}
-	branAuthProbeMu.Unlock()
-	return alive, why
-}
-
-func branProbeAuth0(cfg Config, acc ToolAccount, cache branAuth0Cache) (bool, string) {
-	// Fresh panel paste: if Auth0 SPA cache is present, serve the app.
-	// Server-side Auth0 userinfo often fails on JWE access tokens / datacenter IP
-	// even when the browser session is fine — that was false "Contact Admin".
 	if !branAuth0AccessExpired(cache) {
 		return true, "ok (auth0 cache present)"
-	}
-	if strings.TrimSpace(cache.RefreshToken) != "" && strings.TrimSpace(cache.ClientID) != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-		defer cancel()
-		form := url.Values{}
-		form.Set("grant_type", "refresh_token")
-		form.Set("client_id", cache.ClientID)
-		form.Set("refresh_token", cache.RefreshToken)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+branAuth0Host+"/oauth/token", strings.NewReader(form.Encode()))
-		if err != nil {
-			// Ambiguous — let the browser try.
-			return true, "ok (refresh probe skipped)"
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", firstNonEmpty(acc.UserAgent, cfg.UserAgent, "Mozilla/5.0"))
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			log.Printf("[AUTH0] refresh probe network error (allowing): %v", err)
-			return true, "ok (refresh unreachable)"
-		}
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
-		if resp.StatusCode == http.StatusOK && bytes.Contains(body, []byte(`"access_token"`)) {
-			return true, "ok (refreshed)"
-		}
-		low := strings.ToLower(string(body))
-		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden ||
-			strings.Contains(low, "invalid_grant") || strings.Contains(low, "invalid_token") {
-			return false, "Auth0 refresh rejected — cookie/session logged out"
-		}
-		// Non-auth errors (rate limit, 5xx): do not kill a fresh paste.
-		log.Printf("[AUTH0] refresh probe status=%d (allowing)", resp.StatusCode)
-		return true, fmt.Sprintf("ok (refresh status %d)", resp.StatusCode)
 	}
 	return false, "Auth0 access expired and no refresh_token"
 }
 
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 func branInvalidateAuthProbe(acc ToolAccount) {
-	branAuthProbeMu.Lock()
-	defer branAuthProbeMu.Unlock()
-	prefix := fmt.Sprintf("%d:", acc.ID)
-	for k := range branAuthProbe {
-		if strings.HasPrefix(k, prefix) {
-			delete(branAuthProbe, k)
-		}
-	}
+	_ = acc
+	// Kept for call-site compatibility; server Auth0 probe cache removed.
 }
 
 func renderBranContactAdminPage(w http.ResponseWriter, cfg Config) {
@@ -229,8 +161,8 @@ func serveBranLogoutFailover(w http.ResponseWriter, r *http.Request, cfg Config,
 
 	if reloaded, err := panelReloadAccount(cfg, sessionToken); err == nil {
 		branInvalidateAuthProbe(reloaded)
-		if ok, _ := branAccountAuthAlive(cfg, reloaded); ok {
-			log.Printf("[FAILOVER] reloaded cookie OK user=%s account=%s → %s", currentUser, reloaded.Name, returnPath)
+		if ok, why := branAccountAuthAlive(cfg, reloaded); ok {
+			log.Printf("[FAILOVER] reloaded cookie OK user=%s account=%s (%s) → %s", currentUser, reloaded.Name, why, returnPath)
 			http.Redirect(w, r, returnPath, http.StatusFound)
 			return
 		}
@@ -240,8 +172,8 @@ func serveBranLogoutFailover(w http.ResponseWriter, r *http.Request, cfg Config,
 	next, nextName, err := panelSwitchToOtherAccount(cfg, sessionToken, reason)
 	if err == nil && next.ID != activeAcc.ID {
 		branInvalidateAuthProbe(next)
-		if ok, _ := branAccountAuthAlive(cfg, next); ok {
-			log.Printf("[FAILOVER] switched user=%s %s -> %s reason=%s", currentUser, activeAcc.Name, nextName, reason)
+		if ok, why := branAccountAuthAlive(cfg, next); ok {
+			log.Printf("[FAILOVER] switched user=%s %s -> %s reason=%s (%s)", currentUser, activeAcc.Name, nextName, reason, why)
 			renderPanelAccountSwitchPage(w, cfg, nextName, returnPath)
 			return
 		}
@@ -273,33 +205,55 @@ func branSessionCheckHandler(w http.ResponseWriter, r *http.Request) {
 		renderBranContactAdminPage(w, cfg)
 		return
 	}
-	if alive, why := branAccountAuthAlive(cfg, acc); alive {
-		log.Printf("[FAILOVER] session-check OK user=%s account=%s", name, acc.Name)
+	alive, why := branAccountAuthAlive(cfg, acc)
+	if alive {
+		log.Printf("[FAILOVER] session-check OK user=%s account=%s (%s)", name, acc.Name, why)
 		http.Redirect(w, r, branAppHome(cfg), http.StatusFound)
 		return
-	} else {
-		log.Printf("[FAILOVER] session-check dead user=%s account=%s reason=%s", name, acc.Name, why)
-		serveBranLogoutFailover(w, r, cfg, token, name, acc, "session_check")
 	}
+	log.Printf("[FAILOVER] session-check dead user=%s account=%s reason=%s", name, acc.Name, why)
+	serveBranLogoutFailover(w, r, cfg, token, name, acc, "session_check")
 }
 
-func branAuthWatchScript() string {
+func branAuth0ExtraCDNIndex(cfg Config) int {
+	for i, extra := range cfg.ExtraCDNDomains {
+		host := strings.ToLower(strings.TrimSpace(extra))
+		host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
+		host = strings.Split(host, "/")[0]
+		if strings.Contains(host, "auth0.com") {
+			return i
+		}
+	}
+	return -1
+}
+
+func branAuthWatchScript(cfg Config) string {
+	authIdx := branAuth0ExtraCDNIndex(cfg)
+	authProxy := ""
+	if authIdx >= 0 {
+		authProxy = "/extra-cdn-" + strconv.Itoa(authIdx) + "/"
+	}
 	return `<script data-tm-bran-auth="1">
 (function(){
   if (window.__tmBranAuthWatch) return;
   window.__tmBranAuthWatch = true;
   var go = false;
+  var AUTH_PROXY = ` + strconv.Quote(authProxy) + `;
   function bounce(){
     if (go) return;
     go = true;
     try { location.replace('/__tm_session_check'); } catch (e) {}
   }
-  function badURL(u){
+  function auth0DeadURL(u){
     var s = String(u || '');
-    if (s.indexOf('/authorize') !== -1 && s.indexOf('auth0.com') !== -1) return true;
-    if (s.indexOf('/oauth/token') !== -1 && s.indexOf('auth0.com') !== -1) return true;
-    if (s.indexOf('branalyzerazure') !== -1) return true;
-    if (s.indexOf('/extra-cdn-') !== -1) return true;
+    // ONLY Auth0 login/token failures mean mapped session is gone.
+    // Azure /extra-cdn 401s during boot must NOT trigger Contact Admin.
+    var onAuth0 = s.indexOf('auth0.com') !== -1 || (AUTH_PROXY && s.indexOf(AUTH_PROXY) !== -1);
+    if (!onAuth0) return false;
+    if (s.indexOf('/authorize') !== -1) return true;
+    if (s.indexOf('/oauth/token') !== -1) return true;
+    if (s.indexOf('/u/login') !== -1) return true;
+    if (s.indexOf('/usernamepassword/login') !== -1) return true;
     return false;
   }
   var ofetch = window.fetch;
@@ -311,13 +265,26 @@ func branAuthWatchScript() string {
           var u = '';
           if (typeof args[0] === 'string') u = args[0];
           else if (args[0] && args[0].url) u = args[0].url;
-          if (badURL(u) && (res.status === 401 || res.status === 403)) bounce();
+          if (auth0DeadURL(u) && (res.status === 401 || res.status === 403 || res.status === 400)) bounce();
         } catch (e) {}
         return res;
       });
     };
   }
-  // Only after inject had time to run — missing Auth0 dump means bad paste.
+  // SPA often uses location.assign to Auth0 /authorize when refresh fails.
+  try {
+    var _assign = Location.prototype.assign;
+    Location.prototype.assign = function(url){
+      try { if (auth0DeadURL(url)) { bounce(); return; } } catch (e) {}
+      return _assign.apply(this, arguments);
+    };
+    var _replace = Location.prototype.replace;
+    Location.prototype.replace = function(url){
+      try { if (auth0DeadURL(url)) { bounce(); return; } } catch (e) {}
+      return _replace.apply(this, arguments);
+    };
+  } catch (e) {}
+  // Missing Auth0 dump after inject window → bad paste (cookies-only).
   setTimeout(function(){
     try {
       var has = false;

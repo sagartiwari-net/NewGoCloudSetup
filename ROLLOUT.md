@@ -113,14 +113,15 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `helium10` — Helium10 (:5201) — **HTTPS OK**: HTTP/2 Connection strip, `/photos`-style soft login bounce, device empty-header allow, `/ext-install` + extension bake/icons, popup panel-gate + account-switcher lock + panel username  
 - [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
 - [x] `junglescout` — JungleScout (:5211) — **HTTPS OK**: HTTP/2 Connection strip, panel logout→switch/contact-admin, device-lock reveal + safe deny redirect, extension icons + home→baked proxy origin, proxy optional  
-- [ ] `grammarly` — grammarly (:4911) — next
+- [ ] `branalyzer` — Branalyzer (:5081) — **fixing**: Auth0 dump gate (no VPS Auth0 probe); Azure `/extra-cdn` 401 must not Contact Admin; outer SPA `expiresAt` parsed — redeploy + retest access-link `/home`  
+- [ ] `grammarly` — grammarly (:4911) — next after branalyzer
 
 ### Rest (alphabetical)
 
 - [ ] `airbrush` (:5181)  
 - [ ] `answerthepublic` (:4931)  
 - [ ] `artistly` (:4821)  
-- [ ] `branalyzer` (:5081)  
+- [ ] `branalyzer` (:5081) — see Priority (in progress)  
 - [x] `chatbotapp` (:5061) — up; smpanel keeps `:5001`  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
@@ -197,6 +198,7 @@ If fail: note in “Open issues”, fix, re-tick.
 
 | Tool | Issue | Action |
 |------|--------|--------|
+| `branalyzer` | Blank `/home` + false **Contact Admin** after cookie paste | Auth0 is GoAuto **localStorage** (`@@auth0spajs@@`); do not probe Auth0 from VPS; ignore Azure 401 for failover; redeploy latest + new access-link |
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
