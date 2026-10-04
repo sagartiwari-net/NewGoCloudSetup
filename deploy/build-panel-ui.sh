@@ -12,7 +12,7 @@ cd "${SRC}"
 
 if [[ ! -f .env.production ]]; then
   cat > .env.production <<'EOF'
-# Same-origin: nginx serves UI and proxies /api → 127.0.0.1:8090
+# Same-origin: nginx serves UI and proxies /api → 127.0.0.1:18090
 NEXT_PUBLIC_PANEL_API=
 EOF
 fi
@@ -30,5 +30,5 @@ npm run build
 echo "OK: built ${SRC}/.next"
 echo "Start UI (port 3000):"
 echo "  cd ${SRC} && PORT=3000 npm run start"
-echo "Nginx: panel.gt4rents.com / → :3000 , /api → :8090"
+echo "Nginx: panel.gt4rents.com / → :3000 , /api → :18090"
 echo "Also start API: ${BASE}/panel/panel-api  (cwd must include data/panel.db)"

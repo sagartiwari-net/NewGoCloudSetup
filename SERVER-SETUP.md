@@ -178,7 +178,7 @@ source /www/wwwroot/gt4rents.com/_secrets/mysql.env
 Check:
 
 ```bash
-ss -lptn | grep -E '5291|5141|5151|8090|3000' || netstat -lptn | head
+ss -lptn | grep -E '5291|5141|5151|18090|3000' || netstat -lptn | head
 curl -sI -H 'Host: refs.gt4rents.com' http://127.0.0.1/ | head
 ```
 
@@ -210,7 +210,7 @@ Full list: `tools.json` and `deploy/nginx-host-port.map.conf`
 
 | Subdomain | Port | Tool |
 |-----------|-----:|------|
-| panel | 3000+8090 | UI + API |
+| panel | 3000+18090 | UI + API |
 | cnva | 4501 | Canva |
 | smrs | 5141 | Semrush |
 | cgpt | 5151 | ChatGPT |

@@ -9,4 +9,4 @@ cd "${ROOT}/panel/panel-api"
 go build -o "${OUT}/panel-api" .
 echo "OK: ${OUT}/panel-api"
 echo "DB path: ${OUT}/data/panel.db  (scp from Mac migrate-bundle if missing)"
-echo "Start: ${ROOT}/deploy/start-panel-api.sh  → 127.0.0.1:8090"
+echo "Start: ${ROOT}/deploy/start-panel-api.sh  → 127.0.0.1:18090 (not :8090)"

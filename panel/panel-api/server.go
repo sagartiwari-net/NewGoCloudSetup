@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -25,8 +26,14 @@ func main() {
 	s := &server{db: db}
 	mux := http.NewServeMux()
 	s.routes(mux)
-	log.Printf("panel api on http://127.0.0.1:8090")
-	log.Fatal(http.ListenAndServe("127.0.0.1:8090", s.withCORS(mux)))
+	// Default 18090 — avoid clash with other server apps on :8090 (e.g. payment-hub).
+	// Override: PANEL_API_ADDR=127.0.0.1:8090
+	addr := "127.0.0.1:18090"
+	if v := strings.TrimSpace(os.Getenv("PANEL_API_ADDR")); v != "" {
+		addr = v
+	}
+	log.Printf("panel api on http://%s", addr)
+	log.Fatal(http.ListenAndServe(addr, s.withCORS(mux)))
 }
 
 type server struct{ db *sql.DB }
