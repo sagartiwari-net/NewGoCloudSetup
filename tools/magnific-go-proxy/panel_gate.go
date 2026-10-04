@@ -427,8 +427,8 @@ func magnificWAFNeedsProxyCard(cfg Config) lightCard {
 	return lightCard{
 		Title:   "Proxy required",
 		Heading: "Proxy required",
-		Message: "<span class=\"brand\">" + name + "</span> is blocked by Magnific's security filter on this server IP. Assign a Proxy Manager proxy on the Magnific account in the panel (same as Envato/Claude), then open a new access link.",
-		Footer:  "Without a residential proxy, /app stays a black blank page",
+		Message: "<span class=\"brand\">" + name + "</span> is blocked by Magnific's <b>Security check</b> / WAF on this server IP. Assign a Proxy Manager proxy on the Magnific account in the panel (same as Envato/Claude), then open a new access link.",
+		Footer:  "\"Just a moment…\" on magnific.* will not clear without a residential proxy",
 	}
 }
 
@@ -442,9 +442,9 @@ func magnificWAFRetryCard(cfg Config) lightCard {
 	return lightCard{
 		Title:   "Still blocked",
 		Heading: "Security filter…",
-		Message: "<span class=\"brand\">" + name + "</span> is still blocked upstream even with a proxy. Retrying automatically. If this loops, refresh Magnific cookies on the same Proxy Manager IP or try another residential proxy.",
+		Message: "<span class=\"brand\">" + name + "</span> is still stuck on Magnific <b>Security check</b> even with a proxy. Retrying automatically. If this loops, refresh Magnific cookies on the same Proxy Manager IP or try another residential proxy.",
 		Badge:   "Retrying…",
-		Footer:  "Magnific WAF rejected this IP/session",
+		Footer:  "Magnific security check rejected this IP/session",
 		Spin:    true,
 		ExtraScript: `<script>(function(){
   var home=` + fmt.Sprintf("%q", home) + `;

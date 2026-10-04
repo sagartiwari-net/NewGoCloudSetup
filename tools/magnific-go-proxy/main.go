@@ -1616,14 +1616,18 @@ func applyLocalCookieOverlay(base string) string {
 	return mapToCookieHeader(m)
 }
 
-// isMagnificSecurityFilterHTML detects Magnific/Freepik WAF block pages
-// ("That request didn't go through. Our security filter flagged something.").
-// These pages use background #080808 and look blank once CDN assets fail to load.
+// isMagnificSecurityFilterHTML detects Magnific/Freepik WAF / bot-check pages:
+// hard 403 "security filter flagged", and soft interstitial
+// "Security check" / "Just a moment..." / "making sure it's you".
 func isMagnificSecurityFilterHTML(body []byte) bool {
-	if len(body) == 0 || len(body) > 40000 {
+	if len(body) == 0 {
 		return false
 	}
-	lower := strings.ToLower(string(body))
+	sample := body
+	if len(sample) > 250000 {
+		sample = sample[:250000]
+	}
+	lower := strings.ToLower(string(sample))
 	if strings.Contains(lower, "security filter flagged") {
 		return true
 	}
@@ -1631,7 +1635,60 @@ func isMagnificSecurityFilterHTML(body []byte) bool {
 		strings.Contains(lower, "aria-label=\"error 403\"") {
 		return true
 	}
+	// Soft challenge (often served as 200 on /photos, /app, etc.)
+	if strings.Contains(lower, "making sure it's you") {
+		return true
+	}
+	if strings.Contains(lower, "security check") &&
+		(strings.Contains(lower, "just a moment") ||
+			strings.Contains(lower, "keeps your account and your work protected")) {
+		return true
+	}
 	return false
+}
+
+// magnificSecurityCheckWatchHTML is a client fallback when the challenge is painted
+// by JS after a normal shell HTML (server-side detector never sees the copy).
+func magnificSecurityCheckWatchHTML(hasProxy bool) string {
+	msg := "Magnific is stuck on Security check on this server IP. Assign a Proxy Manager proxy on the Magnific account in the panel (same as Envato/Claude), then open a new access link."
+	if hasProxy {
+		msg = "Magnific is still stuck on Security check even with a proxy. Refresh Magnific cookies on the same Proxy Manager IP, or try another residential proxy."
+	}
+	return `<script data-tm-mag-sec>(function(){
+  var hits=0;
+  var done=false;
+  function stuck(){
+    var t=(document.body&&(document.body.innerText||document.body.textContent))||'';
+    if(!t) return false;
+    return /making sure it's you/i.test(t) ||
+      (/Security check/i.test(t) && /Just a moment/i.test(t));
+  }
+  function show(){
+    if(done) return;
+    done=true;
+    try{
+      var html=document.documentElement;
+      html.style.cssText='visibility:visible;background:#eef3f8;margin:0';
+      while(html.firstChild) html.removeChild(html.firstChild);
+      var body=document.createElement('body');
+      body.style.cssText='min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;margin:0;background:#eef3f8;color:#0f172a;font-family:system-ui,sans-serif';
+      var card=document.createElement('div');
+      card.style.cssText='width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px;text-align:center';
+      var h1=document.createElement('h1');
+      h1.textContent=` + fmt.Sprintf("%q", map[bool]string{false: "Proxy required", true: "Still blocked"}[hasProxy]) + `;
+      h1.style.cssText='font-size:28px;margin:0 0 12px;font-weight:800';
+      var p=document.createElement('p');
+      p.textContent=` + fmt.Sprintf("%q", msg) + `;
+      p.style.cssText='color:#64748b;font-size:15px;margin:0;line-height:1.55';
+      card.appendChild(h1); card.appendChild(p); body.appendChild(card); html.appendChild(body);
+    }catch(e){}
+  }
+  setInterval(function(){
+    if(done) return;
+    if(stuck()){ hits++; if(hits>=3) show(); }
+    else hits=0;
+  }, 2000);
+})();</script>`
 }
 
 func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
@@ -4533,6 +4590,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) {
+			injectStr += magnificSecurityCheckWatchHTML(strings.TrimSpace(activeAcc.Proxy) != "")
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders

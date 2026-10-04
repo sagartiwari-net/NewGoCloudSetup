@@ -226,7 +226,9 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
 		return
 	}
-	log.Printf("[DEVICE] proof stored")
+	if r.Header.Get("X-Device-Quiet") != "1" {
+		log.Printf("[DEVICE] proof stored")
+	}
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
 
@@ -332,7 +334,7 @@ function tmWatch(fp, proof) {
       return fetch("/api/device-bind", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+        headers: { "X-Device-Fp": fp, "X-Device-Proof": proof, "X-Device-Quiet": "1" }
       }).then(function () { return fp; });
     });
   }).then(function (fp) {
