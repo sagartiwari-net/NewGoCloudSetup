@@ -17,6 +17,12 @@ setup.md
 **/*.jpg
 **/*.jpeg
 **/*.webp
+# Chrome extension icons must ship with /extension.zip bake
+!tools/**/extension/icon/
+!tools/**/extension/icon/**/*.png
+!tools/**/extension/icon/**/*.jpg
+!tools/**/extension/icon/**/*.jpeg
+!tools/**/extension/icon/**/*.webp
 panel/update-panel/.env.production
 panel/update-panel/.env.local
 
