@@ -2236,12 +2236,12 @@ func main() {
 
 		// 3. Disk CDN cache (Ahrefs-style) + upstream
 		cdnKey := cdnCacheKey(r)
-		if serveCachedCDN(w, r) {
+		if served, leader := serveCachedCDN(w, r); served {
 			rl.status = http.StatusOK
 			rl.category = "CDN_CACHE"
 			return
-		}
-		if cdnKey != "" {
+		} else if leader && cdnKey != "" {
+			// Only the flight leader completes — followers must not close the channel early.
 			defer completeCDNFlight(cdnKey)
 		}
 		if semrushDenyOverLimit(sr, r) {

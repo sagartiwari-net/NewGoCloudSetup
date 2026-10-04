@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ const (
 	cdnCacheDir = "cdn-cache"
 	cdnCacheTTL = 72 * time.Hour
 	cdnCacheMax = 20 << 20 // 20MB
+	cdnFlightWait = 45 * time.Second
 )
 
 type cdnMeta struct {
@@ -30,6 +32,15 @@ type cdnFlight struct {
 
 var cdnFlights sync.Map
 
+func initCDNCacheDir() {
+	if err := os.MkdirAll(cdnCacheDir, 0o755); err != nil {
+		log.Printf("[CDN_CACHE] mkdir failed: %v", err)
+		return
+	}
+	wd, _ := os.Getwd()
+	log.Printf("[CDN_CACHE] ready dir=%s/%s", wd, cdnCacheDir)
+}
+
 func isSemrushCDNPath(path string) bool {
 	if i := strings.Index(path, "?"); i >= 0 {
 		path = path[:i]
@@ -41,7 +52,11 @@ func isSemrushCDNPath(path string) bool {
 		!strings.HasPrefix(lower, "/ai-proxy/") {
 		return false
 	}
-	for _, ext := range []string{".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico"} {
+	for _, ext := range []string{
+		".js", ".mjs", ".css", ".woff", ".woff2", ".ttf", ".otf",
+		".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".avif",
+		".wasm",
+	} {
 		if strings.HasSuffix(lower, ext) {
 			return true
 		}
@@ -120,20 +135,36 @@ func completeCDNFlight(key string) {
 	}
 }
 
-func serveCachedCDN(w http.ResponseWriter, r *http.Request) bool {
+// serveCachedCDN serves from disk when possible.
+// Returns (served, isLeader). Only the leader should fetch upstream + complete the flight.
+func serveCachedCDN(w http.ResponseWriter, r *http.Request) (served bool, isLeader bool) {
 	key := cdnCacheKey(r)
 	if key == "" {
-		return false
+		return false, false
 	}
 	if serveDiskCDN(w, key) {
-		return true
+		return true, false
 	}
 	leader, done := joinCDNFlight(key)
 	if leader {
-		return false
+		return false, true
 	}
-	<-done
-	return serveDiskCDN(w, key)
+	select {
+	case <-done:
+	case <-time.After(cdnFlightWait):
+		log.Printf("[CDN_CACHE] WAIT timeout key=%s — falling through to upstream", trimKey(key))
+	}
+	if serveDiskCDN(w, key) {
+		return true, false
+	}
+	return false, false
+}
+
+func trimKey(key string) string {
+	if len(key) > 120 {
+		return key[:120] + "…"
+	}
+	return key
 }
 
 func serveDiskCDN(w http.ResponseWriter, key string) bool {
@@ -158,13 +189,16 @@ func serveDiskCDN(w http.ResponseWriter, key string) bool {
 		w.Header().Set("Content-Type", meta.ContentType)
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Del("Pragma")
+	w.Header().Del("Expires")
 	w.Header().Set("X-Proxy-Cache", "HIT")
 	w.Header().Set("X-Semrush-Cache", "disk")
 	if meta.Status == 0 {
 		meta.Status = http.StatusOK
 	}
 	w.WriteHeader(meta.Status)
-	_, _ = io.Copy(w, file)
+	n, _ := io.Copy(w, file)
+	log.Printf("[CDN_CACHE] HIT %s (%d bytes)", trimKey(key), n)
 	return true
 }
 
@@ -177,26 +211,38 @@ func storeCDNCache(r *http.Request, status int, contentType string, body []byte)
 }
 
 func storeCDNCacheKey(key string, status int, contentType string, body []byte) {
-	if key == "" || status != http.StatusOK || len(body) == 0 || len(body) > cdnCacheMax {
+	if key == "" {
+		return
+	}
+	if status != http.StatusOK {
+		log.Printf("[CDN_CACHE] SKIP status=%d key=%s", status, trimKey(key))
+		return
+	}
+	if len(body) == 0 || len(body) > cdnCacheMax {
+		log.Printf("[CDN_CACHE] SKIP size=%d key=%s", len(body), trimKey(key))
 		return
 	}
 	if strings.Contains(strings.ToLower(contentType), "text/html") {
 		return
 	}
 	if err := os.MkdirAll(cdnCacheDir, 0o755); err != nil {
+		log.Printf("[CDN_CACHE] STORE mkdir failed: %v", err)
 		return
 	}
 	bodyPath, metaPath := cdnFilePath(key)
 	tmp := bodyPath + ".tmp"
 	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+		log.Printf("[CDN_CACHE] STORE write failed: %v key=%s", err, trimKey(key))
 		return
 	}
 	if err := os.Rename(tmp, bodyPath); err != nil {
 		_ = os.Remove(tmp)
+		log.Printf("[CDN_CACHE] STORE rename failed: %v key=%s", err, trimKey(key))
 		return
 	}
 	meta, _ := json.Marshal(cdnMeta{ContentType: contentType, Status: status})
 	_ = os.WriteFile(metaPath, meta, 0o644)
+	log.Printf("[CDN_CACHE] STORE %s (%d bytes)", trimKey(key), len(body))
 }
 
 func sweepCDNCache() {
@@ -215,6 +261,7 @@ func sweepCDNCache() {
 }
 
 func startCDNCacheSweep() {
+	initCDNCacheDir()
 	go func() {
 		for {
 			time.Sleep(30 * time.Minute)
