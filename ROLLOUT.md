@@ -196,6 +196,7 @@ If fail: note in “Open issues”, fix, re-tick.
 |------|--------|--------|
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
+| `magnific` | Blank black `/app` = Magnific WAF 403 (no proxy) | Panel → Magnific 1 → assign Proxy Manager proxy (same as Envato/Claude). Code ready locally: Proxy required page + `media.magnific.com`/`pikaso.cdnpk.net` CDN — deploy after push |
 
 ---
 

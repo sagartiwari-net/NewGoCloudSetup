@@ -1616,6 +1616,24 @@ func applyLocalCookieOverlay(base string) string {
 	return mapToCookieHeader(m)
 }
 
+// isMagnificSecurityFilterHTML detects Magnific/Freepik WAF block pages
+// ("That request didn't go through. Our security filter flagged something.").
+// These pages use background #080808 and look blank once CDN assets fail to load.
+func isMagnificSecurityFilterHTML(body []byte) bool {
+	if len(body) == 0 || len(body) > 40000 {
+		return false
+	}
+	lower := strings.ToLower(string(body))
+	if strings.Contains(lower, "security filter flagged") {
+		return true
+	}
+	if strings.Contains(lower, "you don't have permission to access this page") &&
+		strings.Contains(lower, "aria-label=\"error 403\"") {
+		return true
+	}
+	return false
+}
+
 func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 	// Never absorb CF/session cookies from challenge responses (403 "Just a moment...").
 	// Those overwrite a good DigitaVision cf_clearance with unusable challenge cookies.
@@ -4453,6 +4471,22 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logUpstream(bodyBytes)
+
+		// Magnific WAF "security filter" is a dark #080808 page. After rewrite the
+		// fonts/CDN assets 401 and the browser looks blank black — never passthrough.
+		if isMagnificSecurityFilterHTML(bodyBytes) {
+			hasProxy := strings.TrimSpace(activeAcc.Proxy) != ""
+			if hasProxy {
+				log.Printf("[WAF] Magnific security filter path=%s proxy=set — showing retry page", path)
+			} else {
+				log.Printf("[WAF] Magnific security filter path=%s — account has NO proxy; showing proxy-required page", path)
+			}
+			for k := range w.Header() {
+				w.Header().Del(k)
+			}
+			renderMagnificWAFPage(w, cfg, hasProxy)
+			return
+		}
 
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)

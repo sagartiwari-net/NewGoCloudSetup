@@ -10,7 +10,7 @@
   "credit_label": "Credits",
   "home_path": "/app",
   "cookie_domain_suffix": "magnific.com",
-  "inject_css": "",
+  "inject_css": "div.min-h-0.flex-1.overflow-y-auto.scrollbar-thin:has([data-cy=\"popover-user-my-subscription\"]):has([data-cy=\"helpCenter\"]){display:none!important}div.shrink-0:has(>div>button[data-cy=\"logout-button\"]){display:none!important}div.space-y-2.pb-2:has([data-cy=\"user-menu-upgrade-plan-button\"]):has([data-cy=\"user-menu-add-members-button\"]){display:none!important}",
   "counted_paths": [],
   "counted_prefixes": [],
   "blocked_paths": [
@@ -36,6 +36,8 @@
   "sensitive_cookies": [],
   "watchdog_triggers": [],
   "extra_cdn_domains": [
+    "https://media.magnific.com",
+    "https://pikaso.cdnpk.net",
     "https://js.stripe.com",
     "https://m.stripe.com",
     "https://api.stripe.com",

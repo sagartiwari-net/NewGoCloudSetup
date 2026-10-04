@@ -420,6 +420,56 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"error":"proxy_unavailable","message":"Contact to Admin/Provider to fix it ASAP"}`)
 }
 
+// magnificWAFNeedsProxyCard replaces Magnific's dark #080808 "security filter" 403 page.
+// That HTML looks like a blank black screen after domain rewrite (fonts/CDN assets fail).
+func magnificWAFNeedsProxyCard(cfg Config) lightCard {
+	name := html.EscapeString(toolDisplayName(cfg))
+	return lightCard{
+		Title:   "Proxy required",
+		Heading: "Proxy required",
+		Message: "<span class=\"brand\">" + name + "</span> is blocked by Magnific's security filter on this server IP. Assign a Proxy Manager proxy on the Magnific account in the panel (same as Envato/Claude), then open a new access link.",
+		Footer:  "Without a residential proxy, /app stays a black blank page",
+	}
+}
+
+// magnificWAFRetryCard is shown when a proxy is set but Magnific still returns the WAF 403.
+func magnificWAFRetryCard(cfg Config) lightCard {
+	home := cfg.HomePath
+	if home == "" {
+		home = "/app"
+	}
+	name := html.EscapeString(toolDisplayName(cfg))
+	return lightCard{
+		Title:   "Still blocked",
+		Heading: "Security filter…",
+		Message: "<span class=\"brand\">" + name + "</span> is still blocked upstream even with a proxy. Retrying automatically. If this loops, refresh Magnific cookies on the same Proxy Manager IP or try another residential proxy.",
+		Badge:   "Retrying…",
+		Footer:  "Magnific WAF rejected this IP/session",
+		Spin:    true,
+		ExtraScript: `<script>(function(){
+  var home=` + fmt.Sprintf("%q", home) + `;
+  var n=0; try{n=parseInt(sessionStorage.getItem('tm_mag_waf_retry')||'0',10)||0;}catch(e){}
+  if(n>=6){
+    try{sessionStorage.removeItem('tm_mag_waf_retry');}catch(e){}
+    var t=document.querySelector('h1'); var m=document.querySelector('.msg');
+    if(t) t.textContent='Still blocked';
+    if(m) m.textContent='Refresh Magnific cookies on the proxy IP, or assign a different residential proxy.';
+    return;
+  }
+  try{sessionStorage.setItem('tm_mag_waf_retry', String(n+1));}catch(e){}
+  setTimeout(function(){ location.replace(home); }, 1800);
+})();</script>`,
+	}
+}
+
+func renderMagnificWAFPage(w http.ResponseWriter, cfg Config, hasProxy bool) {
+	card := magnificWAFNeedsProxyCard(cfg)
+	if hasProxy {
+		card = magnificWAFRetryCard(cfg)
+	}
+	writeLightCard(w, http.StatusOK, card)
+}
+
 func renderPanelLoadingPage(w http.ResponseWriter, cfg Config) {
 	home := cfg.HomePath
 	if home == "" {

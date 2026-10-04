@@ -249,20 +249,34 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func devicePageScript() string {
-	return `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>` + deviceSharedJS() + `
+	// Never hide html with visibility:hidden — Magnific WAF/error HTML + a script stall
+	// left users on a permanent blank black screen. Match Claude: no hide, no tm-device-sw.
+	return `<style data-tm-device></style><script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  var page = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Access Denied</title><style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#eef3f8;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center}.ring{width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);display:grid;place-items:center}.lock{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px}h1{font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin-bottom:12px}.msg{color:#64748b;font-size:15px;line-height:1.55}.foot{margin-top:18px;color:#94a3b8;font-size:13px}</style></head><body><div class=\"card\"><div class=\"ring\"><div class=\"lock\">🔒</div></div><h1>Access Denied</h1><p class=\"msg\">Open this tool again from your access link.</p><p class=\"foot\">Your session ended or this browser is not authorized</p></div></body></html>";
   try {
-    document.open("text/html","replace");
-    document.write(page);
-    document.close();
+    var html = document.documentElement;
+    html.style.cssText = "visibility:visible;background:#eef3f8;margin:0";
+    while (html.firstChild) html.removeChild(html.firstChild);
+    var body = document.createElement("body");
+    body.style.cssText = "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;margin:0;background:#eef3f8;color:#0f172a;font-family:system-ui,sans-serif";
+    var card = document.createElement("div");
+    card.style.cssText = "width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px;text-align:center";
+    var h1 = document.createElement("h1");
+    h1.textContent = "Access Denied";
+    h1.style.cssText = "font-size:28px;margin:0 0 12px;font-weight:800";
+    var msg = document.createElement("p");
+    msg.textContent = "Open this tool again from your access link.";
+    msg.style.cssText = "color:#64748b;font-size:15px;margin:0";
+    var foot = document.createElement("p");
+    foot.textContent = "Your session ended or this browser is not authorized";
+    foot.style.cssText = "margin-top:18px;color:#94a3b8;font-size:13px";
+    card.appendChild(h1); card.appendChild(msg); card.appendChild(foot);
+    body.appendChild(card); html.appendChild(body);
   } catch (e) {
-    try { document.documentElement.innerHTML = page; } catch (e2) {
-      location.replace("/__tm_access_denied");
-    }
+    location.replace("/__tm_access_denied");
   }
 }
 function tmReveal() {
@@ -276,11 +290,11 @@ function tmWatch(fp, proof) {
     fetch("/api/device-bind", {
       method: "POST",
       credentials: "same-origin",
-      headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+      headers: { "X-Device-Fp": fp, "X-Device-Proof": proof, "X-Device-Quiet": "1" }
     }).then(function (res) {
-      if (!res.ok) tmDeny();
+      if (res && (res.status === 401 || res.status === 403)) tmDeny();
     }).catch(function () {});
-  }, 2000);
+  }, 15000);
 }
 (function () {
   try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}
@@ -289,27 +303,29 @@ function tmWatch(fp, proof) {
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   try { fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || ""; } catch (e) {}
   if (!proof) {
-    fetch("/api/device-bind", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Device-Fp": "missing", "X-Device-Proof": "missing" }
-    }).finally(tmDeny);
+    tmEnsureProof().then(function (next) {
+      proof = next;
+      return tmFingerprint().then(function (fp) {
+        try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+        return tmStore(fp, proof).then(function () {
+          return fetch("/api/device-bind", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+          }).then(function (res) {
+            if (!res.ok) { tmDeny(); return; }
+            tmReveal();
+            tmPatchRequests(fp, proof);
+            tmWatch(fp, proof);
+          });
+        });
+      });
+    }).catch(tmDeny);
     return;
   }
   tmReveal();
+  if (!window.__tmOrigFetch) window.__tmOrigFetch = window.fetch;
   if (fp && proof) { tmPatchRequests(fp, proof); tmWatch(fp, proof); }
-  else if (window.fetch) {
-    window.__tmOrigFetch = window.fetch;
-    window.fetch = function () {
-      var self = this;
-      var args = arguments;
-      return tmFingerprint().then(function (next) {
-        try { sessionStorage.setItem("tm_device_fp", next); localStorage.setItem("tm_device_fp", next); } catch (e) {}
-        tmPatchRequests(next, proof);
-        return window.fetch.apply(self, args);
-      });
-    };
-  }
   tmFingerprint().then(function (fp) {
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
     return tmStore(fp, proof).then(function () {
@@ -322,14 +338,11 @@ function tmWatch(fp, proof) {
   }).then(function (fp) {
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
   }).catch(function () {});
 })();
 </script>`
@@ -340,13 +353,30 @@ func deviceBootScript(home string) string {
 (function () {
   var home = ` + fmt.Sprintf("%q", home) + `;
   var started = Date.now();
+  var left = false;
+  function goHome() {
+    if (left) return;
+    left = true;
+    try { window.location.replace(home); } catch (e) { location.href = home; }
+  }
+  // Never stay on Authenticating forever (SW register hung Claude the same way).
+  setTimeout(goHome, 2500);
   function fail() {
+    if (left) return;
     var title = document.querySelector("h1");
     var msg = document.querySelector(".msg");
     var pill = document.querySelector(".pill");
     if (title) title.textContent = "Access Denied";
     if (msg) msg.textContent = "This browser could not verify the device. Open the tool again from your access link.";
     if (pill) pill.remove();
+  }
+  // Magnific SPA + tm-device-sw can leave /app as a blank black screen — bind without SW.
+  function clearSW() {
+    if (!navigator.serviceWorker) return Promise.resolve();
+    var done = navigator.serviceWorker.getRegistrations().then(function (regs) {
+      return Promise.all((regs || []).map(function (r) { return r.unregister(); }));
+    }).catch(function () {});
+    return Promise.race([done, new Promise(function (resolve) { setTimeout(resolve, 700); })]);
   }
   tmEnsureProof().then(function (proof) {
     return tmFingerprint().then(function (fp) {
@@ -355,44 +385,19 @@ func deviceBootScript(home string) string {
     });
   }).then(function (dev) {
     return tmStore(dev.fp, dev.proof).then(function () {
-      function doBind() {
+      return clearSW().then(function () {
         return fetch("/api/device-bind", {
           method: "POST",
           credentials: "same-origin",
           headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
         });
-      }
-      // Service workers require a secure context. On plain HTTP skip SW and bind directly.
-      if (!navigator.serviceWorker || !window.isSecureContext) {
-        return doBind();
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1500);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+      });
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");
     var wait = 400 - (Date.now() - started);
     return new Promise(function (resolve) { setTimeout(resolve, wait > 0 ? wait : 0); });
-  }).then(function () {
-    window.location.replace(home);
-  }).catch(function () { fail(); });
+  }).then(goHome).catch(function () { fail(); });
 })();
 </script>`
 }
