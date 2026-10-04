@@ -294,7 +294,7 @@ function tmWatch(fp, proof) {
     }).then(function (res) {
       if (!res.ok) tmDeny();
     }).catch(function () {});
-  }, 2000);
+  }, 12000);
 }
 (function () {
   try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}

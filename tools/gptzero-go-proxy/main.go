@@ -459,15 +459,101 @@ func truncate(s string, n int) string {
 }
 
 func planFromSession(cookieHeader string, ls map[string]string) string {
+	p := ""
 	for _, part := range strings.Split(cookieHeader, "; ") {
 		if strings.HasPrefix(part, "plan=") {
-			return strings.TrimPrefix(part, "plan=")
+			p = strings.TrimPrefix(part, "plan=")
+			break
 		}
 	}
-	if p := strings.TrimSpace(ls["plan"]); p != "" {
-		return p
+	if p == "" {
+		p = strings.TrimSpace(ls["plan"])
 	}
-	return "Premium"
+	return normalizeGPTZeroPlan(p)
+}
+
+// normalizeGPTZeroPlan keeps plagiarism unlocked — SPA gates it when PLAN is Free/empty.
+func normalizeGPTZeroPlan(p string) string {
+	p = strings.TrimSpace(p)
+	low := strings.ToLower(p)
+	if p == "" || low == "free" || strings.HasPrefix(low, "essential") ||
+		low == "null" || low == "undefined" {
+		return "Premium (Annual)"
+	}
+	if low == "premium" {
+		return "Premium (Annual)"
+	}
+	return p
+}
+
+// forceGPTZeroPremiumPlan rewrites profile/subscription JSON so plagiarism is not upgrade-walled.
+func forceGPTZeroPremiumPlan(path string, body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	trim := bytes.TrimSpace(body)
+	if len(trim) == 0 || (trim[0] != '{' && trim[0] != '[') {
+		return body
+	}
+	pathL := strings.ToLower(path)
+	interesting := strings.Contains(pathL, "profile") || strings.Contains(pathL, "subscription") ||
+		strings.Contains(pathL, "/plans") || strings.Contains(pathL, "rest/v1/") ||
+		bytes.Contains(trim, []byte(`"full_plan"`)) || bytes.Contains(trim, []byte(`"plan"`))
+	if !interesting {
+		return body
+	}
+	var v interface{}
+	if err := json.Unmarshal(trim, &v); err != nil {
+		return body
+	}
+	if !forcePremiumPlanValue(v) {
+		return body
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func forcePremiumPlanValue(v interface{}) bool {
+	changed := false
+	switch t := v.(type) {
+	case map[string]interface{}:
+		if plan, ok := t["plan"].(string); ok {
+			n := normalizeGPTZeroPlan(plan)
+			if n != plan {
+				t["plan"] = n
+				changed = true
+			}
+		}
+		if fp, ok := t["full_plan"].(map[string]interface{}); ok {
+			if name, _ := fp["name"].(string); normalizeGPTZeroPlan(name) != name || name == "" {
+				fp["name"] = "Premium (Annual)"
+				changed = true
+			}
+			t["plan"] = "Premium (Annual)"
+			changed = true
+		}
+		if planObj, ok := t["plan"].(map[string]interface{}); ok {
+			if name, _ := planObj["name"].(string); normalizeGPTZeroPlan(name) != name || name == "" {
+				planObj["name"] = "Premium (Annual)"
+				changed = true
+			}
+		}
+		for _, child := range t {
+			if forcePremiumPlanValue(child) {
+				changed = true
+			}
+		}
+	case []interface{}:
+		for _, child := range t {
+			if forcePremiumPlanValue(child) {
+				changed = true
+			}
+		}
+	}
+	return changed
 }
 
 // supabaseStorageKey matches supabase-js: `sb-${hostname.split(".")[0]}-auth-token`.
@@ -524,7 +610,16 @@ func lsJSONForBrowser(ls map[string]string, plan, publicHost string) []byte {
 		out["sb-127-auth-token"] = bumpedAuth
 		out["sb-localhost-auth-token"] = bumpedAuth
 	}
-	out["plan"] = plan
+	out["plan"] = normalizeGPTZeroPlan(plan)
+	if traits := strings.TrimSpace(out["_ca_user_traits"]); traits != "" {
+		var m map[string]interface{}
+		if json.Unmarshal([]byte(traits), &m) == nil {
+			m["plan"] = normalizeGPTZeroPlan(plan)
+			if b, err := json.Marshal(m); err == nil {
+				out["_ca_user_traits"] = string(b)
+			}
+		}
+	}
 	out["hasViewedPostLoginOnboarding"] = "true"
 	out["backToSchoolPromoPopupDismissed"] = "true"
 	out["shouldShowExtensionOnboarding"] = "false"
@@ -900,6 +995,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	} else if strings.Contains(ct, "javascript") || strings.Contains(ct, "application/json") ||
 		strings.Contains(ct, "text/css") || strings.Contains(ct, "text/x-component") {
 		body = rewriteBytes(body, pairs)
+		if strings.Contains(ct, "application/json") || strings.Contains(ct, "+json") {
+			body = forceGPTZeroPremiumPlan(path, body)
+		}
 	}
 
 	// Store rewritten static assets for next HIT (no Content-Encoding — already decompressed).
@@ -1031,10 +1129,10 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
 	return fmt.Sprintf(`<script data-tm-gz="1">
 (function(){
   var TM_USER = %s;
+  var PLAN = %s;
   // Restore session
   try {
     var storageData = %s;
-    var PLAN = %s;
     for (var key in storageData) {
       if (Object.prototype.hasOwnProperty.call(storageData, key) && storageData[key] != null) {
         localStorage.setItem(key, typeof storageData[key] === 'string' ? storageData[key] : JSON.stringify(storageData[key]));
@@ -1054,6 +1152,14 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     }
     localStorage.setItem('plan', PLAN);
     document.cookie = 'plan=' + encodeURIComponent(PLAN) + '; path=/; max-age=604800; samesite=lax';
+    try {
+      var traits = localStorage.getItem('_ca_user_traits');
+      if (traits) {
+        var tm = JSON.parse(traits);
+        tm.plan = PLAN;
+        localStorage.setItem('_ca_user_traits', JSON.stringify(tm));
+      }
+    } catch (e2) {}
     %s
     console.log('[GPTZero local] restored localStorage plan=' + PLAN + ' authKey=sb-' + String(location.hostname||'').split('.')[0] + '-auth-token');
   } catch (e) { console.warn('[GPTZero local] LS restore failed', e); }
@@ -1130,6 +1236,48 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
   };
   var fo = window.fetch;
   var __tmSwapReload = false;
+  function tmForcePremiumPlanJSON(data) {
+    if (!data || typeof data !== 'object') return data;
+    if (Array.isArray(data)) {
+      for (var i = 0; i < data.length; i++) tmForcePremiumPlanJSON(data[i]);
+      return data;
+    }
+    if (typeof data.plan === 'string') {
+      var pl = data.plan.toLowerCase();
+      if (!data.plan || pl === 'free' || pl.indexOf('essential') === 0 || pl === 'null') data.plan = PLAN;
+    }
+    if (data.full_plan && typeof data.full_plan === 'object') {
+      data.full_plan.name = PLAN;
+      data.plan = PLAN;
+    }
+    if (data.plan && typeof data.plan === 'object' && data.plan.name != null) {
+      var pn = String(data.plan.name || '').toLowerCase();
+      if (!data.plan.name || pn === 'free' || pn.indexOf('essential') === 0) data.plan.name = PLAN;
+    }
+    for (var k in data) {
+      if (Object.prototype.hasOwnProperty.call(data, k) && data[k] && typeof data[k] === 'object') {
+        tmForcePremiumPlanJSON(data[k]);
+      }
+    }
+    return data;
+  }
+  function tmPatchPlanResponse(res) {
+    if (!res || !res.ok) return Promise.resolve(res);
+    var ct = (res.headers && res.headers.get('content-type')) || '';
+    if (ct.indexOf('json') === -1) return Promise.resolve(res);
+    return res.clone().text().then(function(txt) {
+      if (!txt || (txt[0] !== '{' && txt[0] !== '[')) return res;
+      if (txt.indexOf('"plan"') === -1 && txt.indexOf('full_plan') === -1) return res;
+      try {
+        var data = tmForcePremiumPlanJSON(JSON.parse(txt));
+        return new Response(JSON.stringify(data), {
+          status: res.status,
+          statusText: res.statusText,
+          headers: res.headers
+        });
+      } catch (e) { return res; }
+    }).catch(function(){ return res; });
+  }
   window.fetch = function(inp, init) {
     var req = inp;
     if (typeof inp === 'string') {
@@ -1146,7 +1294,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
           setTimeout(function(){ location.reload(); }, 400);
         }
       } catch (e) {}
-      return res;
+      return tmPatchPlanResponse(res);
     });
   };
 
@@ -1191,6 +1339,8 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     'Help &amp; support': 1,
     'Upgrade': 1,
     'Upgrade to Premium': 1,
+    'Get started with Premium': 1,
+    'Upgrade for Plagiarism scans.': 1,
     'Log out': 1,
     'Tell us what you think': 1,
     'Chrome Extension': 1,
@@ -1249,11 +1399,18 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
         }
       });
       // Hide only Upgrade upsell — native credit meters are rewritten to panel limits below.
-      document.querySelectorAll('div, p, span, a, button').forEach(function(el) {
-        if (el.children && el.children.length > 2) return;
+      document.querySelectorAll('div, p, span, a, button, h1, h2, h3').forEach(function(el) {
+        if (el.children && el.children.length > 3) return;
         var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-        if (!t || t.length > 80) return;
-        if (/^Upgrade for more$/i.test(t) || /credits left this month/i.test(t)) gzHide(el);
+        if (!t || t.length > 120) return;
+        if (/^Upgrade for more$/i.test(t) || /credits left this month/i.test(t) ||
+            /^Upgrade for Plagiarism scans\.?$/i.test(t) ||
+            /^Get started with Premium$/i.test(t) ||
+            /Access premium scans by upgrading your plan/i.test(t)) {
+          gzHide(el);
+          var card = el.closest ? (el.closest('[class*="upgrade"]') || el.closest('section') || el.parentElement) : null;
+          if (card && card !== document.body && (card.textContent || '').indexOf('Plagiarism') !== -1) gzHide(card);
+        }
       });
     } catch (e) {}
   }
@@ -1414,8 +1571,8 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
 })();
 </script>`,
 		mustJSON(strings.TrimSpace(panelUsername)),
+		mustJSON(normalizeGPTZeroPlan(plan)),
 		lsJSON,
-		mustJSON(plan),
 		tokenCookieJS(token),
 		blockedPathsJSON(c.BlockedPaths),
 		mustJSON(homePathOrDefault(c)),
