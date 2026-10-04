@@ -2505,8 +2505,9 @@ func main() {
 
 	// ── Security middleware wrapper ───────────────────────────────────────────────
 	secureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg := loadConfig()
 		// Force HTTPS redirect (when running behind reverse proxy with X-Forwarded-Proto)
-		if r.Header.Get("X-Forwarded-Proto") == "http" {
+		if r.Header.Get("X-Forwarded-Proto") == "http" && strings.EqualFold(cfg.PublicScheme, "https") {
 			target := "https://" + r.Host + r.URL.RequestURI()
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 			return

@@ -4016,12 +4016,12 @@ func main() {
 	mux.HandleFunc("/", proxyHandler)
 
 	secureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-Forwarded-Proto") == "http" && !cfg.LocalTestMode {
+		cfg := loadConfig()
+		if r.Header.Get("X-Forwarded-Proto") == "http" && !cfg.LocalTestMode && strings.EqualFold(cfg.PublicScheme, "https") {
 			target := "https://" + r.Host + r.URL.RequestURI()
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 			return
 		}
-		cfg := loadConfig()
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		applySecurityHeaders(w, cfg)

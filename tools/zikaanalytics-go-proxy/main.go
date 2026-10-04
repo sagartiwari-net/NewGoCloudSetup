@@ -2351,7 +2351,7 @@ func main() {
 	// ── Security middleware wrapper ───────────────────────────────────────────────
 	secureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg := loadConfig()
-		if r.Header.Get("X-Forwarded-Proto") == "http" && !cfg.LocalTestMode && !cfg.BindLocalhost {
+		if r.Header.Get("X-Forwarded-Proto") == "http" && !cfg.LocalTestMode && !cfg.BindLocalhost && strings.EqualFold(cfg.PublicScheme, "https") {
 			target := "https://" + r.Host + r.URL.RequestURI()
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 			return
