@@ -28,7 +28,7 @@ func ahrefsPanelDBPath() string {
 		return v
 	}
 	// Server default for gt4rents deploy
-	if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data/panel.db"); err == nil {
+	if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data"); err == nil {
 		return "/www/wwwroot/gt4rents.com/panel/data/panel.db"
 	}
 	// Local Mac fallback
@@ -47,13 +47,20 @@ func openAhrefsPanel() (*sql.DB, error) {
 		ahrefsPanel = nil
 	}
 	ahrefsPanelPath = path
-	ahrefsPanel, ahrefsPanelErr = sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	// Absolute paths need file:///… (3 slashes). file:/www/... is mis-parsed and fails with CANTOPEN.
+	dsn := path
+	if strings.HasPrefix(path, "/") {
+		dsn = "file://" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	} else {
+		dsn = "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	}
+	ahrefsPanel, ahrefsPanelErr = sql.Open("sqlite", dsn)
 	if ahrefsPanelErr == nil {
 		ahrefsPanel.SetMaxOpenConns(1)
 		ahrefsPanelErr = ahrefsPanel.Ping()
 	}
 	if ahrefsPanelErr != nil {
-		log.Printf("[PANEL] open failed path=%s err=%v", path, ahrefsPanelErr)
+		log.Printf("[PANEL] open failed path=%s dsn=%s err=%v", path, dsn, ahrefsPanelErr)
 	} else {
 		log.Printf("[PANEL] opened %s", path)
 	}
