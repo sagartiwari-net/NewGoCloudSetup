@@ -2086,10 +2086,18 @@ func main() {
 						if gt := strings.Index(bodyStr[headAt:], ">"); gt != -1 {
 							at := headAt + gt + 1
 							creditWidget := ""
+							userChrome := ""
 							if usesPanelAccountMode(cfg) {
 								creditWidget = "\n" + limitWidgetScript(cfg.ToolName)
+								panelUser := ""
+								if resp.Request != nil {
+									if u, err := panelSessionUsername(resp.Request); err == nil {
+										panelUser = u
+									}
+								}
+								userChrome = "\n" + claudeUserChromeScript(panelUser)
 							}
-							bodyStr = bodyStr[:at] + "\n" + cssToInject + "\n" + jsToInject + "\n" + blockScript + creditWidget + bodyStr[at:]
+							bodyStr = bodyStr[:at] + "\n" + cssToInject + "\n" + jsToInject + "\n" + blockScript + creditWidget + userChrome + bodyStr[at:]
 						}
 					}
 				}
