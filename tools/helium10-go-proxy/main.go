@@ -2179,7 +2179,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = pathHost
 	}
 
-	// Remove proxy headers
+	// Remove hop-by-hop + proxy headers. nginx/browser "Connection: upgrade"
+	// must never reach HTTP/2 upstream (Go: invalid Connection request header).
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("Transfer-Encoding")
+	upstreamReq.Header.Del("TE")
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
 	upstreamReq.Header.Del("X-Forwarded-For")
@@ -2248,7 +2255,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			renderProxyProblem(w, r)
 			return
 		}
-		if dbConnected {
+		// Local request-header / HTTP2 client bugs — do not burn the account pool.
+		errStr := err.Error()
+		if dbConnected &&
+			!strings.Contains(errStr, "invalid Connection request header") &&
+			!strings.Contains(errStr, "http2: ") {
 			activeAcc, _ = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error")
 		}
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
