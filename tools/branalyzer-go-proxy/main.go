@@ -2801,7 +2801,11 @@ func patcherScript(cfg Config) string {
     }
 
     function patchURL(u) {
-        if (typeof u !== 'string') return u;
+        // Angular/Zone often pass URL objects — coerce or Azure calls stay cross-origin (CORS).
+        if (u == null) return u;
+        if (typeof u !== 'string') {
+            try { u = String(u); } catch (e) { return u; }
+        }
         // Strip accidental wrapping quotes (broken relative URLs)
         if (u.length > 1 && ((u.charAt(0) === '"' && u.charAt(u.length-1) === '"') || (u.charAt(0) === "'" && u.charAt(u.length-1) === "'"))) {
             u = u.substring(1, u.length-1);
@@ -2825,6 +2829,12 @@ func patcherScript(cfg Config) string {
                 u = u.split(from).join(wsO + to);
             } else {
                 u = u.split(from).join(O + to);
+                // Protocol-relative //host/... only (do not touch https:// — would become https:https://...)
+                if (from.indexOf('https://') === 0) {
+                    var bare = from.substring('https://'.length);
+                    var re = new RegExp('(^|[^:])//' + bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+                    u = u.replace(re, '$1' + O + to);
+                }
             }
         }
         u = u.replace('https://'+T, O).replace('http://'+T, O);
@@ -2894,81 +2904,102 @@ func patcherScript(cfg Config) string {
         return /\/_ajax\//.test(String(url||''));
     }
 
-    // ── XHR patch ──
+    // ── XHR + fetch patches (re-applied — Angular Zone can wrap/replace prototypes) ──
     var xo = XMLHttpRequest.prototype.open;
     var xs = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.open = function(m, u) {
-        this.__canvaNoise = isNoiseURL(u);
-        this.__canvaURL = String(u || '');
-        this.__canvaMethod = m;
-        return xo.apply(this, [m, patchURL(u)].concat(Array.prototype.slice.call(arguments, 2)));
-    };
-    XMLHttpRequest.prototype.send = function() {
-        if (this.__canvaNoise) {
-            Object.defineProperty(this, 'status', {get: function(){ return 204; }});
-            Object.defineProperty(this, 'readyState', {get: function(){ return 4; }});
-            var self = this;
-            setTimeout(function() {
-                if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
-                if (typeof self.onload === 'function') self.onload();
-            }, 0);
-            return;
-        }
-        var args = arguments;
-        var xhr = this;
-        if (!shouldRetry429(xhr.__canvaURL)) {
-            return xs.apply(xhr, args);
-        }
-        var attempt = 0;
-        var origOnReady = xhr.onreadystatechange;
-        var origOnLoad = xhr.onload;
-        var origOnError = xhr.onerror;
-        function armHandlers() {
-            xhr.onreadystatechange = function() {
-                if (xhr.readyState === 4 && xhr.status === 429 && attempt < 2) {
-                    attempt++;
-                    setTimeout(function() {
-                        try {
-                            xo.call(xhr, xhr.__canvaMethod || 'GET', patchURL(xhr.__canvaURL));
-                            armHandlers();
-                            xs.apply(xhr, args);
-                        } catch (e) {}
-                    }, 700 * attempt * attempt);
-                    return;
-                }
-                if (typeof origOnReady === 'function') return origOnReady.apply(xhr, arguments);
-            };
-            xhr.onload = origOnLoad;
-            xhr.onerror = origOnError;
-        }
-        armHandlers();
-        return xs.apply(xhr, args);
-    };
-
-    // ── Fetch patch ──
     var fo = window.fetch;
-    window.fetch = function(inp, init) {
-        var urlStr = typeof inp === 'string' ? inp : (inp && inp.url) || '';
-        if (isNoiseURL(urlStr)) {
-            return Promise.resolve(new Response('', {status: 204, statusText: 'No Content'}));
-        }
-        if (typeof inp === 'string') inp = patchURL(inp);
-        else if (inp instanceof Request) inp = new Request(patchURL(inp.url), inp);
-        var finalURL = typeof inp === 'string' ? inp : (inp && inp.url) || urlStr;
-        var doFetch = function() { return fo(inp, init); };
-        var runner = shouldRetry429(finalURL) ? function() { return ajaxSlot(doFetch); } : doFetch;
-        return runner().then(function(res) {
-            if (res && res.status === 429 && shouldRetry429(finalURL)) {
-                return sleep(800).then(function(){ return runner(); }).then(function(res2) {
-                    if (res2 && res2.status === 429) {
-                        return sleep(1600).then(function(){ return runner(); });
-                    }
-                    return res2;
-                });
+    function installNetworkPatches() {
+        if (XMLHttpRequest.prototype.open && XMLHttpRequest.prototype.open.__tmBran) return;
+        xo = XMLHttpRequest.prototype.open;
+        xs = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(m, u) {
+            var patched = patchURL(u);
+            this.__canvaNoise = isNoiseURL(patched);
+            this.__canvaURL = String(patched || '');
+            this.__canvaMethod = m;
+            return xo.apply(this, [m, patched].concat(Array.prototype.slice.call(arguments, 2)));
+        };
+        XMLHttpRequest.prototype.open.__tmBran = true;
+        XMLHttpRequest.prototype.send = function() {
+            if (this.__canvaNoise) {
+                Object.defineProperty(this, 'status', {get: function(){ return 204; }});
+                Object.defineProperty(this, 'readyState', {get: function(){ return 4; }});
+                var self = this;
+                setTimeout(function() {
+                    if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+                    if (typeof self.onload === 'function') self.onload();
+                }, 0);
+                return;
             }
-            return res;
-        });
-    };
+            var args = arguments;
+            var xhr = this;
+            if (!shouldRetry429(xhr.__canvaURL)) {
+                return xs.apply(xhr, args);
+            }
+            var attempt = 0;
+            var origOnReady = xhr.onreadystatechange;
+            var origOnLoad = xhr.onload;
+            var origOnError = xhr.onerror;
+            function armHandlers() {
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4 && xhr.status === 429 && attempt < 2) {
+                        attempt++;
+                        setTimeout(function() {
+                            try {
+                                xo.call(xhr, xhr.__canvaMethod || 'GET', patchURL(xhr.__canvaURL));
+                                armHandlers();
+                                xs.apply(xhr, args);
+                            } catch (e) {}
+                        }, 700 * attempt * attempt);
+                        return;
+                    }
+                    if (typeof origOnReady === 'function') return origOnReady.apply(xhr, arguments);
+                };
+                xhr.onload = origOnLoad;
+                xhr.onerror = origOnError;
+            }
+            armHandlers();
+            return xs.apply(xhr, args);
+        };
+        fo = window.fetch;
+        window.fetch = function(inp, init) {
+            var urlStr = '';
+            try {
+                if (typeof inp === 'string') urlStr = inp;
+                else if (inp && typeof inp.url === 'string') urlStr = inp.url;
+                else urlStr = String(inp || '');
+            } catch (e) { urlStr = ''; }
+            if (isNoiseURL(urlStr)) {
+                return Promise.resolve(new Response('', {status: 204, statusText: 'No Content'}));
+            }
+            var patched = patchURL(urlStr);
+            if (typeof inp === 'string' || (typeof URL !== 'undefined' && inp instanceof URL)) inp = patched;
+            else if (typeof Request !== 'undefined' && inp instanceof Request) inp = new Request(patched, inp);
+            else inp = patched;
+            var finalURL = patched;
+            var doFetch = function() { return fo.call(window, inp, init); };
+            var runner = shouldRetry429(finalURL) ? function() { return ajaxSlot(doFetch); } : doFetch;
+            return runner().then(function(res) {
+                if (res && res.status === 429 && shouldRetry429(finalURL)) {
+                    return sleep(800).then(function(){ return runner(); }).then(function(res2) {
+                        if (res2 && res2.status === 429) {
+                            return sleep(1600).then(function(){ return runner(); });
+                        }
+                        return res2;
+                    });
+                }
+                return res;
+            });
+        };
+        window.fetch.__tmBran = true;
+    }
+    installNetworkPatches();
+    setInterval(function() {
+        try {
+            if (!XMLHttpRequest.prototype.open || !XMLHttpRequest.prototype.open.__tmBran) installNetworkPatches();
+            else if (!window.fetch || !window.fetch.__tmBran) installNetworkPatches();
+        } catch (e) {}
+    }, 500);
 
     // sendBeacon → telemetry also CORS-fails; pretend success
     try {
@@ -4372,7 +4403,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[DEVICE] skip inject (local/bypass) host=%s bypass=%v", cfg.PublicHost, cfg.BypassAuth)
 		}
 
-		// Auth0 / app localStorage — prefer panel GoAuto dump, then cookie.txt.
+		// Early <head> inject: Auth0 localStorage + network patcher MUST run before
+		// Angular polyfills/Zone, or Azure GetAccountInfo stays cross-origin → CORS → blank home.
 		lsJSON := ""
 		if usesPanelAccountMode(cfg) && strings.TrimSpace(activeAcc.Cookie) != "" {
 			lsJSON = localStorageJSONFromRaw([]byte(activeAcc.Cookie))
@@ -4380,21 +4412,26 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if lsJSON == "" {
 			lsJSON = localStorageJSONFromFile(cfg.CookieFile)
 		}
+		early := ""
 		if ls := buildSyntxLocalStorageInject(lsJSON); ls != "" {
+			early += ls
+		}
+		early += patcherScript(cfg)
+		if usesPanelAccountMode(cfg) {
+			early += branAuthWatchScript(cfg)
+		}
+		if early != "" {
 			if loc := regexp.MustCompile(`(?i)<head[^>]*>`).FindIndex(bodyBytes); loc != nil {
-				out := make([]byte, 0, len(bodyBytes)+len(ls)+8)
+				out := make([]byte, 0, len(bodyBytes)+len(early)+8)
 				out = append(out, bodyBytes[:loc[1]]...)
-				out = append(out, []byte(ls)...)
+				out = append(out, []byte(early)...)
 				out = append(out, bodyBytes[loc[1]:]...)
 				bodyBytes = out
 			}
 		}
 
-		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
-		if usesPanelAccountMode(cfg) {
-			injectStr += branAuthWatchScript(cfg)
-		}
+		// Late head: text replace / CSS only (patcher already early).
+		injectStr := buildTextReplaceInjectHTML(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -4403,13 +4440,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// Inject only before the FIRST </head>. Canva embeds a full error-page
 		// HTML string (with its own </head>) in bootstrap — ReplaceAll would
 		// splice our script into that JS string → SyntaxError and zero API calls.
-		if loc := regexp.MustCompile(`(?i)</head>`).FindIndex(bodyBytes); loc != nil {
-			inj := []byte(injectStr + "</head>")
-			out := make([]byte, 0, len(bodyBytes)+len(inj))
-			out = append(out, bodyBytes[:loc[0]]...)
-			out = append(out, inj...)
-			out = append(out, bodyBytes[loc[1]:]...)
-			bodyBytes = out
+		if injectStr != "" {
+			if loc := regexp.MustCompile(`(?i)</head>`).FindIndex(bodyBytes); loc != nil {
+				inj := []byte(injectStr + "</head>")
+				out := make([]byte, 0, len(bodyBytes)+len(inj))
+				out = append(out, bodyBytes[:loc[0]]...)
+				out = append(out, inj...)
+				out = append(out, bodyBytes[loc[1]:]...)
+				bodyBytes = out
+			}
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
