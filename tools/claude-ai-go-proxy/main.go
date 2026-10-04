@@ -27,7 +27,6 @@ import (
 	"github.com/andybalholm/brotli"
 	_ "github.com/go-sql-driver/mysql"
 	utls "github.com/refraction-networking/utls"
-	"golang.org/x/net/http2"
 	proxysec "toolsmandi.com/proxy-security"
 )
 
@@ -885,6 +884,26 @@ func isCloudflareChallengePath(path string) bool {
 	return strings.HasPrefix(path, "/cdn-cgi/")
 }
 
+func serveClaudeCloudflareBypass(w http.ResponseWriter, path string) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if strings.Contains(path, "turnstile") || path == "/cf-turnstile-bypass.js" {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `(function(){window.turnstile={render:function(el,p){if(p&&p.callback)setTimeout(function(){p.callback('proxy-bypass');},50);return'mock';},reset:function(){},remove:function(){},getResponse:function(){return'proxy-bypass';},isExpired:function(){return false;},execute:function(el,p){if(p&&p.callback)setTimeout(function(){p.callback('proxy-bypass');},50);}};})();`)
+		return
+	}
+	if strings.Contains(path, "/oneshot/") || strings.HasSuffix(path, ".json") {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"success":true}`)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, `/* clud CF stub — real challenges cannot run on proxy hostname */(function(){try{window._cf_chl_opt=window._cf_chl_opt||{};}catch(e){}})();`)
+}
+
 func isCloudflareChallengeJS(contentType, body string) bool {
 	ct := strings.ToLower(contentType)
 	if !strings.Contains(ct, "javascript") && !strings.Contains(ct, "ecmascript") {
@@ -1358,8 +1377,26 @@ func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	// HelloChrome_Auto tracks current Chrome; pinned _120 is often fingerprinted by CF.
-	uConn := utls.UClient(tcpConn, &utls.Config{ServerName: host, InsecureSkipVerify: false}, utls.HelloChrome_Auto)
+	// Match Envato: Chrome Auto fingerprint but force http/1.1 only.
+	// Claude CF often challenges mismatched h2/ALPN from the old probe+h2 RoundTrip path.
+	spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
+	if err != nil {
+		tcpConn.Close()
+		return nil, fmt.Errorf("uTLS spec: %w", err)
+	}
+	for _, ext := range spec.Extensions {
+		if alpn, ok := ext.(*utls.ALPNExtension); ok {
+			alpn.AlpnProtocols = []string{"http/1.1"}
+		}
+	}
+	uConn := utls.UClient(tcpConn, &utls.Config{
+		ServerName:         host,
+		InsecureSkipVerify: true,
+	}, utls.HelloCustom)
+	if err := uConn.ApplyPreset(&spec); err != nil {
+		tcpConn.Close()
+		return nil, fmt.Errorf("uTLS preset: %w", err)
+	}
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		tcpConn.Close()
 		return nil, fmt.Errorf("uTLS handshake: %w", err)
@@ -1367,60 +1404,19 @@ func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 	return &uTLSConn{uConn}, nil
 }
 
-type chromeRoundTripper struct {
-	h2 *http2.Transport
-	h1 *http.Transport
-}
-
-func (rt *chromeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
-		if rt.h1 != nil {
-			rt.h1.CloseIdleConnections()
-		}
-		if rt.h2 != nil {
-			rt.h2.CloseIdleConnections()
-		}
-	}
-	addr := req.URL.Host
-	if !strings.Contains(addr, ":") {
-		if req.URL.Scheme == "https" {
-			addr += ":443"
-		} else {
-			addr += ":80"
-		}
-	}
-	conn, err := dialChrome(req.Context(), addr)
-	if err != nil {
-		return nil, err
-	}
-	proto := conn.ConnectionState().NegotiatedProtocol
-	conn.Close()
-	if proto == "h2" {
-		return rt.h2.RoundTripOpt(req, http2.RoundTripOpt{})
-	}
-	return rt.h1.RoundTrip(req)
-}
-
 func buildChromeTransport() http.RoundTripper {
-	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		return dialChrome(ctx, addr)
-	}
-	h1 := &http.Transport{
-		DialTLSContext:      dialTLS,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 20 * time.Second,
-		DisableCompression:  false,
-		ForceAttemptHTTP2:   false,
-	}
-	h2 := &http2.Transport{
-		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+	return &http.Transport{
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return dialChrome(ctx, addr)
 		},
-		DisableCompression: false,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   20 * time.Second,
+		ResponseHeaderTimeout: 45 * time.Second,
+		DisableCompression:    false,
+		ForceAttemptHTTP2:     false,
 	}
-	return &chromeRoundTripper{h2: h2, h1: h1}
 }
 
 func (crt *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -1785,40 +1781,24 @@ func main() {
 					applyServerScreenRedirect(resp, reqPath, cfg)
 					return nil
 				}
+				// Claude CF managed challenges cannot complete in the browser on clud.*
+				// (hostname mismatch → "Unable to connect"). Never passthrough that HTML.
+				card := claudeCFRetryCard(cfg)
 				if strings.TrimSpace(px) == "" {
-					// Blank CF challenge looks like a broken tool. Tell admin to assign proxy.
 					log.Printf("[CF] Challenge on path=%s — account has NO proxy; showing proxy-required page", reqPath)
-					html := lightCardHTML(claudeCFNeedsProxyCard(cfg))
-					resp.StatusCode = http.StatusBadGateway
-					resp.Status = "502 Bad Gateway"
-					resp.Header.Set("Content-Type", "text/html; charset=utf-8")
-					resp.Header.Del("Content-Encoding")
-					resp.Header.Del("Transfer-Encoding")
-					resp.Body = io.NopCloser(strings.NewReader(html))
-					resp.ContentLength = int64(len(html))
-					resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(html)))
-					return nil
-				}
-				log.Printf("[CF] Challenge passthrough path=%s proxy=set", reqPath)
-				bodyStr = injectScreenErrorRedirectHTML(bodyStr, cfg, reqPath)
-				modifiedBytes := []byte(bodyStr)
-				if isGzip {
-					var buf bytes.Buffer
-					gzipWriter := gzip.NewWriter(&buf)
-					if _, err := gzipWriter.Write(modifiedBytes); err != nil {
-						return err
-					}
-					gzipWriter.Close()
-					resp.Body = io.NopCloser(&buf)
-					resp.ContentLength = int64(buf.Len())
-					resp.Header.Set("Content-Length", fmt.Sprintf("%d", buf.Len()))
+					card = claudeCFNeedsProxyCard(cfg)
 				} else {
-					resp.Body = io.NopCloser(bytes.NewBuffer(modifiedBytes))
-					resp.ContentLength = int64(len(modifiedBytes))
-					resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(modifiedBytes)))
-					resp.Header.Del("Content-Encoding")
+					log.Printf("[CF] Challenge on path=%s proxy=set — serving retry page (no CF passthrough)", reqPath)
 				}
+				html := lightCardHTML(card)
+				resp.StatusCode = http.StatusOK
+				resp.Status = "200 OK"
+				resp.Header.Set("Content-Type", "text/html; charset=utf-8")
+				resp.Header.Del("Content-Encoding")
 				resp.Header.Del("Transfer-Encoding")
+				resp.Body = io.NopCloser(strings.NewReader(html))
+				resp.ContentLength = int64(len(html))
+				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(html)))
 				return nil
 			}
 
@@ -2335,6 +2315,12 @@ func main() {
 			dest := challengeReturnPath(r, home)
 			log.Printf("[CF] challenge_redirect -> %s", dest)
 			http.Redirect(w, r, dest, http.StatusFound)
+			return
+		}
+
+		// Stub CF challenge assets — real challenge JS cannot succeed on clud.* hostname.
+		if strings.HasPrefix(r.URL.Path, "/cdn-cgi/") || r.URL.Path == "/cf-turnstile-bypass.js" {
+			serveClaudeCloudflareBypass(w, r.URL.Path)
 			return
 		}
 

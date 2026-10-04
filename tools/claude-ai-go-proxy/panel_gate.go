@@ -445,6 +445,38 @@ func claudeCFNeedsProxyCard(cfg Config) lightCard {
 	}
 }
 
+// claudeCFRetryCard replaces CF "Unable to connect" pages. Browser challenges cannot
+// succeed on clud.* — only a clean upstream (proxy IP + cookies) can.
+func claudeCFRetryCard(cfg Config) lightCard {
+	home := cfg.HomePath
+	if home == "" {
+		home = "/new"
+	}
+	name := html.EscapeString(toolDisplayName(cfg))
+	return lightCard{
+		Title:   "Retrying Claude",
+		Heading: "Cloudflare check…",
+		Message: "<span class=\"brand\">" + name + "</span> is still blocked upstream. Retrying automatically. If this loops, refresh Claude cookies on the same Proxy Manager IP or try another residential proxy.",
+		Badge:   "Retrying…",
+		Footer:  "Browser CF challenges cannot complete on a proxy hostname",
+		Spin:    true,
+		ExtraScript: `<script>(function(){
+  var home=` + fmt.Sprintf("%q", home) + `;
+  var n=0; try{n=parseInt(sessionStorage.getItem('tm_cf_retry')||'0',10)||0;}catch(e){}
+  if(n>=6){
+    try{sessionStorage.removeItem('tm_cf_retry');}catch(e){}
+    var t=document.querySelector('h1'); var m=document.querySelector('.msg');
+    if(t) t.textContent='Still blocked';
+    if(m) m.innerHTML='Cloudflare is still blocking this proxy/cookies for Claude. Update <b>cf_clearance</b> cookies while on the assigned Proxy Manager IP, or switch to another residential proxy.';
+    var p=document.querySelector('.pill'); if(p) p.remove();
+    return;
+  }
+  try{sessionStorage.setItem('tm_cf_retry', String(n+1));}catch(e){}
+  setTimeout(function(){ location.replace(home+(home.indexOf('?')>=0?'&':'?')+'_cf='+Date.now()); }, 1600);
+})();</script>`,
+	}
+}
+
 func renderPanelLoadingPage(w http.ResponseWriter, cfg Config) {
 	home := cfg.HomePath
 	if home == "" {
