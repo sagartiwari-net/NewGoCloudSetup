@@ -17,19 +17,28 @@ Repo: https://github.com/sagartiwari-net/NewGoCloudSetup.git
 ## Layout
 
 ```text
-tools/                 Go proxy sources (80 tools, no Mac binaries / no cdn-cache)
-panel/panel-api/       Panel API Go source
+tools/                      Go proxy sources (80 tools)
+panel/panel-api/            Panel API (Go, :8090)
+panel/update-panel/         Panel UI (Next.js) — no node_modules in git
 deploy/
   nginx-host-port.map.conf
   nginx-wildcard.server.conf
-  configs/*.config.overlay.json
-  bootstrap-dirs.sh
-  build-one.sh
-  build-all.sh
-  server-first-setup.sh
-tools.json             subdomain ↔ port ↔ folder
-migrate-bundle/        LOCAL ONLY (gitignored) — panel.db copy
+  nginx-panel.server.conf   panel.gt4rents.com → UI:3000 + /api:8090
+  build-panel.sh
+  build-panel-ui.sh
+  ...
+tools.json
+migrate-bundle/             LOCAL ONLY — panel.db
 ```
+
+### Panel ports
+
+| Piece | Port | URL |
+|--------|-----:|-----|
+| panel-api | 8090 | `https://panel.gt4rents.com/api/...` (via nginx) |
+| update-panel (Next) | 3000 | `https://panel.gt4rents.com/` (via nginx) |
+
+Server needs: Go + Node.js 20+ for first UI build (`npm install && npm run build`).
 
 ---
 

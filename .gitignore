@@ -8,6 +8,8 @@ setup.md
 # junk / heavy
 **/cdn-cache/
 **/node_modules/
+**/.next/
+**/tsconfig.tsbuildinfo
 **/*.db
 **/cookie.txt
 **/.DS_Store
@@ -15,6 +17,8 @@ setup.md
 **/*.jpg
 **/*.jpeg
 **/*.webp
+panel/update-panel/.env.production
+panel/update-panel/.env.local
 
 # built binaries (build on Linux server) — keep folders, ignore known binary names
 **/panel-api/panel-api

@@ -9,7 +9,10 @@ chmod +x deploy/*.sh
 ./deploy/bootstrap-dirs.sh
 
 echo "==> build panel-api"
-./deploy/build-panel.sh || echo "WARN: panel build failed (fix Go / deps later)"
+./deploy/build-panel.sh || echo "WARN: panel-api build failed (fix Go / deps later)"
+
+echo "==> build panel UI (needs node/npm — may take a few minutes)"
+./deploy/build-panel-ui.sh || echo "WARN: panel UI build failed (install node 20+ later)"
 
 echo "==> NEXT STEPS (manual / Mac)"
 cat <<EOF
@@ -23,17 +26,19 @@ cat <<EOF
 
 3) aaPanel nginx:
    - http{} include: $(pwd)/deploy/nginx-host-port.map.conf
-   - site *.gt4rents.com use: deploy/nginx-wildcard.server.conf
-   - SSL wildcard later
+   - site *.gt4rents.com → deploy/nginx-wildcard.server.conf
+   - site panel.gt4rents.com → deploy/nginx-panel.server.conf
+     (UI :3000 + /api → :8090)
+   - SSL later
 
-4) Start panel (draft):
-   cd /www/wwwroot/gt4rents.com/panel
-   ./panel-api
-   # listens 127.0.0.1:8090 → https://panel.gt4rents.com via nginx
+4) Start panel API + UI:
+   cd /www/wwwroot/gt4rents.com/panel && ./panel-api
+   # API: 127.0.0.1:8090
+   cd $(pwd)/panel/update-panel && PORT=3000 npm run start
+   # UI: 127.0.0.1:3000 → https://panel.gt4rents.com
 
 5) Build + test ONE tool first (recommended):
    ./deploy/build-one.sh refs
-   # then start binary in /www/wwwroot/gt4rents.com/refs/
 
 6) Later: ./deploy/build-all.sh  (expect some failures — fix one by one)
 
