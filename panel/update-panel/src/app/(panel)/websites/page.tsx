@@ -512,7 +512,12 @@ function ToolForm({ tool, onDone }: { tool: Tool | null; onDone: (tool: Tool) =>
             type="button"
             variant="outline"
             className="self-start"
-            onClick={() => setLimits((current) => [...current, { label: "", reset_days: 1 }])}
+            onClick={() =>
+              setLimits((current) => [
+                ...current,
+                { key: `limit_${Date.now()}`, label: "", reset_days: 1 },
+              ])
+            }
           >
             Add limit
           </Button>
