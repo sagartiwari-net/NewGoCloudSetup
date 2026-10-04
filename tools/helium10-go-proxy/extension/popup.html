@@ -1,19 +1,92 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"/><title></title><link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@600&display=swap" rel="stylesheet"/><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/css/litepicker.css"/><script src="panel-popup.js"></script><script defer="defer" src="vendors.js"></script><script defer="defer" src="popup.js"></script></head><body><div class="popup" id="popup-root"></div></body><style>html, body {
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Helium 10</title>
+  <style>
+    html, body {
       margin: 0;
       min-width: 380px;
       min-height: 520px;
       width: 380px;
       font-size: 18px;
-      background: #fff;
+      background: #eef3f8;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
     }
-
+    #tm-h10-panel-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483646;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #eef3f8;
+    }
+    #tm-h10-panel-gate .card {
+      width: min(340px, 100%);
+      background: #fff;
+      border-radius: 22px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, .1);
+      padding: 32px 24px;
+      text-align: center;
+    }
+    #tm-h10-panel-gate h1 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    #tm-h10-panel-gate p {
+      margin: 0;
+      color: #64748b;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    #tm-h10-panel-gate .foot {
+      margin-top: 16px;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    #tm-h10-userbar {
+      display: none;
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: 0;
+      z-index: 2147483645;
+      background: #0f172a;
+      color: #fff;
+      font: 600 12px/1.2 system-ui, -apple-system, Segoe UI, sans-serif;
+      padding: 8px 12px;
+      text-align: center;
+    }
     #popup-root {
       min-width: 380px;
       min-height: 520px;
+      visibility: hidden;
     }
-
-    .litepicker span,
-    .litepicker div {
-      font-family: -apple-system, "Segoe UI", "Neuton", sans-serif;
-      line-height: normal;
-    }</style></html>
+    body.tm-ready #tm-h10-panel-gate { display: none; }
+    body.tm-ready #popup-root { visibility: visible; }
+    body.tm-ready #tm-h10-userbar { display: block; }
+    body.tm-ready { padding-top: 32px; background: #fff; }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/css/litepicker.css"/>
+</head>
+<body>
+  <div id="tm-h10-panel-gate">
+    <div class="card">
+      <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:#e0e7ff;display:grid;place-items:center;font-size:26px;">🔒</div>
+      <h1>Panel access required</h1>
+      <p>To use the Helium 10 extension, please access Helium 10 from the panel first.</p>
+      <p class="foot">Open Helium 10 from your member panel, then reopen this extension.</p>
+    </div>
+  </div>
+  <div id="tm-h10-userbar">Signed in</div>
+  <div class="popup" id="popup-root"></div>
+  <script src="panel-popup.js"></script>
+  <script defer src="vendors.js"></script>
+  <script defer src="popup.js"></script>
+</body>
+</html>

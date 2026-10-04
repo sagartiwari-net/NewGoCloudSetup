@@ -146,25 +146,39 @@
   // Popup / content scripts ask SW (DNR attaches ct_session) for panel username.
   if (chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener(function (msg, _sender, sendResponse) {
-      if (!msg || msg.type !== "tm_panel_username") return;
-      fetch(PROXY_ORIGIN + "/api/user-limits", {
-        credentials: "include",
-        cache: "no-store"
-      })
-        .then(function (r) {
-          if (!r.ok) throw new Error("limits " + r.status);
-          return r.json();
-        })
-        .then(function (d) {
-          sendResponse({
-            ok: true,
-            username: d && d.username ? String(d.username).trim() : ""
-          });
-        })
-        .catch(function () {
+      try {
+        if (!msg || msg.type !== "tm_panel_username") return false;
+        if (!PROXY_ORIGIN || PROXY_ORIGIN.indexOf("__H10_") === 0) {
           sendResponse({ ok: false, username: "" });
-        });
-      return true;
+          return false;
+        }
+        fetch(PROXY_ORIGIN + "/api/user-limits", {
+          credentials: "include",
+          cache: "no-store"
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error("limits " + r.status);
+            return r.json();
+          })
+          .then(function (d) {
+            sendResponse({
+              ok: true,
+              username: d && d.username ? String(d.username).trim() : ""
+            });
+          })
+          .catch(function () {
+            try {
+              sendResponse({ ok: false, username: "" });
+            } catch (e) {}
+          });
+        return true;
+      } catch (e) {
+        try {
+          sendResponse({ ok: false, username: "" });
+        } catch (e2) {}
+        return false;
+      }
     });
   }
 })();
+
