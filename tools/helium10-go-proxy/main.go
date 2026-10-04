@@ -1356,6 +1356,14 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
@@ -2255,11 +2263,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			renderProxyProblem(w, r)
 			return
 		}
-		// Local request-header / HTTP2 client bugs — do not burn the account pool.
-		errStr := err.Error()
-		if dbConnected &&
-			!strings.Contains(errStr, "invalid Connection request header") &&
-			!strings.Contains(errStr, "http2: ") {
+		// Hop-by-hop header bug is local — do not rotate accounts for it.
+		if dbConnected && !strings.Contains(err.Error(), "invalid Connection request header") {
 			activeAcc, _ = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error")
 		}
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
@@ -2366,11 +2371,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			serveH10AccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc, "h10_login_html")
 			return
 		}
-		// Device-lock CSS (html{visibility:hidden}) causes a blank white page until
-		// /api/device-bind succeeds. Skip entirely in local bypass_auth mode.
-		if usesPanelAccountMode(cfg) && !cfg.BypassAuth {
-			bodyBytes = injectDeviceHTML(bodyBytes)
-		}
+		// Skip devicePageScript on Helium HTML: visibility:hidden blanks the SPA on
+		// HTTPS. Access-link boot already binds the device (same as Claude).
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := ""

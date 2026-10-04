@@ -72,10 +72,13 @@ if pw:
 # server defaults
 base["port"] = str(base.get("port") or "${PORT}")
 base["public_host"] = base.get("public_host") or "${FQDN}"
-# Force http until SSL; set TOOL_PUBLIC_SCHEME=https in mysql.env after LE
-# (live asset rewrite still follows X-Forwarded-Proto; this is config fallback only)
-_scheme = (os.environ.get("TOOL_PUBLIC_SCHEME") or "http").strip().lower()
-base["public_scheme"] = "https" if _scheme == "https" else "http"
+# Prefer TOOL_PUBLIC_SCHEME from mysql.env; else keep overlay/base (do not force http
+# and blank HTTPS tools with mixed-content rewrites).
+_scheme = (os.environ.get("TOOL_PUBLIC_SCHEME") or "").strip().lower()
+if _scheme in ("http", "https"):
+    base["public_scheme"] = _scheme
+elif str(base.get("public_scheme") or "").strip().lower() not in ("http", "https"):
+    base["public_scheme"] = "http"
 base["panel_db"] = base.get("panel_db") or "${BASE}/panel/data/panel.db"
 if "local_test_mode" in base:
     base["local_test_mode"] = False
