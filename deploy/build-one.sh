@@ -33,6 +33,14 @@ echo "Building ${FOLDER} → ${OUTDIR}/app (port ${PORT}, host ${FQDN})"
 cd "${SRC}"
 go build -o "${OUTDIR}/app" .
 
+# Chrome extension templates (Helium10 / JungleScout / etc.) must sit next to ./app
+# so /extension.zip can bake a zip at runtime.
+if [[ -d "${SRC}/extension" ]]; then
+  rm -rf "${OUTDIR}/extension"
+  cp -a "${SRC}/extension" "${OUTDIR}/extension"
+  echo "Copied extension/ → ${OUTDIR}/extension"
+fi
+
 # Base config from tool source.
 # Prefer gt4rents panel template / local config.json — NEVER prefer config.production.json
 # (that file is often an old toolsmandi deploy with use_database + session_security on).

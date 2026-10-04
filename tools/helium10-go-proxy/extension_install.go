@@ -158,6 +158,33 @@ func injectIntoHTMLHead(body []byte, snippet string) []byte {
 
 const extensionTemplateDir = "extension"
 
+func resolveExtensionDir() (string, error) {
+	candidates := []string{extensionTemplateDir}
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exe), extensionTemplateDir))
+		// Go binaries are sometimes in a temp dir when run via `go run`.
+		if eval, err2 := filepath.EvalSymlinks(exe); err2 == nil {
+			candidates = append(candidates, filepath.Join(filepath.Dir(eval), extensionTemplateDir))
+		}
+	}
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(wd, extensionTemplateDir))
+	}
+	seen := map[string]bool{}
+	for _, dir := range candidates {
+		dir = filepath.Clean(dir)
+		if dir == "" || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		st, err := os.Stat(dir)
+		if err == nil && st.IsDir() {
+			return dir, nil
+		}
+	}
+	return "", fmt.Errorf("extension template not found (looked next to binary and cwd)")
+}
+
 func publicOriginFromRequest(r *http.Request, cfg Config) (origin, hostOnly string) {
 	hostWithPort := strings.TrimSpace(cfg.PublicHost)
 	if hostWithPort == "" {
@@ -191,6 +218,10 @@ func publicOriginFromRequest(r *http.Request, cfg Config) (origin, hostOnly stri
 }
 
 func bakeExtensionBytes(origin, hostOnly string) ([]byte, error) {
+	extDir, err := resolveExtensionDir()
+	if err != nil {
+		return nil, err
+	}
 	hostEsc := strings.ReplaceAll(hostOnly, ".", `\.`)
 	replacer := strings.NewReplacer(
 		"__H10_PROXY_ORIGIN__", origin,
@@ -207,14 +238,14 @@ func bakeExtensionBytes(origin, hostOnly string) ([]byte, error) {
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	err := filepath.WalkDir(extensionTemplateDir, func(path string, d fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(extDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if d.IsDir() {
 			return nil
 		}
-		rel, err := filepath.Rel(extensionTemplateDir, path)
+		rel, err := filepath.Rel(extDir, path)
 		if err != nil {
 			return err
 		}
