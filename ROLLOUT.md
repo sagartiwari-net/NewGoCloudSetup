@@ -24,7 +24,7 @@ Server: `65.109.16.196` · Domain: `gt4rents.com` · Repo: this folder → `/www
 - [x] `build-one` prefers `config.server.json` / panel mode (`use_database=false`)  
 - [x] Bulk `build-all` — **OK=80 FAIL=0** (2026-10-04)  
 - [x] `start-batch` — **OK=79 FAIL=1** → `:5001` = **smpanel Node** (not chatbotapp); remapped chatbotapp → **5061**  
-- [ ] `chatbotapp` rebuild/start on **5061** + nginx map reload  
+- [x] `chatbotapp` remapped to **5061** — listening (`app` pid OK); `start-tool.sh` free_port `ss`/`lsof` `|| true` (silent abort fix)  
 - [ ] Every website `domain` = `<sub>.gt4rents.com` in panel  
 - [ ] Active accounts + cookies (and **proxy** where CF blocks Hetzner)
 
@@ -67,17 +67,17 @@ Do **not** kill `:8090` (payment-hub). `start-tool` only touches each tool’s o
 
 ---
 
-## Phase B — SSL (after tools are built)
+## Phase B — SSL (DONE — 2026-10-04)
 
-Goal: cert never “quietly expires”.
+Goal: cert never “quietly expires”. Full steps: `setup.md` **§4d** + **§4d-after**.
 
-- [ ] aaPanel Let’s Encrypt for `gt4rents.com` + `*.gt4rents.com` (DNS challenge / Cloudflare)  
-- [ ] Also `panel.gt4rents.com`  
-- [ ] Force HTTPS on site  
-- [ ] **Auto Renew** enabled in aaPanel SSL  
-- [ ] Cloudflare SSL/TLS → **Full** (after origin has cert) — not Flexible long-term  
-- [ ] Confirm renew path: aaPanel auto-renew **or** `certbot renew --dry-run`  
-- [ ] Calendar: check ~30 days before expiry once
+- [x] aaPanel Let’s Encrypt for `gt4rents.com` + `*.gt4rents.com` (DNS TXT `_acme-challenge`) — domains show `*.gt4rents.com, gt4rents.com`; exp ~2027-01-02  
+- [x] Also `panel.gt4rents.com` LE deployed  
+- [x] Force HTTPS on both sites — `http://refs` → **301**; `https://panel` **200**; `https://refs` **403** (no session = OK)  
+- [x] **Auto Renew** noted on cert page (“1 month before expiration”)  
+- [x] Cloudflare SSL/TLS → **Full**  
+- [ ] Optional later: Full (strict); renew dry-run; calendar ~30d before expiry  
+- [x] §4d-after: `TOOL_PUBLIC_SCHEME=https` + panel-api rebuild (pid OK) + `$gt4_forwarded_proto` + nginx reload
 
 ### After cert is live
 
@@ -119,7 +119,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `answerthepublic` (:4931)  
 - [ ] `artistly` (:4821)  
 - [ ] `branalyzer` (:5081)  
-- [ ] `chatbotapp` (:5061) — remapped off smpanel `:5001`  
+- [x] `chatbotapp` (:5061) — up; smpanel keeps `:5001`  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
 - [ ] `copywritely` (:4521)  

@@ -48,12 +48,13 @@ free_port() {
   if command -v fuser >/dev/null 2>&1; then
     fuser -k "${port}/tcp" 2>/dev/null || true
   fi
+  # ss/lsof exit 1 when nothing listens — must not trip set -e/pipefail (silent abort).
   local pids=""
   if command -v ss >/dev/null 2>&1; then
-    pids="$(ss -lptn "sport = :${port}" 2>/dev/null | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u | tr '\n' ' ')"
+    pids="$(ss -lptn "sport = :${port}" 2>/dev/null | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u | tr '\n' ' ' || true)"
   fi
   if [[ -z "${pids// }" ]] && command -v lsof >/dev/null 2>&1; then
-    pids="$(lsof -t -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | tr '\n' ' ')"
+    pids="$(lsof -t -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | tr '\n' ' ' || true)"
   fi
   if [[ -n "${pids// }" ]]; then
     echo "Freeing :${port} pids ${pids}"
