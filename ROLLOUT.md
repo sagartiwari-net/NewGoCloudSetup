@@ -22,7 +22,8 @@ Server: `65.109.16.196` · Domain: `gt4rents.com` · Repo: this folder → `/www
 - [x] panel-api + `panel.db`  
 - [x] payment-hub `:8090` left alone  
 - [x] `build-one` prefers `config.server.json` / panel mode (`use_database=false`)  
-- [ ] Bulk `build-all` + `start-batch` (see commands below)  
+- [x] Bulk `build-all` — **OK=80 FAIL=0** (2026-10-04)  
+- [x] `start-batch` — **OK=79 FAIL=1** (`chatbotapp` :5001 busy; restart after `start-tool` port-free fix)  
 - [ ] Every website `domain` = `<sub>.gt4rents.com` in panel  
 - [ ] Active accounts + cookies (and **proxy** where CF blocks Hetzner)
 

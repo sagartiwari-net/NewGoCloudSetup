@@ -42,21 +42,54 @@ if [[ -f "${BASE}/_secrets/mysql.env" ]]; then
   source "${BASE}/_secrets/mysql.env"
 fi
 
-if [[ -f "${PIDF}" ]] && kill -0 "$(cat "${PIDF}")" 2>/dev/null; then
-  echo "Stopping old ${SUB} pid $(cat "${PIDF}")"
-  kill "$(cat "${PIDF}")" || true
-  sleep 1
+free_port() {
+  local port="$1"
+  # Prefer fuser; fall back to ss/lsof pid kill (chatbotapp :5001 stuck without this).
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k "${port}/tcp" 2>/dev/null || true
+  fi
+  local pids=""
+  if command -v ss >/dev/null 2>&1; then
+    pids="$(ss -lptn "sport = :${port}" 2>/dev/null | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u | tr '\n' ' ')"
+  fi
+  if [[ -z "${pids// }" ]] && command -v lsof >/dev/null 2>&1; then
+    pids="$(lsof -t -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | tr '\n' ' ')"
+  fi
+  if [[ -n "${pids// }" ]]; then
+    echo "Freeing :${port} pids ${pids}"
+    # shellcheck disable=SC2086
+    kill ${pids} 2>/dev/null || true
+    sleep 1
+    # shellcheck disable=SC2086
+    kill -9 ${pids} 2>/dev/null || true
+  fi
+}
+
+if [[ -f "${PIDF}" ]]; then
+  oldpid="$(cat "${PIDF}" 2>/dev/null || true)"
+  if [[ -n "${oldpid}" ]] && kill -0 "${oldpid}" 2>/dev/null; then
+    echo "Stopping old ${SUB} pid ${oldpid}"
+    kill "${oldpid}" 2>/dev/null || true
+    sleep 1
+    kill -9 "${oldpid}" 2>/dev/null || true
+  fi
 fi
 
-# free port if something else holds it
-if command -v fuser >/dev/null 2>&1; then
-  fuser -k "${PORT}/tcp" 2>/dev/null || true
-fi
+free_port "${PORT}"
+sleep 1
 
 cd "${OUTDIR}"
 nohup ./app >>"${LOG}" 2>&1 &
 echo $! >"${PIDF}"
 sleep 1
+if ! kill -0 "$(cat "${PIDF}")" 2>/dev/null; then
+  # One retry after hard port free (stale bind race)
+  free_port "${PORT}"
+  sleep 1
+  nohup ./app >>"${LOG}" 2>&1 &
+  echo $! >"${PIDF}"
+  sleep 1
+fi
 if ! kill -0 "$(cat "${PIDF}")" 2>/dev/null; then
   echo "FAIL: ${SUB} exited immediately — last log lines:"
   tail -30 "${LOG}" || true
