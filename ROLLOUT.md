@@ -106,8 +106,8 @@ If fail: note in “Open issues”, fix, re-tick.
 
 - [x] `refs` — Ahrefs (:5291) — HTTP access-link LIVE  
 - [x] `smrs` — Semrush (:5141) — HTTP access-link LIVE  
-- [x] `cgpt` — ChatGPT (:5151) — HTTP OK with **ChatGPT 1** (ID:65); ChatGPT 2 cookies flaky — refresh later  
-- [ ] `clud` — Claude AI (:5171) — Built; blank load = **assign Proxy Manager proxy** (HTTPS alone won’t fix CF). Retest after proxy (+ SSL)  
+- [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link); prefer **ChatGPT 1** (ID:65); ChatGPT 2 cookies flaky — refresh later  
+- [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer  
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
 - [ ] `cnva` — Canva (:4501) — Partial (429 / proxy); retest after SSL + account proxy  
 - [ ] `helium10` — helium10 (:5201)  
@@ -194,10 +194,8 @@ If fail: note in “Open issues”, fix, re-tick.
 
 | Tool | Issue | Action |
 |------|--------|--------|
-| `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1; refresh ChatGPT 2 cookies in panel when free |
-| `clud` | CF 403 / blank load; log: **NO proxy** | Panel → Claude AI 1 → assign Proxy Manager proxy (same as Envato). `claude-v24-cf-proxy`: Proxy required page + no device HTML inject — rebuild on server |
+| `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
-| All pre-SSL | Device SW / Secure cookies limited | Expected until Phase B |
 
 ---
 
