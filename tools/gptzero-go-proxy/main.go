@@ -1169,6 +1169,8 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       '#chrome-extension-link,',
       'li:has(>#chrome-extension-link),',
       'li:has(#chrome-extension-link),',
+      '[data-testid="mobile-nav-chrome-extension"],',
+      'a[href*="chromewebstore.google.com"],',
       '#more-menus,',
       'li:has(#more-menus),',
       'li:has(.sidebar-submenu-container),',
@@ -1188,6 +1190,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     'Help & support': 1,
     'Help &amp; support': 1,
     'Upgrade': 1,
+    'Upgrade to Premium': 1,
     'Log out': 1,
     'Tell us what you think': 1,
     'Chrome Extension': 1,
@@ -1198,6 +1201,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
   function gzLabel(el) {
     var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
     t = t.replace(/\s*Get 10k credits free\s*$/i, '').trim();
+    t = t.replace(/\s*Unlock Advanced Scan\s*$/i, '').trim();
     return t;
   }
   function gzHide(el) {
@@ -1211,19 +1215,36 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       li.style.setProperty('display', 'none', 'important');
       li.setAttribute('data-tm-gz-hide', '1');
     }
+    // Profile-menu wrappers that only hold this one upsell row.
+    var p = el.parentElement;
+    if (p && p.children && p.children.length === 1 && p !== document.body) {
+      p.setAttribute('data-tm-gz-hide', '1');
+      p.style.setProperty('display', 'none', 'important');
+      p.style.setProperty('visibility', 'hidden', 'important');
+      p.style.setProperty('pointer-events', 'none', 'important');
+    }
   }
   function scrubChrome() {
     try {
-      document.querySelectorAll('#chrome-extension-link, #account-settings-link, #more-menus, [data-testid="profile-menu-logout-button"], .amplitude-survey-feedback').forEach(gzHide);
+      document.querySelectorAll(
+        '#chrome-extension-link, #account-settings-link, #more-menus, ' +
+        '[data-testid="profile-menu-logout-button"], [data-testid="mobile-nav-chrome-extension"], ' +
+        'a[href*="chromewebstore.google.com"], .amplitude-survey-feedback'
+      ).forEach(gzHide);
       document.querySelectorAll('button, a').forEach(function(el) {
         // Never touch Scans sidebar item.
         if (el.id === 'documents-link') return;
         var t = gzLabel(el);
-        if (HIDE_LABELS[t]) {
-          // "More" / "Settings" / "Chrome Extension" only in sidebar (known ids or narrow rail).
+        var href = el.getAttribute('href') || '';
+        var testid = el.getAttribute('data-testid') || '';
+        if (testid === 'mobile-nav-chrome-extension' || href.indexOf('chromewebstore.google.com') !== -1) {
+          gzHide(el);
+          return;
+        }
+        if (HIDE_LABELS[t] || /^Upgrade(\s|$)/i.test(t) || /^Upgrade to Premium$/i.test(t)) {
+          // "More" / "Settings" only for known sidebar targets.
           if (t === 'More' && el.id !== 'more-menus') return;
-          if (t === 'Settings' && el.id !== 'account-settings-link' && (el.getAttribute('href') || '') !== '/account-settings') return;
-          if (t === 'Chrome Extension' && el.id !== 'chrome-extension-link') return;
+          if (t === 'Settings' && el.id !== 'account-settings-link' && href !== '/account-settings') return;
           gzHide(el);
         }
       });

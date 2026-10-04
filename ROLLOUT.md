@@ -135,7 +135,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `flaticon` (:4921)  
 - [ ] `flexclip` (:4671)  
 - [ ] `glorify` (:4681)  
-- [ ] `gptzero` (:5301)  
+- [x] `gptzero` (:5301) — HTTPS OK; logout → switch / logged-out page + `[SWAP]` logs (2026-10-04)  
 - [ ] `grok` (:4831)  
 - [ ] `heliumlearning` (:5221)  
 - [ ] `ilovepdf` (:4531)  
