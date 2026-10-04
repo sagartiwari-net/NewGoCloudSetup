@@ -20,6 +20,12 @@ setup.md
 panel/update-panel/.env.production
 panel/update-panel/.env.local
 
+# runtime
+**/*.log
+**/*.pid
+**/*.env
+!**/mysql.env.example
+
 # built binaries (build on Linux server) — keep folders, ignore known binary names
 **/panel-api/panel-api
 tools/**/main

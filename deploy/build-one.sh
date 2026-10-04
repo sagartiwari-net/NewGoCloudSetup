@@ -33,38 +33,52 @@ echo "Building ${FOLDER} → ${OUTDIR}/app (port ${PORT}, host ${FQDN})"
 cd "${SRC}"
 go build -o "${OUTDIR}/app" .
 
-# Merge overlay if no config.json yet
-if [[ ! -f "${OUTDIR}/config.json" ]]; then
-  if [[ -f "${SRC}/config.json" ]]; then
-    cp "${SRC}/config.json" "${OUTDIR}/config.json"
-  fi
+# Base config from tool source, then always apply server overlay (public_host/port/panel_db)
+if [[ -f "${SRC}/config.json" ]]; then
+  cp "${SRC}/config.json" "${OUTDIR}/config.json"
+elif [[ ! -f "${OUTDIR}/config.json" ]]; then
+  echo '{}' > "${OUTDIR}/config.json"
 fi
+
+# Load mysql password from server secrets if present
+if [[ -f "${BASE}/_secrets/mysql.env" ]]; then
+  # shellcheck disable=SC1090
+  source "${BASE}/_secrets/mysql.env"
+fi
+
 OVERLAY="${ROOT}/deploy/configs/${SUB}.config.overlay.json"
-if [[ -f "${OVERLAY}" ]]; then
-  python3 - <<PY
-import json
+python3 - <<PY
+import json, os
 from pathlib import Path
 out = Path("${OUTDIR}/config.json")
 base = json.loads(out.read_text()) if out.exists() else {}
-ov = json.loads(Path("${OVERLAY}").read_text())
-# apply key host/port/panel fields
+ov = json.loads(Path("${OVERLAY}").read_text()) if Path("${OVERLAY}").exists() else {}
 for k in ("port","public_host","public_scheme","panel_db","local_test_mode","bypass_auth",
           "mysql_host","mysql_port","mysql_user","mysql_db"):
     if k in ov:
         base[k] = ov[k]
-# password from env if set
-import os
 pw = os.environ.get("GT4RENTS_MYSQL_PASSWORD")
 if pw:
     base["mysql_password"] = pw
-elif "mysql_password" in ov and not str(ov["mysql_password"]).startswith("${"):
-    base["mysql_password"] = ov["mysql_password"]
+# server defaults
+base["port"] = str(base.get("port") or "${PORT}")
+base["public_host"] = base.get("public_host") or "${FQDN}"
+base["public_scheme"] = base.get("public_scheme") or "https"
+base["panel_db"] = base.get("panel_db") or "${BASE}/panel/data/panel.db"
+if "local_test_mode" in base:
+    base["local_test_mode"] = False
+if "bypass_auth" in base:
+    base["bypass_auth"] = False
 out.write_text(json.dumps(base, indent=2) + "\n")
 print("wrote", out)
 PY
-fi
+
+cat > "${OUTDIR}/start.sh" <<EOF
+#!/usr/bin/env bash
+cd "\$(dirname "\$0")"
+exec ./app
+EOF
+chmod +x "${OUTDIR}/start.sh"
 
 echo "OK: ${OUTDIR}/app"
-echo "Run example:"
-echo "  cd ${OUTDIR} && CONFIG_FILE=./config.json ./app"
-echo "  # or tool-specific ENV — check main.go for config path"
+echo "Start: ${ROOT}/deploy/start-tool.sh ${SUB}"

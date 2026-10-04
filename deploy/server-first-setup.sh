@@ -1,45 +1,51 @@
 #!/usr/bin/env bash
-# First-draft server bootstrap (run on Hetzner/Contabo after git clone into _repo)
+# First-draft server bootstrap — run inside _repo after git clone/pull
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "${ROOT}"
-
-echo "==> bootstrap dirs"
 chmod +x deploy/*.sh
+
+echo "==> 1) directories"
 ./deploy/bootstrap-dirs.sh
 
-echo "==> build panel-api"
-./deploy/build-panel.sh || echo "WARN: panel-api build failed (fix Go / deps later)"
+if [[ -f /www/wwwroot/gt4rents.com/_secrets/mysql.env ]]; then
+  # shellcheck disable=SC1091
+  source /www/wwwroot/gt4rents.com/_secrets/mysql.env
+  echo "==> mysql.env loaded"
+else
+  echo "WARN: create /www/wwwroot/gt4rents.com/_secrets/mysql.env (see mysql.env.example)"
+fi
 
-echo "==> build panel UI (needs node/npm — may take a few minutes)"
-./deploy/build-panel-ui.sh || echo "WARN: panel UI build failed (install node 20+ later)"
+echo "==> 2) build panel-api"
+./deploy/build-panel.sh || echo "WARN: panel-api build failed — install Go"
 
-echo "==> NEXT STEPS (manual / Mac)"
+echo "==> 3) build panel UI (Node 20+)"
+./deploy/build-panel-ui.sh || echo "WARN: panel UI build failed — install Node/npm"
+
+echo ""
+echo "========== NEXT (see SERVER-SETUP.md) =========="
 cat <<EOF
+A) Mac → scp panel.db:
+   scp .../migrate-bundle/panel.db root@SERVER:/www/wwwroot/gt4rents.com/panel/data/panel.db
 
-1) From Mac, upload DB (NOT in git):
-   scp /Users/sagartiwari/Desktop/oneclickgo/NewGoCloudSetup/migrate-bundle/panel.db \\
-       root@65.109.16.196:/www/wwwroot/gt4rents.com/panel/data/panel.db
+B) Secrets:
+   cp /www/wwwroot/gt4rents.com/_secrets/mysql.env.example \\
+      /www/wwwroot/gt4rents.com/_secrets/mysql.env
+   # edit password
 
-2) Set MySQL password on server:
-   export GT4RENTS_MYSQL_PASSWORD='(from local setup.md)'
+C) aaPanel nginx:
+   - include map:  ${ROOT}/deploy/nginx-host-port.map.conf   (http{})
+   - wildcard:     ${ROOT}/deploy/nginx-wildcard.server.conf
+   - panel site:   ${ROOT}/deploy/nginx-panel.server.conf
 
-3) aaPanel nginx:
-   - http{} include: $(pwd)/deploy/nginx-host-port.map.conf
-   - site *.gt4rents.com → deploy/nginx-wildcard.server.conf
-   - site panel.gt4rents.com → deploy/nginx-panel.server.conf
-     (UI :3000 + /api → :8090)
-   - SSL later
+D) Start panel:
+   ${ROOT}/deploy/start-panel-api.sh
+   ${ROOT}/deploy/start-panel-ui.sh
 
-4) Start panel API + UI:
-   cd /www/wwwroot/gt4rents.com/panel && ./panel-api
-   # API: 127.0.0.1:8090
-   cd $(pwd)/panel/update-panel && PORT=3000 npm run start
-   # UI: 127.0.0.1:3000 → https://panel.gt4rents.com
+E) First tool:
+   source /www/wwwroot/gt4rents.com/_secrets/mysql.env
+   ${ROOT}/deploy/build-one.sh refs
+   ${ROOT}/deploy/start-tool.sh refs
 
-5) Build + test ONE tool first (recommended):
-   ./deploy/build-one.sh refs
-
-6) Later: ./deploy/build-all.sh  (expect some failures — fix one by one)
-
+Full guide: ${ROOT}/SERVER-SETUP.md
 EOF

@@ -8,5 +8,5 @@ mkdir -p "${OUT}/data"
 cd "${ROOT}/panel/panel-api"
 go build -o "${OUT}/panel-api" .
 echo "OK: ${OUT}/panel-api"
-echo "DB path expected: ${OUT}/data/panel.db  (scp from Mac migrate-bundle)"
-echo "Draft listen: check panel-api flags/env — nginx maps panel.gt4rents.com → 3210"
+echo "DB path: ${OUT}/data/panel.db  (scp from Mac migrate-bundle if missing)"
+echo "Start: ${ROOT}/deploy/start-panel-api.sh  → 127.0.0.1:8090"

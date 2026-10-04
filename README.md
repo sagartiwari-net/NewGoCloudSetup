@@ -2,6 +2,8 @@
 
 Lean deploy repo for tools + panel on the server.
 
+**→ Full server steps: [SERVER-SETUP.md](./SERVER-SETUP.md)** (clone → nginx → panel → tools)
+
 - Domain: `gt4rents.com`
 - Method A: `git pull` → `go build` → run
 - Server root: `/www/wwwroot/gt4rents.com/<subdomain>/`

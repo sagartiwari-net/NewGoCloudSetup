@@ -7,6 +7,13 @@ BASE="$(python3 -c "import json; print(json.load(open('${TOOLS_JSON}'))['server_
 
 mkdir -p "${BASE}/panel/data"
 mkdir -p "${BASE}/_repo"
+mkdir -p "${BASE}/_secrets"
+if [[ ! -f "${BASE}/_secrets/mysql.env" ]]; then
+  cat > "${BASE}/_secrets/mysql.env.example" <<'EOF'
+export GT4RENTS_MYSQL_PASSWORD='PASTE_PASSWORD_HERE'
+EOF
+  echo "Created ${BASE}/_secrets/mysql.env.example — copy to mysql.env and set password"
+fi
 
 python3 - <<PY
 import json, os
