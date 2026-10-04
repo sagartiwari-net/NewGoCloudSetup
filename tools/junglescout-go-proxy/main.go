@@ -788,6 +788,125 @@ func enrichUpstreamDatadomeHeaders(upstreamReq, clientReq *http.Request, cfg Con
 	}
 }
 
+var (
+	jungleAuthProbeMu sync.Mutex
+	jungleAuthProbe   = map[string]struct {
+		ok        bool
+		why       string
+		checkedAt time.Time
+	}{}
+)
+
+func jungleAccountAuthToken(acc ToolAccount, cfg Config) string {
+	cookieStr := parseCookieFromDB(acc.Cookie)
+	if cookieStr == "" {
+		cookieStr = loadCookiesFromFile(cfg.CookieFile)
+	}
+	for _, part := range strings.Split(cookieStr, ";") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "auth_token=") {
+			return strings.TrimPrefix(part, "auth_token=")
+		}
+	}
+	return ""
+}
+
+// jungleAccountAPIAuthorized probes api.junglescout.com with the mapped account.
+// Jungle Scout binds sessions to the capture egress IP — datacenter / wrong proxy
+// returns 401 Access Denied even with a fresh-looking JWT.
+func jungleAccountAPIAuthorized(cfg Config, acc ToolAccount) (bool, string) {
+	token := jungleAccountAuthToken(acc, cfg)
+	if token == "" {
+		return false, "missing auth_token in account cookie"
+	}
+	key := fmt.Sprintf("%d:%s:%s", acc.ID, token, strings.TrimSpace(acc.Proxy))
+	jungleAuthProbeMu.Lock()
+	if prev, ok := jungleAuthProbe[key]; ok && time.Since(prev.checkedAt) < 45*time.Second {
+		jungleAuthProbeMu.Unlock()
+		return prev.ok, prev.why
+	}
+	jungleAuthProbeMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), proxyContextKey, acc.Proxy), 18*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.junglescout.com/api/card_info", nil)
+	if err != nil {
+		return false, "probe build failed"
+	}
+	cookieStr := parseCookieFromDB(acc.Cookie)
+	req.Header.Set("User-Agent", firstNonEmpty(acc.UserAgent, cfg.UserAgent, "Mozilla/5.0"))
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Origin", "https://members.junglescout.com")
+	req.Header.Set("Referer", "https://members.junglescout.com/")
+	req.Header.Set("Authorization", "Bearer "+token)
+	if cookieStr != "" {
+		req.Header.Set("Cookie", cookieStr)
+	}
+	resp, err := httpClient.Do(req)
+	why := "api unreachable"
+	ok := false
+	if err != nil {
+		why = err.Error()
+		if strings.Contains(why, "proxy dial") {
+			why = "proxy dial failed — assign a working Proxy Manager proxy on this account"
+		}
+	} else {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		switch resp.StatusCode {
+		case http.StatusOK, http.StatusNoContent:
+			ok, why = true, "ok"
+		case http.StatusUnauthorized, http.StatusForbidden:
+			if strings.TrimSpace(acc.Proxy) == "" {
+				why = "API Access Denied — session IP-bound; capture cookies through Proxy Manager and assign that same proxy"
+			} else {
+				why = "API Access Denied — cookie/session invalid or not captured on this proxy IP"
+			}
+		default:
+			why = fmt.Sprintf("API status %d", resp.StatusCode)
+		}
+	}
+
+	jungleAuthProbeMu.Lock()
+	jungleAuthProbe[key] = struct {
+		ok        bool
+		why       string
+		checkedAt time.Time
+	}{ok: ok, why: why, checkedAt: time.Now()}
+	jungleAuthProbeMu.Unlock()
+	return ok, why
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func renderJungleSessionDeadPage(w http.ResponseWriter, cfg Config, acc ToolAccount, reason string) {
+	name := html.EscapeString(toolDisplayName(cfg))
+	accName := html.EscapeString(strings.TrimSpace(acc.Name))
+	if accName == "" {
+		accName = "mapped account"
+	}
+	proxyHint := "No proxy is assigned on this account."
+	if strings.TrimSpace(acc.Proxy) != "" {
+		proxyHint = "A proxy is assigned — re-capture cookies while GoAuto uses that same proxy."
+	}
+	msg := "Jungle Scout API rejected <span class=\"brand\">" + accName + "</span> (" + name + "). " +
+		html.EscapeString(reason) + ". " + proxyHint +
+		" Update the panel cookie from a live logged-in browser on that proxy, then open a new access link."
+	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
+		Title:   "Session needs refresh",
+		Heading: "Session needs refresh",
+		Message: msg,
+		Footer:  "Loading spinner means API 401 — not a Bad Gateway",
+	})
+}
+
 func enrichUpstreamAuthHeaders(upstreamReq *http.Request, cfg Config, activeAcc ToolAccount) {
 	cookieStr := parseCookieFromDB(activeAcc.Cookie)
 	if cookieStr == "" {
@@ -3363,11 +3482,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderNoActiveAccountsPage(w, cfg)
 				return
 			}
-			// Soft bounce only — path-only failover loops forever with one account
-			// ("Switching account" ↔ login-proxy). Real logout is handled after
-			// upstream HTML/API checks. Re-bake browser auth cookies and go home.
+			// Soft bounce only when the mapped session still authorizes APIs.
+			// Dead cookies otherwise loop forever: API 401 → login-proxy → dashboard.
 			if isDocumentNavigation(r) && isAuthProxyPath(path) && sessionToken != "" {
 				returnPath := jungleReturnPath(r.URL.Query().Get("redirectRoute"))
+				if ok, why := jungleAccountAPIAuthorized(cfg, activeAcc); !ok {
+					log.Printf("[LB] jungle session dead user=%s account=%s reason=%s proxy=%v",
+						currentUser, activeAcc.Name, why, strings.TrimSpace(activeAcc.Proxy) != "")
+					renderJungleSessionDeadPage(w, cfg, activeAcc, why)
+					return
+				}
 				setProxyBrowserAuthCookies(w, r, cfg, activeAcc)
 				log.Printf("[LB] login-proxy soft bounce user=%s account=%s → %s", currentUser, activeAcc.Name, returnPath)
 				http.Redirect(w, r, returnPath, http.StatusFound)
