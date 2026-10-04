@@ -789,24 +789,32 @@ func enrichUpstreamDatadomeHeaders(upstreamReq, clientReq *http.Request, cfg Con
 }
 
 func enrichUpstreamAuthHeaders(upstreamReq *http.Request, cfg Config, activeAcc ToolAccount) {
-	// Extension authenticate() uses a JWT daily_token (eyJ...). Do not replace it
-	// with the raw auth_token — that breaks product/historical APIs (403/upsell UI).
-	if auth := strings.TrimSpace(upstreamReq.Header.Get("Authorization")); strings.HasPrefix(auth, "Bearer eyJ") {
-		return
-	}
 	cookieStr := parseCookieFromDB(activeAcc.Cookie)
 	if cookieStr == "" {
 		cookieStr = loadCookiesFromFile(cfg.CookieFile)
 	}
+	accountToken := ""
 	for _, part := range strings.Split(cookieStr, ";") {
 		part = strings.TrimSpace(part)
 		if strings.HasPrefix(part, "auth_token=") {
-			token := strings.TrimPrefix(part, "auth_token=")
-			if token != "" {
-				upstreamReq.Header.Set("Authorization", "Bearer "+token)
-			}
+			accountToken = strings.TrimPrefix(part, "auth_token=")
 			break
 		}
+	}
+	auth := strings.TrimSpace(upstreamReq.Header.Get("Authorization"))
+	// Panel mode: always prefer the mapped account JWT. Stale browser Bearer eyJ
+	// cookies otherwise win and every API returns 401 Access Denied.
+	if usesPanelAccountMode(cfg) && accountToken != "" {
+		upstreamReq.Header.Set("Authorization", "Bearer "+accountToken)
+		return
+	}
+	// Extension authenticate() uses a JWT daily_token (eyJ...). Do not replace it
+	// with the raw auth_token — that breaks product/historical APIs (403/upsell UI).
+	if strings.HasPrefix(auth, "Bearer eyJ") {
+		return
+	}
+	if accountToken != "" {
+		upstreamReq.Header.Set("Authorization", "Bearer "+accountToken)
 	}
 }
 
@@ -3355,20 +3363,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderNoActiveAccountsPage(w, cfg)
 				return
 			}
-			// Official login URL rewritten to /login-proxy — switch / reload cookie / wait.
+			// Soft bounce only — path-only failover loops forever with one account
+			// ("Switching account" ↔ login-proxy). Real logout is handled after
+			// upstream HTML/API checks. Re-bake browser auth cookies and go home.
 			if isDocumentNavigation(r) && isAuthProxyPath(path) && sessionToken != "" {
 				returnPath := jungleReturnPath(r.URL.Query().Get("redirectRoute"))
-				retryURL := "/login-proxy/?redirectRoute=" + url.QueryEscape(returnPath)
-				if next, nextName, swErr := panelSwitchAccount(cfg, sessionToken, "login-proxy path"); swErr == nil {
-					activeAcc = next
-					setProxyBrowserAuthCookies(w, r, cfg, next)
-					log.Printf("[LB] login-proxy ready user=%s account=%s return=%s", currentUser, nextName, returnPath)
-					renderPanelAccountSwitchPage(w, cfg, nextName, returnPath)
-					return
-				}
-				// Truly no active cookie in panel — keep looping until one is saved.
-				log.Printf("[LB] login-proxy waiting for account user=%s retry=%s", currentUser, retryURL)
-				renderPanelWaitingForAccountPage(w, cfg, retryURL)
+				setProxyBrowserAuthCookies(w, r, cfg, activeAcc)
+				log.Printf("[LB] login-proxy soft bounce user=%s account=%s → %s", currentUser, activeAcc.Name, returnPath)
+				http.Redirect(w, r, returnPath, http.StatusFound)
 				return
 			}
 		}
