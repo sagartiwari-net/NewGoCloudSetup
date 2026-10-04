@@ -3426,6 +3426,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				if userName == "" {
 					userName = ahrefsSessionUser(sessionToken)
 				}
+				if ahrefsPanelSwitchBudgetExceeded(sessionToken) {
+					log.Printf("[LB] panel switch budget exceeded user=%s — cookies likely expired", userName)
+					renderNoActiveAccountsPage(w)
+					return
+				}
 				nextAcc, switchErr = switchAhrefsPanelAccount(cfg.PublicHost, sessionToken, activeAcc, userName, switchReason)
 				nextName := ""
 				if switchErr != nil {
@@ -3433,6 +3438,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				} else {
 					nextName = nextAcc.Name
 					activeAcc = nextAcc
+					ahrefsPanelSwitchBump(sessionToken)
 				}
 				renderAccountSwitchPage(w, nextName, ahrefsSwitchReturnPath(r))
 				return
@@ -3780,27 +3786,32 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	isJS := strings.Contains(contentType, "javascript")
 
 	// ── 9. Determine public-facing URL ────────────────────────────────────────
-	// Apache reverse proxy (ProxyPreserveHost Off) passes r.Host = "127.0.0.1:7842"
-	// Fix: use public_host from config.json if set.
-	var scheme, publicHost string
-	if cfg.PublicHost != "" {
-		publicHost = cfg.PublicHost
-		scheme = cfg.PublicScheme
-	} else {
+	// Prefer the browser's actual scheme (X-Forwarded-Proto / TLS). Hardcoding
+	// public_scheme=https while the site is still HTTP rewrites CSS/JS to
+	// https://refs... which fails to load → unstyled Ahrefs shell.
+	publicHost := cfg.PublicHost
+	if publicHost == "" {
 		publicHost = r.Host
+	}
+	if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
+		publicHost = strings.Split(xfh, ",")[0]
+		publicHost = strings.TrimSpace(publicHost)
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+		scheme = strings.ToLower(strings.Split(proto, ",")[0])
+		scheme = strings.TrimSpace(scheme)
+	} else if cfg.PublicScheme != "" {
+		scheme = cfg.PublicScheme
+	}
+	if scheme != "http" && scheme != "https" {
 		scheme = "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-		}
-		if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
-			publicHost = xfh
-		}
-		if strings.HasPrefix(publicHost, "127.") || strings.HasPrefix(publicHost, "localhost") {
-			log.Printf("[WARN] Host=%s — config.json mein 'public_host' set karo!", publicHost)
-		}
+	}
+	if strings.HasPrefix(publicHost, "127.") || strings.HasPrefix(publicHost, "localhost") {
+		log.Printf("[WARN] Host=%s — config.json mein 'public_host' set karo!", publicHost)
 	}
 	proxyRoot := scheme + "://" + publicHost
 

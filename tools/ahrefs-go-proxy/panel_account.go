@@ -17,7 +17,35 @@ var (
 	ahrefsPanel     *sql.DB
 	ahrefsPanelErr  error
 	ahrefsPanelPath string
+	// Per-session panel account switch budget (stops Ahrefs 1↔2 reload loops).
+	ahrefsPanelSwitchCounts sync.Map // sessionToken → int
 )
+
+const ahrefsPanelSwitchMax = 3
+
+func ahrefsPanelSwitchBudgetExceeded(sessionToken string) bool {
+	if sessionToken == "" {
+		return false
+	}
+	raw, ok := ahrefsPanelSwitchCounts.Load(sessionToken)
+	if !ok {
+		return false
+	}
+	return raw.(int) >= ahrefsPanelSwitchMax
+}
+
+func ahrefsPanelSwitchBump(sessionToken string) {
+	if sessionToken == "" {
+		return
+	}
+	for {
+		raw, _ := ahrefsPanelSwitchCounts.LoadOrStore(sessionToken, 0)
+		n := raw.(int)
+		if ahrefsPanelSwitchCounts.CompareAndSwap(sessionToken, n, n+1) {
+			return
+		}
+	}
+}
 
 func ahrefsPanelDBPath() string {
 	cfg := loadConfig()
