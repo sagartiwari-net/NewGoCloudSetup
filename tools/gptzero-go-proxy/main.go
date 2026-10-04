@@ -332,6 +332,9 @@ func ensureFreshSessionRaw(raw string, accountID int, proxyStr string) (string, 
 	if raw == "" {
 		return "", fmt.Errorf("empty session cookie")
 	}
+	if isDeadRefresh(accountID) {
+		return raw, fmt.Errorf("refresh_token_already_used (cached)")
+	}
 	_, ls := parseSession(raw)
 	token := accessTokenFromLS(ls)
 	rt := refreshTokenFromLS(ls)
@@ -361,7 +364,12 @@ func ensureFreshSessionRaw(raw string, accountID int, proxyStr string) (string, 
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
-		return raw, fmt.Errorf("supabase refresh HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 180))
+		bodyStr := string(respBody)
+		if resp.StatusCode == 400 || strings.Contains(strings.ToLower(bodyStr), "refresh_token_already_used") ||
+			strings.Contains(strings.ToLower(bodyStr), "invalid refresh token") {
+			markDeadRefresh(accountID)
+		}
+		return raw, fmt.Errorf("supabase refresh HTTP %d: %s", resp.StatusCode, truncate(bodyStr, 180))
 	}
 	var out map[string]interface{}
 	if err := json.Unmarshal(respBody, &out); err != nil {
