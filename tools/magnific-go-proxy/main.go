@@ -727,6 +727,7 @@ type browserCookieEntry struct {
 	Name     string `json:"name"`
 	Value    string `json:"value"`
 	Domain   string `json:"domain"`
+	Path     string `json:"path"`
 	HostOnly bool   `json:"hostOnly"`
 }
 
@@ -773,6 +774,64 @@ func parseCookieFromDB(raw string) string {
 	return cookieEntriesToHeader(cookies)
 }
 
+// filterMagnificLocalStorageJSON keeps Magnific/Freepik auth + theme keys only.
+// Stock pages show Log in when session/user + user/wallet are missing even if GR_TOKEN cookies exist.
+func filterMagnificLocalStorageJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(raw), &m); err != nil || len(m) == 0 {
+		return ""
+	}
+	out := make(map[string]string, 8)
+	for k, v := range m {
+		if k == "fp:theme" || k == "userPreferences" ||
+			strings.HasPrefix(k, "session/") ||
+			strings.HasPrefix(k, "user/") ||
+			strings.HasPrefix(k, "auth/") {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// localStorageJSONFromRaw extracts storage.localStorage from GoAuto/panel cookie JSON.
+func localStorageJSONFromRaw(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	var wrap struct {
+		Storage struct {
+			LocalStorage map[string]string `json:"localStorage"`
+		} `json:"storage"`
+		LocalStorage map[string]string `json:"localStorage"`
+	}
+	if err := json.Unmarshal(data, &wrap); err != nil {
+		return ""
+	}
+	m := wrap.Storage.LocalStorage
+	if len(m) == 0 {
+		m = wrap.LocalStorage
+	}
+	if len(m) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	return filterMagnificLocalStorageJSON(string(b))
+}
+
 func localStorageJSONFromFile(path string) string {
 	if strings.TrimSpace(path) == "" {
 		return ""
@@ -781,19 +840,7 @@ func localStorageJSONFromFile(path string) string {
 	if err != nil || len(data) == 0 {
 		return ""
 	}
-	var wrap struct {
-		Storage struct {
-			LocalStorage map[string]string `json:"localStorage"`
-		} `json:"storage"`
-	}
-	if err := json.Unmarshal(data, &wrap); err != nil || len(wrap.Storage.LocalStorage) == 0 {
-		return ""
-	}
-	b, err := json.Marshal(wrap.Storage.LocalStorage)
-	if err != nil {
-		return ""
-	}
-	return string(b)
+	return localStorageJSONFromRaw(data)
 }
 
 func patchSyntxAppJS(body []byte) []byte {
@@ -860,6 +907,11 @@ func cookieEntriesToHeader(cookies []browserCookieEntry) string {
 		score := 0
 		if c.HostOnly {
 			score += 2
+		}
+		// Magnific app session cookie is path-scoped to /app — prefer it over bare /.
+		p := strings.TrimSpace(c.Path)
+		if p == "/app" || strings.HasPrefix(p, "/app/") {
+			score += 10
 		}
 		d := strings.TrimPrefix(strings.ToLower(c.Domain), ".")
 		switch {
@@ -988,6 +1040,9 @@ func cookieEntriesToHeader(cookies []browserCookieEntry) string {
 	}
 	// Prefer AnswerThePublic auth cookies first (hostOnly session preferred via score)
 	order := []string{
+		// Magnific / Freepik hybrid auth (GR_* + Laravel session for /app)
+		"GR_TOKEN", "GR_REFRESH", "GR_REFRESH_WRAPPED", "GRID", "UID",
+		"magnific_session", "XSRF-TOKEN", "_fc", "_fcid", "FP_TE", "AI_MBL",
 		"login_session", "laravel_session", "VID", "aws-waf-token",
 		"PPSPY_ACCESS_TOKEN", "PPSPY_SESSION_ID",
 		"SESSION", "deviceId", "page_session", "kalo_vid", "cf_clearance",
@@ -4606,8 +4661,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
 		}
 
-		// SYNTX auth is localStorage auth_token. Must run before the app boots.
-		if ls := buildSyntxLocalStorageInject(localStorageJSONFromFile(cfg.CookieFile)); ls != "" {
+		// Magnific/SYNTX: inject auth localStorage before the app boots.
+		// Prefer panel account GoAuto dump (activeAcc.Cookie), fall back to CookieFile.
+		lsJSON := ""
+		if usesPanelAccountMode(cfg) && strings.TrimSpace(activeAcc.Cookie) != "" {
+			lsJSON = localStorageJSONFromRaw([]byte(activeAcc.Cookie))
+		}
+		if lsJSON == "" {
+			lsJSON = localStorageJSONFromFile(cfg.CookieFile)
+		}
+		if ls := buildSyntxLocalStorageInject(lsJSON); ls != "" {
 			if loc := regexp.MustCompile(`(?i)<head[^>]*>`).FindIndex(bodyBytes); loc != nil {
 				out := make([]byte, 0, len(bodyBytes)+len(ls)+8)
 				out = append(out, bodyBytes[:loc[1]]...)

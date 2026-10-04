@@ -10,5 +10,6 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "Magnific Security check bypass = Proxy Manager outbound + cookies captured on that same proxy IP (same as Claude/Envato). There is no in-browser CF solver — JS stubs cannot clear Freepik Security check on magnific.gt4rents.com."
+  "inject_css": "a[href*='/log-in'],a[href*='/login'],a[href*='/sign-up'],a[href*='/signup'],a[href*='/pricing'],a[href*='/Log-in'],a[href*='/Sign-up'],header a[href*='login'],header a[href*='signup'],header a[href*='sign-up'],header a[href*='pricing']{display:none!important;visibility:hidden!important;pointer-events:none!important}",
+  "_note": "Magnific Security check bypass = Proxy Manager outbound + cookies captured on that same proxy IP (same as Claude/Envato). Auth needs GR_* cookies + localStorage session/user + user/wallet from a full /app GoAuto dump (panel Cookie JSON with cookies+storage). inject_css hides Log in/Sign up/Pricing chrome when SPA still renders guest chrome."
 }
