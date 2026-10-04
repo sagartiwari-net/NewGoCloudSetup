@@ -22,7 +22,7 @@ Server: `65.109.16.196` · Domain: `gt4rents.com` · Repo: this folder → `/www
 - [x] panel-api + `panel.db`  
 - [x] payment-hub `:8090` left alone  
 - [x] `build-one` prefers `config.server.json` / panel mode (`use_database=false`)  
-- [ ] Bulk `build-all` + start in batches of 5–10 (RAM)  
+- [ ] Bulk `build-all` + `start-batch` (see commands below)  
 - [ ] Every website `domain` = `<sub>.gt4rents.com` in panel  
 - [ ] Active accounts + cookies (and **proxy** where CF blocks Hetzner)
 
@@ -39,14 +39,29 @@ tail -30 /www/wwwroot/gt4rents.com/<sub>/app.log
 
 Panel: access-link only (seedha URL = Access Denied OK).
 
-### Bulk start (batches)
+### Bulk build + batch start (do this now)
 
 ```bash
 cd /www/wwwroot/gt4rents.com/_repo
+git pull origin main
 source /www/wwwroot/gt4rents.com/_secrets/mysql.env
-./deploy/build-all.sh
-# then start 5–10 at a time — do not start all 80 at once
+
+# 1) build all (~80 tools; continues on failure; 15–40+ min)
+chmod +x deploy/*.sh
+./deploy/build-all.sh 2>&1 | tee /tmp/gt4-build-all.log
+# summary at end: OK=… FAIL=…
+grep '^FAIL:' /tmp/gt4-build-all.log || true
+
+# 2) start in batches of 8 (12s pause between batches — safer for RAM)
+./deploy/start-batch.sh 8 2>&1 | tee /tmp/gt4-start-batch.log
+
+# 3) sanity: how many apps listening
+ss -lntp | grep -E ':(45|46|47|48|49|50|51|52|53)[0-9]{2}\b' | wc -l
+# optional: list failures
+grep -E 'FAIL:|SKIP:' /tmp/gt4-start-batch.log || true
 ```
+
+Do **not** kill `:8090` (payment-hub). `start-tool` only touches each tool’s own port.
 
 ---
 
