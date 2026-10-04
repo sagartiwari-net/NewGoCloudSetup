@@ -110,8 +110,9 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer  
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
 - [ ] `cnva` — Canva (:4501) — Partial (429 / proxy); retest after SSL + account proxy  
-- [ ] `helium10` — helium10 (:5201)  
+- [x] `helium10` — Helium10 (:5201) — **HTTPS OK**: HTTP/2 Connection strip, `/photos`-style soft login bounce, device empty-header allow, `/ext-install` + extension bake/icons, popup panel-gate + account-switcher lock + panel username  
 - [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
+- [ ] `junglescout` — JungleScout (:5211) — next  
 - [ ] `grammarly` — grammarly (:4911)
 
 ### Rest (alphabetical)
@@ -138,13 +139,14 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `glorify` (:4681)  
 - [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide  
 - [ ] `grok` (:4831)  
+- [x] `helium10` (:5201) — see Priority  
 - [ ] `heliumlearning` (:5221)  
 - [ ] `ilovepdf` (:4531)  
 - [ ] `imgupscaler` (:5091)  
 - [ ] `indexification` (:5231)  
 - [ ] `jasper` (:4511)  
 - [ ] `joggai` (:5031)  
-- [ ] `junglescout` (:5211)  
+- [ ] `junglescout` (:5211) — next (see Priority)  
 - [ ] `kalodata` (:4951)  
 - [ ] `leonardo` (:4601)  
 - [ ] `linkedinlearning` (:4571)  
