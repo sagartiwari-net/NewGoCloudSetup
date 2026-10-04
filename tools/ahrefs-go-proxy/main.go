@@ -3512,6 +3512,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Upstream persistent connection failure: "+execErr.Error(), http.StatusBadGateway)
 		return
 	}
+	if resp == nil {
+		log.Printf("[ERROR] Upstream returned nil response without error for %s", reqPath)
+		if pendingCreditDedupKey != "" {
+			creditHitCache.Delete(pendingCreditDedupKey)
+			pendingCreditCharge = false
+		}
+		http.Error(w, "Upstream empty response", http.StatusBadGateway)
+		return
+	}
 	defer resp.Body.Close()
 
 	log.Printf("[STATUS] %d ← %s", resp.StatusCode, targetStr)
@@ -3958,12 +3967,26 @@ func main() {
 	}
 	log.Printf("╚══════════════════════════════════════════════════╝")
 
+	// Wrap mux so a panic becomes 500 instead of killing the process (nginx 502).
+	var handler http.Handler = mux
+	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("[PANIC] %s %s: %v", r.Method, r.URL.RequestURI(), rec)
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+			}
+		}()
+		mux.ServeHTTP(w, r)
+	})
+
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  90 * time.Second,
-		WriteTimeout: 90 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Handler:      handler,
+		// Ahrefs via SOCKS can exceed 90s on first dashboard HTML; short WriteTimeout
+		// closes the conn mid-response → nginx shows its own 502 page.
+		ReadTimeout:  180 * time.Second,
+		WriteTimeout: 300 * time.Second,
+		IdleTimeout:  180 * time.Second,
 	}
 
 	if err := srv.ListenAndServe(); err != nil {

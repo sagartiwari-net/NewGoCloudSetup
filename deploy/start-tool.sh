@@ -56,4 +56,19 @@ fi
 cd "${OUTDIR}"
 nohup ./app >>"${LOG}" 2>&1 &
 echo $! >"${PIDF}"
+sleep 1
+if ! kill -0 "$(cat "${PIDF}")" 2>/dev/null; then
+  echo "FAIL: ${SUB} exited immediately — last log lines:"
+  tail -30 "${LOG}" || true
+  exit 1
+fi
+if ! curl -sf -o /dev/null --max-time 3 "http://127.0.0.1:${PORT}/" -H "Host: ${SUB}.gt4rents.com"; then
+  # / may 403 Access Denied without cookie — treat any HTTP response as "listening"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${PORT}/" -H "Host: ${SUB}.gt4rents.com" || true)"
+  if [[ -z "${code}" || "${code}" == "000" ]]; then
+    echo "FAIL: nothing answering on 127.0.0.1:${PORT}"
+    tail -30 "${LOG}" || true
+    exit 1
+  fi
+fi
 echo "OK: ${SUB} pid $(cat "${PIDF}") → 127.0.0.1:${PORT} host ${SUB}.gt4rents.com (log ${LOG})"
