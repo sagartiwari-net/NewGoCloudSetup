@@ -354,9 +354,11 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	return acc, nil
 }
 
-// panelSwitchAccount moves this session to the next active account.
-// failure_count goes up. status stays active so the account can be used again later.
-func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
+type panelAccountScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanPanelAccount(row panelAccountScanner) (ToolAccount, error) {
 	var acc ToolAccount
 	var showLimit int
 	if err := row.Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy, &showLimit); err != nil {

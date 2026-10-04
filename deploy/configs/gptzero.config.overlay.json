@@ -1,7 +1,7 @@
 {
   "port": "5301",
   "public_host": "gptzero.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,

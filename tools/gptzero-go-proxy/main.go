@@ -563,6 +563,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	accID := 0
+	accountName := ""
 	accountUA := ""
 	accountProxy := ""
 	panelUser := ""
@@ -586,6 +587,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if tok := ctSessionToken(r); tok != "" {
 			if acc, err := loadPanelSessionAccount(c, tok); err == nil {
 				accID = acc.ID
+				accountName = acc.Name
 				accountUA = strings.TrimSpace(acc.UserAgent)
 				accountProxy = strings.TrimSpace(acc.Proxy)
 				if accountProxy != "" {
@@ -639,6 +641,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		recordProxyFailure(c, r, panelUser, err.Error())
 		renderProxyProblem(w, r)
 		return
+	} else if usesPanelAccountMode(c) && !c.BypassAuth && accID > 0 && gptzeroAuthRefreshFailed(err) {
+		log.Printf("[AUTH] session refresh failed account=%s(%d): %v", accountName, accID, err)
+		if tryGPTZeroAccountSwap(w, r, c, panelUser, accID, accountName, "supabase_refresh:"+err.Error()) {
+			return
+		}
 	}
 	if raw == "" {
 		raw = loadSession()
@@ -848,8 +855,21 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	resp.Header.Del("Content-Security-Policy-Report-Only")
 	resp.Header.Del("X-Frame-Options")
 
+	// Dead GPTZero cookie / JWT → rotate panel account (log [SWAP]) and reload SPA.
+	if usesPanelAccountMode(c) && !c.BypassAuth && accID > 0 &&
+		gptzeroLooksLoggedOut(resp.StatusCode, path, body) {
+		reason := fmt.Sprintf("upstream_%d:%s", resp.StatusCode, path)
+		if tryGPTZeroAccountSwap(w, r, c, panelUser, accID, accountName, reason) {
+			return
+		}
+	}
+
 	ct := resp.Header.Get("Content-Type")
 	publicBase := c.PublicScheme + "://" + c.PublicHost
+	if strings.EqualFold(c.PublicScheme, "https") ||
+		strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil {
+		publicBase = "https://" + c.PublicHost
+	}
 	pairs := domainPairs(c, publicBase)
 
 	if strings.Contains(ct, "text/html") {
@@ -1101,17 +1121,25 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     return xo.apply(this, [m, patchURL(u)].concat([].slice.call(arguments, 2)));
   };
   var fo = window.fetch;
+  var __tmSwapReload = false;
   window.fetch = function(inp, init) {
+    var req = inp;
     if (typeof inp === 'string') {
       var su = patchURL(inp);
-      return su === inp ? fo(inp, init) : fo(su, init);
-    }
-    if (inp instanceof Request) {
+      if (su !== inp) req = su;
+    } else if (inp instanceof Request) {
       var ru = patchURL(inp.url);
-      if (ru === inp.url) return fo(inp, init);
-      return fo(new Request(ru, inp), init);
+      if (ru !== inp.url) req = new Request(ru, inp);
     }
-    return fo(inp, init);
+    return fo(req, init).then(function(res) {
+      try {
+        if (res && res.headers && res.headers.get('X-TM-Account-Switch') && !__tmSwapReload) {
+          __tmSwapReload = true;
+          setTimeout(function(){ location.reload(); }, 400);
+        }
+      } catch (e) {}
+      return res;
+    });
   };
 
   // Dismiss free-upsell once if it appears.
