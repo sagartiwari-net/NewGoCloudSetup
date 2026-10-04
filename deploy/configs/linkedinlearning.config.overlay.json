@@ -1,6 +1,6 @@
 {
   "port": "4571",
-  "public_host": "linkedin-learning.gt4rents.com",
+  "public_host": "linkedinlearning.gt4rents.com",
   "public_scheme": "https",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

@@ -1,6 +1,6 @@
 {
   "port": "5221",
-  "public_host": "helium-learning.gt4rents.com",
+  "public_host": "heliumlearning.gt4rents.com",
   "public_scheme": "https",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

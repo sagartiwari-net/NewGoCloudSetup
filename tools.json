@@ -63,9 +63,9 @@
     {
       "tool": "linkedin-learning",
       "folder": "linkedin-learning-go-proxy",
-      "subdomain": "linkedin-learning",
+      "subdomain": "linkedinlearning",
       "port": 4571,
-      "fqdn": "linkedin-learning.gt4rents.com"
+      "fqdn": "linkedinlearning.gt4rents.com"
     },
     {
       "tool": "vistacreate",
@@ -511,9 +511,9 @@
     {
       "tool": "helium-learning",
       "folder": "helium-learning-go-proxy",
-      "subdomain": "helium-learning",
+      "subdomain": "heliumlearning",
       "port": 5221,
-      "fqdn": "helium-learning.gt4rents.com"
+      "fqdn": "heliumlearning.gt4rents.com"
     },
     {
       "tool": "indexification",
