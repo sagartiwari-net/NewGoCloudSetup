@@ -112,7 +112,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `cnva` — Canva (:4501) — Partial (429 / proxy); retest after SSL + account proxy  
 - [x] `helium10` — Helium10 (:5201) — **HTTPS OK**: HTTP/2 Connection strip, `/photos`-style soft login bounce, device empty-header allow, `/ext-install` + extension bake/icons, popup panel-gate + account-switcher lock + panel username  
 - [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
-- [ ] `junglescout` — JungleScout (:5211) — next  
+- [ ] `junglescout` — JungleScout (:5211) — HTTP/2 Connection strip landed; verify access-link  
 - [ ] `grammarly` — grammarly (:4911)
 
 ### Rest (alphabetical)

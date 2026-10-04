@@ -363,9 +363,14 @@ func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 		return ToolAccount{}, err
 	}
 	acc.ShowLimit = showLimit == 1
-	acc.Cookie = parseCookieFromDB(acc.Cookie)
-	if strings.TrimSpace(acc.Cookie) == "" {
+	// Keep full GoAuto JSON (cookies / localStorage). Flattening Auth0 storage
+	// drops the session and shows Temporarily Unavailable.
+	acc.Cookie = strings.TrimSpace(acc.Cookie)
+	if acc.Cookie == "" {
 		return ToolAccount{}, fmt.Errorf("mapped account cookie is empty")
+	}
+	if parseCookieFromDB(acc.Cookie) == "" && localStorageJSONFromRaw([]byte(acc.Cookie)) == "" {
+		return ToolAccount{}, fmt.Errorf("mapped account cookie has no usable cookies/storage")
 	}
 	return acc, nil
 }

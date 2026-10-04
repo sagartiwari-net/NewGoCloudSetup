@@ -132,7 +132,12 @@ var (
 // Without this, Cramly injects a stale accessToken → GraphQL 401 →
 // "Something went wrong".
 func ensureFreshFirebaseSession(path string) string {
-	raw := loadSessionFileRaw(path)
+	return ensureFreshFirebaseSessionRaw(loadSessionFileRaw(path), path)
+}
+
+// ensureFreshFirebaseSessionRaw refreshes from an in-memory GoAuto dump.
+// When persistPath is non-empty, writes the refreshed JSON back to that file.
+func ensureFreshFirebaseSessionRaw(raw, persistPath string) string {
 	if !isIndexedDBSession(raw) {
 		return raw
 	}
@@ -145,12 +150,13 @@ func ensureFreshFirebaseSession(path string) string {
 
 	firebaseRefreshMu.Lock()
 	defer firebaseRefreshMu.Unlock()
-	// Re-read under lock (another goroutine may have refreshed)
-	raw = loadSessionFileRaw(path)
-	exp = extractFirebaseExpirationMs(raw)
-	nowMs = time.Now().UnixMilli()
-	if exp > nowMs+10*60*1000 {
-		return raw
+	if persistPath != "" {
+		raw = loadSessionFileRaw(persistPath)
+		exp = extractFirebaseExpirationMs(raw)
+		nowMs = time.Now().UnixMilli()
+		if exp > nowMs+10*60*1000 {
+			return raw
+		}
 	}
 	if time.Since(firebaseLastRefresh) < 30*time.Second && exp > nowMs {
 		return raw
@@ -158,12 +164,12 @@ func ensureFreshFirebaseSession(path string) string {
 
 	var root map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &root); err != nil {
-		log.Printf("[CRAMLY] refresh: parse cookie.txt failed: %v", err)
+		log.Printf("[CRAMLY] refresh: parse session failed: %v", err)
 		return raw
 	}
 	user, stm := findSTSTokenManager(root)
 	if stm == nil {
-		log.Printf("[CRAMLY] refresh: no stsTokenManager in cookie.txt")
+		log.Printf("[CRAMLY] refresh: no stsTokenManager in session")
 		return raw
 	}
 	refreshTok, _ := stm["refreshToken"].(string)
@@ -224,11 +230,12 @@ func ensureFreshFirebaseSession(path string) string {
 	if err != nil {
 		return raw
 	}
-	if err := os.WriteFile(path, out, 0644); err != nil {
-		log.Printf("[CRAMLY] refresh: write cookie.txt failed: %v", err)
-		return string(out) // still use in-memory fresh copy
-	}
 	firebaseLastRefresh = time.Now()
+	if persistPath != "" {
+		if err := os.WriteFile(persistPath, out, 0644); err != nil {
+			log.Printf("[CRAMLY] refresh: write cookie.txt failed: %v", err)
+		}
+	}
 	log.Printf("[CRAMLY] ✅ Firebase accessToken refreshed (expires in %ds)", expiresIn)
 	return string(out)
 }

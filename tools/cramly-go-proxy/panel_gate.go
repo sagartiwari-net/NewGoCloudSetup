@@ -363,11 +363,29 @@ func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 		return ToolAccount{}, err
 	}
 	acc.ShowLimit = showLimit == 1
-	acc.Cookie = parseCookieFromDB(acc.Cookie)
-	if strings.TrimSpace(acc.Cookie) == "" {
+	// Keep full GoAuto JSON (cookies / IndexedDB). Flattening Firebase dumps
+	// drops the session and shows Temporarily Unavailable.
+	acc.Cookie = strings.TrimSpace(acc.Cookie)
+	if acc.Cookie == "" {
 		return ToolAccount{}, fmt.Errorf("mapped account cookie is empty")
 	}
+	if parseCookieFromDB(acc.Cookie) == "" && !isIndexedDBSession(acc.Cookie) {
+		return ToolAccount{}, fmt.Errorf("mapped account cookie has no usable cookies/storage")
+	}
 	return acc, nil
+}
+
+func persistPanelAccountCookie(cfg Config, accountID int, cookie string) {
+	if accountID <= 0 || strings.TrimSpace(cookie) == "" {
+		return
+	}
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return
+	}
+	if _, err := db.Exec(`UPDATE accounts SET cookie=? WHERE id=?`, cookie, accountID); err != nil {
+		log.Printf("[PANEL] persist cookie failed id=%d: %v", accountID, err)
+	}
 }
 
 func recordPanelLogin(db *sql.DB, domain, username, sessionToken, clientIP, userAgent string, expires time.Time, accountID int) {

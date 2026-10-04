@@ -1625,6 +1625,14 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
@@ -2788,7 +2796,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
 	}
 
-	// Remove proxy headers
+	// Remove hop-by-hop + proxy headers. nginx/browser "Connection: upgrade"
+	// must never reach HTTP/2 upstream (Go: invalid Connection request header).
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("Transfer-Encoding")
+	upstreamReq.Header.Del("TE")
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
 	upstreamReq.Header.Del("X-Forwarded-For")
@@ -3037,7 +3052,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject auth restore + URL patcher. IndexedDB must run at START of <head>
 		// so Firebase sees the session before Vite modules boot.
-		sessionRaw := ensureFreshFirebaseSession(cfg.CookieFile)
+		// Prefer panel GoAuto dump (activeAcc.Cookie), fall back to cookie.txt.
+		sessionRaw := ""
+		if usesPanelAccountMode(cfg) && isIndexedDBSession(activeAcc.Cookie) {
+			sessionRaw = ensureFreshFirebaseSessionRaw(activeAcc.Cookie, "")
+			if sessionRaw != "" && sessionRaw != activeAcc.Cookie {
+				persistPanelAccountCookie(cfg, activeAcc.ID, sessionRaw)
+				activeAcc.Cookie = sessionRaw
+			}
+		} else {
+			sessionRaw = ensureFreshFirebaseSession(cfg.CookieFile)
+		}
 		idbInject := buildIndexedDBInjectHTML(sessionRaw)
 		bodyBytes = gateCramlyModules(bodyBytes)
 
