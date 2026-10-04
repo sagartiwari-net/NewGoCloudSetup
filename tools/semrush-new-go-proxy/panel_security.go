@@ -54,6 +54,10 @@ func semrushSessionToken(r *http.Request) string {
 	}
 	cookie, err := r.Cookie("sem_session")
 	if err != nil || cookie.Value == "" {
+		// Boot script fallback when browser drops Set-Cookie on plain HTTP.
+		if h := strings.TrimSpace(r.Header.Get("X-Sem-Session")); h != "" {
+			return h
+		}
 		return ""
 	}
 	return cookie.Value
@@ -110,6 +114,9 @@ func restoreSemrushSession(token string) bool {
 		return false
 	}
 	expires, err := time.Parse(time.RFC3339, expRaw)
+	if err != nil {
+		expires, err = time.Parse(time.RFC3339Nano, expRaw)
+	}
 	if err != nil || time.Now().After(expires) {
 		return false
 	}
@@ -430,17 +437,24 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 	if accountID > 0 {
 		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, accountID, sessionToken)
 	}
+	maxAge := int(time.Until(expires).Seconds())
+	if maxAge < 60 {
+		maxAge = 60
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name: "sem_session", Value: sessionToken, Path: "/", Expires: expires,
-		HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		Name: "sem_session", Value: sessionToken, Path: "/",
+		Expires: expires, MaxAge: maxAge,
+		HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode,
 	})
 	log.Printf("[PANEL] access granted user=%s ip=%s", username, seen)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	// Embed token so device-bind works even if browser drops Set-Cookie on HTTP.
+	boot := strings.Replace(semrushBootScript(), "__SEM_SESSION__", sessionToken, 1)
 	page := semrushLightPage("Authenticating", "Authenticating...",
 		`You are using <span class="brand">Semrush</span>. Please wait a moment while we verify your secure access request.`,
 		`<div class="pill"><span class="dot"></span>Verifying your request...</div><p class="foot">Secure session initialization in progress</p>`,
-		true, semrushBootScript())
+		true, boot)
 	_, _ = w.Write([]byte(page))
 }
 
@@ -546,16 +560,21 @@ func handleSemrushDeviceBind(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	token := semrushSessionToken(r)
 	raw, ok := semrushSessions.Load(token)
 	if token == "" || !ok {
 		if token == "" || !restoreSemrushSession(token) {
-			renderSemrushDenied(w)
+			log.Printf("[DEVICE] bind rejected: no session cookie (cookie_header_empty=%v)", r.Header.Get("Cookie") == "")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"ok":false,"error":"no_session"}`)
 			return
 		}
 		raw, ok = semrushSessions.Load(token)
 		if !ok {
-			renderSemrushDenied(w)
+			log.Printf("[DEVICE] bind rejected: restore failed")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"ok":false,"error":"unknown_session"}`)
 			return
 		}
 	}
@@ -564,23 +583,33 @@ func handleSemrushDeviceBind(w http.ResponseWriter, r *http.Request) {
 	sess := raw.(*semrushGateSession)
 	sess.mu.Lock()
 	mismatch := false
-	if fp == "" || proof == "" || fp == "missing" || proof == "missing" {
-		mismatch = sess.proof != "" || fp == "missing" || proof == "missing"
+	if fp == "missing" || proof == "missing" {
+		mismatch = true
+	} else if fp == "" || proof == "" {
+		// Empty headers on first bind: allow without binding (document navigation OK).
+		mismatch = false
 	} else if sess.proof == "" {
 		sess.fp = fp
 		sess.proof = proof
 	} else if sess.fp != fp || sess.proof != proof {
 		mismatch = true
 	}
+	boundFp, boundProof := sess.fp, sess.proof
 	sess.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
 	if mismatch {
+		log.Printf("[DEVICE] bind rejected: device mismatch")
 		semrushSessions.Delete(token)
 		recordSemrushCookieShare(r, token)
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
+		fmt.Fprint(w, `{"ok":false,"error":"device_mismatch"}`)
 		return
 	}
+	if boundFp != "" {
+		if db, err := openSemrushPanel(); err == nil {
+			_, _ = db.Exec(`UPDATE live_sessions SET fingerprint=? WHERE session_token=?`, boundFp, token)
+		}
+	}
+	log.Printf("[DEVICE] bind ok proof=%v", boundProof != "")
 	fmt.Fprint(w, `{"status":"ok"}`)
 }
 
@@ -719,13 +748,15 @@ func semrushLightPage(title, heading, message, extra string, spin bool, script s
 }
 
 func semrushBootScript() string {
-	// crypto.subtle only on HTTPS; HTTP needs weakHash fallback (same as Ahrefs).
+	// crypto.subtle only on HTTPS; HTTP needs weakHash.
+	// Placeholder __SEM_SESSION__ is replaced with the real token in serveSemrushAccess.
 	return `(function(){
+var SEM="__SEM_SESSION__";
 function proof(){var k="tm_device_proof";var e="";try{e=localStorage.getItem(k)||"";}catch(x){}if(e)return Promise.resolve(e);var e2="";try{var b=new Uint8Array(32);(crypto.getRandomValues||function(){for(var i=0;i<32;i++)b[i]=Math.floor(Math.random()*256);})(b);e2=Array.from(b).map(function(n){return n.toString(16).padStart(2,"0");}).join("");}catch(x){e2=String(Date.now())+Math.random().toString(16).slice(2);}try{localStorage.setItem(k,e2);}catch(x){}return Promise.resolve(e2);}
 function weakHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}var out="";for(var j=0;j<8;j++){out+=((h>>> (j*4)) & 15).toString(16);h=(h*1664525+1013904223)|0;}while(out.length<64)out+=out;return out.slice(0,64);}
-function fp(){var c=document.createElement("canvas");c.width=220;c.height=30;var g=c.getContext("2d");var sample="";if(g){g.textBaseline="top";g.font="14px Arial";g.fillStyle="#f60";g.fillRect(0,0,220,30);g.fillStyle="#069";g.fillText("tm-fp",2,2);try{sample=c.toDataURL().slice(-48);}catch(e){sample="x";}}var zone="";try{zone=Intl.DateTimeFormat().resolvedOptions().timeZone||"";}catch(e){}var raw=[navigator.userAgent||"",navigator.platform||"",navigator.language||"",String(navigator.hardwareConcurrency||0),String(screen.width)+"x"+String(screen.height),zone,sample].join("|");if(window.crypto&&crypto.subtle&&window.isSecureContext){function weakHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}var out="";for(var j=0;j<8;j++){out+=((h>>> (j*4)) & 15).toString(16);h=(h*1664525+1013904223)|0;}while(out.length<64)out+=out;return out.slice(0,64);} if(window.crypto&&crypto.subtle&&window.isSecureContext){return crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)).then(function(buf){return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0");}).join("");});} return Promise.resolve(weakHash(raw));}return Promise.resolve(weakHash(raw));}
+function fp(){var c=document.createElement("canvas");c.width=220;c.height=30;var g=c.getContext("2d");var sample="";if(g){g.textBaseline="top";g.font="14px Arial";g.fillStyle="#f60";g.fillRect(0,0,220,30);g.fillStyle="#069";g.fillText("tm-fp",2,2);try{sample=c.toDataURL().slice(-48);}catch(e){sample="x";}}var zone="";try{zone=Intl.DateTimeFormat().resolvedOptions().timeZone||"";}catch(e){}var raw=[navigator.userAgent||"",navigator.platform||"",navigator.language||"",String(navigator.hardwareConcurrency||0),String(screen.width)+"x"+String(screen.height),zone,sample].join("|");if(window.crypto&&crypto.subtle&&window.isSecureContext){return crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)).then(function(buf){return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0");}).join("");});}return Promise.resolve(weakHash(raw));}
 function fail(err){var h=document.querySelector("h1");var m=document.querySelector(".msg");if(h)h.textContent="Access Denied";if(m)m.textContent="Open this tool again from your access link.";(window.console&&console.warn&&console.warn("semrush boot",err));}
-proof().then(function(p){return fp().then(function(f){try{localStorage.setItem("tm_device_fp",f);}catch(e){}return fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":f,"X-Device-Proof":p}});});}).then(function(res){if(!res.ok)throw new Error("bind "+res.status);location.replace("/");}).catch(fail);
+proof().then(function(p){return fp().then(function(f){try{localStorage.setItem("tm_device_fp",f);}catch(e){}var hdr={"X-Device-Fp":f,"X-Device-Proof":p};if(SEM&&SEM.indexOf("__")!==0)hdr["X-Sem-Session"]=SEM;return fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:hdr});});}).then(function(res){if(!res.ok)throw new Error("bind "+res.status);location.replace("/");}).catch(fail);
 })();`
 }
 
