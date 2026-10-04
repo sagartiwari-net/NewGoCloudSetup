@@ -608,6 +608,38 @@ func renderSwappingPage(redirectTo string) string {
 </html>`
 }
 
+// resolveProxyScheme picks the public URL scheme for HTML/JS rewrites.
+// Once the site is on HTTPS, never emit http://asset URLs (browsers block mixed content).
+func resolveProxyScheme(cfg Config, hinted string) string {
+	cfgScheme := strings.ToLower(strings.TrimSpace(cfg.PublicScheme))
+	hint := strings.ToLower(strings.TrimSpace(hinted))
+	if i := strings.Index(hint, ","); i >= 0 {
+		hint = strings.TrimSpace(hint[:i])
+	}
+	if cfgScheme == "https" || hint == "https" {
+		return "https"
+	}
+	if hint == "http" {
+		return "http"
+	}
+	if cfgScheme != "" {
+		return cfgScheme
+	}
+	return "http"
+}
+
+// upgradeProxyHostToHTTPS rewrites http://public-host → https://… inside bodies.
+func upgradeProxyHostToHTTPS(body, proxyHost string) string {
+	if proxyHost == "" || body == "" {
+		return body
+	}
+	body = strings.ReplaceAll(body, "http://"+proxyHost, "https://"+proxyHost)
+	body = strings.ReplaceAll(body, "http:\\/\\/"+proxyHost, "https:\\/\\/"+proxyHost)
+	body = strings.ReplaceAll(body, "http%3A%2F%2F"+proxyHost, "https%3A%2F%2F"+proxyHost)
+	body = strings.ReplaceAll(body, "http%3a%2f%2f"+proxyHost, "https%3a%2f%2f"+proxyHost)
+	return body
+}
+
 func rewriteSemrushPublicURL(raw, proxyScheme, proxyHost string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || proxyHost == "" {
@@ -625,7 +657,7 @@ func rewriteSemrushPublicURL(raw, proxyScheme, proxyHost string) string {
 		return raw
 	}
 	if proxyScheme == "" {
-		proxyScheme = "http"
+		proxyScheme = "https"
 	}
 	prefix := ""
 	switch host {
@@ -674,18 +706,22 @@ func rewriteSemrushHostsInBody(body, proxyScheme, proxyHost string) string {
 		return body
 	}
 	if proxyScheme == "" {
-		proxyScheme = "http"
+		proxyScheme = "https"
 	}
 	body = semrushAbsURL.ReplaceAllStringFunc(body, func(match string) string {
 		return rewriteSemrushPublicURL(match, proxyScheme, proxyHost)
 	})
-	return semrushProtoRelURL.ReplaceAllStringFunc(body, func(match string) string {
+	body = semrushProtoRelURL.ReplaceAllStringFunc(body, func(match string) string {
 		parts := semrushProtoRelURL.FindStringSubmatch(match)
 		if len(parts) < 3 {
 			return match
 		}
 		return parts[1] + rewriteSemrushPublicURL("https:"+parts[2], proxyScheme, proxyHost)
 	})
+	if proxyScheme == "https" {
+		body = upgradeProxyHostToHTTPS(body, proxyHost)
+	}
+	return body
 }
 
 func buildLocalHostFix(cfg Config) string {
@@ -799,14 +835,13 @@ func main() {
 		if publicHost == "" {
 			publicHost = cfg.PublicHost
 		}
-		publicScheme := cfg.PublicScheme
+		hinted := ""
 		if req.TLS != nil {
-			publicScheme = "https"
+			hinted = "https"
 		} else if proto := req.Header.Get("X-Forwarded-Proto"); proto != "" {
-			publicScheme = proto
-		} else if publicScheme == "" {
-			publicScheme = "http"
+			hinted = proto
 		}
+		publicScheme := resolveProxyScheme(cfg, hinted)
 
 		req.Header.Set("X-Proxy-Host", publicHost)
 		req.Header.Set("X-Proxy-Scheme", publicScheme)
@@ -1026,9 +1061,7 @@ func main() {
 		if proxyHost == "" {
 			proxyHost = cfg.PublicHost
 		}
-		if proxyScheme == "" {
-			proxyScheme = cfg.PublicScheme
-		}
+		proxyScheme = resolveProxyScheme(cfg, proxyScheme)
 
 		if loc := resp.Header.Get("Location"); loc != "" {
 			lowerLoc := strings.ToLower(loc)
@@ -1322,10 +1355,17 @@ func main() {
 						}
 					}
 				}
+				out := bodyBytes
+				if proxyScheme == "https" {
+					upgraded := upgradeProxyHostToHTTPS(string(bodyBytes), proxyHost)
+					if upgraded != string(bodyBytes) {
+						out = []byte(upgraded)
+					}
+				}
 				resp.Header.Del("Content-Encoding")
-				resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-				resp.ContentLength = int64(len(bodyBytes))
-				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(bodyBytes)))
+				resp.Body = io.NopCloser(bytes.NewReader(out))
+				resp.ContentLength = int64(len(out))
+				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(out)))
 				return nil
 			}
 
@@ -1491,10 +1531,15 @@ func main() {
 
 			bodyStr = strings.ReplaceAll(bodyStr, "https://www.semrush.com", proxySchemeHost)
 			bodyStr = strings.ReplaceAll(bodyStr, "https://semrush.com", proxySchemeHost)
+			bodyStr = strings.ReplaceAll(bodyStr, "http://www.semrush.com", proxySchemeHost)
+			bodyStr = strings.ReplaceAll(bodyStr, "http://semrush.com", proxySchemeHost)
 			bodyStr = strings.ReplaceAll(bodyStr, "https://static.semrush.com", proxySchemeHost+"/static-proxy")
 			bodyStr = strings.ReplaceAll(bodyStr, "https://secure.semrush.com", proxySchemeHost+"/secure-proxy")
 			bodyStr = strings.ReplaceAll(bodyStr, "https://cdn.semrush.com", proxySchemeHost+"/cdn-proxy")
 			bodyStr = strings.ReplaceAll(bodyStr, "https://ai-visibility-index.semrush.com", proxySchemeHost+"/ai-proxy")
+			bodyStr = strings.ReplaceAll(bodyStr, "http://static.semrush.com", proxySchemeHost+"/static-proxy")
+			bodyStr = strings.ReplaceAll(bodyStr, "http://secure.semrush.com", proxySchemeHost+"/secure-proxy")
+			bodyStr = strings.ReplaceAll(bodyStr, "http://cdn.semrush.com", proxySchemeHost+"/cdn-proxy")
 			bodyStr = strings.ReplaceAll(bodyStr, "//static.semrush.com", "//"+proxyHost+"/static-proxy")
 			bodyStr = strings.ReplaceAll(bodyStr, "//secure.semrush.com", "//"+proxyHost+"/secure-proxy")
 			bodyStr = strings.ReplaceAll(bodyStr, "//cdn.semrush.com", "//"+proxyHost+"/cdn-proxy")
@@ -1506,6 +1551,9 @@ func main() {
 			bodyStr = strings.ReplaceAll(bodyStr, `\/www.semrush.com\/`, `\/`+proxyHost+`\/`)
 			bodyStr = strings.ReplaceAll(bodyStr, `/www.semrush.com`, `/`+proxyHost)
 			bodyStr = rewriteSemrushHostsInBody(bodyStr, proxyScheme, proxyHost)
+			if proxyScheme == "https" {
+				bodyStr = upgradeProxyHostToHTTPS(bodyStr, proxyHost)
+			}
 			bodyStr = integrityRegex.ReplaceAllString(bodyStr, "")
 
 			if strings.Contains(contentType, "javascript") {
@@ -1516,6 +1564,8 @@ func main() {
 			}
 
 			if strings.Contains(contentType, "text/html") {
+				// Browser-side safety net: upgrade any leftover http:// assets to https://
+				resp.Header.Set("Content-Security-Policy", "upgrade-insecure-requests")
 				lowerBody := strings.ToLower(bodyStr)
 				isMultiloginPage := strings.Contains(lowerBody, "too many active sessions") ||
 					(resp.Request != nil && strings.Contains(strings.ToLower(resp.Request.URL.Path), "multilogin"))
@@ -1916,6 +1966,7 @@ func main() {
 	log.Printf("║  Local URL: http://%-28s ║", listenDisplay)
 	log.Printf("║  Target   : %s                        ║", cfg.TargetURL)
 	log.Printf("║  CDN Proxy: /static-proxy/ /secure-proxy/ /cdn-proxy/ /ai-proxy/ ║")
+	log.Printf("[CONFIG] public_host=%s public_scheme=%s (asset rewrites use resolveProxyScheme)", cfg.PublicHost, cfg.PublicScheme)
 	if cfg.LocalTestMode {
 		log.Printf("║  Mode     : LOCAL TEST (cookie.txt) ✅            ║")
 	}
