@@ -281,7 +281,13 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		Secure:   cookieSecure(r, cfg),
 		SameSite: http.SameSiteLaxMode,
 	})
-	log.Printf("[PANEL] access granted user=%s product=%s", username, productID)
+	pxHost := "NONE"
+	if u := parseProxyString(acc.Proxy); u != nil {
+		pxHost = u.Host
+	} else if strings.TrimSpace(acc.Proxy) != "" {
+		pxHost = "unparsed"
+	}
+	log.Printf("[PANEL] access granted user=%s product=%s account=%s proxy=%s", username, productID, acc.Name, pxHost)
 	renderPanelLoadingPage(w, cfg)
 }
 

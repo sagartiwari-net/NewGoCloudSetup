@@ -1651,12 +1651,15 @@ func isMagnificSecurityFilterHTML(body []byte) bool {
 // by JS after a normal shell HTML (server-side detector never sees the copy).
 func magnificSecurityCheckWatchHTML(hasProxy bool) string {
 	msg := "Magnific is stuck on Security check on this server IP. Assign a Proxy Manager proxy on the Magnific account in the panel (same as Envato/Claude), then open a new access link."
+	need := 3 // ~6s
 	if hasProxy {
-		msg = "Magnific is still stuck on Security check even with a proxy. Refresh Magnific cookies on the same Proxy Manager IP, or try another residential proxy."
+		msg = "Magnific Security check did not clear via the assigned proxy. Refresh Magnific cookies in GoAuto on that same Proxy Manager IP (Claude/Envato same rule), then new access link."
+		need = 8 // ~16s — give soft check time when proxy is live
 	}
 	return `<script data-tm-mag-sec>(function(){
   var hits=0;
   var done=false;
+  var need=` + fmt.Sprintf("%d", need) + `;
   function stuck(){
     var t=(document.body&&(document.body.innerText||document.body.textContent))||'';
     if(!t) return false;
@@ -1685,7 +1688,7 @@ func magnificSecurityCheckWatchHTML(hasProxy bool) string {
   }
   setInterval(function(){
     if(done) return;
-    if(stuck()){ hits++; if(hits>=3) show(); }
+    if(stuck()){ hits++; if(hits>=need) show(); }
     else hits=0;
   }, 2000);
 })();</script>`
@@ -2463,6 +2466,31 @@ func dialChromeHTTP1(ctx context.Context, addr string) (*uTLSConn, error) {
 	return dialChromeALPN(ctx, addr, []string{"http/1.1"})
 }
 
+var (
+	proxyDialLogMu sync.Mutex
+	proxyDialLogAt time.Time
+	proxyDialLast  string
+)
+
+func logProxyDial(px *url.URL, target string) {
+	key := "direct"
+	if px != nil {
+		key = px.Scheme + "://" + px.Host
+	}
+	proxyDialLogMu.Lock()
+	defer proxyDialLogMu.Unlock()
+	if key == proxyDialLast && time.Since(proxyDialLogAt) < 30*time.Second {
+		return
+	}
+	proxyDialLast = key
+	proxyDialLogAt = time.Now()
+	if px == nil {
+		log.Printf("[PROXY] ⚠️ NO outbound proxy for %s — Magnific Security check will stick (assign Proxy Manager on account)", target)
+		return
+	}
+	log.Printf("[PROXY] outbound %s → %s ✅ (this is the Magnific/CF-style bypass)", key, target)
+}
+
 func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTLSConn, error) {
 	host, _, _ := net.SplitHostPort(addr)
 	var tcpConn net.Conn
@@ -2474,6 +2502,7 @@ func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTL
 	if px == nil {
 		px = getProxy()
 	}
+	logProxyDial(px, addr)
 	if px != nil {
 		tcpConn, err = dialThroughProxy(ctx, addr, px)
 		if err != nil {

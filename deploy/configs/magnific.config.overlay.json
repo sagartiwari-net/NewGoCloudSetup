@@ -10,5 +10,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "MUST assign Proxy Manager proxy on Magnific account (same as Envato/Claude). Without it Magnific WAF returns dark 403 that looked blank; binary shows Proxy required page."
+  "_note": "Magnific Security check bypass = Proxy Manager outbound + cookies captured on that same proxy IP (same as Claude/Envato). There is no in-browser CF solver — JS stubs cannot clear Freepik Security check on magnific.gt4rents.com."
 }
