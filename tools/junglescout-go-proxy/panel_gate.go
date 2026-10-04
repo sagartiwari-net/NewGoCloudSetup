@@ -376,10 +376,9 @@ func jungleReturnPath(raw string) string {
 	return jungleAppHome
 }
 
-// panelSwitchAccount moves this session to the next LRU active account.
-// If only one account exists (or others are empty), it reloads the current
-// account cookie from panel.db so a freshly updated cookie is used.
-func panelSwitchAccount(cfg Config, sessionToken, reason string) (ToolAccount, string, error) {
+// panelSwitchToOtherAccount pins a different active account. It does not reload
+// the same account — callers treat that as "no other account" → contact admin.
+func panelSwitchToOtherAccount(cfg Config, sessionToken, reason string) (ToolAccount, string, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
 	db, err := openPanelDB(cfg)
@@ -403,38 +402,45 @@ func panelSwitchAccount(cfg Config, sessionToken, reason string) (ToolAccount, s
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
 		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
-	reloaded := false
 	if err != nil {
-		// Single-account (or no other ready): reload current / any active with fresh cookie.
-		if currentID > 0 {
-			acc, err = scanPanelAccount(db.QueryRow(panelAccountSelect+`
-				WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, currentID, cfg.PublicHost))
-		}
-		if err != nil {
-			acc, err = scanPanelAccount(db.QueryRow(panelAccountSelect+`
-				WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-				`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
-		}
-		if err != nil {
-			return ToolAccount{}, "", fmt.Errorf("no active account")
-		}
-		reloaded = acc.ID == currentID
-	} else if currentID > 0 {
+		return ToolAccount{}, "", fmt.Errorf("no other active account")
+	}
+	if currentID > 0 {
 		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
 	}
-
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
 	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
-	if websiteID > 0 && !reloaded {
+	if websiteID > 0 {
 		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
 			websiteID, username, fromName, acc.Name, reason, now)
 	}
-	if reloaded {
-		log.Printf("[LB] jungle reloaded account '%s' (ID:%d) reason=%s (fresh cookie)", acc.Name, acc.ID, reason)
-	} else {
-		log.Printf("[LB] jungle switched %s -> %s reason=%s", fromName, acc.Name, reason)
-	}
+	log.Printf("[LB] jungle switched %s -> %s reason=%s", fromName, acc.Name, reason)
 	return acc, acc.Name, nil
+}
+
+// panelReloadAccount refreshes the mapped account cookie from panel.db (same ID).
+func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var assigned int
+	if err := db.QueryRow(`SELECT COALESCE(assigned_account_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned); err != nil {
+		return ToolAccount{}, err
+	}
+	if assigned > 0 {
+		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+		if accErr == nil {
+			return acc, nil
+		}
+	}
+	return scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
 }
 
 func renderPanelAccountSwitchPage(w http.ResponseWriter, cfg Config, accountName, returnPath string) {

@@ -848,7 +848,7 @@ func jungleAccountAPIAuthorized(cfg Config, acc ToolAccount) (bool, string) {
 	if err != nil {
 		why = err.Error()
 		if strings.Contains(why, "proxy dial") {
-			why = "proxy dial failed — assign a working Proxy Manager proxy on this account"
+			why = "proxy dial failed"
 		}
 	} else {
 		io.Copy(io.Discard, resp.Body)
@@ -882,25 +882,114 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-func renderJungleSessionDeadPage(w http.ResponseWriter, cfg Config, acc ToolAccount, reason string) {
-	name := html.EscapeString(toolDisplayName(cfg))
-	accName := html.EscapeString(strings.TrimSpace(acc.Name))
-	if accName == "" {
-		accName = "mapped account"
-	}
-	proxyHint := "No proxy is assigned on this account."
-	if strings.TrimSpace(acc.Proxy) != "" {
-		proxyHint = "A proxy is assigned — re-capture cookies while GoAuto uses that same proxy."
-	}
-	msg := "Jungle Scout API rejected <span class=\"brand\">" + accName + "</span> (" + name + "). " +
-		html.EscapeString(reason) + ". " + proxyHint +
-		" Update the panel cookie from a live logged-in browser on that proxy, then open a new access link."
+func renderJungleContactAdminPage(w http.ResponseWriter, cfg Config) {
+	_ = cfg
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Session needs refresh",
-		Heading: "Session needs refresh",
-		Message: msg,
-		Footer:  "Loading spinner means API 401 — not a Bad Gateway",
+		Title:   "Account unavailable",
+		Heading: "Account unavailable",
+		Message: "Contact to Admin/Provider to fix it ASAP",
+		Footer:  "Jungle Scout session logged out — cookie update needed",
 	})
+}
+
+// serveJungleLogoutFailover runs when Jungle Scout APIs reject the mapped session.
+// Prefer switching to another panel account; otherwise show contact-admin (no blank SPA).
+func serveJungleLogoutFailover(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken, currentUser string, activeAcc ToolAccount, reason string) {
+	returnPath := jungleReturnPath(r.URL.Query().Get("redirectRoute"))
+	if returnPath == "" {
+		returnPath = jungleAppHome
+	}
+
+	// Fresh panel paste: reload same account once before giving up.
+	if reloaded, err := panelReloadAccount(cfg, sessionToken); err == nil {
+		jungleInvalidateAuthProbe(reloaded)
+		if ok, _ := jungleAccountAPIAuthorized(cfg, reloaded); ok {
+			setProxyBrowserAuthCookies(w, r, cfg, reloaded)
+			log.Printf("[FAILOVER] reloaded cookie OK user=%s account=%s → %s", currentUser, reloaded.Name, returnPath)
+			http.Redirect(w, r, returnPath, http.StatusFound)
+			return
+		}
+		activeAcc = reloaded
+	}
+
+	next, nextName, err := panelSwitchToOtherAccount(cfg, sessionToken, reason)
+	if err == nil && next.ID != activeAcc.ID {
+		jungleInvalidateAuthProbe(next)
+		if ok, _ := jungleAccountAPIAuthorized(cfg, next); ok {
+			setProxyBrowserAuthCookies(w, r, cfg, next)
+			log.Printf("[FAILOVER] switched user=%s %s -> %s reason=%s", currentUser, activeAcc.Name, nextName, reason)
+			renderPanelAccountSwitchPage(w, cfg, nextName, returnPath)
+			return
+		}
+		log.Printf("[FAILOVER] next account also dead user=%s next=%s reason=%s", currentUser, nextName, reason)
+	} else {
+		log.Printf("[FAILOVER] no other account user=%s account=%s reason=%s err=%v", currentUser, activeAcc.Name, reason, err)
+	}
+	renderJungleContactAdminPage(w, cfg)
+}
+
+func jungleInvalidateAuthProbe(acc ToolAccount) {
+	jungleAuthProbeMu.Lock()
+	defer jungleAuthProbeMu.Unlock()
+	for k := range jungleAuthProbe {
+		if strings.HasPrefix(k, fmt.Sprintf("%d:", acc.ID)) {
+			delete(jungleAuthProbe, k)
+		}
+	}
+}
+
+func jungleDocumentNeedsSession(path string) bool {
+	if isAuthProxyPath(path) {
+		return true
+	}
+	switch path {
+	case "/", "", "/index.html", "/dashboard":
+		return true
+	}
+	return false
+}
+
+func jungleAPIUnauthorizedWatchScript() string {
+	return `<script data-tm-jungle-auth="1">
+(function(){
+  if (window.__tmJungleAuthWatch) return;
+  window.__tmJungleAuthWatch = true;
+  var go = false;
+  function bounce(){
+    if (go) return;
+    go = true;
+    try { location.replace('/login-proxy/?redirectRoute=' + encodeURIComponent('/dashboard')); } catch (e) {}
+  }
+  function checkURL(u){
+    try {
+      var s = String(u || '');
+      return s.indexOf('/extra-cdn-0/api/') !== -1 || s.indexOf('api.junglescout.com') !== -1;
+    } catch (e) { return false; }
+  }
+  var ofetch = window.fetch;
+  if (typeof ofetch === 'function') {
+    window.fetch = function(){
+      var args = arguments;
+      return ofetch.apply(this, args).then(function(r){
+        try { if (r && r.status === 401 && checkURL(args[0] && args[0].url ? args[0].url : args[0])) bounce(); } catch (e) {}
+        return r;
+      });
+    };
+  }
+  var oopen = XMLHttpRequest.prototype.open;
+  var osend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(m, u){ this.__tmURL = u; return oopen.apply(this, arguments); };
+  XMLHttpRequest.prototype.send = function(){
+    var x = this;
+    try {
+      x.addEventListener('load', function(){
+        try { if (x.status === 401 && checkURL(x.__tmURL)) bounce(); } catch (e) {}
+      });
+    } catch (e) {}
+    return osend.apply(this, arguments);
+  };
+})();
+</script>`
 }
 
 func enrichUpstreamAuthHeaders(upstreamReq *http.Request, cfg Config, activeAcc ToolAccount) {
@@ -3478,20 +3567,21 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderNoActiveAccountsPage(w, cfg)
 				return
 			}
-			// Soft bounce only when the mapped session still authorizes APIs.
-			// Dead cookies otherwise loop forever: API 401 → login-proxy → dashboard.
-			if isDocumentNavigation(r) && isAuthProxyPath(path) && sessionToken != "" {
+			// Document home/login: never serve a blank SPA on dead cookies.
+			// Logout → other account switch, else Contact to Admin.
+			if isDocumentNavigation(r) && jungleDocumentNeedsSession(path) && sessionToken != "" {
 				returnPath := jungleReturnPath(r.URL.Query().Get("redirectRoute"))
 				if ok, why := jungleAccountAPIAuthorized(cfg, activeAcc); !ok {
-					log.Printf("[LB] jungle session dead user=%s account=%s reason=%s proxy=%v",
-						currentUser, activeAcc.Name, why, strings.TrimSpace(activeAcc.Proxy) != "")
-					renderJungleSessionDeadPage(w, cfg, activeAcc, why)
+					log.Printf("[LB] jungle session dead user=%s account=%s reason=%s", currentUser, activeAcc.Name, why)
+					serveJungleLogoutFailover(w, r, cfg, sessionToken, currentUser, activeAcc, "api_unauthorized")
 					return
 				}
-				setProxyBrowserAuthCookies(w, r, cfg, activeAcc)
-				log.Printf("[LB] login-proxy soft bounce user=%s account=%s → %s", currentUser, activeAcc.Name, returnPath)
-				http.Redirect(w, r, returnPath, http.StatusFound)
-				return
+				if isAuthProxyPath(path) {
+					setProxyBrowserAuthCookies(w, r, cfg, activeAcc)
+					log.Printf("[LB] login-proxy soft bounce user=%s account=%s → %s", currentUser, activeAcc.Name, returnPath)
+					http.Redirect(w, r, returnPath, http.StatusFound)
+					return
+				}
 			}
 		}
 	} else if usesCookieFileMode(cfg) {
@@ -3936,6 +4026,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		earlyInject := loginStayScript() + serviceWorkerRegisterScript(cfg) + antiClickjackFixScript() + academyVideoScript() + hideProfileMenuItemsScript(displayUser) + redirectRouteScript() + extensionRouteScript() + patcherScript(cfg)
+		if usesPanelAccountMode(cfg) {
+			earlyInject += jungleAPIUnauthorizedWatchScript()
+		}
 		if cfg.LocalTestMode {
 			targetParsed, _ := url.Parse(cfg.TargetURL)
 			staticHost := "members.junglescout.com"
