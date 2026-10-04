@@ -3,3 +3,5 @@ fishaudio-go-proxy
 cookie.txt
 cookie.txt.bak
 config.local.json
+config.local.panel.json
+branalyzer-go-proxy
