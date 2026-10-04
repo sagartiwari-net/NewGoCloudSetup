@@ -1663,6 +1663,15 @@ func main() {
 				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(payload)))
 				return nil
 			}
+			if usesPanelAccountMode(cfg) && resp.Request != nil {
+				if panelUser, err := panelSessionUsername(resp.Request); err == nil && panelUser != "" {
+					rewritten := rewriteClaudeBootstrapNames(full, panelUser)
+					if len(rewritten) != len(full) || !bytes.Equal(rewritten, full) {
+						log.Printf("[AUTH] bootstrap display_name → panel user=%s", panelUser)
+						full = rewritten
+					}
+				}
+			}
 			log.Printf("[AUTH] bootstrap signed-in path=%s bytes=%d enc=%s has_account=%v keys=%v",
 				resp.Request.URL.Path, len(full), enc, hasAccount, topKeys)
 			resp.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -2094,6 +2103,11 @@ func main() {
 									if u, err := panelSessionUsername(resp.Request); err == nil {
 										panelUser = u
 									}
+								}
+								if panelUser != "" {
+									log.Printf("[UI] user-chrome panel_user=%s", panelUser)
+								} else {
+									log.Printf("[UI] user-chrome panel_user=empty (will fetch /api/user-limits)")
 								}
 								userChrome = "\n" + claudeUserChromeScript(panelUser)
 							}

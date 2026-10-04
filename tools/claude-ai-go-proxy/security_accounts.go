@@ -13,7 +13,7 @@ import (
 	proxysec "toolsmandi.com/proxy-security"
 )
 
-const proxyBuildTag = "claude-v31-ui"
+const proxyBuildTag = "claude-v32-name"
 
 var (
 	dbConnected                   bool = false
