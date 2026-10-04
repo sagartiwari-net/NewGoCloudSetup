@@ -32,6 +32,7 @@ type branAuth0Cache struct {
 	RefreshToken string `json:"refresh_token"`
 	IDToken      string `json:"id_token"`
 	ExpiresIn    int    `json:"expires_in"`
+	ExpiresAt    int64  `json:"expiresAt"`
 	Audience     string `json:"audience"`
 	DecodedToken struct {
 		Claims map[string]interface{} `json:"claims"`
@@ -105,21 +106,20 @@ func jwtExpUnix(token string) (int64, bool) {
 	return claims.Exp, true
 }
 
-func branAuth0LooksExpired(cache branAuth0Cache) bool {
+// branAuth0AccessExpired uses SPA access expiry — NOT id_token.
+// Auth0 id_tokens are short-lived (~1h) while access/refresh keep the app usable.
+func branAuth0AccessExpired(cache branAuth0Cache) bool {
 	now := time.Now().Unix()
-	if exp, ok := jwtExpUnix(cache.IDToken); ok {
-		return exp <= now+30
+	if cache.ExpiresAt > 0 {
+		return cache.ExpiresAt <= now+30
 	}
 	if exp, ok := jwtExpUnix(cache.AccessToken); ok {
 		return exp <= now+30
 	}
-	if cache.DecodedToken.Claims != nil {
-		switch v := cache.DecodedToken.Claims["exp"].(type) {
-		case float64:
-			return int64(v) <= now+30
-		case json.Number:
-			n, _ := v.Int64()
-			return n > 0 && n <= now+30
+	if cache.ExpiresIn > 0 {
+		if exp, ok := jwtExpUnix(cache.IDToken); ok {
+			// approx: id iat/exp window is useless; prefer presence of refresh below
+			_ = exp
 		}
 	}
 	return false
@@ -128,7 +128,7 @@ func branAuth0LooksExpired(cache branAuth0Cache) bool {
 func branAccountAuthAlive(cfg Config, acc ToolAccount) (bool, string) {
 	cache, ok := branAuth0CacheFromAccount(acc)
 	if !ok || strings.TrimSpace(cache.AccessToken) == "" {
-		return false, "missing Auth0 access_token in account localStorage"
+		return false, "missing Auth0 localStorage (GoAuto must include storage/@@auth0spajs@@)"
 	}
 	key := fmt.Sprintf("%d:%s:%s", acc.ID, cache.AccessToken, strings.TrimSpace(acc.Proxy))
 	branAuthProbeMu.Lock()
@@ -150,71 +150,47 @@ func branAccountAuthAlive(cfg Config, acc ToolAccount) (bool, string) {
 }
 
 func branProbeAuth0(cfg Config, acc ToolAccount, cache branAuth0Cache) (bool, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
-	defer cancel()
-
-	// Fast path: still-valid access token via userinfo.
-	if !branAuth0LooksExpired(cache) {
-		if ok, why := branUserinfoOK(ctx, cfg, acc, cache.AccessToken); ok {
-			return true, why
+	// Fresh panel paste: if Auth0 SPA cache is present, serve the app.
+	// Server-side Auth0 userinfo often fails on JWE access tokens / datacenter IP
+	// even when the browser session is fine — that was false "Contact Admin".
+	if !branAuth0AccessExpired(cache) {
+		return true, "ok (auth0 cache present)"
+	}
+	if strings.TrimSpace(cache.RefreshToken) != "" && strings.TrimSpace(cache.ClientID) != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		form := url.Values{}
+		form.Set("grant_type", "refresh_token")
+		form.Set("client_id", cache.ClientID)
+		form.Set("refresh_token", cache.RefreshToken)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+branAuth0Host+"/oauth/token", strings.NewReader(form.Encode()))
+		if err != nil {
+			// Ambiguous — let the browser try.
+			return true, "ok (refresh probe skipped)"
 		}
-	}
-	// Refresh when possible — browser SDK needs a working refresh_token too.
-	if strings.TrimSpace(cache.RefreshToken) == "" || strings.TrimSpace(cache.ClientID) == "" {
-		return false, "Auth0 session expired (no refresh_token)"
-	}
-	form := url.Values{}
-	form.Set("grant_type", "refresh_token")
-	form.Set("client_id", cache.ClientID)
-	form.Set("refresh_token", cache.RefreshToken)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+branAuth0Host+"/oauth/token", strings.NewReader(form.Encode()))
-	if err != nil {
-		return false, "refresh build failed"
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", firstNonEmpty(acc.UserAgent, cfg.UserAgent, "Mozilla/5.0"))
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		why := err.Error()
-		if strings.Contains(why, "proxy dial") {
-			return false, "proxy dial failed"
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", firstNonEmpty(acc.UserAgent, cfg.UserAgent, "Mozilla/5.0"))
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			log.Printf("[AUTH0] refresh probe network error (allowing): %v", err)
+			return true, "ok (refresh unreachable)"
 		}
-		return false, why
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK && bytes.Contains(body, []byte(`"access_token"`)) {
+			return true, "ok (refreshed)"
+		}
+		low := strings.ToLower(string(body))
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden ||
+			strings.Contains(low, "invalid_grant") || strings.Contains(low, "invalid_token") {
+			return false, "Auth0 refresh rejected — cookie/session logged out"
+		}
+		// Non-auth errors (rate limit, 5xx): do not kill a fresh paste.
+		log.Printf("[AUTH0] refresh probe status=%d (allowing)", resp.StatusCode)
+		return true, fmt.Sprintf("ok (refresh status %d)", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
-	if resp.StatusCode == http.StatusOK && bytes.Contains(body, []byte(`"access_token"`)) {
-		return true, "ok (refreshed)"
-	}
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return false, "Auth0 refresh rejected — cookie/session logged out"
-	}
-	return false, fmt.Sprintf("Auth0 refresh status %d", resp.StatusCode)
-}
-
-func branUserinfoOK(ctx context.Context, cfg Config, acc ToolAccount, accessToken string) (bool, string) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+branAuth0Host+"/userinfo", nil)
-	if err != nil {
-		return false, "userinfo build failed"
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", firstNonEmpty(acc.UserAgent, cfg.UserAgent, "Mozilla/5.0"))
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return false, err.Error()
-	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return true, "ok"
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return false, "Auth0 userinfo unauthorized"
-	default:
-		return false, fmt.Sprintf("Auth0 userinfo status %d", resp.StatusCode)
-	}
+	return false, "Auth0 access expired and no refresh_token"
 }
 
 func firstNonEmpty(vals ...string) string {
@@ -341,7 +317,7 @@ func branAuthWatchScript() string {
       });
     };
   }
-  // If Auth0 cache is missing/expired, don't leave a blank shell.
+  // Only after inject had time to run — missing Auth0 dump means bad paste.
   setTimeout(function(){
     try {
       var has = false;
@@ -351,7 +327,7 @@ func branAuthWatchScript() string {
       }
       if (!has) bounce();
     } catch (e) {}
-  }, 2500);
+  }, 6000);
 })();
 </script>`
 }
