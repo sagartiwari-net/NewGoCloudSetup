@@ -2119,6 +2119,14 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
@@ -2505,6 +2513,7 @@ func patcherScript(cfg Config) string {
         });
         return u;
     }
+    window.__tmPatchURL = patchURL;
 
     function isNoiseURL(u) {
         return /telemetry\.canva\.com|ingest\.sentry\.io|\/traces\?/i.test(String(u || ''));
@@ -3614,7 +3623,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = extHostName
 	}
 
-	// Remove proxy headers
+	// Remove hop-by-hop + proxy headers. nginx/browser "Connection: upgrade"
+	// must never reach HTTP/2 upstream (Go: invalid Connection request header).
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("Transfer-Encoding")
+	upstreamReq.Header.Del("TE")
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
 	upstreamReq.Header.Del("X-Forwarded-For")

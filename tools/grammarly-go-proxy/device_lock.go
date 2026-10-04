@@ -271,22 +271,20 @@ function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  var page = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Access Denied</title><style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#eef3f8;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center}.ring{width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);display:grid;place-items:center}.lock{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px}h1{font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin-bottom:12px}.msg{color:#64748b;font-size:15px;line-height:1.55}.foot{margin-top:18px;color:#94a3b8;font-size:13px}</style></head><body><div class=\"card\"><div class=\"ring\"><div class=\"lock\">🔒</div></div><h1>Access Denied</h1><p class=\"msg\">Open this tool again from your access link.</p><p class=\"foot\">Your session ended or this browser is not authorized</p></div></body></html>";
-  try {
-    document.open("text/html","replace");
-    document.write(page);
-    document.close();
-  } catch (e) {
-    try { document.documentElement.innerHTML = page; } catch (e2) {
-      location.replace("/__tm_access_denied");
-    }
-  }
+  // Never embed Access Denied HTML here — literal </style></head><body> breaks HTML parsing.
+  location.replace("/__tm_access_denied");
 }
 function tmReveal() {
-  document.documentElement.style.visibility = "visible";
+  // Remove !important lock first — inline visibility without !important cannot win
+  // (permanent blank white page on grammarly.gt4rents.com).
   var lock = document.querySelector("style[data-tm-device]");
   if (lock) lock.remove();
+  try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+  try { if (document.body) document.body.style.setProperty("display", "block", "important"); } catch (e) {}
 }
+// Never leave users on a permanent blank page if bind/fingerprint hangs.
+tmReveal();
+setTimeout(function () { try { tmReveal(); } catch (e) {} }, 800);
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
   window.__tmWatch = setInterval(function () {
@@ -306,50 +304,50 @@ function tmWatch(fp, proof) {
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   try { fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || ""; } catch (e) {}
   if (!proof) {
-    // Never leave html{visibility:hidden} up — show denied immediately.
-    tmDeny();
-    fetch("/api/device-bind", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Device-Fp": "missing", "X-Device-Proof": "missing" }
-    }).catch(function () {});
+    tmEnsureProof().then(function (next) {
+      proof = next;
+      return tmFingerprint().then(function (fp) {
+        try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+        return tmStore(fp, proof).then(function () {
+          return fetch("/api/device-bind", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+          }).then(function (res) {
+            if (!res.ok) { tmDeny(); return; }
+            tmReveal();
+            tmPatchRequests(fp, proof);
+            tmWatch(fp, proof);
+          });
+        });
+      });
+    }).catch(tmDeny);
     return;
   }
   tmReveal();
-  if (fp && proof) { tmPatchRequests(fp, proof); tmWatch(fp, proof); }
-  else if (window.fetch) {
-    window.__tmOrigFetch = window.fetch;
-    window.fetch = function () {
-      var self = this;
-      var args = arguments;
-      return tmFingerprint().then(function (next) {
-        try { sessionStorage.setItem("tm_device_fp", next); localStorage.setItem("tm_device_fp", next); } catch (e) {}
-        tmPatchRequests(next, proof);
-        return window.fetch.apply(self, args);
-      });
-    };
-  }
-  tmFingerprint().then(function (fp) {
-    try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
-    return tmStore(fp, proof).then(function () {
+  // Always resolve fp then patch once. Never install a temporary fetch wrapper that
+  // re-enters window.fetch after tmPatchRequests (infinite loop → blank SPA).
+  var bootFp = fp;
+  Promise.resolve(bootFp || tmFingerprint()).then(function (next) {
+    bootFp = next || "";
+    try { sessionStorage.setItem("tm_device_fp", bootFp); localStorage.setItem("tm_device_fp", bootFp); } catch (e) {}
+    return tmStore(bootFp, proof).then(function () {
       return fetch("/api/device-bind", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
-      }).then(function () { return fp; });
+        headers: { "X-Device-Fp": bootFp, "X-Device-Proof": proof }
+      }).then(function () { return bootFp; });
     });
-  }).then(function (fp) {
-    tmPatchRequests(fp, proof);
-    tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
-  }).catch(function () {});
+  }).then(function (next) {
+    tmPatchRequests(next, proof);
+    tmWatch(next, proof);
+    // Skip device SW — races with Access/reloads and can blank the SPA.
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
+  }).catch(function () { tmReveal(); });
 })();
 </script>`
 }
@@ -490,9 +488,16 @@ function tmStore(fp, proof) {
 function tmPatchRequests(fp, proof) {
   if (window.__tmDevicePatched) return;
   window.__tmDevicePatched = true;
-  var origFetch = window.__tmOrigFetch || window.fetch;
+  // Chain CURRENT fetch (URL rewriter). Never jump to window.__tmOrigFetch.
+  var origFetch = window.fetch;
   if (origFetch) {
     window.fetch = function (input, init) {
+      try {
+        if (typeof window.__tmPatchURL === "function") {
+          if (typeof input === "string") input = window.__tmPatchURL(input);
+          else if (input && typeof input.url === "string") input = new Request(window.__tmPatchURL(input.url), input);
+        }
+      } catch (e) {}
       var url = typeof input === "string" ? input : (input && input.url) || "";
       var same = false;
       try { same = new URL(url, location.href).origin === location.origin; } catch (e) {}
@@ -512,8 +517,13 @@ function tmPatchRequests(fp, proof) {
   var origOpen = XMLHttpRequest.prototype.open;
   var origSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (method, url) {
+    try {
+      if (typeof window.__tmPatchURL === "function") url = window.__tmPatchURL(url);
+    } catch (e) {}
     this.__tmURL = url;
-    return origOpen.apply(this, arguments);
+    var args = Array.prototype.slice.call(arguments);
+    args[1] = url;
+    return origOpen.apply(this, args);
   };
   XMLHttpRequest.prototype.send = function () {
     try {

@@ -114,7 +114,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
 - [x] `junglescout` — JungleScout (:5211) — **HTTPS OK**: HTTP/2 Connection strip, panel logout→switch/contact-admin, device-lock reveal + safe deny redirect, extension icons + home→baked proxy origin, proxy optional  
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** (2026-10-05): local OK; server still blank `/home` (no `GetAccountInfo` in Network). Partial fixes on main (`a7551d9`+) — **do not tick until HTTPS access-link + real UI verified**  
-- [ ] `grammarly` — grammarly (:4911) — **next**
+- [ ] `grammarly` — grammarly (:4911) — blank-page fix pushed (device-lock reveal + safe deny + no SW/fetch hang; `public_scheme=https`; Connection strip) — **verify HTTPS access-link before ticking**
 
 ### Rest (alphabetical)
 
@@ -199,6 +199,7 @@ If fail: note in “Open issues”, fix, re-tick.
 | Tool | Issue | Action |
 |------|--------|--------|
 | `branalyzer` | Server blank `/home` — Network shows no `GetAccountInfo` (local cookie mode OK) | **Parked.** Resume later: redeploy `a7551d9`+, hard-refresh access-link, confirm `extra-cdn-0` GetAccountInfo + Be Curious UI before ticking `[x]` |
+| `grammarly` | Blank white after panel grant (`proof stored`) — `visibility:hidden !important` not cleared; fetch wrapper could hang SPA | Redeploy latest grammarly device-lock; hard-refresh access-link; also `UPDATE ahrefs_websites SET domain='grammarly.gt4rents.com' WHERE id=42` if domain warning remains |
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
