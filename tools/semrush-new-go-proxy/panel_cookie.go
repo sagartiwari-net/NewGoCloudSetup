@@ -3,13 +3,12 @@ package main
 import (
 	"database/sql"
 	"log"
+	"os"
 	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
 )
-
-const semrushPanelDB = "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
 
 var (
 	semrushPanelOnce   sync.Once
@@ -17,14 +16,52 @@ var (
 	semrushPanelErr    error
 	semrushPanelLogged int
 	semrushPanelLogMu  sync.Mutex
+	semrushPanelPath   string
 )
+
+func panelSQLiteDSN(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data"); err == nil {
+			path = "/www/wwwroot/gt4rents.com/panel/data/panel.db"
+		} else {
+			path = "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
+		}
+	}
+	q := "?_pragma=busy_timeout(20000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+	if strings.HasPrefix(path, "/") {
+		return "file://" + path + q
+	}
+	return "file:" + path + q
+}
+
+func semrushPanelDBPath() string {
+	cfg := loadConfig()
+	if p := strings.TrimSpace(cfg.PanelDB); p != "" {
+		return p
+	}
+	if v := strings.TrimSpace(os.Getenv("PANEL_DB")); v != "" {
+		return v
+	}
+	if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data"); err == nil {
+		return "/www/wwwroot/gt4rents.com/panel/data/panel.db"
+	}
+	return "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
+}
 
 func openSemrushPanel() (*sql.DB, error) {
 	semrushPanelOnce.Do(func() {
-		semrushPanel, semrushPanelErr = sql.Open("sqlite", "file:"+semrushPanelDB+"?_pragma=busy_timeout(20000)&_pragma=journal_mode(WAL)")
+		semrushPanelPath = semrushPanelDBPath()
+		dsn := panelSQLiteDSN(semrushPanelPath)
+		semrushPanel, semrushPanelErr = sql.Open("sqlite", dsn)
 		if semrushPanelErr == nil {
 			semrushPanel.SetMaxOpenConns(8)
 			semrushPanelErr = semrushPanel.Ping()
+		}
+		if semrushPanelErr != nil {
+			log.Printf("[PANEL] open failed path=%s err=%v", semrushPanelPath, semrushPanelErr)
+		} else {
+			log.Printf("[PANEL] opened %s", semrushPanelPath)
 		}
 	})
 	return semrushPanel, semrushPanelErr

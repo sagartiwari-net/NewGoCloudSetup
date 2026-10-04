@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"bytes"
 	"crypto/rand"
 	"database/sql"
@@ -45,10 +46,37 @@ var (
 	envatoPickMu    sync.Mutex // serializes claim/switch so concurrent Access opens round-robin
 )
 
+
+func panelSQLiteDSN(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data"); err == nil {
+			path = "/www/wwwroot/gt4rents.com/panel/data/panel.db"
+		} else {
+			path = "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
+		}
+	}
+	q := "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	if strings.Contains(path, "busy_timeout") {
+		// already a full DSN
+		return path
+	}
+	if strings.HasPrefix(path, "/") {
+		return "file://" + path + q
+	}
+	return "file:" + path + q
+}
+
 func panelDBPath() string {
 	cfg := loadConfig()
 	if p := strings.TrimSpace(cfg.PanelDB); p != "" {
 		return p
+	}
+	if v := strings.TrimSpace(os.Getenv("PANEL_DB")); v != "" {
+		return v
+	}
+	if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data"); err == nil {
+		return "/www/wwwroot/gt4rents.com/panel/data/panel.db"
 	}
 	return envatoPanelDBFallback
 }
@@ -56,7 +84,7 @@ func panelDBPath() string {
 func openEnvatoPanel() (*sql.DB, error) {
 	envatoPanelOnce.Do(func() {
 		path := panelDBPath()
-		envatoPanel, envatoPanelErr = sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+		envatoPanel, envatoPanelErr = sql.Open("sqlite", panelSQLiteDSN(path))
 		if envatoPanelErr == nil {
 			envatoPanel.SetMaxOpenConns(1)
 			envatoPanelErr = envatoPanel.Ping()

@@ -2140,11 +2140,21 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		finish(nil, nil)
 		return rt.h1.RoundTrip(req)
 	}
-	cc, err := rt.h2.NewClientConn(conn)
-	if err != nil {
+	// x/net v0.55+ may panic in NewClientConn when wrap transport t1 is nil.
+	var cc *http2.ClientConn
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				err = fmt.Errorf("NewClientConn panic: %v", rec)
+			}
+		}()
+		cc, err = rt.h2.NewClientConn(conn)
+	}()
+	if err != nil || cc == nil {
 		conn.Close()
 		finish(nil, err)
-		return nil, err
+		// Fallback: let http2.Transport dial via DialTLSContext (uTLS).
+		return rt.h2.RoundTrip(req)
 	}
 	rt.rememberH2(connKey, cc)
 	finish(cc, nil)

@@ -53,6 +53,7 @@ type Config struct {
 	LocalTestMode bool   `json:"local_test_mode"`
 	BindLocalhost bool   `json:"bind_localhost"`
 	DebugLogging  bool   `json:"debug_logging"`
+	PanelDB       string `json:"panel_db"`
 	// MySQL configs
 	MySQLHost     string `json:"mysql_host"`
 	MySQLPort     string `json:"mysql_port"`

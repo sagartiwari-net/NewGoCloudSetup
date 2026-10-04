@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -33,13 +34,34 @@ var (
 	panelSess   sync.Map
 )
 
+
+func panelSQLiteDSN(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data"); err == nil {
+			path = "/www/wwwroot/gt4rents.com/panel/data/panel.db"
+		} else {
+			path = "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
+		}
+	}
+	q := "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	if strings.Contains(path, "busy_timeout") {
+		// already a full DSN
+		return path
+	}
+	if strings.HasPrefix(path, "/") {
+		return "file://" + path + q
+	}
+	return "file:" + path + q
+}
+
 func usesPanelAccountMode(cfg Config) bool {
 	return strings.TrimSpace(cfg.PanelDB) != ""
 }
 
 func openPanelDB(cfg Config) (*sql.DB, error) {
 	panelDBOnce.Do(func() {
-		panelDB, panelDBErr = sql.Open("sqlite", "file:"+cfg.PanelDB+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+		panelDB, panelDBErr = sql.Open("sqlite", panelSQLiteDSN(cfg.PanelDB))
 		if panelDBErr != nil {
 			return
 		}

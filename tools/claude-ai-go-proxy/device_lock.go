@@ -408,9 +408,13 @@ function tmFingerprint() {
     zone,
     sample
   ].join("|");
-  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)).then(function (buf) {
-    return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
-  });
+  function weakHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}var out="";for(var j=0;j<8;j++){out+=((h>>> (j*4)) & 15).toString(16);h=(h*1664525+1013904223)|0;}while(out.length<64)out+=out;return out.slice(0,64);}
+  if (window.crypto && crypto.subtle && window.isSecureContext) {
+    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)).then(function (buf) {
+      return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+    });
+  }
+  return Promise.resolve(weakHash(raw));
 }
 function tmOpenDB() {
   return new Promise(function (resolve, reject) {

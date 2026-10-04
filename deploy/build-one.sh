@@ -63,8 +63,10 @@ if pw:
 # server defaults
 base["port"] = str(base.get("port") or "${PORT}")
 base["public_host"] = base.get("public_host") or "${FQDN}"
-# Default http until wildcard SSL is live; overlay may override to https later
-base["public_scheme"] = base.get("public_scheme") or "http"
+# Force http until SSL; set TOOL_PUBLIC_SCHEME=https in mysql.env after LE
+# (live asset rewrite still follows X-Forwarded-Proto; this is config fallback only)
+_scheme = (os.environ.get("TOOL_PUBLIC_SCHEME") or "http").strip().lower()
+base["public_scheme"] = "https" if _scheme == "https" else "http"
 base["panel_db"] = base.get("panel_db") or "${BASE}/panel/data/panel.db"
 if "local_test_mode" in base:
     base["local_test_mode"] = False

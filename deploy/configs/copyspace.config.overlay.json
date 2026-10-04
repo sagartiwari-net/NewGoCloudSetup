@@ -1,7 +1,7 @@
 {
   "port": "4741",
   "public_host": "copyspace.gt4rents.com",
-  "public_scheme": "https",
+  "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
