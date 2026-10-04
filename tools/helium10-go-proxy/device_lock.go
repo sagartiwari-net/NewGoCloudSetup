@@ -113,17 +113,11 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if browserSubresource(r) {
 		return false
 	}
-	// Empty headers: page navigations re-bind via inject script. Helium extension
-	// background fetches cannot send X-Device-* headers — allow those paths.
+	// Empty headers: we skip devicePageScript on Helium HTML (SPA blank risk), so
+	// most XHR never send X-Device-*. Blocking them 401s the app → /user/signin →
+	// infinite account-switch loop. Allow empty headers; mismatch still kills.
 	if fp == "" && proof == "" {
-		if isDocumentNavigation(r) || isHeliumExtensionPath(r.URL.Path) {
-			return false
-		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
+		return false
 	}
 	panelSess.Delete(token)
 	recordCookieShare(cfg, r, token)
@@ -142,12 +136,15 @@ func isHeliumExtensionPath(path string) bool {
 	p := strings.ToLower(strings.Split(path, "?")[0])
 	return strings.HasPrefix(p, "/extra-cdn-") ||
 		strings.HasPrefix(p, "/cdn-proxy/") ||
+		strings.HasPrefix(p, "/cdn-cgi/") ||
 		strings.HasPrefix(p, "/extension/") ||
 		strings.HasPrefix(p, "/api/v1/") ||
 		strings.HasPrefix(p, "/api/v1/chrome-extension") ||
 		strings.Contains(p, "chrome-extension") ||
 		strings.HasPrefix(p, "/global-config/") ||
 		strings.HasPrefix(p, "/prp/") ||
+		strings.HasPrefix(p, "/notification/") ||
+		strings.HasPrefix(p, "/authhub/") ||
 		// Helium SPA XHR used by members UI + extension; empty device headers are normal.
 		strings.HasPrefix(p, "/black-box/") ||
 		strings.HasPrefix(p, "/cerebro/") ||

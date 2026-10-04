@@ -167,9 +167,14 @@ func h10LoginWatchScript(cfg Config) string {
     // Dedicated path — never /user/signin (that re-triggers wallPath forever).
     location.replace("/__h10_switch?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "h10_login_wall"));
   }
+  // Path-only must NOT failover (one-account cooldown loop). Soft-bounce home;
+  // failover only when real Helium login wall text is visible.
   setInterval(function(){
-    if (wallPath() || wallText()) switchAccount(wallPath() ? "h10_login_path" : "h10_login_text");
-  }, 1200);
+    if (wallText()) { switchAccount("h10_login_text"); return; }
+    if (wallPath()) {
+      try { location.replace(HOME); } catch (e) {}
+    }
+  }, 1500);
 })();
 </script>`, home)
 }

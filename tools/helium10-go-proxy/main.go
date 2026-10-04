@@ -2141,8 +2141,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			serveH10AccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc, "h10_login_wall")
 			return
 		}
+		// Soft bounce only — path-only failover loops forever with one account
+		// ("Refreshing session" ↔ "Waiting for an account"). Real logout is handled
+		// after upstream HTML check + h10LoginWatchScript text needles.
 		if h10LoginDocument(r, path) {
-			serveH10AccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc, "h10_login_path")
+			log.Printf("[H10] login path bounce → %s user=%s", home, currentUser)
+			http.Redirect(w, r, home, http.StatusFound)
 			return
 		}
 	}
