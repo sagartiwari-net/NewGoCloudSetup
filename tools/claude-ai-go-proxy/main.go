@@ -1594,6 +1594,23 @@ func main() {
 		debugLog(cfg, "Response %s status=%d proxy=%s://%s ctype=%s",
 			resp.Request.URL.Path, resp.StatusCode, proxyScheme, proxyHost, resp.Header.Get("Content-Type"))
 
+		// Bootstrap JSON: log auth health so blank SPA is diagnosable from app.log.
+		if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/edge-api/bootstrap") &&
+			strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "json") &&
+			resp.StatusCode == http.StatusOK {
+			peek, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+			resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek), resp.Body))
+			lower := strings.ToLower(string(peek))
+			switch {
+			case strings.Contains(lower, `"account"`) && !strings.Contains(lower, `"account":null`):
+				log.Printf("[AUTH] bootstrap looks signed-in path=%s", resp.Request.URL.Path)
+			case strings.Contains(lower, "sign in") || strings.Contains(lower, "login") || strings.Contains(lower, `"account":null`):
+				log.Printf("[AUTH] bootstrap looks LOGGED OUT — refresh Claude cookies in Panel path=%s", resp.Request.URL.Path)
+			default:
+				log.Printf("[AUTH] bootstrap opaque (%d bytes) path=%s", len(peek), resp.Request.URL.Path)
+			}
+		}
+
 		if isBillableCompletion(resp.Request) && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			if user, _ := resp.Request.Context().Value(creditUserKey{}).(string); strings.TrimSpace(user) != "" {
 				panelCreditsCharge(user, resp.Request.URL.Path)
@@ -1693,7 +1710,12 @@ func main() {
 					return nil
 				}
 				if resp.Request != nil {
-					log.Printf("[CF] Challenge passthrough path=%s", reqPath)
+					px, _ := resp.Request.Context().Value(proxyContextKey).(string)
+					if strings.TrimSpace(px) == "" {
+						log.Printf("[CF] Challenge passthrough path=%s — account has NO proxy; assign Proxy Manager proxy on Claude account (same as Envato)", reqPath)
+					} else {
+						log.Printf("[CF] Challenge passthrough path=%s proxy=set", reqPath)
+					}
 				}
 				bodyStr = injectScreenErrorRedirectHTML(bodyStr, cfg, reqPath)
 				modifiedBytes := []byte(bodyStr)

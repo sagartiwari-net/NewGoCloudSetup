@@ -270,8 +270,8 @@ const panelAccountOrder = `ORDER BY CASE WHEN a.last_used_at = '' THEN 0 ELSE 1 
 
 var panelPickMu sync.Mutex
 
-// claimPanelAccount picks the least recently used active account and stamps last_used_at.
-// Status is left unchanged. The next login then lands on a different account.
+// claimPanelAccount picks the least recently used active account with a live ChatGPT session.
+// Dead cookies still render the SPA shell (no send button) — probe /api/auth/session first.
 func claimPanelAccount(cfg Config) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
@@ -279,16 +279,43 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 	if err != nil {
 		return ToolAccount{}, err
 	}
-	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+	rows, err := db.Query(panelAccountSelect+`
 		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+		`+panelAccountOrder, cfg.PublicHost)
 	if err != nil {
 		return ToolAccount{}, err
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
-	log.Printf("[LB] claimed account '%s' (ID:%d) for %s", acc.Name, acc.ID, cfg.PublicHost)
-	return acc, nil
+	defer rows.Close()
+	var lastErr error
+	tried := 0
+	for rows.Next() {
+		acc, scanErr := scanPanelAccount(rows)
+		if scanErr != nil {
+			lastErr = scanErr
+			continue
+		}
+		tried++
+		ok, reason := probeChatGPTSession(cfg, acc)
+		if !ok {
+			log.Printf("[LB] skip '%s' (ID:%d) session_probe=%s", acc.Name, acc.ID, reason)
+			lastErr = fmt.Errorf("session_probe:%s", reason)
+			continue
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+		log.Printf("[LB] claimed account '%s' (ID:%d) for %s (session ok)", acc.Name, acc.ID, cfg.PublicHost)
+		return acc, nil
+	}
+	if tried == 0 {
+		if lastErr != nil {
+			return ToolAccount{}, lastErr
+		}
+		return ToolAccount{}, fmt.Errorf("no active account")
+	}
+	if lastErr != nil {
+		return ToolAccount{}, fmt.Errorf("all ChatGPT cookies logged out (%d tried): %w", tried, lastErr)
+	}
+	return ToolAccount{}, fmt.Errorf("all ChatGPT cookies logged out (%d tried)", tried)
 }
 
 // loadPanelSessionAccount uses the account pinned on the live session.
@@ -487,7 +514,11 @@ func postPanelTelegram(token, chatID, text string) {
 	resp.Body.Close()
 }
 
-func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
+type panelAccountScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanPanelAccount(row panelAccountScanner) (ToolAccount, error) {
 	var acc ToolAccount
 	var showLimit int
 	if err := row.Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy, &showLimit); err != nil {

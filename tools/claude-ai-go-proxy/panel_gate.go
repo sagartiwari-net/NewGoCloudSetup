@@ -294,7 +294,11 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
-	log.Printf("[LB] claimed account '%s' (ID:%d) for %s", acc.Name, acc.ID, cfg.PublicHost)
+	if strings.TrimSpace(acc.Proxy) == "" {
+		log.Printf("[LB] claimed account '%s' (ID:%d) for %s — WARNING: no Proxy Manager proxy (Claude CF will stick on Hetzner IP)", acc.Name, acc.ID, cfg.PublicHost)
+	} else {
+		log.Printf("[LB] claimed account '%s' (ID:%d) for %s proxy=set", acc.Name, acc.ID, cfg.PublicHost)
+	}
 	return acc, nil
 }
 

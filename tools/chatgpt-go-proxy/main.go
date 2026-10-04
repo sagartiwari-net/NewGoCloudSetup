@@ -1755,7 +1755,12 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 }
 
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
-	writeAccountSwitchPage(w, "")
+	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
+		Title:   "ChatGPT cookies expired",
+		Heading: "ChatGPT cookies expired",
+		Message: "Every mapped ChatGPT account cookie is logged out. Open Panel → Accounts → paste fresh ChatGPT cookies for this site, then open a <b>new</b> access link.",
+		Footer:  "Proxy is fine — account session needs refresh",
+	})
 }
 
 func renderLimitReachedPage(w http.ResponseWriter, limitType string, cfg Config) {
@@ -2132,7 +2137,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "chatgpt-v21-limits-fix"
+const proxyBuildTag = "chatgpt-v22-session-probe"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 

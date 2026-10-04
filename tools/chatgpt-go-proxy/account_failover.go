@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"html"
+	"io"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const maxAccountFailoverAttempts = 15
@@ -34,22 +37,64 @@ func chatGPTLoggedInHTML(body []byte) bool {
 		return false
 	}
 	s := string(body)
+	// Soft marketing strings ("What's on your mind", "Ask anything") ship in logged-out
+	// JS bundles too — they false-positive and serve a shell with no working send button.
 	for _, marker := range []string{
-		"conversation-small",
 		"oai-client-auth-info",
-		`"connectionType"`,
-		"/backend-api/conversations",
-		"Open profile menu",
-		"Ask anything",
-		"What's on the agenda",
-		"Good to see you",
-		"What's on your mind today",
+		`"accessToken"`,
+		`"authProvider"`,
+		`"connectionType":"websocket"`,
 	} {
 		if strings.Contains(s, marker) {
 			return true
 		}
 	}
 	return false
+}
+
+// probeChatGPTSession checks whether the account cookie still has a live OpenAI session.
+// Dead cookies still render the ChatGPT SPA shell, but the send control never enables.
+func probeChatGPTSession(cfg Config, acc ToolAccount) (bool, string) {
+	cookie := strings.TrimSpace(parseCookieFromDB(acc.Cookie))
+	if cookie == "" {
+		return false, "empty_cookie"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	if px := strings.TrimSpace(acc.Proxy); px != "" {
+		ctx = context.WithValue(ctx, proxyContextKey, px)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://chatgpt.com/api/auth/session", nil)
+	if err != nil {
+		return false, "build_request"
+	}
+	ua := strings.TrimSpace(acc.UserAgent)
+	if ua == "" {
+		ua = cfg.UserAgent
+	}
+	if ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Cookie", cookie)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return false, "dial:" + err.Error()
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	text := string(body)
+	if resp.StatusCode >= 400 {
+		return false, "http_" + http.StatusText(resp.StatusCode)
+	}
+	if strings.Contains(text, `"accessToken"`) ||
+		(strings.Contains(text, `"user"`) && !strings.Contains(text, `"user":null`) && !strings.Contains(text, `"user": null`)) {
+		return true, "ok"
+	}
+	if strings.TrimSpace(text) == "" || text == "{}" || strings.Contains(text, `"user":null`) || strings.Contains(text, `"user": null`) {
+		return false, "logged_out"
+	}
+	return false, "no_access_token"
 }
 
 func chatGPTLogoutDetected(path string, body []byte, cfg Config) (bool, string) {
