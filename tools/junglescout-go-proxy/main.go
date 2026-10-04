@@ -857,11 +857,7 @@ func jungleAccountAPIAuthorized(cfg Config, acc ToolAccount) (bool, string) {
 		case http.StatusOK, http.StatusNoContent:
 			ok, why = true, "ok"
 		case http.StatusUnauthorized, http.StatusForbidden:
-			if strings.TrimSpace(acc.Proxy) == "" {
-				why = "API Access Denied — session IP-bound; capture cookies through Proxy Manager and assign that same proxy"
-			} else {
-				why = "API Access Denied — cookie/session invalid or not captured on this proxy IP"
-			}
+			why = "API Access Denied — Jungle Scout rejected this auth_token (expired/revoked, or bound to another IP)"
 		default:
 			why = fmt.Sprintf("API status %d", resp.StatusCode)
 		}
