@@ -8,7 +8,7 @@
   "public_scheme": "http",
   "tool_name": "Branalyzer",
   "credit_label": "Credits",
-  "home_path": "/dashboard",
+  "home_path": "/home",
   "cookie_domain_suffix": "branalyzer.com",
   "inject_css": "",
   "counted_paths": [],

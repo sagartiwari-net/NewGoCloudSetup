@@ -2126,12 +2126,12 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 }
 
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
+	_ = cfg
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Temporarily Unavailable",
-		Heading: "Temporarily Unavailable",
-		Message: "All mapped <span class=\"brand\">" + name + "</span> accounts are currently undergoing maintenance. Please try again in a few minutes.",
-		Footer:  "No active account is available right now",
+		Title:   "Account unavailable",
+		Heading: "Account unavailable",
+		Message: "Contact to Admin/Provider to fix it ASAP",
+		Footer:  "No active Branalyzer cookie/account is available right now",
 	})
 }
 
@@ -3703,6 +3703,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderNoActiveAccountsPage(w, cfg)
 				return
 			}
+			// Document home: never leave a blank SPA on dead Auth0 cookies.
+			if isDocumentNavigation(r) && branDocumentNeedsSession(path) && sessionToken != "" {
+				if ok, why := branAccountAuthAlive(cfg, activeAcc); !ok {
+					log.Printf("[LB] bran session dead user=%s account=%s reason=%s", currentUser, activeAcc.Name, why)
+					serveBranLogoutFailover(w, r, cfg, sessionToken, currentUser, activeAcc, "auth0_unauthorized")
+					return
+				}
+			}
 		}
 	} else if cfg.BypassAuth || !dbConnected {
 		// Detect if connection is actually over HTTPS (behind reverse proxy)
@@ -4384,6 +4392,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) {
+			injectStr += branAuthWatchScript()
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -4688,6 +4699,7 @@ func main() {
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
 	mux.HandleFunc("/__tm_access_denied", serveAccessDeniedHTML)
+	mux.HandleFunc("/__tm_session_check", branSessionCheckHandler)
 	mux.HandleFunc("/tm-device-sw.js", serveDeviceSW)
 	mux.HandleFunc("/access", accessHandler)
 

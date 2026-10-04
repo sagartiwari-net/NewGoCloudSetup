@@ -354,8 +354,91 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	return acc, nil
 }
 
-// panelSwitchAccount moves this session to the next active account.
-// failure_count goes up. status stays active so the account can be used again later.
+// panelSwitchToOtherAccount pins a different active account. Same account reload
+// is handled by panelReloadAccount — callers treat "no other account" as contact-admin.
+func panelSwitchToOtherAccount(cfg Config, sessionToken, reason string) (ToolAccount, string, error) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, "", err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var websiteID, currentID int
+	var username string
+	err = db.QueryRow(`SELECT website_id, COALESCE(assigned_account_id, 0), username FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).
+		Scan(&websiteID, &currentID, &username)
+	if err != nil {
+		return ToolAccount{}, "", err
+	}
+	if reason == "" {
+		reason = "auth-dead"
+	}
+	var fromName string
+	_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, currentID).Scan(&fromName)
+
+	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
+	if err != nil {
+		return ToolAccount{}, "", fmt.Errorf("no other active account")
+	}
+	if currentID > 0 {
+		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
+	}
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+	if websiteID > 0 {
+		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
+			websiteID, username, fromName, acc.Name, reason, now)
+	}
+	log.Printf("[LB] bran switched %s -> %s reason=%s", fromName, acc.Name, reason)
+	return acc, acc.Name, nil
+}
+
+func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var assigned int
+	if err := db.QueryRow(`SELECT COALESCE(assigned_account_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned); err != nil {
+		return ToolAccount{}, err
+	}
+	if assigned > 0 {
+		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+		if accErr == nil {
+			return acc, nil
+		}
+	}
+	return scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+}
+
+func renderPanelAccountSwitchPage(w http.ResponseWriter, cfg Config, accountName, returnPath string) {
+	if returnPath == "" || !strings.HasPrefix(returnPath, "/") {
+		returnPath = branAppHome(cfg)
+	}
+	msg := "This account signed out. Trying the next available account."
+	if accountName != "" {
+		msg = "Account logged out. Switching to " + html.EscapeString(accountName) + "..."
+	}
+	writeLightCard(w, http.StatusOK, lightCard{
+		Title:    "Switching account",
+		Heading:  "Switching account",
+		Message:  msg,
+		Badge:    "Checking the next account",
+		Footer:   "This page refreshes automatically",
+		Spin:     true,
+		Redirect: returnPath,
+	})
+}
+
 func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 	var acc ToolAccount
 	var showLimit int
