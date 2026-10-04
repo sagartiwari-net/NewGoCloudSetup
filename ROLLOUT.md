@@ -119,7 +119,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `answerthepublic` (:4931)  
 - [ ] `artistly` (:4821)  
 - [ ] `branalyzer` (:5081)  
-- [ ] `chatbotapp` (:5001)  
+- [ ] `chatbotapp` (:5061) — remapped off smpanel `:5001`  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
 - [ ] `copywritely` (:4521)  
