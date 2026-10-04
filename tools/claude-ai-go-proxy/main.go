@@ -879,6 +879,24 @@ func isCloudflareChallengeHTML(body string) bool {
 	return false
 }
 
+// isCloudflareChallengePath is challenge platform/assets — rewriting claude.ai→proxy host
+// inside this JS makes CF fail with "Unable to connect to the website".
+func isCloudflareChallengePath(path string) bool {
+	return strings.HasPrefix(path, "/cdn-cgi/")
+}
+
+func isCloudflareChallengeJS(contentType, body string) bool {
+	ct := strings.ToLower(contentType)
+	if !strings.Contains(ct, "javascript") && !strings.Contains(ct, "ecmascript") {
+		return false
+	}
+	lower := strings.ToLower(body)
+	return strings.Contains(lower, "challenge-platform") ||
+		strings.Contains(lower, "__cf$cv$params") ||
+		strings.Contains(lower, "chl_page") ||
+		(strings.Contains(lower, "cloudflare") && strings.Contains(lower, "chl_"))
+}
+
 func normalizeScreenErrorRedirect(cfg *Config) {
 	s := &cfg.ScreenErrorRedirect
 	if s.DetectText == "" {
@@ -1340,7 +1358,8 @@ func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	uConn := utls.UClient(tcpConn, &utls.Config{ServerName: host, InsecureSkipVerify: false}, utls.HelloChrome_120)
+	// HelloChrome_Auto tracks current Chrome; pinned _120 is often fingerprinted by CF.
+	uConn := utls.UClient(tcpConn, &utls.Config{ServerName: host, InsecureSkipVerify: false}, utls.HelloChrome_Auto)
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		tcpConn.Close()
 		return nil, fmt.Errorf("uTLS handshake: %w", err)
@@ -1591,8 +1610,23 @@ func main() {
 			proxyScheme = cfg.PublicScheme
 		}
 
+		reqPath := ""
+		if resp.Request != nil {
+			reqPath = resp.Request.URL.Path
+		}
+		contentTypeEarly := resp.Header.Get("Content-Type")
 		debugLog(cfg, "Response %s status=%d proxy=%s://%s ctype=%s",
-			resp.Request.URL.Path, resp.StatusCode, proxyScheme, proxyHost, resp.Header.Get("Content-Type"))
+			reqPath, resp.StatusCode, proxyScheme, proxyHost, contentTypeEarly)
+
+		// CF challenge assets must stay byte-identical (except host-safe Set-Cookie).
+		// Rewriting claude.ai → clud.gt4rents.com inside orchestrator JS breaks verification.
+		if isCloudflareChallengePath(reqPath) {
+			resp.Header.Del("Content-Security-Policy")
+			resp.Header.Del("Content-Security-Policy-Report-Only")
+			rewriteProxyCookies(resp)
+			log.Printf("[CF] cdn-cgi passthrough (no body rewrite) path=%s status=%d", reqPath, resp.StatusCode)
+			return nil
+		}
 
 		// Bootstrap JSON: if logged out, return 401 so client login-watch switches accounts
 		// (do not leave a blank SPA open on a dead cookie).
@@ -1730,12 +1764,21 @@ func main() {
 
 			bodyStr := string(bodyBytes)
 
+			// Challenge orchestrator JS sometimes served outside /cdn-cgi/ — never rewrite it.
+			if isCloudflareChallengeJS(contentType, bodyStr) {
+				log.Printf("[CF] challenge JS passthrough (no body rewrite) path=%s bytes=%d", reqPath, len(bodyStr))
+				resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+				resp.ContentLength = int64(len(bodyBytes))
+				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(bodyBytes)))
+				resp.Header.Del("Content-Encoding")
+				resp.Header.Del("Transfer-Encoding")
+				return nil
+			}
+
 			// Cloudflare bot-check pages break if we rewrite domains or inject scripts.
 			if isCloudflareChallengeHTML(bodyStr) {
-				reqPath := ""
 				px := ""
 				if resp.Request != nil {
-					reqPath = resp.Request.URL.Path
 					px, _ = resp.Request.Context().Value(proxyContextKey).(string)
 				}
 				if shouldServerScreenRedirect(reqPath, bodyStr, cfg) {
