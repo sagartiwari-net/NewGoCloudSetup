@@ -69,7 +69,7 @@ out = Path("${OUTDIR}/config.json")
 base = json.loads(out.read_text()) if out.exists() else {}
 ov = json.loads(Path("${OVERLAY}").read_text()) if Path("${OVERLAY}").exists() else {}
 for k in ("port","public_host","public_scheme","panel_db","local_test_mode","bypass_auth",
-          "mysql_host","mysql_port","mysql_user","mysql_db",
+          "mysql_host","mysql_port","mysql_user","mysql_db","website_id",
           "target_url","cdn_url","tool_name","cookie_domain_suffix","home_path",
           "use_database","inject_css"):
     if k in ov:
