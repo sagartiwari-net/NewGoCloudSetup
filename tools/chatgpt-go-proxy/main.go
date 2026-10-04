@@ -777,6 +777,10 @@ func isTelemetryPath(path string) bool {
 // cookieSecure returns true when the client connection is HTTPS (direct TLS or reverse-proxy headers).
 // Falls back to config public_scheme when nginx omits X-Forwarded-Proto (common on aaPanel).
 func cookieSecure(r *http.Request, cfg Config) bool {
+	// Pre-SSL: overlays use public_scheme=http. Never mark cookies Secure or CF X-Forwarded-Proto=https drops them on http:// pages.
+	if strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
+		return false
+	}
 	if r.TLS != nil {
 		return true
 	}
@@ -3712,6 +3716,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = upstreamURL.Host
 	}
 
+	// Remove proxy hop-by-hop headers (nginx Connection: upgrade breaks HTTP/2 upstream)
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("Transfer-Encoding")
+	upstreamReq.Header.Del("TE")
 	// Remove proxy headers
 	upstreamReq.Header.Del("X-Forwarded-For")
 	upstreamReq.Header.Del("X-Real-IP")

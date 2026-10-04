@@ -2825,9 +2825,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
 	}
 
-	// Remove proxy headers
+	// Remove proxy / hop-by-hop headers (nginx Connection: upgrade breaks HTTP/2 upstream)
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("Transfer-Encoding")
+	upstreamReq.Header.Del("TE")
 	upstreamReq.Header.Del("X-Forwarded-For")
 	upstreamReq.Header.Del("X-Real-IP")
 

@@ -33,8 +33,13 @@ echo "Building ${FOLDER} → ${OUTDIR}/app (port ${PORT}, host ${FQDN})"
 cd "${SRC}"
 go build -o "${OUTDIR}/app" .
 
-# Base config from tool source, then always apply server overlay (public_host/port/panel_db)
-if [[ -f "${SRC}/config.json" ]]; then
+# Base config from tool source (prefer tracked server template — many tools gitignore config.json)
+# Order: config.server.json → config.production.json → config.json → keep existing OUTDIR → {}
+if [[ -f "${SRC}/config.server.json" ]]; then
+  cp "${SRC}/config.server.json" "${OUTDIR}/config.json"
+elif [[ -f "${SRC}/config.production.json" ]]; then
+  cp "${SRC}/config.production.json" "${OUTDIR}/config.json"
+elif [[ -f "${SRC}/config.json" ]]; then
   cp "${SRC}/config.json" "${OUTDIR}/config.json"
 elif [[ ! -f "${OUTDIR}/config.json" ]]; then
   echo '{}' > "${OUTDIR}/config.json"
@@ -54,7 +59,8 @@ out = Path("${OUTDIR}/config.json")
 base = json.loads(out.read_text()) if out.exists() else {}
 ov = json.loads(Path("${OVERLAY}").read_text()) if Path("${OVERLAY}").exists() else {}
 for k in ("port","public_host","public_scheme","panel_db","local_test_mode","bypass_auth",
-          "mysql_host","mysql_port","mysql_user","mysql_db"):
+          "mysql_host","mysql_port","mysql_user","mysql_db",
+          "target_url","cdn_url","tool_name","cookie_domain_suffix","home_path"):
     if k in ov:
         base[k] = ov[k]
 pw = os.environ.get("GT4RENTS_MYSQL_PASSWORD")

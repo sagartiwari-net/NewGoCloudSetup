@@ -1,0 +1,18 @@
+{
+  "port": "5261",
+  "bypass_auth": false,
+  "local_test_mode": false,
+  "target_url": "https://app.envato.com",
+  "public_host": "envt.gt4rents.com",
+  "public_scheme": "http",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "tool_name": "Envato",
+  "home_path": "/",
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "gt4rents",
+  "mysql_password": "",
+  "mysql_db": "gt4rents",
+  "session_duration_minutes": 120
+}

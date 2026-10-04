@@ -563,6 +563,10 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 
 
 func cookieSecure(r *http.Request, cfg Config) bool {
+	// Pre-SSL: overlays use public_scheme=http. Never mark cookies Secure or CF X-Forwarded-Proto=https drops them on http:// pages.
+	if strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
+		return false
+	}
 	if r.TLS != nil {
 		return true
 	}

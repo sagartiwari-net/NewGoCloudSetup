@@ -5,10 +5,14 @@
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
+  "target_url": "https://www.canva.com",
+  "cdn_url": "https://static.canva.com",
+  "tool_name": "Canva",
+  "cookie_domain_suffix": "canva.com",
   "mysql_host": "127.0.0.1",
   "mysql_port": "3306",
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "target_url/tool_name forced here — canva config.json is gitignored"
 }

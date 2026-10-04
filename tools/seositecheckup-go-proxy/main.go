@@ -1125,6 +1125,10 @@ func killSession(sessionToken, reason string) {
 // cookieSecure returns true when the client connection is HTTPS (direct TLS or reverse-proxy headers).
 // Falls back to config public_scheme when nginx omits X-Forwarded-Proto (common on aaPanel).
 func cookieSecure(r *http.Request, cfg Config) bool {
+	// Pre-SSL: overlays use public_scheme=http. Never mark cookies Secure or CF X-Forwarded-Proto=https drops them on http:// pages.
+	if strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
+		return false
+	}
 	if r.TLS != nil {
 		return true
 	}

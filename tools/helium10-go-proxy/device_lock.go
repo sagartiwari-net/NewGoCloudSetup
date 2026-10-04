@@ -392,27 +392,36 @@ func deviceBootScript(home string) string {
     });
   }).then(function (dev) {
     return tmStore(dev.fp, dev.proof).then(function () {
+      function doBind() {
+        return fetch("/api/device-bind", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
+        });
+      }
+      // Service workers require a secure context. On plain HTTP skip SW and bind directly.
+      if (!navigator.serviceWorker || !window.isSecureContext) {
+        return doBind();
+      }
       return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
         return navigator.serviceWorker.ready;
       }).then(function () {
         if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve, reject) {
-          var timer = setTimeout(function () { reject(new Error("sw")); }, 4000);
+        return new Promise(function (resolve) {
+          var timer = setTimeout(function () { resolve(dev); }, 1500);
           navigator.serviceWorker.addEventListener("controllerchange", function () {
             clearTimeout(timer);
             resolve(dev);
           }, { once: true });
         });
       }).then(function () {
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-        }
-        return fetch("/api/device-bind", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
-        });
-      });
+        try {
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
+          }
+        } catch (e) {}
+        return doBind();
+      }).catch(function () { return doBind(); });
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");
