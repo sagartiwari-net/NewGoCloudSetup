@@ -50,13 +50,18 @@
   ],
   "manifest_version": 3,
   "action": {
-    "default_icon": "images/active.png"
+    "default_icon": {
+      "16": "images/active.png",
+      "48": "images/48.png",
+      "128": "images/128.png"
+    }
   },
   "host_permissions": [
     "<all_urls>",
     "http://localhost/*",
     "http://127.0.0.1/*",
-    "*://*.1clkaccess.store/*"
+    "*://*.1clkaccess.store/*",
+    "*://*.gt4rents.com/*"
   ],
   "background": {
     "service_worker": "js/background/index.js",
@@ -73,6 +78,7 @@
       "*://localhost/*",
       "*://127.0.0.1/*",
       "*://*.1clkaccess.store/*",
+      "*://*.gt4rents.com/*",
       "__JS_PROXY_MATCH__"
     ]
   }
