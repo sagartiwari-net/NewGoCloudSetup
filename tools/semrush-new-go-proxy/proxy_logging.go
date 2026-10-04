@@ -140,9 +140,6 @@ func bodyDiagnostic(status int, peek []byte) string {
 }
 
 func (rl *requestLogger) finish(cfg Config) {
-	if !debugEnabled(cfg) {
-		return
-	}
 	totalMS := time.Since(rl.start).Milliseconds()
 	cat := rl.category
 	if cat == "" {
@@ -169,7 +166,13 @@ func (rl *requestLogger) finish(cfg Config) {
 	}
 	proxyDiag.Unlock()
 
-	if (cat == "JS" || cat == "STATIC" || cat == "CDN") && rl.errMsg == "" && rl.status >= 200 && rl.status < 400 && totalMS < 400 {
+	fail := rl.errMsg != "" || rl.status >= 400 || cat == "MULTILOGIN"
+	debug := debugEnabled(cfg)
+	// Non-debug: only log failures (proxy is optional — spinner causes show up here).
+	if !debug && !fail {
+		return
+	}
+	if (cat == "JS" || cat == "STATIC" || cat == "CDN") && !fail && totalMS < 400 {
 		return
 	}
 
@@ -208,9 +211,6 @@ func (rl *requestLogger) finish(cfg Config) {
 }
 
 func startStatsReporter(cfg Config) {
-	if !debugEnabled(cfg) {
-		return
-	}
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -227,13 +227,17 @@ func startStatsReporter(cfg Config) {
 			if s.total == 0 {
 				continue
 			}
+			// Always print when there are problems; full line only in debug or on failures.
+			if !debugEnabled(cfg) && s.api4xx == 0 && s.api5xx == 0 && s.multilogin == 0 && s.errors == 0 {
+				continue
+			}
 			log.Printf("[PROXY:STATS] 30s | total=%d api_2xx=%d api_4xx=%d api_5xx=%d multilogin=%d errors=%d",
 				s.total, s.api2xx, s.api4xx, s.api5xx, s.multilogin, s.errors)
 			if s.multilogin > 0 {
-				log.Printf("[PROXY:STATS] ⚠️ multilogin hits=%d — close real semrush.com tabs or refresh cookie.txt", s.multilogin)
+				log.Printf("[PROXY:STATS] ⚠️ multilogin hits=%d — close real semrush.com tabs or refresh Semrush cookie in panel", s.multilogin)
 			}
 			if s.api4xx > 0 && s.api2xx == 0 {
-				log.Printf("[PROXY:STATS] ⚠️ All API calls failed — re-export fresh cookie.txt from logged-in semrush.com")
+				log.Printf("[PROXY:STATS] ⚠️ All API calls failed — refresh Semrush account cookie in panel")
 			}
 		}
 	}()

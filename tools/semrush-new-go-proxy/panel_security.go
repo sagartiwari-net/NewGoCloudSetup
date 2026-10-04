@@ -441,10 +441,12 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 	if maxAge < 60 {
 		maxAge = 60
 	}
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") ||
+		strings.EqualFold(cfg.PublicScheme, "https")
 	http.SetCookie(w, &http.Cookie{
 		Name: "sem_session", Value: sessionToken, Path: "/",
 		Expires: expires, MaxAge: maxAge,
-		HttpOnly: true, Secure: false, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
 	})
 	log.Printf("[PANEL] access granted user=%s ip=%s", username, seen)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -632,14 +634,10 @@ func semrushRejectDevice(w http.ResponseWriter, r *http.Request) bool {
 	if !bound || (fp == storedFp && proof == storedProof) || semrushSubresource(r) || semrushStaticGet(r) {
 		return false
 	}
+	// Missing device headers: allow (Semrush SPA boots many APIs before/without our fetch
+	// patch). Only a real fingerprint/proof mismatch means cookie share → kill session.
 	if fp == "" && proof == "" {
-		if semrushDocument(r) {
-			return false
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
+		return false
 	}
 	semrushSessions.Delete(token)
 	recordSemrushCookieShare(r, token)
@@ -768,7 +766,7 @@ func injectSemrushDeviceScript(body string) string {
 function tmDeny(){document.documentElement.style.cssText="visibility:visible;background:#eef3f8;margin:0";while(document.documentElement.firstChild)document.documentElement.removeChild(document.documentElement.firstChild);var b=document.createElement("body");b.style.cssText="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;margin:0;background:#eef3f8;font-family:system-ui,sans-serif";b.innerHTML='<div style="width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px;text-align:center"><div style="font-size:28px">&#128274;</div><h1 style="font-size:28px;margin:12px 0">Access Denied</h1><p style="color:#64748b">You cannot open <span style="color:#2563eb;font-weight:700">Semrush</span> directly. Open it from your access link.</p><p style="margin-top:18px;color:#94a3b8;font-size:13px">A direct visit is not allowed</p></div>';document.documentElement.appendChild(b);}
 function tmReveal(){document.documentElement.style.visibility="visible";var s=document.querySelector("style[data-tm-device]");if(s)s.remove();}
 function tmPatch(fp,proof){if(window.__tmDevicePatched)return;window.__tmDevicePatched=true;function sameOrigin(u){try{return new URL(String(u),location.href).origin===location.origin;}catch(e){return false;}}var orig=window.fetch;window.fetch=function(input,init){var url=typeof input==="string"?input:(input&&input.url)||"";if(sameOrigin(url)){init=init||{};var h=new Headers(init.headers||(input&&input.headers)||undefined);if(!h.get("X-Device-Fp"))h.set("X-Device-Fp",fp);if(!h.get("X-Device-Proof"))h.set("X-Device-Proof",proof);init.headers=h;}return orig.call(this,input,init);};var xo=XMLHttpRequest.prototype.open;var xs=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.open=function(m,u){this.__tmSame=sameOrigin(u);return xo.apply(this,arguments);};XMLHttpRequest.prototype.send=function(){if(this.__tmSame){try{this.setRequestHeader("X-Device-Fp",fp);this.setRequestHeader("X-Device-Proof",proof);}catch(e){}}return xs.apply(this,arguments);};if(window.EventSource){var OES=window.EventSource;window.EventSource=function(url,opts){try{var u=new URL(String(url),location.href);if(u.origin===location.origin){u.searchParams.set("tm_dfp",fp);u.searchParams.set("tm_dproof",proof);url=u.pathname+u.search;}}catch(e){}return new OES(url,opts);};window.EventSource.prototype=OES.prototype;}}
-(function(){var proof="";try{proof=localStorage.getItem("tm_device_proof")||"";}catch(e){}if(!proof){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":"missing","X-Device-Proof":"missing"}}).finally(tmDeny);return;}tmReveal();var fp="";try{fp=localStorage.getItem("tm_device_fp")||"";}catch(e){}if(fp){tmPatch(fp,proof);setInterval(function(){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":fp,"X-Device-Proof":proof}}).then(function(r){if(!r.ok)tmDeny();});},2000);}})();
+(function(){var proof="";try{proof=localStorage.getItem("tm_device_proof")||"";}catch(e){}if(!proof){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":"missing","X-Device-Proof":"missing"}}).finally(tmDeny);return;}tmReveal();function weakHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}var out="";for(var j=0;j<8;j++){out+=((h>>> (j*4)) & 15).toString(16);h=(h*1664525+1013904223)|0;}while(out.length<64)out+=out;return out.slice(0,64);}function ensureFp(){var fp="";try{fp=localStorage.getItem("tm_device_fp")||"";}catch(e){}if(fp)return Promise.resolve(fp);var c=document.createElement("canvas");c.width=220;c.height=30;var g=c.getContext("2d");var sample="";if(g){g.textBaseline="top";g.font="14px Arial";g.fillStyle="#f60";g.fillRect(0,0,220,30);g.fillStyle="#069";g.fillText("tm-fp",2,2);try{sample=c.toDataURL().slice(-48);}catch(e){sample="x";}}var zone="";try{zone=Intl.DateTimeFormat().resolvedOptions().timeZone||"";}catch(e){}var raw=[navigator.userAgent||"",navigator.platform||"",navigator.language||"",String(navigator.hardwareConcurrency||0),String(screen.width)+"x"+String(screen.height),zone,sample].join("|");var done=function(f){try{localStorage.setItem("tm_device_fp",f);}catch(e){}return f;};if(window.crypto&&crypto.subtle&&window.isSecureContext){return crypto.subtle.digest("SHA-256",new TextEncoder().encode(raw)).then(function(buf){return done(Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0");}).join(""));});}return Promise.resolve(done(weakHash(raw)));}ensureFp().then(function(fp){tmPatch(fp,proof);setInterval(function(){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":fp,"X-Device-Proof":proof}}).then(function(r){if(!r.ok)tmDeny();});},2000);});})();
 </script>`
 	lower := strings.ToLower(body)
 	if h := strings.Index(lower, "<head"); h >= 0 {

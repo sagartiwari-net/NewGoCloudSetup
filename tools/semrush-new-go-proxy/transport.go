@@ -307,8 +307,18 @@ func isCloudflareChallengeBody(body []byte) bool {
 
 func logUpstreamProxyStatus(cfg Config) {
 	if px := resolveUpstreamProxy(cfg, ""); px != nil {
-		log.Printf("[PROXY] Upstream Semrush traffic via %s://%s", px.Scheme, px.Host)
-	} else {
-		log.Printf("[PROXY] ⚠️ No proxy configured (account / website / proxy.txt / upstream_proxy) — VPS IP hits Semrush directly (Cloudflare can 403)")
+		log.Printf("[PROXY] Global upstream via %s://%s", px.Scheme, px.Host)
+		return
 	}
+	// Per-account panel proxies are applied per-request; missing proxy is OK (direct).
+	if host := strings.TrimSpace(cfg.PublicHost); host != "" {
+		if acc, ok := semrushPanelAccount(host, ""); ok && strings.TrimSpace(acc.Proxy) != "" {
+			if u, err := parseProxyURL(acc.Proxy); err == nil && u != nil {
+				log.Printf("[PROXY] Panel account %q has proxy %s://%s (per-request); other accounts may run direct",
+					acc.Name, u.Scheme, u.Host)
+				return
+			}
+		}
+	}
+	log.Printf("[PROXY] Direct mode — no global/account proxy set (optional). Semrush via VPS IP; assign Proxy Manager on an account only if Cloudflare blocks")
 }
