@@ -1591,33 +1591,77 @@ func patcherScript(cfg Config) string {
     function isOfficialH10StoreURL(u) {
         if (typeof u !== 'string' || !u) return false;
         if (u.indexOf(H10_EXT_ID) !== -1) return true;
+        if (u.indexOf('/ext-install') !== -1) return false;
         return /(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/i.test(u) &&
           /helium[-_ ]?10/i.test(u);
+    }
+    function forceExtInstallAnchor(a) {
+        if (!a) return;
+        try {
+          a.setAttribute('href', H10_EXT_INSTALL);
+          a.href = H10_EXT_INSTALL;
+          // Same-tab install page (status bar + click both show our URL)
+          a.removeAttribute('target');
+          a.setAttribute('rel', 'noopener');
+        } catch (e) {}
     }
     function rewriteLinks() {
         document.querySelectorAll('a[href*="'+T+'"]').forEach(function(a) {
             var h = a.href.replace('https://'+T, O).replace('http://'+T, O);
             if (a.href !== h) a.href = h;
         });
-        document.querySelectorAll(
-          'a[href*="chromewebstore.google.com"],a[href*="chrome.google.com/webstore"],a[href*="'+H10_EXT_ID+'"]'
-        ).forEach(function(a) {
+        document.querySelectorAll('a[href]').forEach(function(a) {
             var h = a.getAttribute('href') || '';
             if (isOfficialH10StoreURL(h) || isOfficialH10StoreURL(a.href)) {
-                a.setAttribute('href', H10_EXT_INSTALL);
+                forceExtInstallAnchor(a);
             }
+        });
+        // "Install Now" near store icon — catch even if href not yet painted
+        document.querySelectorAll('a,button').forEach(function(el) {
+          var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!/^Install Now$/i.test(t)) return;
+          var a = el.tagName === 'A' ? el : (el.closest && el.closest('a'));
+          if (a && (isOfficialH10StoreURL(a.getAttribute('href') || '') || isOfficialH10StoreURL(a.href))) {
+            forceExtInstallAnchor(a);
+          }
         });
     }
     rewriteLinks();
     setInterval(rewriteLinks, 200);
     try {
-      new MutationObserver(rewriteLinks).observe(document.documentElement, {childList:true, subtree:true});
+      new MutationObserver(rewriteLinks).observe(document.documentElement, {
+        childList: true, subtree: true, attributes: true, attributeFilter: ['href']
+      });
     } catch (e) {}
+    // Capture-phase: React often restores chromewebstore href; never let the click leave.
+    function blockStoreNav(e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var a = t.closest('a');
+      if (!a) return;
+      var h = a.getAttribute('href') || a.href || '';
+      if (!isOfficialH10StoreURL(h) && !isOfficialH10StoreURL(a.href)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      forceExtInstallAnchor(a);
+      window.location.assign(H10_EXT_INSTALL);
+    }
+    ['click','auxclick','mousedown'].forEach(function(type){
+      document.addEventListener(type, blockStoreNav, true);
+    });
     var _open = window.open;
     window.open = function(url) {
         if (isOfficialH10StoreURL(url)) url = H10_EXT_INSTALL;
         return _open.apply(this, [url].concat(Array.prototype.slice.call(arguments, 1)));
     };
+    var _assign = window.location.assign.bind(window.location);
+    try {
+      window.location.assign = function(url) {
+        if (isOfficialH10StoreURL(String(url))) url = H10_EXT_INSTALL;
+        return _assign(url);
+      };
+    } catch (e) {}
 
     function patchURL(u) {
         if (typeof u !== 'string') return u;
