@@ -1715,22 +1715,16 @@ func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 }
 
 // roundTripper is a custom RoundTripper that:
-//  1. Dials with Chrome 120 uTLS fingerprint
-//  2. Detects ALPN ("h2" or "http/1.1")
-//  3. Routes to http2.Transport or http.Transport accordingly
+//  1. Probes ALPN with Chrome uTLS fingerprint
+//  2. Routes to http2.Transport or http.Transport (each dials via dialChrome)
+//
+// NOTE: Do NOT call http2.Transport.NewClientConn on golang.org/x/net@v0.55+
+// with newer Go — it panics when the wrap transport's t1 is nil
+// (nil pointer in net/http.Transport.NewClientConn). Use RoundTrip instead.
 type roundTripper struct {
-	h2    *http2.Transport
-	h1    *http.Transport
-	mu    sync.Mutex
-	pools map[string]*h2Pool
+	h2 *http2.Transport
+	h1 *http.Transport
 }
-
-type h2Pool struct {
-	conns   []*http2.ClientConn
-	dialing int
-}
-
-const maxAhrefsH2Conns = 6
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	addr := req.URL.Host
@@ -1742,62 +1736,17 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 
-	proxyKey := ""
-	if raw, ok := req.Context().Value(proxyContextKey).(string); ok {
-		proxyKey = raw
-	}
-	cacheKey := addr + "\n" + proxyKey
-	rt.mu.Lock()
-	pool := rt.pools[cacheKey]
-	if pool == nil {
-		pool = &h2Pool{}
-		rt.pools[cacheKey] = pool
-	}
-	for _, cc := range pool.conns {
-		if cc != nil && cc.CanTakeNewRequest() {
-			rt.mu.Unlock()
-			return cc.RoundTrip(req)
-		}
-	}
-	if len(pool.conns)+pool.dialing >= maxAhrefsH2Conns && len(pool.conns) > 0 {
-		cc := pool.conns[len(pool.conns)-1]
-		rt.mu.Unlock()
-		return cc.RoundTrip(req)
-	}
-	pool.dialing++
-	rt.mu.Unlock()
-
 	conn, err := dialChrome(req.Context(), addr)
 	if err != nil {
-		rt.mu.Lock()
-		pool.dialing--
-		rt.mu.Unlock()
 		return nil, err
 	}
-
 	proto := conn.ConnectionState().NegotiatedProtocol
 	log.Printf("[TLS] %s → ALPN=%q via proxy", req.URL.Host, proto)
+	_ = conn.Close() // probe only; real request dials again via DialTLSContext
 
 	if proto == "h2" {
-		cc, err := rt.h2.NewClientConn(conn)
-		if err != nil {
-			conn.Close()
-			rt.mu.Lock()
-			pool.dialing--
-			rt.mu.Unlock()
-			return nil, err
-		}
-		rt.mu.Lock()
-		pool.dialing--
-		pool.conns = append(pool.conns, cc)
-		rt.mu.Unlock()
-		return cc.RoundTrip(req)
+		return rt.h2.RoundTrip(req)
 	}
-
-	rt.mu.Lock()
-	pool.dialing--
-	rt.mu.Unlock()
-	conn.Close()
 	return rt.h1.RoundTrip(req)
 }
 
@@ -1829,8 +1778,8 @@ func buildChromeHTTPClient() *http.Client {
 	}
 
 	return &http.Client{
-		Transport: &roundTripper{h2: h2Transport, h1: h1Transport, pools: map[string]*h2Pool{}},
-		Timeout:   60 * time.Second,
+		Transport: &roundTripper{h2: h2Transport, h1: h1Transport},
+		Timeout:   120 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
