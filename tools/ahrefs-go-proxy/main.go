@@ -48,6 +48,7 @@ type Config struct {
 	CDNURL                 string `json:"cdn_url"`
 	PublicHost             string `json:"public_host"`
 	PublicScheme           string `json:"public_scheme"`
+	PanelDB                string `json:"panel_db"`
 	MySQLHost              string `json:"mysql_host"`
 	MySQLPort              string `json:"mysql_port"`
 	MySQLUser              string `json:"mysql_user"`

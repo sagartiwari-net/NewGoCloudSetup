@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -11,22 +12,51 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const ahrefsPanelDB = "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
-
 var (
-	ahrefsPanelOnce sync.Once
+	ahrefsPanelMu   sync.Mutex
 	ahrefsPanel     *sql.DB
 	ahrefsPanelErr  error
+	ahrefsPanelPath string
 )
 
+func ahrefsPanelDBPath() string {
+	cfg := loadConfig()
+	if p := strings.TrimSpace(cfg.PanelDB); p != "" {
+		return p
+	}
+	if v := strings.TrimSpace(os.Getenv("PANEL_DB")); v != "" {
+		return v
+	}
+	// Server default for gt4rents deploy
+	if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data/panel.db"); err == nil {
+		return "/www/wwwroot/gt4rents.com/panel/data/panel.db"
+	}
+	// Local Mac fallback
+	return "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
+}
+
 func openAhrefsPanel() (*sql.DB, error) {
-	ahrefsPanelOnce.Do(func() {
-		ahrefsPanel, ahrefsPanelErr = sql.Open("sqlite", "file:"+ahrefsPanelDB+"?_pragma=busy_timeout(5000)")
-		if ahrefsPanelErr == nil {
-			ahrefsPanel.SetMaxOpenConns(1)
-			ahrefsPanelErr = ahrefsPanel.Ping()
-		}
-	})
+	path := ahrefsPanelDBPath()
+	ahrefsPanelMu.Lock()
+	defer ahrefsPanelMu.Unlock()
+	if ahrefsPanel != nil && ahrefsPanelErr == nil && ahrefsPanelPath == path {
+		return ahrefsPanel, nil
+	}
+	if ahrefsPanel != nil {
+		_ = ahrefsPanel.Close()
+		ahrefsPanel = nil
+	}
+	ahrefsPanelPath = path
+	ahrefsPanel, ahrefsPanelErr = sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	if ahrefsPanelErr == nil {
+		ahrefsPanel.SetMaxOpenConns(1)
+		ahrefsPanelErr = ahrefsPanel.Ping()
+	}
+	if ahrefsPanelErr != nil {
+		log.Printf("[PANEL] open failed path=%s err=%v", path, ahrefsPanelErr)
+	} else {
+		log.Printf("[PANEL] opened %s", path)
+	}
 	return ahrefsPanel, ahrefsPanelErr
 }
 
@@ -83,16 +113,21 @@ func ahrefsLoadAccount(db *sql.DB, publicHost string, id int) (AhrefsAccount, er
 
 func ahrefsLeastUsedAccount(db *sql.DB, publicHost string, excludeID int) (AhrefsAccount, error) {
 	var acc AhrefsAccount
-	err := db.QueryRow(`SELECT a.id, a.name, a.cookie,
+	q := `SELECT a.id, a.name, a.cookie,
 		CASE WHEN TRIM(a.user_agent) != '' THEN a.user_agent ELSE COALESCE(ua.user_agent, '') END,
 		CASE WHEN TRIM(COALESCE(p.endpoint, '')) != '' THEN p.endpoint ELSE a.proxy END
 		FROM accounts a
 		JOIN websites w ON w.id = a.website_id
 		LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
 		LEFT JOIN proxies p ON p.id = a.proxy_id
-		WHERE w.domain IN ('127.0.0.1:5291', ?) AND a.status='active' AND TRIM(a.cookie) != '' AND a.id != ?
-		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC
-		LIMIT 1`, publicHost, excludeID).Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy)
+		WHERE w.domain IN ('127.0.0.1:5291', ?) AND a.status='active' AND TRIM(a.cookie) != ''`
+	args := []any{publicHost}
+	if excludeID > 0 {
+		q += ` AND a.id != ?`
+		args = append(args, excludeID)
+	}
+	q += ` ORDER BY CASE WHEN a.last_used_at IS NULL OR TRIM(a.last_used_at)='' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC LIMIT 1`
+	err := db.QueryRow(q, args...).Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy)
 	if err != nil {
 		return acc, err
 	}
