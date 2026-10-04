@@ -112,8 +112,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `cnva` — Canva (:4501) — Partial (429 / proxy); retest after SSL + account proxy  
 - [x] `helium10` — Helium10 (:5201) — **HTTPS OK**: HTTP/2 Connection strip, `/photos`-style soft login bounce, device empty-header allow, `/ext-install` + extension bake/icons, popup panel-gate + account-switcher lock + panel username  
 - [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
-- [ ] `junglescout` — JungleScout (:5211) — HTTP/2 Connection strip landed; verify access-link  
-- [ ] `grammarly` — grammarly (:4911)
+- [x] `junglescout` — JungleScout (:5211) — **HTTPS OK**: HTTP/2 Connection strip, panel logout→switch/contact-admin, device-lock reveal + safe deny redirect, extension icons + home→baked proxy origin, proxy optional  
+- [ ] `grammarly` — grammarly (:4911) — next
 
 ### Rest (alphabetical)
 
@@ -146,7 +146,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `indexification` (:5231)  
 - [ ] `jasper` (:4511)  
 - [ ] `joggai` (:5031)  
-- [ ] `junglescout` (:5211) — next (see Priority)  
+- [x] `junglescout` (:5211) — see Priority  
 - [ ] `kalodata` (:4951)  
 - [ ] `leonardo` (:4601)  
 - [ ] `linkedinlearning` (:4571)  
