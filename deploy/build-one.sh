@@ -33,14 +33,16 @@ echo "Building ${FOLDER} → ${OUTDIR}/app (port ${PORT}, host ${FQDN})"
 cd "${SRC}"
 go build -o "${OUTDIR}/app" .
 
-# Base config from tool source (prefer tracked server template — many tools gitignore config.json)
-# Order: config.server.json → config.production.json → config.json → keep existing OUTDIR → {}
+# Base config from tool source.
+# Prefer gt4rents panel template / local config.json — NEVER prefer config.production.json
+# (that file is often an old toolsmandi deploy with use_database + session_security on).
+# Order: config.server.json → config.json → config.production.json → keep OUTDIR → {}
 if [[ -f "${SRC}/config.server.json" ]]; then
   cp "${SRC}/config.server.json" "${OUTDIR}/config.json"
-elif [[ -f "${SRC}/config.production.json" ]]; then
-  cp "${SRC}/config.production.json" "${OUTDIR}/config.json"
 elif [[ -f "${SRC}/config.json" ]]; then
   cp "${SRC}/config.json" "${OUTDIR}/config.json"
+elif [[ -f "${SRC}/config.production.json" ]]; then
+  cp "${SRC}/config.production.json" "${OUTDIR}/config.json"
 elif [[ ! -f "${OUTDIR}/config.json" ]]; then
   echo '{}' > "${OUTDIR}/config.json"
 fi
@@ -60,7 +62,8 @@ base = json.loads(out.read_text()) if out.exists() else {}
 ov = json.loads(Path("${OVERLAY}").read_text()) if Path("${OVERLAY}").exists() else {}
 for k in ("port","public_host","public_scheme","panel_db","local_test_mode","bypass_auth",
           "mysql_host","mysql_port","mysql_user","mysql_db",
-          "target_url","cdn_url","tool_name","cookie_domain_suffix","home_path"):
+          "target_url","cdn_url","tool_name","cookie_domain_suffix","home_path",
+          "use_database"):
     if k in ov:
         base[k] = ov[k]
 pw = os.environ.get("GT4RENTS_MYSQL_PASSWORD")
@@ -78,6 +81,18 @@ if "local_test_mode" in base:
     base["local_test_mode"] = False
 if "bypass_auth" in base:
     base["bypass_auth"] = False
+# Panel.db mode: do NOT enable old MySQL session_security / use_database from production templates.
+# That combo breaks ChatGPT send (API gated) while HTML shell still loads.
+if str(base.get("panel_db") or "").strip():
+    base["use_database"] = False
+    base["local_test_mode"] = False
+    # Neutralize toolsmandi leftovers if a production template was used as base
+    if isinstance(base.get("logout_detection"), dict):
+        base["logout_detection"]["enabled"] = False
+    if isinstance(base.get("automation"), dict):
+        base["automation"]["enabled"] = False
+    if isinstance(base.get("session_security"), dict):
+        base["session_security"]["enabled"] = False
 out.write_text(json.dumps(base, indent=2) + "\n")
 print("wrote", out)
 PY

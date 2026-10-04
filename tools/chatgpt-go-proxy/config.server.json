@@ -1,0 +1,82 @@
+{
+  "port": "5151",
+  "use_database": false,
+  "bypass_auth": false,
+  "local_test_mode": false,
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "target_url": "https://chatgpt.com",
+  "cdn_url": "https://cdn.oaistatic.com",
+  "public_host": "cgpt.gt4rents.com",
+  "public_scheme": "http",
+  "tool_name": "ChatGPT",
+  "credit_label": "Messages",
+  "export_label": "Exports",
+  "home_path": "/",
+  "counted_paths": [],
+  "counted_prefixes": [
+    "/backend-api/conversation"
+  ],
+  "blocked_paths": [
+    "/settings",
+    "/admin",
+    "/auth/login",
+    "/login",
+    "/signup"
+  ],
+  "blocked_prefixes": [
+    "/settings",
+    "/admin",
+    "/payments",
+    "/account",
+    "/api/auth/signin",
+    "/api/auth/signout"
+  ],
+  "sensitive_cookies": [
+    "__secure-next-auth.session-token.0",
+    "__secure-next-auth.session-token.1",
+    "__host-next-auth.csrf-token",
+    "__secure-next-auth.callback-url",
+    "_puid",
+    "oai-sc",
+    "__secure-oai-is"
+  ],
+  "watchdog_triggers": [],
+  "cloudflare_bypass": true,
+  "extra_cdn_domains": [
+    "https://cdn.openai.com",
+    "https://auth-cdn.oaistatic.com",
+    "https://api.oaistatsig.com",
+    "https://persistent.oaistatic.com",
+    "https://ws.chatgpt.com",
+    "https://ab.chatgpt.com",
+    "https://images.openai.com",
+    "https://files.oaiusercontent.com",
+    "https://oaiusercontent.com",
+    "https://realtime.chatgpt.com"
+  ],
+  "disable_export_tracking": true,
+  "logout_detection": {
+    "enabled": false,
+    "show_overlay": false,
+    "refresh_seconds": 8,
+    "overlay_title": "Session Update",
+    "overlay_message": "Premium ChatGPT session expired. Refreshing cookies, please wait...",
+    "url_paths": [],
+    "text_sniffs": [],
+    "html_sniffs": []
+  },
+  "automation": {
+    "enabled": false,
+    "url": "",
+    "method": "POST",
+    "payload": {},
+    "headers": {},
+    "cooldown_seconds": 300
+  },
+  "session_security": {
+    "enabled": false
+  },
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "cookie_file": "cookie.txt",
+  "session_duration_minutes": 120
+}
