@@ -3918,6 +3918,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Magnific /photos hits a hard WAF "Security check" on datacenter IPs.
+	// Other stock category pages (e.g. /people-emotions) work and still expose
+	// photo search — skip the blocked landing page entirely.
+	if strings.Contains(strings.ToLower(cfg.TargetURL), "magnific.com") &&
+		(path == "/photos" || path == "/photos/") {
+		log.Printf("[MAGNIFIC] /photos → /people-emotions (WAF bypass) user=%s", currentUser)
+		http.Redirect(w, r, "/people-emotions#from_element=photos_categories_block", http.StatusFound)
+		return
+	}
+
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
 	if isBlockedPath(path, cfg) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
