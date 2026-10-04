@@ -787,7 +787,7 @@ func filterMagnificLocalStorageJSON(raw string) string {
 	}
 	out := make(map[string]string, 8)
 	for k, v := range m {
-		if k == "fp:theme" || k == "userPreferences" ||
+		if k == "fp:theme" || k == "userPreferences" || k == "homePreferences" ||
 			strings.HasPrefix(k, "session/") ||
 			strings.HasPrefix(k, "user/") ||
 			strings.HasPrefix(k, "auth/") {
@@ -1371,6 +1371,32 @@ func setPPSpyBrowserCookies(w http.ResponseWriter, cookieHeader string) {
 			Name:     name,
 			Value:    val,
 			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+}
+
+// setMagnificBrowserCookies mirrors Freepik/Magnific auth cookies onto the proxy
+// host at Path=/. Stock/marketing routes (outside /app) otherwise miss
+// magnific_session (upstream Path=/app) and show Log in / Sign up.
+func setMagnificBrowserCookies(w http.ResponseWriter, cookieHeader string) {
+	names := []string{
+		"magnific_session",
+		"GR_TOKEN", "GR_REFRESH", "GR_REFRESH_WRAPPED",
+		"GRID", "UID", "_fc", "_fcid",
+		"FP_TE", "FP_MBL_NEW", "AI_MBL", "XSRF-TOKEN",
+		"PRICING_UI_V2", "ak_bmsc",
+	}
+	for _, name := range names {
+		val := rawCookieNamed(cookieHeader, name)
+		if val == "" || val == "null" {
+			continue
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    val,
+			Path:     "/",
+			MaxAge:   7 * 24 * 3600,
 			SameSite: http.SameSiteLaxMode,
 		})
 	}
@@ -4507,6 +4533,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(strings.ToLower(cfg.TargetURL), "ppspy.com") {
 		setPPSpyBrowserCookies(w, accountCookieStr)
 	}
+	if strings.Contains(strings.ToLower(cfg.TargetURL), "magnific.com") {
+		setMagnificBrowserCookies(w, accountCookieStr)
+	}
 	// Build all domain pairs for location header rewriting (same as HTML body rewriting)
 	locationPairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 	for k, vv := range upstreamResp.Header {
@@ -4687,8 +4716,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
-			// Keep header nav hidden even after Next.js client navigations/re-renders
-			injectStr += `<script>(function(){function hideSasNav(){document.querySelectorAll('a[href*="/r/sas/advanced-search"],a[href*="/sas/history"]').forEach(function(a){var ul=a.closest("ul");if(ul)ul.style.setProperty("display","none","important");});}hideSasNav();new MutationObserver(hideSasNav).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
+			// Keep header nav / guest chrome hidden after Next.js client navigations
+			injectStr += `<script>(function(){function hideGuestChrome(){document.querySelectorAll('a[href*="/r/sas/advanced-search"],a[href*="/sas/history"]').forEach(function(a){var ul=a.closest("ul");if(ul)ul.style.setProperty("display","none","important");});document.querySelectorAll('a[href*="/log-in"],a[href*="/login"],a[href*="/sign-up"],a[href*="/signup"],a[href*="/pricing"],a[href*="/register"],button[data-cy*="login"],button[data-cy*="signup"],button[data-cy*="sign-up"]').forEach(function(el){el.style.setProperty("display","none","important");var p=el.parentElement;if(p&&p.children.length<=3)p.style.setProperty("display","none","important");});}hideGuestChrome();new MutationObserver(hideGuestChrome).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
 		}
 		// Inject only before the FIRST </head>. Canva embeds a full error-page
 		// HTML string (with its own </head>) in bootstrap — ReplaceAll would
