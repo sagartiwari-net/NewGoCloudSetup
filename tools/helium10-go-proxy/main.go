@@ -1434,12 +1434,38 @@ func matchHeliumPathHost(path string) (host, strippedPath string, ok bool) {
 	return "", "", false
 }
 
+// Official Helium 10 Chrome Web Store extension id — rewrite all store links to our /ext-install.
+const h10ChromeWebStoreExtID = "njmehopjdpcckochcggncklnlmikcbnb"
+
+func h10OfficialExtensionStoreURLs() []string {
+	id := h10ChromeWebStoreExtID
+	return []string{
+		"https://chromewebstore.google.com/detail/helium-10-for-amazon-sell/" + id,
+		"http://chromewebstore.google.com/detail/helium-10-for-amazon-sell/" + id,
+		"https://chromewebstore.google.com/detail/" + id,
+		"http://chromewebstore.google.com/detail/" + id,
+		"https://chrome.google.com/webstore/detail/helium-10-for-amazon-sell/" + id,
+		"http://chrome.google.com/webstore/detail/helium-10-for-amazon-sell/" + id,
+		"https://chrome.google.com/webstore/detail/" + id,
+		"http://chrome.google.com/webstore/detail/" + id,
+	}
+}
+
 // buildDomainReplacements creates a list of old→new domain pairs for HTML rewriting.
 func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
 	publicBase := fmt.Sprintf("%s://%s", publicScheme, publicHost)
+	extInstall := publicBase + "/ext-install"
 	var pairs [][2]string
+	for _, storeURL := range h10OfficialExtensionStoreURLs() {
+		pairs = append(pairs, [2]string{storeURL, extInstall})
+		// JS/JSON often escape slashes
+		pairs = append(pairs, [2]string{
+			strings.ReplaceAll(storeURL, "/", `\/`),
+			strings.ReplaceAll(extInstall, "/", `\/`),
+		})
+	}
 	if targetParsed != nil {
 		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})
 		pairs = append(pairs, [2]string{"http://" + targetParsed.Host, publicBase})
@@ -1560,17 +1586,42 @@ func patcherScript(cfg Config) string {
     if (%s) { setTimeout(checkWatchdog, 1000); setInterval(checkWatchdog, 4000); }
 
     // ── Link rewriter ──
+    var H10_EXT_ID = 'njmehopjdpcckochcggncklnlmikcbnb';
+    var H10_EXT_INSTALL = O + '/ext-install';
+    function isOfficialH10StoreURL(u) {
+        if (typeof u !== 'string' || !u) return false;
+        if (u.indexOf(H10_EXT_ID) !== -1) return true;
+        return /(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/i.test(u) &&
+          /helium[-_ ]?10/i.test(u);
+    }
     function rewriteLinks() {
         document.querySelectorAll('a[href*="'+T+'"]').forEach(function(a) {
             var h = a.href.replace('https://'+T, O).replace('http://'+T, O);
             if (a.href !== h) a.href = h;
         });
+        document.querySelectorAll(
+          'a[href*="chromewebstore.google.com"],a[href*="chrome.google.com/webstore"],a[href*="'+H10_EXT_ID+'"]'
+        ).forEach(function(a) {
+            var h = a.getAttribute('href') || '';
+            if (isOfficialH10StoreURL(h) || isOfficialH10StoreURL(a.href)) {
+                a.setAttribute('href', H10_EXT_INSTALL);
+            }
+        });
     }
     rewriteLinks();
     setInterval(rewriteLinks, 200);
+    try {
+      new MutationObserver(rewriteLinks).observe(document.documentElement, {childList:true, subtree:true});
+    } catch (e) {}
+    var _open = window.open;
+    window.open = function(url) {
+        if (isOfficialH10StoreURL(url)) url = H10_EXT_INSTALL;
+        return _open.apply(this, [url].concat(Array.prototype.slice.call(arguments, 1)));
+    };
 
     function patchURL(u) {
         if (typeof u !== 'string') return u;
+        if (isOfficialH10StoreURL(u)) return H10_EXT_INSTALL;
         u = u.replace('https://'+T, O).replace('http://'+T, O);
         if (C) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
         for (var e=0; e<EXTRA.length; e++) u = u.replace(EXTRA[e][0], O+EXTRA[e][1]);
