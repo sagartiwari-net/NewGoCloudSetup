@@ -1,0 +1,14 @@
+[Unit]
+Description=gt4rents panel-api (127.0.0.1:18090)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/www/wwwroot/gt4rents.com/panel
+Environment=PANEL_API_ADDR=127.0.0.1:18090
+ExecStart=/www/wwwroot/gt4rents.com/panel/panel-api
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

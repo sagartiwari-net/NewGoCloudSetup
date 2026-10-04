@@ -1,0 +1,25 @@
+# Template — copy to /etc/systemd/system/gt4-<subdomain>.service
+# Example: gt4-refs.service
+#
+#   SUB=refs
+#   sed "s/__SUB__/${SUB}/g; s/__PORT__/5291/g" \
+#     deploy/systemd/gt4-tool.service.template \
+#     > /etc/systemd/system/gt4-${SUB}.service
+#   systemctl daemon-reload && systemctl enable --now gt4-${SUB}
+
+[Unit]
+Description=gt4rents tool __SUB__ (port __PORT__)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/www/wwwroot/gt4rents.com/__SUB__
+ExecStart=/www/wwwroot/gt4rents.com/__SUB__/app
+Restart=on-failure
+RestartSec=3
+# Optional MySQL password for tools that read env at start:
+EnvironmentFile=-/www/wwwroot/gt4rents.com/_secrets/mysql.env
+# Do not conflict with other server apps — each tool has its own port in config.json
+
+[Install]
+WantedBy=multi-user.target
