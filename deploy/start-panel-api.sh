@@ -36,8 +36,14 @@ elif [[ -f "${PIDF}" ]] && kill -0 "$(cat "${PIDF}")" 2>/dev/null; then
   sleep 1
 fi
 
+if [[ -f "${BASE}/_secrets/mysql.env" ]]; then
+  # shellcheck disable=SC1090
+  source "${BASE}/_secrets/mysql.env"
+fi
+
 cd "${PANEL}"
-nohup env PANEL_API_ADDR="${ADDR}" ./panel-api >>"${LOG}" 2>&1 &
+# TOOL_PUBLIC_SCHEME from mysql.env (http now; https after SSL) for access-link URLs
+nohup env PANEL_API_ADDR="${ADDR}" TOOL_PUBLIC_SCHEME="${TOOL_PUBLIC_SCHEME:-http}" ./panel-api >>"${LOG}" 2>&1 &
 echo $! >"${PIDF}"
 sleep 1
 if ! kill -0 "$(cat "${PIDF}")" 2>/dev/null; then

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -81,7 +82,13 @@ func (s *server) openAccess(w http.ResponseWriter, r *http.Request) {
 		_, _ = s.db.Exec(`INSERT INTO host_reports (website_id, username, client_ip, ip_type, org, location, created_at) VALUES (?,?,?,?,?,?,?)`,
 			body.WebsiteID, body.Username, ip, kind, org, location, now.Format(time.RFC3339))
 	}
-	openURL := "http://" + domain + "/access?user=" + url.QueryEscape(body.Username) + "&token=" + url.QueryEscape(token)
+	// TOOL_PUBLIC_SCHEME=https after SSL; default http so pre-SSL access links work.
+	// Browser/nginx still decide asset scheme via X-Forwarded-Proto on the tool itself.
+	scheme := strings.TrimSpace(os.Getenv("TOOL_PUBLIC_SCHEME"))
+	if scheme != "https" {
+		scheme = "http"
+	}
+	openURL := scheme + "://" + domain + "/access?user=" + url.QueryEscape(body.Username) + "&token=" + url.QueryEscape(token)
 	writeJSON(w, 200, map[string]any{
 		"allowed":    true,
 		"open_url":   openURL,

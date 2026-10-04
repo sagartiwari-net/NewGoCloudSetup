@@ -11,6 +11,8 @@ mkdir -p "${BASE}/_secrets"
 if [[ ! -f "${BASE}/_secrets/mysql.env" ]]; then
   cat > "${BASE}/_secrets/mysql.env.example" <<'EOF'
 export GT4RENTS_MYSQL_PASSWORD='PASTE_PASSWORD_HERE'
+# After wildcard SSL is live, set https so panel access links use https://
+export TOOL_PUBLIC_SCHEME='http'
 EOF
   echo "Created ${BASE}/_secrets/mysql.env.example — copy to mysql.env and set password"
 fi

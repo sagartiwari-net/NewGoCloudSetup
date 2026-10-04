@@ -224,7 +224,8 @@ Full list: `tools.json` and `deploy/nginx-host-port.map.conf`
 
 - Some `go build` may fail → fix that tool later  
 - Panel websites in DB still may point at old hosts → update `public_host` / panel websites to `*.gt4rents.com`  
-- SSL / Cloudflare orange cloud decide later  
+- SSL later (§4d in owner `setup.md`): tool HTML rewrite follows `X-Forwarded-Proto` — **no tool rebuild** when flipping HTTP→HTTPS. Use Cloudflare **Full** (not Flexible). After SSL, set `TOOL_PUBLIC_SCHEME=https` in `_secrets/mysql.env` (or panel env) so access links use https. Reload nginx map so `$gt4_forwarded_proto` is defined.  
+
 - systemd services later; for now `start-*.sh` + `nohup` / screen  
 - Reseller multi-domain later (owner docs)
 
