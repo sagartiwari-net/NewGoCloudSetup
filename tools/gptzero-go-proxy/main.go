@@ -1270,6 +1270,8 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
   function scrubUsername() {
     if (!TM_USER) return;
     try {
+      // Profile menu plan label → panel username (e.g. "Personal Plan" → sagar).
+      document.querySelectorAll('[data-testid="profile-menu-plan-name"]').forEach(setPanelUser);
       document.querySelectorAll('div.break-all, div[class*="break-all"], span.break-all, span[class*="break-all"]').forEach(function(el) {
         var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
         if (looksLikeEmail(t) || el.getAttribute('data-tm-user-set')) setPanelUser(el);
