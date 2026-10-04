@@ -2611,7 +2611,7 @@ func academyVideoScript() string {
 }
 
 func antiClickjackFixScript() string {
-	return `<script>(function(){function fix(){try{var e=document.getElementById('antiClickjack');if(e)e.remove();if(self===top&&document.body)document.body.style.setProperty('display','block','important');}catch(x){}}fix();if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fix);})();</script>`
+	return `<script>(function(){function fix(){try{var e=document.getElementById('antiClickjack');if(e)e.remove();document.querySelectorAll('style[id*="antiClickjack"],style[id*="anti-clickjack"]').forEach(function(s){try{s.remove();}catch(x){}});try{document.documentElement.style.setProperty('visibility','visible','important');}catch(x){}if(document.body)document.body.style.setProperty('display','block','important');}catch(x){}}fix();if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fix);setInterval(fix,1500);})();</script>`
 }
 
 func staticDirectScript(targetHost string) string {
