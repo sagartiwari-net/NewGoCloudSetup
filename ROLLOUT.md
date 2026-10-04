@@ -111,6 +111,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
 - [ ] `cnva` — Canva (:4501) — Partial (429 / proxy); retest after SSL + account proxy  
 - [ ] `helium10` — helium10 (:5201)  
+- [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
 - [ ] `grammarly` — grammarly (:4911)
 
 ### Rest (alphabetical)
@@ -147,7 +148,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `kalodata` (:4951)  
 - [ ] `leonardo` (:4601)  
 - [ ] `linkedinlearning` (:4571)  
-- [ ] `magnific` (:5121)  
+- [x] `magnific` (:5121) — see Priority  
 - [ ] `merchinformer` (:4651)  
 - [ ] `minvo` (:4871)  
 - [ ] `mojo` (:4881)  
@@ -196,7 +197,7 @@ If fail: note in “Open issues”, fix, re-tick.
 |------|--------|--------|
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
-| `magnific` | Guest **Log in** / stock chrome after cookie paste; Security check without proxy | Keep GoAuto JSON (cookies+localStorage) — do not flatten in panel_gate. Rebuild after pull. Assign Proxy Manager proxy. Open `/app` via access-link |
+| `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
 
 ---
 
