@@ -105,7 +105,7 @@ If fail: note in “Open issues”, fix, re-tick.
 ### Priority
 
 - [x] `refs` — Ahrefs (:5291) — HTTP access-link LIVE  
-- [x] `smrs` — Semrush (:5141) — HTTP access-link LIVE  
+- [x] `smrs` — Semrush (:5141) — **HTTPS OK** (mixed-content https rewrite + panel account swap; proxy optional)  
 - [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link); prefer **ChatGPT 1** (ID:65); ChatGPT 2 cookies flaky — refresh later  
 - [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer  
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
