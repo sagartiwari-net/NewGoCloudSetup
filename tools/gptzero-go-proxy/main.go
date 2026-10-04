@@ -496,9 +496,11 @@ func forceGPTZeroPremiumPlan(path string, body []byte) []byte {
 		return body
 	}
 	pathL := strings.ToLower(path)
+	// Only touch profile / plan payloads — never scan/document JSON (breaks side panels).
 	interesting := strings.Contains(pathL, "profile") || strings.Contains(pathL, "subscription") ||
-		strings.Contains(pathL, "/plans") || strings.Contains(pathL, "rest/v1/") ||
-		bytes.Contains(trim, []byte(`"full_plan"`)) || bytes.Contains(trim, []byte(`"plan"`))
+		strings.Contains(pathL, "/plans") || strings.Contains(pathL, "rest/v1/profiles") ||
+		strings.Contains(pathL, "rest/v1/plans") ||
+		(bytes.Contains(trim, []byte(`"full_plan"`)) && bytes.Contains(trim, []byte(`"email"`)))
 	if !interesting {
 		return body
 	}
@@ -1261,8 +1263,14 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     }
     return data;
   }
-  function tmPatchPlanResponse(res) {
-    if (!res || !res.ok) return Promise.resolve(res);
+  function tmShouldPatchPlanURL(u) {
+    u = String(u || '').toLowerCase();
+    return u.indexOf('profile') !== -1 || u.indexOf('subscription') !== -1 ||
+      u.indexOf('/plans') !== -1 || u.indexOf('rest/v1/profiles') !== -1 ||
+      u.indexOf('rest/v1/plans') !== -1;
+  }
+  function tmPatchPlanResponse(res, reqUrl) {
+    if (!res || !res.ok || !tmShouldPatchPlanURL(reqUrl)) return Promise.resolve(res);
     var ct = (res.headers && res.headers.get('content-type')) || '';
     if (ct.indexOf('json') === -1) return Promise.resolve(res);
     return res.clone().text().then(function(txt) {
@@ -1280,13 +1288,18 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
   }
   window.fetch = function(inp, init) {
     var req = inp;
+    var reqUrl = '';
     if (typeof inp === 'string') {
+      reqUrl = inp;
       var su = patchURL(inp);
       if (su !== inp) req = su;
     } else if (inp instanceof Request) {
+      reqUrl = inp.url;
       var ru = patchURL(inp.url);
       if (ru !== inp.url) req = new Request(ru, inp);
     }
+    if (typeof req === 'string') reqUrl = req;
+    else if (req && req.url) reqUrl = req.url;
     return fo(req, init).then(function(res) {
       try {
         if (res && res.headers && res.headers.get('X-TM-Account-Switch') && !__tmSwapReload) {
@@ -1294,7 +1307,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
           setTimeout(function(){ location.reload(); }, 400);
         }
       } catch (e) {}
-      return tmPatchPlanResponse(res);
+      return tmPatchPlanResponse(res, reqUrl);
     });
   };
 
@@ -1320,10 +1333,9 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       '[data-testid="mobile-nav-chrome-extension"],',
       'a[href*="chromewebstore.google.com"],',
       '#more-menus,',
-      'li:has(#more-menus),',
-      'li:has(.sidebar-submenu-container),',
+      'li:has(>#more-menus),',
       '#account-settings-link,',
-      'li:has(#account-settings-link),',
+      'li:has(>#account-settings-link),',
       '[data-testid="profile-menu-logout-button"],',
       'button.amplitude-survey-feedback,',
       '.amplitude-survey-feedback',
@@ -1341,6 +1353,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     'Upgrade to Premium': 1,
     'Get started with Premium': 1,
     'Upgrade for Plagiarism scans.': 1,
+    'Upgrade for Plagiarism scans': 1,
     'Log out': 1,
     'Tell us what you think': 1,
     'Chrome Extension': 1,
@@ -1354,36 +1367,67 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     t = t.replace(/\s*Unlock Advanced Scan\s*$/i, '').trim();
     return t;
   }
+  // Never hide left rail / right nexus / editor chrome — previous parent-climb hid whole panels.
+  function gzIsLayoutChrome(el) {
+    if (!el || !el.closest) return false;
+    if (el.closest('#documents-link, #g0-nav-menu-button-basic, [class*="nexus-nav"], [class*="nexus-results"], [class*="ProseMirror"], [contenteditable="true"]')) return true;
+    if (el.id && String(el.id).indexOf('g0-nav-menu-button') === 0) return true;
+    var cls = (el.className && String(el.className)) || '';
+    if (/nexus|sidebar|ProseMirror|editor|document/i.test(cls)) return true;
+    try {
+      var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      if (r && (r.width > 280 || r.height > 220)) return true;
+    } catch (e) {}
+    return false;
+  }
   function gzHide(el) {
     if (!el || el.getAttribute('data-tm-gz-hide') === '1') return;
+    if (gzIsLayoutChrome(el)) return;
     el.setAttribute('data-tm-gz-hide', '1');
     el.style.setProperty('display', 'none', 'important');
     el.style.setProperty('visibility', 'hidden', 'important');
     el.style.setProperty('pointer-events', 'none', 'important');
     var li = el.closest ? el.closest('li') : null;
-    if (li && (el.id === 'chrome-extension-link' || el.id === 'account-settings-link' || el.id === 'more-menus' || el.closest('.sidebar-submenu-container'))) {
+    if (li && !gzIsLayoutChrome(li) && (el.id === 'chrome-extension-link' || el.id === 'account-settings-link' || el.id === 'more-menus')) {
       li.style.setProperty('display', 'none', 'important');
       li.setAttribute('data-tm-gz-hide', '1');
     }
-    // Profile-menu wrappers that only hold this one upsell row.
+    // Only collapse tiny single-child wrappers (profile menu rows), never large panels.
     var p = el.parentElement;
-    if (p && p.children && p.children.length === 1 && p !== document.body) {
-      p.setAttribute('data-tm-gz-hide', '1');
-      p.style.setProperty('display', 'none', 'important');
-      p.style.setProperty('visibility', 'hidden', 'important');
-      p.style.setProperty('pointer-events', 'none', 'important');
+    if (p && p.children && p.children.length === 1 && p !== document.body && !gzIsLayoutChrome(p)) {
+      try {
+        var pr = p.getBoundingClientRect ? p.getBoundingClientRect() : null;
+        if (pr && pr.width <= 420 && pr.height <= 120) {
+          p.setAttribute('data-tm-gz-hide', '1');
+          p.style.setProperty('display', 'none', 'important');
+          p.style.setProperty('visibility', 'hidden', 'important');
+          p.style.setProperty('pointer-events', 'none', 'important');
+        }
+      } catch (e) {}
     }
+  }
+  function gzUnhideLayout() {
+    try {
+      document.querySelectorAll('[data-tm-gz-hide="1"]').forEach(function(el) {
+        if (!gzIsLayoutChrome(el)) return;
+        el.removeAttribute('data-tm-gz-hide');
+        el.style.removeProperty('display');
+        el.style.removeProperty('visibility');
+        el.style.removeProperty('pointer-events');
+      });
+    } catch (e) {}
   }
   function scrubChrome() {
     try {
+      gzUnhideLayout();
       document.querySelectorAll(
         '#chrome-extension-link, #account-settings-link, #more-menus, ' +
         '[data-testid="profile-menu-logout-button"], [data-testid="mobile-nav-chrome-extension"], ' +
         'a[href*="chromewebstore.google.com"], .amplitude-survey-feedback'
       ).forEach(gzHide);
       document.querySelectorAll('button, a').forEach(function(el) {
-        // Never touch Scans sidebar item.
-        if (el.id === 'documents-link') return;
+        // Never touch Scans sidebar item / nav tabs.
+        if (el.id === 'documents-link' || gzIsLayoutChrome(el)) return;
         var t = gzLabel(el);
         var href = el.getAttribute('href') || '';
         var testid = el.getAttribute('data-testid') || '';
@@ -1391,25 +1435,23 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
           gzHide(el);
           return;
         }
-        if (HIDE_LABELS[t] || /^Upgrade(\s|$)/i.test(t) || /^Upgrade to Premium$/i.test(t)) {
-          // "More" / "Settings" only for known sidebar targets.
+        if (HIDE_LABELS[t] || /^Upgrade to Premium$/i.test(t)) {
+          // "More" / "Settings" / bare "Upgrade" only for known menu targets.
           if (t === 'More' && el.id !== 'more-menus') return;
           if (t === 'Settings' && el.id !== 'account-settings-link' && href !== '/account-settings') return;
+          if (t === 'Upgrade' && !(el.closest && el.closest('[data-testid], [role="menu"], [class*="menu"]'))) return;
           gzHide(el);
         }
       });
-      // Hide only Upgrade upsell — native credit meters are rewritten to panel limits below.
-      document.querySelectorAll('div, p, span, a, button, h1, h2, h3').forEach(function(el) {
-        if (el.children && el.children.length > 3) return;
+      // Hide compact upsell copy only — never climb to section/panel parents.
+      document.querySelectorAll('button, a, p, span, h1, h2, h3').forEach(function(el) {
+        if (gzIsLayoutChrome(el)) return;
+        if (el.children && el.children.length > 2) return;
         var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-        if (!t || t.length > 120) return;
-        if (/^Upgrade for more$/i.test(t) || /credits left this month/i.test(t) ||
-            /^Upgrade for Plagiarism scans\.?$/i.test(t) ||
-            /^Get started with Premium$/i.test(t) ||
-            /Access premium scans by upgrading your plan/i.test(t)) {
+        if (!t || t.length > 90) return;
+        if (/^Upgrade for more$/i.test(t) || /^Upgrade for Plagiarism scans\.?$/i.test(t) ||
+            /^Get started with Premium$/i.test(t)) {
           gzHide(el);
-          var card = el.closest ? (el.closest('[class*="upgrade"]') || el.closest('section') || el.parentElement) : null;
-          if (card && card !== document.body && (card.textContent || '').indexOf('Plagiarism') !== -1) gzHide(card);
         }
       });
     } catch (e) {}
