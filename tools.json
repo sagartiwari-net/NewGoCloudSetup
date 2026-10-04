@@ -365,7 +365,7 @@
       "tool": "chatbotapp",
       "folder": "chatbotapp-go-proxy",
       "subdomain": "chatbotapp",
-      "port": 5001,
+      "port": 5061,
       "fqdn": "chatbotapp.gt4rents.com"
     },
     {

@@ -23,7 +23,8 @@ Server: `65.109.16.196` · Domain: `gt4rents.com` · Repo: this folder → `/www
 - [x] payment-hub `:8090` left alone  
 - [x] `build-one` prefers `config.server.json` / panel mode (`use_database=false`)  
 - [x] Bulk `build-all` — **OK=80 FAIL=0** (2026-10-04)  
-- [x] `start-batch` — **OK=79 FAIL=1** (`chatbotapp` :5001 busy; restart after `start-tool` port-free fix)  
+- [x] `start-batch` — **OK=79 FAIL=1** → `:5001` = **smpanel Node** (not chatbotapp); remapped chatbotapp → **5061**  
+- [ ] `chatbotapp` rebuild/start on **5061** + nginx map reload  
 - [ ] Every website `domain` = `<sub>.gt4rents.com` in panel  
 - [ ] Active accounts + cookies (and **proxy** where CF blocks Hetzner)
 

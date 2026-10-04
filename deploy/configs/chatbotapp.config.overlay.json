@@ -1,5 +1,5 @@
 {
-  "port": "5001",
+  "port": "5061",
   "public_host": "chatbotapp.gt4rents.com",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
