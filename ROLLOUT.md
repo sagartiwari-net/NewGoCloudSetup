@@ -196,7 +196,7 @@ If fail: note in “Open issues”, fix, re-tick.
 |------|--------|--------|
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
-| `magnific` | Stuck on Magnific **Security check / Just a moment…** (bot/WAF; no proxy) | Panel → Magnific 1 → assign Proxy Manager proxy (same as Envato/Claude). Binary replaces hard/soft challenge with **Proxy required** + client watchdog |
+| `magnific` | Guest **Log in** / stock chrome after cookie paste; Security check without proxy | Keep GoAuto JSON (cookies+localStorage) — do not flatten in panel_gate. Rebuild after pull. Assign Proxy Manager proxy. Open `/app` via access-link |
 
 ---
 

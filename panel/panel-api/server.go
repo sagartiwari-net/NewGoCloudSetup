@@ -358,5 +358,6 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
 
 func readBody(r *http.Request, v any) error {
 	defer r.Body.Close()
-	return json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(v)
+	// 16MB: GoAuto dumps with localStorage (e.g. Magnific ai_models) exceed 1MB.
+	return json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(v)
 }
