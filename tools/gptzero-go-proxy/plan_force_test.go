@@ -33,6 +33,20 @@ func TestNormalizeGPTZeroPlan(t *testing.T) {
 	}
 }
 
+func TestStubSupabaseFeatures(t *testing.T) {
+	st, body, ok := maybeStubGPTZeroFeatures("/extra-cdn-0/rest/v1/features", 401, []byte(`{"message":"JWT expired"}`))
+	if !ok || st != 200 || !strings.Contains(string(body), "generally_available") {
+		t.Fatalf("features stub failed st=%d ok=%v body=%s", st, ok, body)
+	}
+	st, body, ok = maybeStubGPTZeroFeatures("/extra-cdn-0/rest/v1/features_access?email=eq.a", 401, []byte(`{"message":"JWT expired"}`))
+	if !ok || st != 200 || string(body) != "[]" {
+		t.Fatalf("features_access stub failed st=%d ok=%v body=%s", st, ok, body)
+	}
+	if gptzeroLooksLoggedOut(401, "/extra-cdn-0/rest/v1/features", []byte(`{"message":"JWT expired"}`)) {
+		t.Fatal("features 401 must not trigger account swap")
+	}
+}
+
 func TestBuildInjectUpsellDismissAndLayoutGuards(t *testing.T) {
 	s := buildInject(
 		Config{PublicHost: "gptzero.gt4rents.com", HomePath: "/", BlockedPaths: []string{"/login"}},

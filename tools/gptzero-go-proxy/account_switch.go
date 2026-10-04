@@ -174,49 +174,38 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 }
 
 // gptzeroLooksLoggedOut detects dead GPTZero/Supabase sessions that should rotate accounts.
+// Do NOT treat every 401 (features table, grammarly-bundle, etc.) as logout — that causes
+// swap loops, toasts, and slow reloads.
 func gptzeroLooksLoggedOut(status int, path string, body []byte) bool {
-	if status == http.StatusUnauthorized {
-		return true
+	pathL := strings.ToLower(path)
+	if i := strings.Index(pathL, "?"); i >= 0 {
+		pathL = pathL[:i]
+	}
+	// Supabase feature catalog noise — stubbed elsewhere; never swap on these.
+	if isSupabaseFeaturesPath(pathL) || strings.Contains(pathL, "grammarly-bundle") ||
+		strings.Contains(pathL, "growthbook") || strings.Contains(pathL, "/manifest") {
+		return false
 	}
 	lower := strings.ToLower(string(body))
-	pathL := strings.ToLower(path)
 	if strings.Contains(lower, "invalid jwt") || strings.Contains(lower, "jwt expired") ||
 		strings.Contains(lower, "invalid_grant") || strings.Contains(lower, "refresh_token_not_found") ||
 		strings.Contains(lower, "refresh_token_already_used") ||
 		strings.Contains(lower, "not authenticated") || strings.Contains(lower, "session_not_found") ||
-		strings.Contains(lower, "user not found") || strings.Contains(lower, "userid is missing") ||
-		strings.Contains(lower, "require valid cookie") || strings.Contains(lower, "requires login") {
+		strings.Contains(lower, "userid is missing") ||
+		strings.Contains(lower, "require valid cookie") || strings.Contains(lower, "requires login with email") {
 		return true
 	}
-	if status == http.StatusForbidden {
+	// Critical auth surfaces only.
+	critical := strings.Contains(pathL, "/auth/v1/") ||
+		strings.Contains(pathL, "assignments/access") ||
+		strings.Contains(pathL, "/v2/user/callhistory") ||
+		(strings.Contains(pathL, "/v3/scan") && status == http.StatusUnauthorized)
+	if critical && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
 		if strings.Contains(lower, "rate limit") || strings.Contains(lower, "quota") ||
 			strings.Contains(lower, "credit") || strings.Contains(lower, "limit reached") {
 			return false
 		}
-		if strings.Contains(lower, "unauthorized") || strings.Contains(lower, "forbidden") ||
-			strings.Contains(lower, "jwt") || strings.Contains(lower, "token") {
-			return true
-		}
-		if strings.Contains(pathL, "feature") || strings.Contains(pathL, "permission") ||
-			strings.Contains(pathL, "entitlement") || strings.Contains(pathL, "/me") ||
-			strings.Contains(pathL, "profile") || strings.Contains(pathL, "subscription") ||
-			strings.Contains(pathL, "assignments/access") {
-			return true
-		}
-	}
-	// Client toast: "Failed to fetch your feature access permissions."
-	if strings.Contains(pathL, "feature") || strings.Contains(pathL, "permission") ||
-		strings.Contains(pathL, "entitlement") || strings.Contains(pathL, "growthbook") ||
-		strings.Contains(pathL, "feature-access") || strings.Contains(pathL, "feature_access") ||
-		strings.Contains(pathL, "assignments/access") {
-		if status >= 400 {
-			return true
-		}
-		if strings.Contains(lower, "unauthorized") || strings.Contains(lower, "not authenticated") ||
-			strings.Contains(lower, "invalid jwt") || strings.Contains(lower, "jwt expired") ||
-			(strings.Contains(lower, "\"error\"") && (strings.Contains(lower, "auth") || strings.Contains(lower, "token"))) {
-			return true
-		}
+		return true
 	}
 	return false
 }

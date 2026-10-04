@@ -763,19 +763,32 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"error":"signup_disabled"}`))
 		return
 	}
+	// Fast path: Supabase features tables — never block boot on RLS/JWT noise.
+	if r.Method == http.MethodGet && isSupabaseFeaturesPath(path) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "private, max-age=60")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(stubGPTZeroFeaturesJSON(path))
+		return
+	}
+
+	// Static CDN assets must not wait on Supabase refresh (was making cold open very slow).
+	skipSessionRefresh := cdnKey != "" || isGPTZeroCDNPath(path)
 
 	raw, _ := sessionRawForRequest(r, c)
-	if refreshed, err := ensureFreshSessionRaw(raw, accID, accountProxy); err == nil {
-		raw = refreshed
-	} else if isProxyDialError(err) {
-		log.Printf("[PROXY] auth refresh dial failed: %v", err)
-		recordProxyFailure(c, r, panelUser, err.Error())
-		renderProxyProblem(w, r)
-		return
-	} else if usesPanelAccountMode(c) && !c.BypassAuth && accID > 0 && gptzeroAuthRefreshFailed(err) {
-		log.Printf("[AUTH] session refresh failed account=%s(%d): %v", accountName, accID, err)
-		if tryGPTZeroAccountSwap(w, r, c, panelUser, accID, accountName, "supabase_refresh:"+err.Error()) {
+	if !skipSessionRefresh {
+		if refreshed, err := ensureFreshSessionRaw(raw, accID, accountProxy); err == nil {
+			raw = refreshed
+		} else if isProxyDialError(err) {
+			log.Printf("[PROXY] auth refresh dial failed: %v", err)
+			recordProxyFailure(c, r, panelUser, err.Error())
+			renderProxyProblem(w, r)
 			return
+		} else if usesPanelAccountMode(c) && !c.BypassAuth && accID > 0 && gptzeroAuthRefreshFailed(err) {
+			log.Printf("[AUTH] session refresh failed account=%s(%d): %v", accountName, accID, err)
+			if tryGPTZeroAccountSwap(w, r, c, panelUser, accID, accountName, "supabase_refresh:"+err.Error()) {
+				return
+			}
 		}
 	}
 	if raw == "" {
@@ -986,8 +999,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	resp.Header.Del("Content-Security-Policy-Report-Only")
 	resp.Header.Del("X-Frame-Options")
 
+	if st, stub, ok := maybeStubGPTZeroFeatures(path, resp.StatusCode, body); ok {
+		resp.StatusCode = st
+		body = stub
+		resp.Header.Set("Content-Type", "application/json; charset=utf-8")
+	}
+
 	// Dead GPTZero cookie / JWT → rotate panel account (log [SWAP]) and reload SPA.
-	if usesPanelAccountMode(c) && !c.BypassAuth && accID > 0 &&
+	if !skipSessionRefresh && usesPanelAccountMode(c) && !c.BypassAuth && accID > 0 &&
 		gptzeroLooksLoggedOut(resp.StatusCode, path, body) {
 		reason := fmt.Sprintf("upstream_%d:%s", resp.StatusCode, path)
 		if tryGPTZeroAccountSwap(w, r, c, panelUser, accID, accountName, reason) {
@@ -1362,9 +1381,26 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       });
     } catch (e) {}
   }
-  setInterval(dismissUpsells, 400);
+  function dismissFeatureToast() {
+    try {
+      document.querySelectorAll('[role="alert"], [role="status"], [class*="toast"], [class*="Toast"], div, section').forEach(function(el) {
+        if (!el || (el.children && el.children.length > 8)) return;
+        var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length > 160) return;
+        if (/Failed to fetch your feature access permissions/i.test(t) ||
+            /feature access permissions/i.test(t)) {
+          var root = el.closest('[role="alert"], [role="status"], [class*="toast"], [class*="Toast"]') || el;
+          root.style.setProperty('display', 'none', 'important');
+          root.style.setProperty('visibility', 'hidden', 'important');
+          var x = root.querySelector('button, [aria-label="Close"], [aria-label="close"]');
+          if (x) { try { x.click(); } catch (e) {} }
+        }
+      });
+    } catch (e) {}
+  }
+  setInterval(function(){ dismissUpsells(); dismissFeatureToast(); }, 1200);
   try {
-    new MutationObserver(function() { dismissUpsells(); }).observe(document.documentElement, { childList: true, subtree: true });
+    new MutationObserver(function() { dismissUpsells(); dismissFeatureToast(); }).observe(document.documentElement, { childList: true, subtree: true });
   } catch (e) {}
 
   // Hide only the listed profile/sidebar/header chrome (keep Scans + main app).
@@ -1498,12 +1534,16 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       // Hide compact upsell copy only — never climb to section/panel parents.
       document.querySelectorAll('button, a, p, span, h1, h2, h3').forEach(function(el) {
         if (gzIsLayoutChrome(el)) return;
-        if (el.children && el.children.length > 2) return;
+        if (el.children && el.children.length > 4) return;
         var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
         if (!t || t.length > 90) return;
         if (/^Upgrade for more$/i.test(t) || /^Upgrade for Plagiarism scans\.?$/i.test(t) ||
-            /^Get started with Premium$/i.test(t)) {
+            /^Get started with Premium$/i.test(t) ||
+            /^\d+\s+scans?\s+left\s*Upgrade$/i.test(t) ||
+            (/^\d+\s+scans?\s+left$/i.test(t) && /Upgrade/i.test((el.parentElement && el.parentElement.textContent) || ''))) {
           gzHide(el);
+          var btn = el.closest ? el.closest('button') : null;
+          if (btn && !gzIsLayoutChrome(btn) && /scans?\s+left/i.test(btn.textContent || '')) gzHide(btn);
         }
       });
     } catch (e) {}
@@ -1654,13 +1694,19 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       .catch(function() {});
   }
 
-  function scrubAll() { scrubChrome(); scrubUsername(); paintNativeCredits(TM_LIMITS); }
+  function scrubAll() { scrubChrome(); scrubUsername(); paintNativeCredits(TM_LIMITS); dismissFeatureToast(); }
+  var __tmScrubTimer = null;
+  function scheduleScrub() {
+    if (__tmScrubTimer) return;
+    __tmScrubTimer = setTimeout(function(){ __tmScrubTimer = null; scrubAll(); }, 900);
+  }
   scrubAll();
   refreshPanelLimits();
-  setInterval(scrubAll, 700);
-  setInterval(refreshPanelLimits, 4000);
+  // Lighter cadence — heavy MutationObserver+700ms scrub was janking the SPA open.
+  setInterval(scrubAll, 2500);
+  setInterval(refreshPanelLimits, 8000);
   try {
-    new MutationObserver(function() { scrubAll(); }).observe(document.documentElement, { childList: true, subtree: true });
+    new MutationObserver(function() { scheduleScrub(); }).observe(document.documentElement, { childList: true, subtree: true });
   } catch (e) {}
 })();
 </script>`,
