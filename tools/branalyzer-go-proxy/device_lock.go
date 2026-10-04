@@ -497,9 +497,18 @@ function tmStore(fp, proof) {
 function tmPatchRequests(fp, proof) {
   if (window.__tmDevicePatched) return;
   window.__tmDevicePatched = true;
-  var origFetch = window.__tmOrigFetch || window.fetch;
+  // Always chain the CURRENT fetch (Branalyzer URL rewrite). Never jump to
+  // window.__tmOrigFetch — that skipped /extra-cdn proxy and caused Azure CORS
+  // → blank /home (sidebar only) on gt4rents while local cookie mode worked.
+  var origFetch = window.fetch;
   if (origFetch) {
     window.fetch = function (input, init) {
+      try {
+        if (typeof window.__tmPatchURL === "function") {
+          if (typeof input === "string") input = window.__tmPatchURL(input);
+          else if (input && typeof input.url === "string") input = new Request(window.__tmPatchURL(input.url), input);
+        }
+      } catch (e) {}
       var url = typeof input === "string" ? input : (input && input.url) || "";
       var same = false;
       try { same = new URL(url, location.href).origin === location.origin; } catch (e) {}
@@ -519,8 +528,13 @@ function tmPatchRequests(fp, proof) {
   var origOpen = XMLHttpRequest.prototype.open;
   var origSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (method, url) {
+    try {
+      if (typeof window.__tmPatchURL === "function") url = window.__tmPatchURL(url);
+    } catch (e) {}
     this.__tmURL = url;
-    return origOpen.apply(this, arguments);
+    var args = Array.prototype.slice.call(arguments);
+    args[1] = url;
+    return origOpen.apply(this, args);
   };
   XMLHttpRequest.prototype.send = function () {
     try {
@@ -532,6 +546,8 @@ function tmPatchRequests(fp, proof) {
     } catch (e) {}
     return origSend.apply(this, arguments);
   };
+  // Re-assert Branalyzer Azure→/extra-cdn rewrite as outermost wrapper.
+  try { if (typeof window.__tmReinstallBranPatches === "function") window.__tmReinstallBranPatches(); } catch (e) {}
 }
 `
 }

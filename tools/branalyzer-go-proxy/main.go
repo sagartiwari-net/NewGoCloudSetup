@@ -2904,12 +2904,13 @@ func patcherScript(cfg Config) string {
         return /\/_ajax\//.test(String(url||''));
     }
 
-    // ── XHR + fetch patches (re-applied — Angular Zone can wrap/replace prototypes) ──
+    // ── XHR + fetch patches (re-applied — Angular Zone / device-lock can wrap prototypes) ──
     var xo = XMLHttpRequest.prototype.open;
     var xs = XMLHttpRequest.prototype.send;
     var fo = window.fetch;
-    function installNetworkPatches() {
-        if (XMLHttpRequest.prototype.open && XMLHttpRequest.prototype.open.__tmBran) return;
+    window.__tmPatchURL = patchURL;
+    function installNetworkPatches(force) {
+        if (!force && XMLHttpRequest.prototype.open && XMLHttpRequest.prototype.open.__tmBran) return;
         xo = XMLHttpRequest.prototype.open;
         xs = XMLHttpRequest.prototype.send;
         XMLHttpRequest.prototype.open = function(m, u) {
@@ -2993,11 +2994,12 @@ func patcherScript(cfg Config) string {
         };
         window.fetch.__tmBran = true;
     }
-    installNetworkPatches();
+    window.__tmReinstallBranPatches = function() { try { installNetworkPatches(true); } catch (e) {} };
+    installNetworkPatches(true);
     setInterval(function() {
         try {
-            if (!XMLHttpRequest.prototype.open || !XMLHttpRequest.prototype.open.__tmBran) installNetworkPatches();
-            else if (!window.fetch || !window.fetch.__tmBran) installNetworkPatches();
+            if (!XMLHttpRequest.prototype.open || !XMLHttpRequest.prototype.open.__tmBran) installNetworkPatches(true);
+            else if (!window.fetch || !window.fetch.__tmBran) installNetworkPatches(true);
         } catch (e) {}
     }, 500);
 

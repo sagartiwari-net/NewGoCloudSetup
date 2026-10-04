@@ -113,7 +113,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `helium10` — Helium10 (:5201) — **HTTPS OK**: HTTP/2 Connection strip, `/photos`-style soft login bounce, device empty-header allow, `/ext-install` + extension bake/icons, popup panel-gate + account-switcher lock + panel username  
 - [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
 - [x] `junglescout` — JungleScout (:5211) — **HTTPS OK**: HTTP/2 Connection strip, panel logout→switch/contact-admin, device-lock reveal + safe deny redirect, extension icons + home→baked proxy origin, proxy optional  
-- [ ] `branalyzer` — Branalyzer (:5081) — **fixing**: Auth0 gate OK; blank `/home` = Azure `GetAccountInfo` CORS (direct azurewebsites) — early XHR patch → `/extra-cdn-*` (redeploy `e54ebd4`)  
+- [ ] `branalyzer` — Branalyzer (:5081) — **fixing**: local OK; server blank = device-lock wiped Azure→`/extra-cdn` rewrite (CORS). Fix: device patch chains `__tmPatchURL` + reinstall bran patches  
 - [ ] `grammarly` — grammarly (:4911) — next after branalyzer
 
 ### Rest (alphabetical)
