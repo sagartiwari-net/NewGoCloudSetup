@@ -104,6 +104,10 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !usesPanelAccountMode(cfg) || cfg.BypassAuth {
 		return false
 	}
+	// Pre-SSL HTTP: no service worker to attach X-Device-* on assets — skip hard reject.
+	if strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
+		return false
+	}
 	token, sess, ok := sessionFromRequest(r)
 	if !ok || sess == nil {
 		return false
@@ -272,7 +276,8 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func devicePageScript() string {
-	return `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>` + deviceSharedJS() + `
+	// Do NOT set html{visibility:hidden} — on HTTP (no SW) a script hiccup leaves a permanent blank page.
+	return `<style data-tm-device></style><script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;

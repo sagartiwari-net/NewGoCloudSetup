@@ -1811,7 +1811,11 @@ func main() {
 				bodyStr = stripHTMLMetaCSP(bodyStr)
 				bodyStr = injectScreenErrorRedirectHTML(bodyStr, cfg, htmlPath)
 				if usesPanelAccountMode(cfg) {
-					bodyStr = string(injectDeviceHTML([]byte(bodyStr)))
+					// Plain HTTP: skip heavy device HTML inject (breaks Claude shell / black page).
+					// Keep login-watch only; session cookie is enough pre-SSL.
+					if !strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
+						bodyStr = string(injectDeviceHTML([]byte(bodyStr)))
+					}
 					watch := claudeLoginWatchScript(cfg)
 					if idx := strings.Index(strings.ToLower(bodyStr), "</head>"); idx >= 0 {
 						// Preserve original </head> casing by splicing at matched index length.

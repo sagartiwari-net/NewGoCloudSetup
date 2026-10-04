@@ -3917,7 +3917,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		headInject := patcherHeadScript(cfg)
 		bodyInject := patcherBodyScript(cfg)
 		if usesPanelAccountMode(cfg) {
-			headInject = devicePageScript() + headInject + limitWidgetScript(cfg)
+			// Plain HTTP: skip devicePageScript (visibility/bind races → blank/black page).
+			if !strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
+				headInject = devicePageScript() + headInject
+			}
+			headInject += limitWidgetScript(cfg)
 		}
 		if !usesCookieFileMode(cfg) {
 			bodyInject += buildDomainCheckJS(cfg) + buildSecurityHeartbeatJS(cfg)

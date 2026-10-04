@@ -81,6 +81,9 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !usesPanelAccountMode(cfg) {
 		return false
 	}
+	if strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
+		return false
+	}
 	token, sess, ok := sessionFromRequest(r)
 	if !ok || sess == nil {
 		return false
@@ -253,7 +256,8 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func devicePageScript() string {
-	return `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>` + deviceSharedJS() + `
+	// No html{visibility:hidden} — HTTP/no-SW script failures leave a permanent blank page.
+	return `<style data-tm-device></style><script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;

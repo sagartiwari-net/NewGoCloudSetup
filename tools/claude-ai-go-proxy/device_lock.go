@@ -110,6 +110,9 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !usesPanelAccountMode(cfg) {
 		return false
 	}
+	if strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
+		return false
+	}
 	token, sess, ok := sessionFromRequest(r)
 	if !ok || sess == nil {
 		return false
@@ -227,7 +230,10 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
 		return
 	}
-	log.Printf("[DEVICE] proof stored")
+	// Avoid log spam from tmWatch re-bind every 2s.
+	if r.Header.Get("X-Device-Quiet") != "1" {
+		log.Printf("[DEVICE] proof stored")
+	}
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
 
@@ -290,12 +296,12 @@ function tmWatch(fp, proof) {
     fetch("/api/device-bind", {
       method: "POST",
       credentials: "same-origin",
-      headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+      headers: { "X-Device-Fp": fp, "X-Device-Proof": proof, "X-Device-Quiet": "1" }
     }).then(function (res) {
       // Network blips / CF challenge must not kill a live Claude session.
       if (res && (res.status === 401 || res.status === 403)) tmDeny();
     }).catch(function () {});
-  }, 2000);
+  }, 15000);
 }
 (function () {
   try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}

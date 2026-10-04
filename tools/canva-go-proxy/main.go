@@ -3074,13 +3074,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("Content-Security-Policy")
 		w.Header().Del("Content-Security-Policy-Report-Only")
 		w.Header().Del("X-Frame-Options")
-		// Device-lock CSS (html{visibility:hidden}) causes a blank white page until
-		// /api/device-bind succeeds. Skip for local bypass_auth / localhost.
+		// Device-lock inject: skip on local OR plain http (no SW; visibility/bind races → blank page).
 		localDev := cfg.BypassAuth || strings.Contains(cfg.PublicHost, "127.0.0.1") || strings.Contains(cfg.PublicHost, "localhost")
-		if usesPanelAccountMode(cfg) && !localDev {
+		httpPlain := strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http")
+		if usesPanelAccountMode(cfg) && !localDev && !httpPlain {
 			bodyBytes = injectDeviceHTML(bodyBytes)
-		} else if usesPanelAccountMode(cfg) && localDev {
-			log.Printf("[DEVICE] skip inject (local/bypass) host=%s bypass=%v", cfg.PublicHost, cfg.BypassAuth)
+		} else if usesPanelAccountMode(cfg) && (localDev || httpPlain) {
+			log.Printf("[DEVICE] skip inject host=%s scheme=%s bypass=%v", cfg.PublicHost, cfg.PublicScheme, cfg.BypassAuth)
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)

@@ -176,6 +176,13 @@ const accountSwitchRetryScript = `<script>
   n += 1;
   try { sessionStorage.setItem("tm_acct_try", String(n)); } catch (e) {}
   var msg = document.querySelector(".msg");
+  var title = document.querySelector("h1");
+  if (n >= 3) {
+    if (title) title.textContent = "ChatGPT accounts logged out";
+    if (msg) msg.textContent = "Every mapped ChatGPT cookie looks logged out. Open Panel → Accounts → paste fresh ChatGPT cookies, then open a new access link.";
+    try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}
+    return;
+  }
   if (msg && n > 1) {
     var text = msg.textContent || "";
     var mark = "Switching to ";
