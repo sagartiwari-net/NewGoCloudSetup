@@ -10,7 +10,7 @@
   "credit_label": "Credits",
   "home_path": "/app",
   "cookie_domain_suffix": "magnific.com",
-  "inject_css": "div.flex.flex-col:has(>[data-cy=\"popover-user-my-subscription\"]):has([data-cy=\"helpCenter\"]){display:none!important}div.flex.flex-col:has(>button[data-cy=\"logout-button\"]){display:none!important}div.flex.flex-col:has(>a[data-cy=\"upgrade\"]):has([data-cy=\"addMember\"]){display:none!important}a[href*=\"/log-in\"],a[href*=\"/login\"],a[href*=\"/sign-up\"],a[href*=\"/signup\"],a[href*=\"/register\"],a[href*=\"/pricing\"],a[href*=\"/plans\"],button[data-cy*=\"login\"],button[data-cy*=\"signup\"],button[data-cy*=\"sign-up\"]{display:none!important}",
+  "inject_css": "div.flex.flex-col:has(>[data-cy=\"popover-user-my-subscription\"]):has([data-cy=\"helpCenter\"]){display:none!important}div.flex.flex-col:has(>button[data-cy=\"logout-button\"]){display:none!important}div.flex.flex-col:has(>a[data-cy=\"upgrade\"]):has([data-cy=\"addMember\"]){display:none!important}p.max-w-56.truncate.text-surface-foreground-2{display:none!important}a[href*=\"/log-in\"],a[href*=\"/login\"],a[href*=\"/sign-up\"],a[href*=\"/signup\"],a[href*=\"/register\"],a[href*=\"/pricing\"],a[href*=\"/plans\"],button[data-cy*=\"login\"],button[data-cy*=\"signup\"],button[data-cy*=\"sign-up\"]{display:none!important}",
   "counted_paths": [],
   "counted_prefixes": [],
   "blocked_paths": [

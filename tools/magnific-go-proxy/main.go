@@ -1775,6 +1775,74 @@ func magnificSecurityCheckWatchHTML(hasProxy bool) string {
 })();</script>`
 }
 
+// magnificUserChromeScript hides the account email line in the user popover and
+// replaces the bold display name with the panel access-link username.
+func magnificUserChromeScript(panelUsername string) string {
+	userJS, _ := json.Marshal(strings.TrimSpace(panelUsername))
+	return fmt.Sprintf(`<script data-tm-mag-user="1">
+(function(){
+  if (window.__tmMagUserChrome) return;
+  window.__tmMagUserChrome = true;
+  var TM_USER = %s;
+  var EMAIL_SEL = 'p.max-w-56.truncate.text-surface-foreground-2';
+  var NAME_SEL = 'p.max-w-56.truncate.font-bold.text-surface-foreground-0';
+
+  function hideEmails(root) {
+    if (!root || !root.querySelectorAll) return;
+    var nodes = root.querySelectorAll(EMAIL_SEL);
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (!el || (el.dataset && el.dataset.tmMagEmailHide === '1')) continue;
+      el.style.setProperty('display', 'none', 'important');
+      el.setAttribute('aria-hidden', 'true');
+      if (el.dataset) el.dataset.tmMagEmailHide = '1';
+    }
+  }
+
+  function setPanelName(root) {
+    if (!TM_USER || !root || !root.querySelectorAll) return;
+    var nodes = root.querySelectorAll(NAME_SEL);
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (!el) continue;
+      if (el.textContent !== TM_USER) el.textContent = TM_USER;
+    }
+  }
+
+  function run() {
+    try {
+      hideEmails(document);
+      setPanelName(document);
+    } catch (e) {}
+  }
+
+  function loadUser(done) {
+    if (TM_USER) { done(); return; }
+    try {
+      fetch('/api/user-limits', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d && d.username) TM_USER = String(d.username).trim();
+          done();
+        })
+        .catch(function(){ done(); });
+    } catch (e) { done(); }
+  }
+
+  loadUser(function(){
+    run();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+    try {
+      new MutationObserver(function(){ run(); }).observe(document.documentElement, {
+        childList: true, subtree: true, characterData: true
+      });
+    } catch (e) {}
+    setInterval(run, 500);
+  });
+})();
+</script>`, string(userJS))
+}
+
 func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 	// Never absorb CF/session cookies from challenge responses (403 "Just a moment...").
 	// Those overwrite a good DigitaVision cf_clearance with unusable challenge cookies.
@@ -4728,6 +4796,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav / guest chrome hidden after Next.js client navigations
 			injectStr += `<script>(function(){function hideGuestChrome(){document.querySelectorAll('a[href*="/r/sas/advanced-search"],a[href*="/sas/history"]').forEach(function(a){var ul=a.closest("ul");if(ul)ul.style.setProperty("display","none","important");});document.querySelectorAll('a[href*="/log-in"],a[href*="/login"],a[href*="/sign-up"],a[href*="/signup"],a[href*="/pricing"],a[href*="/register"],button[data-cy*="login"],button[data-cy*="signup"],button[data-cy*="sign-up"]').forEach(function(el){el.style.setProperty("display","none","important");var p=el.parentElement;if(p&&p.children.length<=3)p.style.setProperty("display","none","important");});}hideGuestChrome();new MutationObserver(hideGuestChrome).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
+		}
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "magnific.com") {
+			injectStr += magnificUserChromeScript(currentUser)
 		}
 		// Inject only before the FIRST </head>. Canva embeds a full error-page
 		// HTML string (with its own </head>) in bootstrap — ReplaceAll would
