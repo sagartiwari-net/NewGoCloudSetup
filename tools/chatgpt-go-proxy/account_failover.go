@@ -52,8 +52,39 @@ func chatGPTLoggedInHTML(body []byte) bool {
 	return false
 }
 
+func chatGPTSessionBodyOK(text string) bool {
+	if strings.Contains(text, `"accessToken"`) {
+		return true
+	}
+	if strings.Contains(text, `"user"`) &&
+		!strings.Contains(text, `"user":null`) &&
+		!strings.Contains(text, `"user": null`) {
+		return true
+	}
+	return false
+}
+
+func chatGPTSessionBodyLoggedOut(text string) bool {
+	t := strings.TrimSpace(text)
+	return t == "" || t == "{}" ||
+		strings.Contains(text, `"user":null`) ||
+		strings.Contains(text, `"user": null`) ||
+		strings.Contains(text, `"accessToken":null`) ||
+		strings.Contains(text, `"accessToken": null`)
+}
+
+func looksLikeUpstreamChallenge(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "just a moment") ||
+		strings.Contains(lower, "cf-browser-verification") ||
+		strings.Contains(lower, "cdn-cgi/challenge") ||
+		strings.Contains(lower, "cloudflare") && strings.Contains(lower, "<html")
+}
+
 // probeChatGPTSession checks whether the account cookie still has a live OpenAI session.
 // Dead cookies still render the ChatGPT SPA shell, but the send control never enables.
+// Important: bare HTTP 403 from Hetzner/WAF must NOT mark a cookie dead — only clear
+// logged-out JSON ({}/user:null) should.
 func probeChatGPTSession(cfg Config, acc ToolAccount) (bool, string) {
 	cookie := strings.TrimSpace(parseCookieFromDB(acc.Cookie))
 	if cookie == "" {
@@ -79,20 +110,35 @@ func probeChatGPTSession(cfg Config, acc ToolAccount) (bool, string) {
 	req.Header.Set("Cookie", cookie)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return false, "dial:" + err.Error()
+		// Network blip — do not burn the account; let the page path decide.
+		return true, "probe_dial_soft:" + err.Error()
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	text := string(body)
-	if resp.StatusCode >= 400 {
-		return false, "http_" + http.StatusText(resp.StatusCode)
-	}
-	if strings.Contains(text, `"accessToken"`) ||
-		(strings.Contains(text, `"user"`) && !strings.Contains(text, `"user":null`) && !strings.Contains(text, `"user": null`)) {
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+
+	if chatGPTSessionBodyOK(text) {
 		return true, "ok"
 	}
-	if strings.TrimSpace(text) == "" || text == "{}" || strings.Contains(text, `"user":null`) || strings.Contains(text, `"user": null`) {
+	if looksLikeUpstreamChallenge(text) || (resp.StatusCode >= 400 && !strings.Contains(ct, "json") && strings.Contains(strings.ToLower(text), "<html")) {
+		log.Printf("[LB] session probe WAF/challenge for '%s' (HTTP %d) — keeping account", acc.Name, resp.StatusCode)
+		return true, "probe_waf_keep"
+	}
+	if chatGPTSessionBodyLoggedOut(text) {
 		return false, "logged_out"
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return false, "logged_out_401"
+	}
+	if resp.StatusCode == http.StatusForbidden && strings.Contains(ct, "json") {
+		// OpenAI JSON 403 with no accessToken → treat as dead session.
+		return false, "logged_out_403"
+	}
+	if resp.StatusCode >= 400 {
+		// Ambiguous (often datacenter WAF). Keep account; HTML failover still rotates on real login walls.
+		log.Printf("[LB] session probe inconclusive HTTP %d for '%s' — keeping account", resp.StatusCode, acc.Name)
+		return true, "probe_inconclusive"
 	}
 	return false, "no_access_token"
 }

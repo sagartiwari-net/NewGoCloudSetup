@@ -2137,7 +2137,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "chatgpt-v23-force-switch"
+const proxyBuildTag = "chatgpt-v24-probe-waf"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 

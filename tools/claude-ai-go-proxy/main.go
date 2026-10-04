@@ -1606,10 +1606,17 @@ func main() {
 			loggedOut := resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden ||
 				strings.Contains(lower, `"account":null`) || strings.Contains(lower, `"account": null`) ||
 				strings.Contains(lower, `"authenticated":false`) || strings.Contains(lower, `"loggedout":true`)
-			signedIn := !loggedOut && (strings.Contains(lower, `"uuid"`) || strings.Contains(lower, `"account_uuid"`) ||
-				(strings.Contains(lower, `"account"`) && strings.Contains(lower, `"email_address"`)))
+			// Claude signed-in bootstrap is large and includes account/org membership fields.
+			// Markers vary by build — also treat large 200 JSON as signed-in unless account is null.
+			signedIn := !loggedOut && (len(full) > 20000 ||
+				strings.Contains(lower, `"email_address"`) ||
+				strings.Contains(lower, `"account_uuid"`) ||
+				strings.Contains(lower, `"memberships"`) ||
+				strings.Contains(lower, `"organization_uuid"`) ||
+				strings.Contains(lower, `"full_name"`) ||
+				(strings.Contains(lower, `"account"`) && strings.Contains(lower, `"uuid"`)))
 			if loggedOut && usesPanelAccountMode(cfg) {
-				log.Printf("[AUTH] bootstrap LOGGED OUT — forcing account switch path=%s status=%d", resp.Request.URL.Path, resp.StatusCode)
+				log.Printf("[AUTH] bootstrap LOGGED OUT — forcing account switch path=%s status=%d bytes=%d", resp.Request.URL.Path, resp.StatusCode, len(full))
 				payload := []byte(`{"error":"logged_out","message":"switching_account"}`)
 				resp.StatusCode = http.StatusUnauthorized
 				resp.Status = "401 Unauthorized"
@@ -1621,9 +1628,13 @@ func main() {
 				return nil
 			}
 			if signedIn {
-				log.Printf("[AUTH] bootstrap signed-in path=%s", resp.Request.URL.Path)
+				log.Printf("[AUTH] bootstrap signed-in path=%s bytes=%d", resp.Request.URL.Path, len(full))
 			} else {
-				log.Printf("[AUTH] bootstrap opaque (%d bytes) path=%s status=%d", len(full), resp.Request.URL.Path, resp.StatusCode)
+				snip := string(full)
+				if len(snip) > 180 {
+					snip = snip[:180]
+				}
+				log.Printf("[AUTH] bootstrap opaque (%d bytes) path=%s status=%d snip=%q", len(full), resp.Request.URL.Path, resp.StatusCode, snip)
 			}
 			resp.Body = io.NopCloser(bytes.NewReader(full))
 			resp.ContentLength = int64(len(full))
