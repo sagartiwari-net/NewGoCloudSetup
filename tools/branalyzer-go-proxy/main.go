@@ -4459,10 +4459,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── 10. For JSON/CSS: rewrite and stream ─────────────────────────────────────
-	// Do not rewrite JavaScript bodies — Canva uses SRI; mutating JS breaks loads.
-	// Runtime URL rewriting is handled by the injected fetch/XHR patcher.
-	isRewritable := strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/css")
+	// ── 10. For JSON/CSS (+ Branalyzer JS): rewrite and stream ───────────────────
+	// Canva JS must not be rewritten (SRI). Branalyzer embeds absolute Azure
+	// function URLs in main.*.js — without baking /extra-cdn-* here, Auth0/XHR
+	// races on gt4rents leave zero API calls (no GetAccountInfo) and a blank home.
+	isBranJS := strings.Contains(strings.ToLower(cfg.TargetURL), "branalyzer.com") &&
+		(strings.Contains(contentType, "javascript") || strings.Contains(contentType, "ecmascript") ||
+			strings.HasSuffix(strings.ToLower(path), ".js"))
+	isRewritable := strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/css") || isBranJS
 	if isRewritable {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
@@ -4473,9 +4477,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
-			} else if strings.Contains(contentType, "text/css") {
+			} else if strings.Contains(contentType, "text/css") || isBranJS {
 				putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", bodyBytes)
 			}
+			w.Header().Del("Content-Encoding")
+			w.Header().Del("Content-Length")
+			w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
 			return

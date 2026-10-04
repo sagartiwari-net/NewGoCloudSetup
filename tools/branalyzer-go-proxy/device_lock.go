@@ -325,32 +325,23 @@ function tmWatch(fp, proof) {
     return;
   }
   tmReveal();
-  if (fp && proof) { tmPatchRequests(fp, proof); tmWatch(fp, proof); }
-  else if (window.fetch) {
-    window.__tmOrigFetch = window.fetch;
-    window.fetch = function () {
-      var self = this;
-      var args = arguments;
-      return tmFingerprint().then(function (next) {
-        try { sessionStorage.setItem("tm_device_fp", next); localStorage.setItem("tm_device_fp", next); } catch (e) {}
-        tmPatchRequests(next, proof);
-        return window.fetch.apply(self, args);
-      });
-    };
-  }
-  tmFingerprint().then(function (fp) {
-    try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
-    return tmStore(fp, proof).then(function () {
+  // Always resolve fp then patch once. Never install a temporary fetch wrapper that
+  // re-enters window.fetch after tmPatchRequests (infinite loop → Auth0 hangs →
+  // zero XHR like GetAccountInfo, blank /home on server only).
+  var bootFp = fp;
+  Promise.resolve(bootFp || tmFingerprint()).then(function (next) {
+    bootFp = next || "";
+    try { sessionStorage.setItem("tm_device_fp", bootFp); localStorage.setItem("tm_device_fp", bootFp); } catch (e) {}
+    return tmStore(bootFp, proof).then(function () {
       return fetch("/api/device-bind", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
-      }).then(function () { return fp; });
+        headers: { "X-Device-Fp": bootFp, "X-Device-Proof": proof }
+      }).then(function () { return bootFp; });
     });
-  }).then(function (fp) {
-    tmPatchRequests(fp, proof);
-    tmWatch(fp, proof);
-    // Skip device SW — it races with Access/reloads and can blank the SPA.
+  }).then(function (next) {
+    tmPatchRequests(next, proof);
+    tmWatch(next, proof);
     if (navigator.serviceWorker) {
       navigator.serviceWorker.getRegistrations().then(function (regs) {
         regs.forEach(function (r) { r.unregister(); });
