@@ -23,6 +23,11 @@ setup.md
 !tools/**/extension/icon/**/*.jpg
 !tools/**/extension/icon/**/*.jpeg
 !tools/**/extension/icon/**/*.webp
+!tools/**/extension/images/
+!tools/**/extension/images/**/*.png
+!tools/**/extension/images/**/*.jpg
+!tools/**/extension/images/**/*.jpeg
+!tools/**/extension/images/**/*.webp
 panel/update-panel/.env.production
 panel/update-panel/.env.local
 
