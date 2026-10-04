@@ -1793,6 +1793,20 @@ func main() {
 				return nil
 			}
 
+			// Never domain-rewrite JSON (esp. /edge-api/bootstrap). Rewriting claude.ai→clud
+			// inside ~200KB bootstrap leaves the SPA in a boot loop: signed-in forever,
+			// no chat_conversations / WebSocket, "Can't reach Claude" / empty sidebar.
+			// Outbound https://claude.ai and wss:// still go through injected proxyUrl/WS patches.
+			if strings.Contains(contentType, "json") {
+				debugLog(cfg, "JSON passthrough (no domain rewrite) path=%s bytes=%d", reqPath, len(bodyBytes))
+				resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+				resp.ContentLength = int64(len(bodyBytes))
+				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(bodyBytes)))
+				resp.Header.Del("Content-Encoding")
+				resp.Header.Del("Transfer-Encoding")
+				return nil
+			}
+
 			proxySchemeHost := proxyScheme + "://" + proxyHost
 
 			bodyStr = strings.ReplaceAll(bodyStr, cfg.TargetURL, proxySchemeHost)
@@ -1800,10 +1814,7 @@ func main() {
 			bodyStr = strings.ReplaceAll(bodyStr, "http://"+targetHost, proxySchemeHost)
 			bodyStr = strings.ReplaceAll(bodyStr, "//"+targetHost, "//"+proxyHost)
 			bodyStr = strings.ReplaceAll(bodyStr, `\/`+targetHost+`\/`, `\/`+proxyHost+`\/`)
-			// Avoid bare "/claude.ai" replace on JSON — corrupts bootstrap / chat payloads.
-			if !strings.Contains(contentType, "json") {
-				bodyStr = strings.ReplaceAll(bodyStr, `/`+targetHost, `/`+proxyHost)
-			}
+			bodyStr = strings.ReplaceAll(bodyStr, `/`+targetHost, `/`+proxyHost)
 			bodyStr = applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost, cfg)
 			bodyStr = applyDomainPathMap(bodyStr, proxySchemeHost, proxyWsOrigin(proxyScheme, proxyHost), cfg)
 
