@@ -2454,9 +2454,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Rewrite domain references
+		// Rewrite domain references + force Chrome Web Store → /ext-install
 		pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 		bodyBytes = rewriteBody(bodyBytes, pairs)
+		bodyBytes = rewriteH10ChromeStoreURLs(bodyBytes, publicBase)
+		bodyBytes = stripMetaCSP(bodyBytes)
 
 		// Remove CSP header (prevents our injected scripts)
 		w.Header().Del("Content-Security-Policy")
@@ -2469,7 +2471,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// Skip devicePageScript on Helium HTML: visibility:hidden blanks the SPA on
 		// HTTPS. Access-link boot already binds the device (same as Claude).
 
-		// Inject our patcher script before </head> (no limit widgets)
+		// Early, standalone store→/ext-install guard (must not depend on patcher).
+		bodyBytes = injectIntoHTMLHead(bodyBytes, h10ExtInstallGuardScript())
+
+		// Inject our patcher script before FIRST </head> only (ReplaceAll breaks
+		// embedded "</head>" strings in Helium bundles).
 		injectStr := ""
 		if usesPanelAccountMode(cfg) && !cfg.BypassAuth {
 			injectStr += h10LoginWatchScript(cfg)
@@ -2481,7 +2487,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// Hide Helium10 header account chip (avatar initials + chevron). Hashed
 		// styled-components classes change often, so also hide by structure.
 		injectStr += `<script>(function(){function hideH10AccountChip(){document.querySelectorAll('svg[data-icon="chevron-up"],svg[data-icon="chevron-down"]').forEach(function(svg){var node=svg.parentElement;for(var i=0;i<6&&node;i++){var t=(node.textContent||"").replace(/\s+/g,"");if(/^[A-Z]{1,3}$/.test(t)){var hide=node;for(var j=0;j<2&&hide.parentElement;j++)hide=hide.parentElement;hide.style.setProperty("display","none","important");return;}node=node.parentElement;}});}hideH10AccountChip();new MutationObserver(hideH10AccountChip).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
-		bodyBytes = regexp.MustCompile(`(?i)</head>`).ReplaceAll(bodyBytes, []byte(injectStr+"</head>"))
+		if loc := regexp.MustCompile(`(?i)</head>`).FindIndex(bodyBytes); loc != nil {
+			inj := []byte(injectStr + "</head>")
+			out := make([]byte, 0, len(bodyBytes)+len(inj))
+			out = append(out, bodyBytes[:loc[0]]...)
+			out = append(out, inj...)
+			out = append(out, bodyBytes[loc[1]:]...)
+			bodyBytes = out
+		} else {
+			bodyBytes = injectIntoHTMLHead(bodyBytes, injectStr)
+		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(upstreamResp.StatusCode)
@@ -2496,6 +2511,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 			bodyBytes = rewriteBody(bodyBytes, pairs)
+			bodyBytes = rewriteH10ChromeStoreURLs(bodyBytes, publicBase)
 			if canBrowserCache {
 				storeCDNCache(r, upstreamResp.StatusCode, contentType, bodyBytes)
 			}

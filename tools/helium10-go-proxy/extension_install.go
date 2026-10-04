@@ -10,8 +10,144 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+// rewriteH10ChromeStoreURLs replaces every official Helium10 Chrome Web Store
+// URL (plain + JSON-escaped) with our /ext-install page.
+func rewriteH10ChromeStoreURLs(body []byte, publicBase string) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	ext := strings.TrimRight(publicBase, "/") + "/ext-install"
+	id := h10ChromeWebStoreExtID
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`https?://chromewebstore\.google\.com/detail/(?:[^"'\\\s/]+/)?` + id + `[^"'\\\s]*`),
+		regexp.MustCompile(`https?://chrome\.google\.com/webstore/detail/(?:[^"'\\\s/]+/)?` + id + `[^"'\\\s]*`),
+		regexp.MustCompile(`https?:\\/\\/chromewebstore\.google\.com\\/detail\\/(?:[^"'\\\s/]+\\/)?` + id + `[^"'\\\s]*`),
+		regexp.MustCompile(`https?:\\/\\/chrome\.google\.com\\/webstore\\/detail\\/(?:[^"'\\\s/]+\\/)?` + id + `[^"'\\\s]*`),
+	}
+	escapedExt := strings.ReplaceAll(ext, "/", `\/`)
+	for i, re := range patterns {
+		repl := ext
+		if i >= 2 {
+			repl = escapedExt
+		}
+		body = re.ReplaceAll(body, []byte(repl))
+	}
+	return body
+}
+
+// h10ExtInstallGuardScript is a tiny standalone injector (no fmt.Sprintf) so a
+// broken patcher cannot leave Chrome Web Store "Install Now" links live.
+func h10ExtInstallGuardScript() string {
+	return `<script data-tm-h10-ext="1">
+(function(){
+  if (window.__tmH10ExtGuard) return;
+  window.__tmH10ExtGuard = true;
+  var ID = "njmehopjdpcckochcggncklnlmikcbnb";
+  var DEST = "/ext-install";
+  function isStore(u){
+    if (!u || typeof u !== "string") return false;
+    if (u.indexOf(ID) !== -1) return true;
+    return /chromewebstore\.google\.com|chrome\.google\.com\/webstore/i.test(u) && /helium/i.test(u);
+  }
+  function fix(a){
+    if (!a) return;
+    try {
+      a.setAttribute("href", DEST);
+      a.href = DEST;
+      a.removeAttribute("target");
+      a.setAttribute("rel", "noopener");
+    } catch (e) {}
+  }
+  function scan(){
+    try {
+      document.querySelectorAll("a[href]").forEach(function(a){
+        var h = a.getAttribute("href") || "";
+        if (isStore(h) || isStore(a.href)) fix(a);
+      });
+      document.querySelectorAll("a").forEach(function(a){
+        var t = (a.textContent || "").replace(/\s+/g, " ").trim();
+        if (!/^Install Now$/i.test(t)) return;
+        if (isStore(a.getAttribute("href") || "") || isStore(a.href) ||
+            a.querySelector('svg[data-icon="arrow-up-right-from-square"]')) {
+          fix(a);
+        }
+      });
+    } catch (e) {}
+  }
+  function onClick(e){
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var a = t.closest("a");
+    var btn = t.closest("button");
+    if (btn && /^Install Now$/i.test((btn.textContent || "").replace(/\s+/g, " ").trim())) {
+      a = a || btn.closest("a");
+    }
+    if (!a) return;
+    var h = a.getAttribute("href") || a.href || "";
+    var installNow = /^Install Now$/i.test((a.textContent || "").replace(/\s+/g, " ").trim());
+    if (!(isStore(h) || isStore(a.href) || (installNow && a.querySelector('svg[data-icon="arrow-up-right-from-square"]')))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    fix(a);
+    window.location.href = DEST;
+  }
+  ["click","auxclick","mousedown","pointerdown"].forEach(function(type){
+    document.addEventListener(type, onClick, true);
+  });
+  var _open = window.open;
+  window.open = function(url){
+    if (isStore(String(url || ""))) url = DEST;
+    return _open.apply(this, [url].concat([].slice.call(arguments, 1)));
+  };
+  scan();
+  setInterval(scan, 150);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan);
+  try {
+    new MutationObserver(scan).observe(document.documentElement, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ["href"]
+    });
+  } catch (e) {}
+})();
+</script>`
+}
+
+func stripMetaCSP(body []byte) []byte {
+	re := regexp.MustCompile(`(?is)<meta[^>]+http-equiv\s*=\s*["']?Content-Security-Policy["']?[^>]*>`)
+	return re.ReplaceAll(body, nil)
+}
+
+func injectIntoHTMLHead(body []byte, snippet string) []byte {
+	if len(body) == 0 || snippet == "" {
+		return body
+	}
+	if bytes.Contains(body, []byte(`data-tm-h10-ext="1"`)) && strings.Contains(snippet, `data-tm-h10-ext`) {
+		return body
+	}
+	lower := bytes.ToLower(body)
+	if h := bytes.Index(lower, []byte("<head")); h >= 0 {
+		if gt := bytes.IndexByte(lower[h:], '>'); gt >= 0 {
+			at := h + gt + 1
+			out := make([]byte, 0, len(body)+len(snippet))
+			out = append(out, body[:at]...)
+			out = append(out, snippet...)
+			out = append(out, body[at:]...)
+			return out
+		}
+	}
+	if i := bytes.Index(lower, []byte("</head>")); i >= 0 {
+		out := make([]byte, 0, len(body)+len(snippet))
+		out = append(out, body[:i]...)
+		out = append(out, snippet...)
+		out = append(out, body[i:]...)
+		return out
+	}
+	return append([]byte(snippet), body...)
+}
 
 const extensionTemplateDir = "extension"
 
