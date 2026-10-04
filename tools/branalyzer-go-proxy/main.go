@@ -2397,6 +2397,14 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	return rt.h1.RoundTrip(req)
 }
 
@@ -4033,7 +4041,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = extHostName
 	}
 
-	// Remove proxy headers
+	// Remove hop-by-hop + proxy headers. nginx/browser "Connection: upgrade"
+	// must never reach HTTP/2 upstream (Go: invalid Connection request header).
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("Transfer-Encoding")
+	upstreamReq.Header.Del("TE")
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
 	upstreamReq.Header.Del("X-Forwarded-For")
@@ -4343,8 +4358,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("Content-Security-Policy")
 		w.Header().Del("Content-Security-Policy-Report-Only")
 		w.Header().Del("X-Frame-Options")
-		if usesPanelAccountMode(cfg) {
+		if usesPanelAccountMode(cfg) && !isLocalDevHost(cfg) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
+		} else if usesPanelAccountMode(cfg) && isLocalDevHost(cfg) {
+			log.Printf("[DEVICE] skip inject (local/bypass) host=%s bypass=%v", cfg.PublicHost, cfg.BypassAuth)
 		}
 
 		// Auth0 / app localStorage — prefer panel GoAuto dump, then cookie.txt.

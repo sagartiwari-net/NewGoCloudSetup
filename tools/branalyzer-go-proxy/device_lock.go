@@ -55,9 +55,27 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 	return nil
 }
 
+func isLocalDevHost(cfg Config) bool {
+	if cfg.BypassAuth {
+		return true
+	}
+	host := strings.ToLower(cfg.PublicHost)
+	return strings.Contains(host, "127.0.0.1") || strings.Contains(host, "localhost")
+}
+
 func browserSubresource(r *http.Request) bool {
-	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	dest := strings.ToLower(r.Header.Get("Sec-Fetch-Dest"))
+	switch dest {
+	case "image", "style", "font", "script", "empty", "worker", "sharedworker", "serviceworker":
+		// "empty" = fetch/XHR. Device headers are patched async; blocking these
+		// 401s Azure/Auth0 calls and leaves the Branalyzer SPA shell blank.
+		return true
+	}
+	if strings.Contains(strings.ToLower(r.URL.Path), "service_worker") || strings.HasSuffix(strings.ToLower(r.URL.Path), "/sw.js") {
+		return true
+	}
+	mode := strings.ToLower(r.Header.Get("Sec-Fetch-Mode"))
+	if dest == "" && (mode == "cors" || mode == "same-origin" || mode == "no-cors") {
 		return true
 	}
 	return false
@@ -78,7 +96,7 @@ func isDocumentNavigation(r *http.Request) bool {
 // rejectPanelDevice blocks a copied cookie jar. A document request with a missing
 // or different proof deletes the session for every profile that holds it.
 func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool {
-	if !usesPanelAccountMode(cfg) {
+	if !usesPanelAccountMode(cfg) || isLocalDevHost(cfg) {
 		return false
 	}
 	token, sess, ok := sessionFromRequest(r)
@@ -254,22 +272,19 @@ function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  var page = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Access Denied</title><style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#eef3f8;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center}.ring{width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);display:grid;place-items:center}.lock{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px}h1{font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin-bottom:12px}.msg{color:#64748b;font-size:15px;line-height:1.55}.foot{margin-top:18px;color:#94a3b8;font-size:13px}</style></head><body><div class=\"card\"><div class=\"ring\"><div class=\"lock\">🔒</div></div><h1>Access Denied</h1><p class=\"msg\">Open this tool again from your access link.</p><p class=\"foot\">Your session ended or this browser is not authorized</p></div></body></html>";
-  try {
-    document.open("text/html","replace");
-    document.write(page);
-    document.close();
-  } catch (e) {
-    try { document.documentElement.innerHTML = page; } catch (e2) {
-      location.replace("/__tm_access_denied");
-    }
-  }
+  // Never embed Access Denied HTML here — literal </style></head><body> breaks HTML parsing.
+  location.replace("/__tm_access_denied");
 }
 function tmReveal() {
-  document.documentElement.style.visibility = "visible";
+  // Remove !important lock first — inline visibility without !important cannot win.
   var lock = document.querySelector("style[data-tm-device]");
   if (lock) lock.remove();
+  try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+  try { if (document.body) document.body.style.setProperty("display", "block", "important"); } catch (e) {}
 }
+// Never leave users on a permanent blank page if bind/fingerprint hangs.
+tmReveal();
+setTimeout(function () { try { tmReveal(); } catch (e) {} }, 800);
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
   window.__tmWatch = setInterval(function () {
@@ -289,11 +304,24 @@ function tmWatch(fp, proof) {
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   try { fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || ""; } catch (e) {}
   if (!proof) {
-    fetch("/api/device-bind", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Device-Fp": "missing", "X-Device-Proof": "missing" }
-    }).finally(tmDeny);
+    tmEnsureProof().then(function (next) {
+      proof = next;
+      return tmFingerprint().then(function (fp) {
+        try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+        return tmStore(fp, proof).then(function () {
+          return fetch("/api/device-bind", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+          }).then(function (res) {
+            if (!res.ok) { tmDeny(); return; }
+            tmReveal();
+            tmPatchRequests(fp, proof);
+            tmWatch(fp, proof);
+          });
+        });
+      });
+    }).catch(tmDeny);
     return;
   }
   tmReveal();
@@ -322,15 +350,13 @@ function tmWatch(fp, proof) {
   }).then(function (fp) {
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
-  }).catch(function () {});
+    // Skip device SW — it races with Access/reloads and can blank the SPA.
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
+  }).catch(function () { tmReveal(); });
 })();
 </script>`
 }
