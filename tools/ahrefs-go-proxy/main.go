@@ -3146,6 +3146,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 3. Build & Execute Upstream Request (Load Balanced & Self-Healing Retry Loop) ──
 	var activeAcc AhrefsAccount
 	var useDBAccount bool
+	var usePanelAccount bool // cookies live in panel.db (sqlite), not MySQL ahrefs_accounts
 	var sessionToken string
 
 	cookie, errCookie := r.Cookie("ahrefs_session")
@@ -3159,6 +3160,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if panelAcc, ok := ahrefsPanelAccount(cfg.PublicHost, sessionToken); ok {
 		activeAcc = panelAcc
 		useDBAccount = true
+		usePanelAccount = true
 	} else if sessionToken != "" {
 		var found bool
 		activeAcc, found = getSessionAssignedAccount(sessionToken)
@@ -3226,7 +3228,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			pendingLimitOK = true
 		}
 	}
-	if useDBAccount && db == nil && (r.URL.Path == "/user/login" || strings.HasPrefix(r.URL.Path, "/user/login/")) {
+	if usePanelAccount && (r.URL.Path == "/user/login" || strings.HasPrefix(r.URL.Path, "/user/login/")) {
 		userName := currentUser
 		if userName == "" {
 			userName = ahrefsSessionUser(sessionToken)
@@ -3247,7 +3249,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	for attempt := 1; attempt <= 3; attempt++ {
 		// If using DB/panel accounts, switch active account on retry
 		if attempt > 1 && useDBAccount {
-			if db == nil {
+			if usePanelAccount {
 				userName := currentUser
 				if userName == "" {
 					userName = ahrefsSessionUser(sessionToken)
@@ -3417,7 +3419,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[LB] account %s id=%d trigger: %s", activeAcc.Name, activeAcc.ID, switchReason)
 			var nextAcc AhrefsAccount
 			var switchErr error
-			if db == nil {
+			// Panel-mode (gt4rents): accounts are in panel.db. MySQL may still be
+			// connected for other tables — never rotate via ahrefs_accounts.
+			if usePanelAccount {
 				userName := currentUser
 				if userName == "" {
 					userName = ahrefsSessionUser(sessionToken)
@@ -3425,15 +3429,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				nextAcc, switchErr = switchAhrefsPanelAccount(cfg.PublicHost, sessionToken, activeAcc, userName, switchReason)
 				nextName := ""
 				if switchErr != nil {
-					log.Printf("[LB] still looking for another account: %v", switchErr)
+					log.Printf("[LB] still looking for another panel account: %v", switchErr)
 				} else {
 					nextName = nextAcc.Name
+					activeAcc = nextAcc
 				}
 				renderAccountSwitchPage(w, nextName, ahrefsSwitchReturnPath(r))
 				return
-			} else {
-				nextAcc, switchErr = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, switchReason)
 			}
+			nextAcc, switchErr = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, switchReason)
 			if switchErr != nil {
 				log.Printf("[LB] ⚠️ No other active accounts to switch to: %v", switchErr)
 				// Do not bill credits when every account failed (suspicious / login / etc.).
