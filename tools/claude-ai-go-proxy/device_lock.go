@@ -73,7 +73,20 @@ func clearPanelDeviceBinding(sessionToken string) {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "audio", "video", "empty":
+		return true
+	}
+	path := strings.ToLower(r.URL.Path)
+	if strings.HasPrefix(path, "/cdn-cgi/") ||
+		strings.HasPrefix(path, "/edge-api/") ||
+		path == "/favicon.ico" ||
+		strings.HasSuffix(path, ".js") ||
+		strings.HasSuffix(path, ".css") ||
+		strings.HasSuffix(path, ".woff2") ||
+		strings.HasSuffix(path, ".ico") ||
+		strings.HasSuffix(path, ".png") ||
+		strings.HasSuffix(path, ".svg") ||
+		strings.HasSuffix(path, ".webp") {
 		return true
 	}
 	return false
@@ -242,15 +255,28 @@ function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  var page = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Access Denied</title><style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#eef3f8;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center}.ring{width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);display:grid;place-items:center}.lock{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px}h1{font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin-bottom:12px}.msg{color:#64748b;font-size:15px;line-height:1.55}.foot{margin-top:18px;color:#94a3b8;font-size:13px}</style></head><body><div class=\"card\"><div class=\"ring\"><div class=\"lock\">🔒</div></div><h1>Access Denied</h1><p class=\"msg\">Open this tool again from your access link.</p><p class=\"foot\">Your session ended or this browser is not authorized</p></div></body></html>";
+  // DOM rebuild only — never document.write/innerHTML a full HTML string (leaks script as text).
   try {
-    document.open("text/html","replace");
-    document.write(page);
-    document.close();
+    var html = document.documentElement;
+    html.style.cssText = "visibility:visible;background:#eef3f8;margin:0";
+    while (html.firstChild) html.removeChild(html.firstChild);
+    var body = document.createElement("body");
+    body.style.cssText = "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;margin:0;background:#eef3f8;color:#0f172a;font-family:system-ui,sans-serif";
+    var card = document.createElement("div");
+    card.style.cssText = "width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px;text-align:center";
+    var h1 = document.createElement("h1");
+    h1.textContent = "Access Denied";
+    h1.style.cssText = "font-size:28px;margin:0 0 12px;font-weight:800";
+    var msg = document.createElement("p");
+    msg.textContent = "Open this tool again from your access link.";
+    msg.style.cssText = "color:#64748b;font-size:15px;margin:0";
+    var foot = document.createElement("p");
+    foot.textContent = "Your session ended or this browser is not authorized";
+    foot.style.cssText = "margin-top:18px;color:#94a3b8;font-size:13px";
+    card.appendChild(h1); card.appendChild(msg); card.appendChild(foot);
+    body.appendChild(card); html.appendChild(body);
   } catch (e) {
-    try { document.documentElement.innerHTML = page; } catch (e2) {
-      location.replace("/__tm_access_denied");
-    }
+    location.replace("/__tm_access_denied");
   }
 }
 function tmReveal() {
@@ -266,7 +292,8 @@ function tmWatch(fp, proof) {
       credentials: "same-origin",
       headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
     }).then(function (res) {
-      if (!res.ok) tmDeny();
+      // Network blips / CF challenge must not kill a live Claude session.
+      if (res && (res.status === 401 || res.status === 403)) tmDeny();
     }).catch(function () {});
   }, 2000);
 }

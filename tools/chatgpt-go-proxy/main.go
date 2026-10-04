@@ -2097,72 +2097,18 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			addr += ":80"
 		}
 	}
-	connKey := upstreamConnKey(req.Context(), addr)
-	if cc := rt.sharedH2(connKey); cc != nil {
-		return cc.RoundTrip(req)
-	}
-	rt.mu.Lock()
-	if rt.h2cc != nil {
-		if cc := rt.h2cc[connKey]; cc != nil && cc.CanTakeNewRequest() {
-			rt.mu.Unlock()
-			return cc.RoundTrip(req)
-		}
-	}
-	if rt.dialing == nil {
-		rt.dialing = map[string]*h2Dial{}
-	}
-	if call := rt.dialing[connKey]; call != nil {
-		rt.mu.Unlock()
-		<-call.done
-		if call.cc != nil && call.cc.CanTakeNewRequest() {
-			return call.cc.RoundTrip(req)
-		}
-		if call.err != nil {
-			return nil, call.err
-		}
-		return rt.h1.RoundTrip(req)
-	}
-	call := &h2Dial{done: make(chan struct{})}
-	rt.dialing[connKey] = call
-	rt.mu.Unlock()
-
-	finish := func(cc *http2.ClientConn, err error) {
-		call.cc = cc
-		call.err = err
-		close(call.done)
-		rt.mu.Lock()
-		delete(rt.dialing, connKey)
-		rt.mu.Unlock()
-	}
+	// Probe ALPN only — do NOT call http2.Transport.NewClientConn (panics on
+	// golang.org/x/net@v0.55+ when wrap t1 is nil). Same pattern as Ahrefs.
 	conn, err := dialChrome(req.Context(), addr)
 	if err != nil {
-		finish(nil, err)
 		return nil, err
 	}
-	if conn.ConnectionState().NegotiatedProtocol != "h2" {
-		conn.Close()
-		finish(nil, nil)
-		return rt.h1.RoundTrip(req)
-	}
-	// x/net v0.55+ may panic in NewClientConn when wrap transport t1 is nil.
-	var cc *http2.ClientConn
-	func() {
-		defer func() {
-			if rec := recover(); rec != nil {
-				err = fmt.Errorf("NewClientConn panic: %v", rec)
-			}
-		}()
-		cc, err = rt.h2.NewClientConn(conn)
-	}()
-	if err != nil || cc == nil {
-		conn.Close()
-		finish(nil, err)
-		// Fallback: let http2.Transport dial via DialTLSContext (uTLS).
+	proto := conn.ConnectionState().NegotiatedProtocol
+	_ = conn.Close()
+	if proto == "h2" {
 		return rt.h2.RoundTrip(req)
 	}
-	rt.rememberH2(connKey, cc)
-	finish(cc, nil)
-	return cc.RoundTrip(req)
+	return rt.h1.RoundTrip(req)
 }
 
 func buildChromeHTTPClient() *http.Client {

@@ -750,7 +750,23 @@ func isEnvatoAssetPath(path string) bool {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "audio", "video", "script":
+	case "image", "style", "font", "audio", "video", "script", "empty":
+		return true
+	}
+	path := strings.ToLower(r.URL.Path)
+	if strings.HasPrefix(path, "/images/") ||
+		strings.HasPrefix(path, "/__domain__/") ||
+		strings.HasPrefix(path, "/cdn-cgi/") ||
+		path == "/favicon.ico" ||
+		strings.HasSuffix(path, ".avif") ||
+		strings.HasSuffix(path, ".js") ||
+		strings.HasSuffix(path, ".css") ||
+		strings.HasSuffix(path, ".woff2") ||
+		strings.HasSuffix(path, ".png") ||
+		strings.HasSuffix(path, ".jpg") ||
+		strings.HasSuffix(path, ".webp") ||
+		strings.HasSuffix(path, ".svg") ||
+		strings.HasSuffix(path, ".ico") {
 		return true
 	}
 	return false

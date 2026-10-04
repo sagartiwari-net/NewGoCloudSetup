@@ -1679,8 +1679,9 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	proto := conn.ConnectionState().NegotiatedProtocol
+	_ = conn.Close() // probe only; real request dials again via DialTLSContext
 	if proto == "h2" {
-		return rt.h2.RoundTripOpt(req, http2.RoundTripOpt{})
+		return rt.h2.RoundTrip(req)
 	}
 	return rt.h1.RoundTrip(req)
 }

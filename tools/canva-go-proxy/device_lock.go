@@ -57,7 +57,29 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "audio", "video", "empty":
+		return true
+	}
+	path := strings.ToLower(r.URL.Path)
+	// Without a service worker (plain HTTP), <script>/<link> cannot send X-Device-* headers.
+	// Allow static/CDN paths so the page does not stay blank after bind.
+	if strings.HasPrefix(path, "/cdn-proxy/") ||
+		strings.HasPrefix(path, "/cdn-cgi/") ||
+		strings.HasPrefix(path, "/extra-cdn-") ||
+		strings.HasPrefix(path, "/static") ||
+		path == "/favicon.ico" ||
+		strings.HasSuffix(path, ".js") ||
+		strings.HasSuffix(path, ".css") ||
+		strings.HasSuffix(path, ".woff") ||
+		strings.HasSuffix(path, ".woff2") ||
+		strings.HasSuffix(path, ".map") ||
+		strings.HasSuffix(path, ".ico") ||
+		strings.HasSuffix(path, ".png") ||
+		strings.HasSuffix(path, ".jpg") ||
+		strings.HasSuffix(path, ".jpeg") ||
+		strings.HasSuffix(path, ".webp") ||
+		strings.HasSuffix(path, ".svg") ||
+		strings.HasSuffix(path, ".gif") {
 		return true
 	}
 	return false

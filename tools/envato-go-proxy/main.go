@@ -2270,12 +2270,23 @@ func main() {
 						dedupe = name
 					}
 
-					// Bill only when real file bytes succeed. /download.data "Automatically
-					// licensed" must NOT consume a credit — the CDN follow-up often fails
-					// (proxy CONNECT 403) and the user never gets the file.
+					// Bill on successful /download.data (license JSON) OR real CDN file bytes.
+					// Photo/CDN URLs often leave the proxy (absolute elements CDN) so waiting
+					// only for file bytes left the widget at 0/10 after a completed download.
 					previewCDN := envatoPreviewHost(reqHost) || envatoPreviewPath(reqPath)
 					if licenseHit {
-						log.Printf("[DOWNLOAD] licensed wait file user=%s dedupe=%s name=%q", user, dedupe, name)
+						display := name
+						if display == "" {
+							display = chargeName
+						}
+						if display == "" {
+							display = dedupe
+						}
+						if display != "" {
+							recordEnvatoDownload(user, display, dedupe)
+						} else {
+							log.Printf("[DOWNLOAD] licensed but empty label user=%s path=%s", user, reqPath)
+						}
 					} else if !isHTML && !isJSON && !previewCDN && isChargeableEnvatoFileName(name) {
 						display := name
 						if display != "" {
