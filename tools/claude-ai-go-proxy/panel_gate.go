@@ -433,6 +433,18 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"error":"proxy_unavailable","message":"Contact to Admin/Provider to fix it ASAP"}`)
 }
 
+// claudeCFNeedsProxyCard is shown when Claude returns a Cloudflare challenge and the
+// panel account has no Proxy Manager proxy. Passthrough CF HTML looks like a blank load.
+func claudeCFNeedsProxyCard(cfg Config) lightCard {
+	name := html.EscapeString(toolDisplayName(cfg))
+	return lightCard{
+		Title:   "Proxy required",
+		Heading: "Proxy required",
+		Message: "<span class=\"brand\">" + name + "</span> is blocked by Cloudflare on this server IP. Assign a Proxy Manager proxy on the Claude account in the panel (same as Envato), then open a new access link.",
+		Footer:  "HTTPS alone does not clear this challenge",
+	}
+}
+
 func renderPanelLoadingPage(w http.ResponseWriter, cfg Config) {
 	home := cfg.HomePath
 	if home == "" {
@@ -461,7 +473,7 @@ type lightCard struct {
 	ExtraScript string
 }
 
-func writeLightCard(w http.ResponseWriter, status int, card lightCard) {
+func lightCardHTML(card lightCard) string {
 	spinClass := "ring"
 	if card.Spin {
 		spinClass = "ring spin"
@@ -479,9 +491,7 @@ func writeLightCard(w http.ResponseWriter, status int, card lightCard) {
 		redirect = `<script>setTimeout(function(){ window.location.replace(` + fmt.Sprintf("%q", card.Redirect) + `); }, 1200);</script>`
 	}
 	redirect += card.ExtraScript
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	fmt.Fprintf(w, `<!DOCTYPE html>
+	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -514,4 +524,10 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 %s
 </body>
 </html>`, html.EscapeString(card.Title), spinClass, html.EscapeString(card.Heading), card.Message, badge, footer, redirect)
+}
+
+func writeLightCard(w http.ResponseWriter, status int, card lightCard) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	fmt.Fprint(w, lightCardHTML(card))
 }

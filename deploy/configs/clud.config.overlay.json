@@ -8,5 +8,5 @@
   "tool_name": "Claude AI",
   "target_url": "https://claude.ai",
   "home_path": "/new",
-  "_note": "Panel mode — assign Proxy Manager proxy on Claude account for CF challenges"
+  "_note": "Panel mode — MUST assign Proxy Manager proxy on Claude AI account (same as Envato). Without it CF blanks the tool; binary shows Proxy required page."
 }

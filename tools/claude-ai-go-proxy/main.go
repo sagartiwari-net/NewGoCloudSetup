@@ -1733,21 +1733,30 @@ func main() {
 			// Cloudflare bot-check pages break if we rewrite domains or inject scripts.
 			if isCloudflareChallengeHTML(bodyStr) {
 				reqPath := ""
+				px := ""
 				if resp.Request != nil {
 					reqPath = resp.Request.URL.Path
+					px, _ = resp.Request.Context().Value(proxyContextKey).(string)
 				}
 				if shouldServerScreenRedirect(reqPath, bodyStr, cfg) {
 					applyServerScreenRedirect(resp, reqPath, cfg)
 					return nil
 				}
-				if resp.Request != nil {
-					px, _ := resp.Request.Context().Value(proxyContextKey).(string)
-					if strings.TrimSpace(px) == "" {
-						log.Printf("[CF] Challenge passthrough path=%s — account has NO proxy; assign Proxy Manager proxy on Claude account (same as Envato)", reqPath)
-					} else {
-						log.Printf("[CF] Challenge passthrough path=%s proxy=set", reqPath)
-					}
+				if strings.TrimSpace(px) == "" {
+					// Blank CF challenge looks like a broken tool. Tell admin to assign proxy.
+					log.Printf("[CF] Challenge on path=%s — account has NO proxy; showing proxy-required page", reqPath)
+					html := lightCardHTML(claudeCFNeedsProxyCard(cfg))
+					resp.StatusCode = http.StatusBadGateway
+					resp.Status = "502 Bad Gateway"
+					resp.Header.Set("Content-Type", "text/html; charset=utf-8")
+					resp.Header.Del("Content-Encoding")
+					resp.Header.Del("Transfer-Encoding")
+					resp.Body = io.NopCloser(strings.NewReader(html))
+					resp.ContentLength = int64(len(html))
+					resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(html)))
+					return nil
 				}
+				log.Printf("[CF] Challenge passthrough path=%s proxy=set", reqPath)
 				bodyStr = injectScreenErrorRedirectHTML(bodyStr, cfg, reqPath)
 				modifiedBytes := []byte(bodyStr)
 				if isGzip {
@@ -1864,11 +1873,9 @@ func main() {
 				bodyStr = stripHTMLMetaCSP(bodyStr)
 				bodyStr = injectScreenErrorRedirectHTML(bodyStr, cfg, htmlPath)
 				if usesPanelAccountMode(cfg) {
-					// Plain HTTP: skip heavy device HTML inject (breaks Claude shell / black page).
-					// Keep login-watch only; session cookie is enough pre-SSL.
-					if !strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
-						bodyStr = string(injectDeviceHTML([]byte(bodyStr)))
-					}
+					// Never inject device HTML into Claude — it races the SPA boot and blanks
+					// the shell on both HTTP and HTTPS. Cookie-share still blocked via
+					// rejectPanelDevice on https document requests. Keep login-watch only.
 					watch := claudeLoginWatchScript(cfg)
 					if idx := strings.Index(strings.ToLower(bodyStr), "</head>"); idx >= 0 {
 						// Preserve original </head> casing by splicing at matched index length.

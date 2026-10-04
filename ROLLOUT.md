@@ -195,7 +195,7 @@ If fail: note in “Open issues”, fix, re-tick.
 | Tool | Issue | Action |
 |------|--------|--------|
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1; refresh ChatGPT 2 cookies in panel when free |
-| `clud` | CF 403 / blank load; log: **NO proxy** | Panel → Claude AI 1 → assign Proxy Manager proxy (same as Envato) |
+| `clud` | CF 403 / blank load; log: **NO proxy** | Panel → Claude AI 1 → assign Proxy Manager proxy (same as Envato). `claude-v24-cf-proxy`: Proxy required page + no device HTML inject — rebuild on server |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | All pre-SSL | Device SW / Secure cookies limited | Expected until Phase B |
 
