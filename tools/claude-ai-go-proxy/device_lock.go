@@ -366,7 +366,7 @@ func deviceBootScript(home string) string {
     left = true;
     try { window.location.replace(home); } catch (e) { location.href = home; }
   }
-  // Never stay on Authenticating forever (SW/IndexedDB hangs on some browsers).
+  // Never stay on Authenticating forever.
   setTimeout(goHome, 2500);
   function fail() {
     if (left) return;
@@ -377,6 +377,14 @@ func deviceBootScript(home string) string {
     if (msg) msg.textContent = "This browser could not verify the device. Open the tool again from your access link.";
     if (pill) pill.remove();
   }
+  // Claude ships its own SW/cache — never register tm-device-sw (breaks chat list / "Can't reach Claude").
+  function clearSW() {
+    if (!navigator.serviceWorker) return Promise.resolve();
+    var done = navigator.serviceWorker.getRegistrations().then(function (regs) {
+      return Promise.all((regs || []).map(function (r) { return r.unregister(); }));
+    }).catch(function () {});
+    return Promise.race([done, new Promise(function (resolve) { setTimeout(resolve, 700); })]);
+  }
   tmEnsureProof().then(function (proof) {
     return tmFingerprint().then(function (fp) {
       try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
@@ -384,36 +392,13 @@ func deviceBootScript(home string) string {
     });
   }).then(function (dev) {
     return tmStore(dev.fp, dev.proof).then(function () {
-      function doBind() {
+      return clearSW().then(function () {
         return fetch("/api/device-bind", {
           method: "POST",
           credentials: "same-origin",
           headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
         });
-      }
-      // Match ChatGPT/Envato: register SW on HTTPS with timeout; never await unregister-all.
-      if (!navigator.serviceWorker || !window.isSecureContext) {
-        return doBind();
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1200);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+      });
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");

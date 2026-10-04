@@ -1193,20 +1193,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request, targetURL *url.URL)
 		}
 	}
 
-	var targetConn net.Conn
-	var err error
-	if px, ok := r.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-		targetConn, err = dialChrome(ctx, targetAddr)
-		cancel()
-	} else if targetURL.Scheme == "https" {
-		targetConn, err = tls.Dial("tcp", targetAddr, &tls.Config{
-			ServerName:         targetURL.Hostname(),
-			InsecureSkipVerify: true,
-		})
-	} else {
-		targetConn, err = net.Dial("tcp", targetAddr)
-	}
+	// Always Chrome TLS (+ account proxy from context). Plain tls.Dial was a common
+	// "Can't reach Claude" cause when WS upgraded without the same fingerprint/proxy as HTTP.
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	targetConn, err := dialChrome(ctx, targetAddr)
+	cancel()
 	if err != nil {
 		log.Printf("[WS] Failed to dial target %s: %v", targetAddr, err)
 		if strings.Contains(err.Error(), "proxy dial") {
@@ -1809,7 +1800,10 @@ func main() {
 			bodyStr = strings.ReplaceAll(bodyStr, "http://"+targetHost, proxySchemeHost)
 			bodyStr = strings.ReplaceAll(bodyStr, "//"+targetHost, "//"+proxyHost)
 			bodyStr = strings.ReplaceAll(bodyStr, `\/`+targetHost+`\/`, `\/`+proxyHost+`\/`)
-			bodyStr = strings.ReplaceAll(bodyStr, `/`+targetHost, `/`+proxyHost)
+			// Avoid bare "/claude.ai" replace on JSON — corrupts bootstrap / chat payloads.
+			if !strings.Contains(contentType, "json") {
+				bodyStr = strings.ReplaceAll(bodyStr, `/`+targetHost, `/`+proxyHost)
+			}
 			bodyStr = applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost, cfg)
 			bodyStr = applyDomainPathMap(bodyStr, proxySchemeHost, proxyWsOrigin(proxyScheme, proxyHost), cfg)
 
@@ -2384,7 +2378,7 @@ func main() {
 
 		// 4.5. Handle WebSocket requests
 		if isWebSocket(r) {
-			debugLog(cfg, "WebSocket upgrade %s", reqPath)
+			log.Printf("[WS] upgrade path=%s proxy=%v", reqPath, r.Context().Value(proxyContextKey) != nil)
 			tUrl, err := url.Parse(cfg.TargetURL)
 			if err == nil {
 				handleWebSocket(w, r, tUrl)
