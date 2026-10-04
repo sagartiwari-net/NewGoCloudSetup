@@ -1,0 +1,193 @@
+# gt4rents.com rollout checklist
+
+Living tick-list. Update as each tool goes green.  
+Server: `65.109.16.196` · Domain: `gt4rents.com` · Repo: this folder → `/www/wwwroot/gt4rents.com/_repo`
+
+**Agreed order (2026-10-04):**
+
+1. **Build + start all tools** on HTTP (panel domains + cookies)  
+2. **SSL** (wildcard LE + auto-renew — see Phase B)  
+3. Flip `TOOL_PUBLIC_SCHEME=https`, rebuild overlays, **retest one-by-one**  
+4. Fix remaining issues (proxy / cookies / tool-specific)
+
+> HTTPS helps device-lock, Secure cookies, SW.  
+> It does **not** replace Proxy Manager for Cloudflare-heavy tools (Claude, often Canva).
+
+---
+
+## Phase A — HTTP platform (now)
+
+- [x] DNS wildcard → Hetzner  
+- [x] nginx host→port map + wildcard reverse proxy (HTTP :80)  
+- [x] panel-api + `panel.db`  
+- [x] payment-hub `:8090` left alone  
+- [x] `build-one` prefers `config.server.json` / panel mode (`use_database=false`)  
+- [ ] Bulk `build-all` + start in batches of 5–10 (RAM)  
+- [ ] Every website `domain` = `<sub>.gt4rents.com` in panel  
+- [ ] Active accounts + cookies (and **proxy** where CF blocks Hetzner)
+
+### Recipe (one tool)
+
+```bash
+cd /www/wwwroot/gt4rents.com/_repo
+git pull origin main
+source /www/wwwroot/gt4rents.com/_secrets/mysql.env
+./deploy/build-one.sh <sub> && ./deploy/start-tool.sh <sub>
+ss -lntp | grep <port>
+tail -30 /www/wwwroot/gt4rents.com/<sub>/app.log
+```
+
+Panel: access-link only (seedha URL = Access Denied OK).
+
+### Bulk start (batches)
+
+```bash
+cd /www/wwwroot/gt4rents.com/_repo
+source /www/wwwroot/gt4rents.com/_secrets/mysql.env
+./deploy/build-all.sh
+# then start 5–10 at a time — do not start all 80 at once
+```
+
+---
+
+## Phase B — SSL (after tools are built)
+
+Goal: cert never “quietly expires”.
+
+- [ ] aaPanel Let’s Encrypt for `gt4rents.com` + `*.gt4rents.com` (DNS challenge / Cloudflare)  
+- [ ] Also `panel.gt4rents.com`  
+- [ ] Force HTTPS on site  
+- [ ] **Auto Renew** enabled in aaPanel SSL  
+- [ ] Cloudflare SSL/TLS → **Full** (after origin has cert) — not Flexible long-term  
+- [ ] Confirm renew path: aaPanel auto-renew **or** `certbot renew --dry-run`  
+- [ ] Calendar: check ~30 days before expiry once
+
+### After cert is live
+
+```bash
+# on server
+echo 'TOOL_PUBLIC_SCHEME=https' >> /www/wwwroot/gt4rents.com/_secrets/mysql.env
+source /www/wwwroot/gt4rents.com/_secrets/mysql.env
+
+# rebuild tools so overlays get public_scheme=https
+cd /www/wwwroot/gt4rents.com/_repo
+# batch rebuilds, or rebuild tools you are testing:
+./deploy/build-one.sh refs && ./deploy/start-tool.sh refs
+# …repeat per tool under test
+```
+
+Panel access links should become `https://`.
+
+---
+
+## Phase C — Per-tool verify (after SSL)
+
+For each tool: access-link → login shell → one real action → tick below.  
+If fail: note in “Open issues”, fix, re-tick.
+
+### Priority
+
+- [x] `refs` — Ahrefs (:5291) — HTTP access-link LIVE  
+- [x] `smrs` — Semrush (:5141) — HTTP access-link LIVE  
+- [x] `cgpt` — ChatGPT (:5151) — HTTP OK with **ChatGPT 1** (ID:65); ChatGPT 2 cookies flaky — refresh later  
+- [ ] `clud` — Claude AI (:5171) — Built; blank load = **assign Proxy Manager proxy** (HTTPS alone won’t fix CF). Retest after proxy (+ SSL)  
+- [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
+- [ ] `cnva` — Canva (:4501) — Partial (429 / proxy); retest after SSL + account proxy  
+- [ ] `helium10` — helium10 (:5201)  
+- [ ] `grammarly` — grammarly (:4911)
+
+### Rest (alphabetical)
+
+- [ ] `airbrush` (:5181)  
+- [ ] `answerthepublic` (:4931)  
+- [ ] `artistly` (:4821)  
+- [ ] `branalyzer` (:5081)  
+- [ ] `chatbotapp` (:5001)  
+- [ ] `closerscopy` (:5241)  
+- [ ] `copyspace` (:4741)  
+- [ ] `copywritely` (:4521)  
+- [ ] `coursera` (:4701)  
+- [ ] `cramly` (:4841)  
+- [ ] `creaitor` (:4621)  
+- [ ] `creattie` (:4861)  
+- [ ] `digen` (:5271)  
+- [ ] `educative` (:4851)  
+- [ ] `epidemicsound` (:4641)  
+- [ ] `erank` (:5191)  
+- [ ] `fishaudio` (:4991)  
+- [ ] `flaticon` (:4921)  
+- [ ] `flexclip` (:4671)  
+- [ ] `glorify` (:4681)  
+- [ ] `gptzero` (:5301)  
+- [ ] `grok` (:4831)  
+- [ ] `heliumlearning` (:5221)  
+- [ ] `ilovepdf` (:4531)  
+- [ ] `imgupscaler` (:5091)  
+- [ ] `indexification` (:5231)  
+- [ ] `jasper` (:4511)  
+- [ ] `joggai` (:5031)  
+- [ ] `junglescout` (:5211)  
+- [ ] `kalodata` (:4951)  
+- [ ] `leonardo` (:4601)  
+- [ ] `linkedinlearning` (:4571)  
+- [ ] `magnific` (:5121)  
+- [ ] `merchinformer` (:4651)  
+- [ ] `minvo` (:4871)  
+- [ ] `mojo` (:4881)  
+- [ ] `perplexity` (:5101)  
+- [ ] `piktochart` (:4541)  
+- [ ] `pixlr` (:4901)  
+- [ ] `placeit` (:4611)  
+- [ ] `ppspy` (:4961)  
+- [ ] `prezi` (:4751)  
+- [ ] `rivalflow` (:4811)  
+- [ ] `scite` (:4761)  
+- [ ] `screpy` (:4721)  
+- [ ] `scribd` (:4791)  
+- [ ] `searchatlas` (:4711)  
+- [ ] `selleramp` (:5161)  
+- [ ] `sellthetrend` (:4591)  
+- [ ] `seobility` (:4731)  
+- [ ] `seobuddy` (:5131)  
+- [ ] `seositecheckup` (:4661)  
+- [ ] `seotesteronline` (:4801)  
+- [ ] `shortform` (:4771)  
+- [ ] `similarweb` (:5071)  
+- [ ] `sketchgenius` (:4781)  
+- [ ] `slidebean` (:5021)  
+- [ ] `speechify` (:5011)  
+- [ ] `spyfu` (:4941)  
+- [ ] `storybase` (:4551)  
+- [ ] `storyblocks` (:4971)  
+- [ ] `syntx` (:4981)  
+- [ ] `ubersuggest` (:5281)  
+- [ ] `uncensoredchat` (:4891)  
+- [ ] `videotoblog` (:5041)  
+- [ ] `vistacreate` (:4581)  
+- [ ] `woorank` (:4561)  
+- [ ] `wordtune` (:4631)  
+- [ ] `writecream` (:5051)  
+- [ ] `zebracat` (:5111)  
+- [ ] `zikaanalytics` (:5251)  
+- [ ] `zonguru` (:4691)
+
+---
+
+## Open issues (don’t block Phase A)
+
+| Tool | Issue | Action |
+|------|--------|--------|
+| `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1; refresh ChatGPT 2 cookies in panel when free |
+| `clud` | CF 403 / blank load; log: **NO proxy** | Panel → Claude AI 1 → assign Proxy Manager proxy (same as Envato) |
+| `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
+| All pre-SSL | Device SW / Secure cookies limited | Expected until Phase B |
+
+---
+
+## Done when
+
+- [ ] All tools built + started (or consciously skipped)  
+- [ ] Wildcard SSL + auto-renew verified  
+- `TOOL_PUBLIC_SCHEME=https` live  
+- [ ] Priority 8 tools green on **https://** access-links  
+- [ ] Open issues closed or accepted
