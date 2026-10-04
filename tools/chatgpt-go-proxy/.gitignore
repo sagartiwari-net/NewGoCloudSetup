@@ -1,0 +1,7 @@
+chatgpt-proxy
+cookie.txt
+config.json.bak
+.DS_Store
+*.log
+node_modules/
+test-*.png

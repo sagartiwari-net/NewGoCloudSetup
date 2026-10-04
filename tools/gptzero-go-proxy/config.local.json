@@ -1,0 +1,32 @@
+{
+  "port": "5301",
+  "target_url": "https://app.gptzero.me",
+  "public_host": "127.0.0.1:5301",
+  "public_scheme": "http",
+  "cookie_file": "cookie.txt",
+  "tool_name": "GPTZero",
+  "home_path": "/",
+  "blocked_paths": [
+    "/account-settings",
+    "/referral",
+    "/api-subscription",
+    "/api",
+    "/api-usage",
+    "/api-overview",
+    "/usage-stats",
+    "/teams"
+  ],
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "bypass_auth": false,
+  "session_duration_minutes": 120,
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "extra_domains": [
+    "https://lydqhgdzhvsqlcobdfxi.supabase.co",
+    "https://api.gptzero.me",
+    "https://cdn.gptzero.me",
+    "https://auth.gptzero.me",
+    "https://gptzero.me"
+  ],
+  "supabase_url": "https://lydqhgdzhvsqlcobdfxi.supabase.co",
+  "supabase_key": "sb_publishable_-TRlvcmoZ3y9LvkQys7Vcg_TImPL6et"
+}

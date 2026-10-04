@@ -1,0 +1,575 @@
+{
+  "domain": "gt4rents.com",
+  "server_ip": "65.109.16.196",
+  "server_root": "/www/wwwroot/gt4rents.com",
+  "panel_db_server": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": "3306",
+    "db": "gt4rents",
+    "user": "gt4rents",
+    "password_env": "GT4RENTS_MYSQL_PASSWORD"
+  },
+  "tools": [
+    {
+      "tool": "canva",
+      "folder": "canva-go-proxy",
+      "subdomain": "cnva",
+      "port": 4501,
+      "fqdn": "cnva.gt4rents.com"
+    },
+    {
+      "tool": "jasper",
+      "folder": "jasper-go-proxy",
+      "subdomain": "jasper",
+      "port": 4511,
+      "fqdn": "jasper.gt4rents.com"
+    },
+    {
+      "tool": "copywritely",
+      "folder": "copywritely-go-proxy",
+      "subdomain": "copywritely",
+      "port": 4521,
+      "fqdn": "copywritely.gt4rents.com"
+    },
+    {
+      "tool": "ilovepdf",
+      "folder": "ilovepdf-go-proxy",
+      "subdomain": "ilovepdf",
+      "port": 4531,
+      "fqdn": "ilovepdf.gt4rents.com"
+    },
+    {
+      "tool": "piktochart",
+      "folder": "piktochart-go-proxy",
+      "subdomain": "piktochart",
+      "port": 4541,
+      "fqdn": "piktochart.gt4rents.com"
+    },
+    {
+      "tool": "storybase",
+      "folder": "storybase-go-proxy",
+      "subdomain": "storybase",
+      "port": 4551,
+      "fqdn": "storybase.gt4rents.com"
+    },
+    {
+      "tool": "woorank",
+      "folder": "woorank-go-proxy",
+      "subdomain": "woorank",
+      "port": 4561,
+      "fqdn": "woorank.gt4rents.com"
+    },
+    {
+      "tool": "linkedin-learning",
+      "folder": "linkedin-learning-go-proxy",
+      "subdomain": "linkedin-learning",
+      "port": 4571,
+      "fqdn": "linkedin-learning.gt4rents.com"
+    },
+    {
+      "tool": "vistacreate",
+      "folder": "vistacreate-go-proxy",
+      "subdomain": "vistacreate",
+      "port": 4581,
+      "fqdn": "vistacreate.gt4rents.com"
+    },
+    {
+      "tool": "sellthetrend",
+      "folder": "sellthetrend-go-proxy",
+      "subdomain": "sellthetrend",
+      "port": 4591,
+      "fqdn": "sellthetrend.gt4rents.com"
+    },
+    {
+      "tool": "leonardo",
+      "folder": "leonardo-go-proxy",
+      "subdomain": "leonardo",
+      "port": 4601,
+      "fqdn": "leonardo.gt4rents.com"
+    },
+    {
+      "tool": "placeit",
+      "folder": "placeit-go-proxy",
+      "subdomain": "placeit",
+      "port": 4611,
+      "fqdn": "placeit.gt4rents.com"
+    },
+    {
+      "tool": "creaitor",
+      "folder": "creaitor-go-proxy",
+      "subdomain": "creaitor",
+      "port": 4621,
+      "fqdn": "creaitor.gt4rents.com"
+    },
+    {
+      "tool": "wordtune",
+      "folder": "wordtune-go-proxy",
+      "subdomain": "wordtune",
+      "port": 4631,
+      "fqdn": "wordtune.gt4rents.com"
+    },
+    {
+      "tool": "epidemicsound",
+      "folder": "epidemicsound-go-proxy",
+      "subdomain": "epidemicsound",
+      "port": 4641,
+      "fqdn": "epidemicsound.gt4rents.com"
+    },
+    {
+      "tool": "merchinformer",
+      "folder": "merchinformer-go-proxy",
+      "subdomain": "merchinformer",
+      "port": 4651,
+      "fqdn": "merchinformer.gt4rents.com"
+    },
+    {
+      "tool": "seositecheckup",
+      "folder": "seositecheckup-go-proxy",
+      "subdomain": "seositecheckup",
+      "port": 4661,
+      "fqdn": "seositecheckup.gt4rents.com"
+    },
+    {
+      "tool": "flexclip",
+      "folder": "flexclip-go-proxy",
+      "subdomain": "flexclip",
+      "port": 4671,
+      "fqdn": "flexclip.gt4rents.com"
+    },
+    {
+      "tool": "glorify",
+      "folder": "glorify-go-proxy",
+      "subdomain": "glorify",
+      "port": 4681,
+      "fqdn": "glorify.gt4rents.com"
+    },
+    {
+      "tool": "zonguru",
+      "folder": "zonguru-go-proxy",
+      "subdomain": "zonguru",
+      "port": 4691,
+      "fqdn": "zonguru.gt4rents.com"
+    },
+    {
+      "tool": "coursera",
+      "folder": "coursera-go-proxy",
+      "subdomain": "coursera",
+      "port": 4701,
+      "fqdn": "coursera.gt4rents.com"
+    },
+    {
+      "tool": "searchatlas",
+      "folder": "searchatlas-go-proxy",
+      "subdomain": "searchatlas",
+      "port": 4711,
+      "fqdn": "searchatlas.gt4rents.com"
+    },
+    {
+      "tool": "screpy",
+      "folder": "screpy-go-proxy",
+      "subdomain": "screpy",
+      "port": 4721,
+      "fqdn": "screpy.gt4rents.com"
+    },
+    {
+      "tool": "seobility",
+      "folder": "seobility-go-proxy",
+      "subdomain": "seobility",
+      "port": 4731,
+      "fqdn": "seobility.gt4rents.com"
+    },
+    {
+      "tool": "copyspace",
+      "folder": "copyspace-go-proxy",
+      "subdomain": "copyspace",
+      "port": 4741,
+      "fqdn": "copyspace.gt4rents.com"
+    },
+    {
+      "tool": "prezi",
+      "folder": "prezi-go-proxy",
+      "subdomain": "prezi",
+      "port": 4751,
+      "fqdn": "prezi.gt4rents.com"
+    },
+    {
+      "tool": "scite",
+      "folder": "scite-go-proxy",
+      "subdomain": "scite",
+      "port": 4761,
+      "fqdn": "scite.gt4rents.com"
+    },
+    {
+      "tool": "shortform",
+      "folder": "shortform-go-proxy",
+      "subdomain": "shortform",
+      "port": 4771,
+      "fqdn": "shortform.gt4rents.com"
+    },
+    {
+      "tool": "sketchgenius",
+      "folder": "sketchgenius-go-proxy",
+      "subdomain": "sketchgenius",
+      "port": 4781,
+      "fqdn": "sketchgenius.gt4rents.com"
+    },
+    {
+      "tool": "scribd",
+      "folder": "scribd-go-proxy",
+      "subdomain": "scribd",
+      "port": 4791,
+      "fqdn": "scribd.gt4rents.com"
+    },
+    {
+      "tool": "seotesteronline",
+      "folder": "seotesteronline-go-proxy",
+      "subdomain": "seotesteronline",
+      "port": 4801,
+      "fqdn": "seotesteronline.gt4rents.com"
+    },
+    {
+      "tool": "rivalflow",
+      "folder": "rivalflow-go-proxy",
+      "subdomain": "rivalflow",
+      "port": 4811,
+      "fqdn": "rivalflow.gt4rents.com"
+    },
+    {
+      "tool": "artistly",
+      "folder": "artistly-go-proxy",
+      "subdomain": "artistly",
+      "port": 4821,
+      "fqdn": "artistly.gt4rents.com"
+    },
+    {
+      "tool": "grok",
+      "folder": "grok-go-proxy",
+      "subdomain": "grok",
+      "port": 4831,
+      "fqdn": "grok.gt4rents.com"
+    },
+    {
+      "tool": "cramly",
+      "folder": "cramly-go-proxy",
+      "subdomain": "cramly",
+      "port": 4841,
+      "fqdn": "cramly.gt4rents.com"
+    },
+    {
+      "tool": "educative",
+      "folder": "educative-go-proxy",
+      "subdomain": "educative",
+      "port": 4851,
+      "fqdn": "educative.gt4rents.com"
+    },
+    {
+      "tool": "creattie",
+      "folder": "creattie-go-proxy",
+      "subdomain": "creattie",
+      "port": 4861,
+      "fqdn": "creattie.gt4rents.com"
+    },
+    {
+      "tool": "minvo",
+      "folder": "minvo-go-proxy",
+      "subdomain": "minvo",
+      "port": 4871,
+      "fqdn": "minvo.gt4rents.com"
+    },
+    {
+      "tool": "mojo",
+      "folder": "mojo-go-proxy",
+      "subdomain": "mojo",
+      "port": 4881,
+      "fqdn": "mojo.gt4rents.com"
+    },
+    {
+      "tool": "uncensoredchat",
+      "folder": "uncensoredchat-go-proxy",
+      "subdomain": "uncensoredchat",
+      "port": 4891,
+      "fqdn": "uncensoredchat.gt4rents.com"
+    },
+    {
+      "tool": "pixlr",
+      "folder": "pixlr-go-proxy",
+      "subdomain": "pixlr",
+      "port": 4901,
+      "fqdn": "pixlr.gt4rents.com"
+    },
+    {
+      "tool": "grammarly",
+      "folder": "grammarly-go-proxy",
+      "subdomain": "grammarly",
+      "port": 4911,
+      "fqdn": "grammarly.gt4rents.com"
+    },
+    {
+      "tool": "flaticon",
+      "folder": "flaticon-go-proxy",
+      "subdomain": "flaticon",
+      "port": 4921,
+      "fqdn": "flaticon.gt4rents.com"
+    },
+    {
+      "tool": "answerthepublic",
+      "folder": "answerthepublic-go-proxy",
+      "subdomain": "answerthepublic",
+      "port": 4931,
+      "fqdn": "answerthepublic.gt4rents.com"
+    },
+    {
+      "tool": "spyfu",
+      "folder": "spyfu-go-proxy",
+      "subdomain": "spyfu",
+      "port": 4941,
+      "fqdn": "spyfu.gt4rents.com"
+    },
+    {
+      "tool": "kalodata",
+      "folder": "kalodata-go-proxy",
+      "subdomain": "kalodata",
+      "port": 4951,
+      "fqdn": "kalodata.gt4rents.com"
+    },
+    {
+      "tool": "ppspy",
+      "folder": "ppspy-go-proxy",
+      "subdomain": "ppspy",
+      "port": 4961,
+      "fqdn": "ppspy.gt4rents.com"
+    },
+    {
+      "tool": "storyblocks",
+      "folder": "storyblocks-go-proxy",
+      "subdomain": "storyblocks",
+      "port": 4971,
+      "fqdn": "storyblocks.gt4rents.com"
+    },
+    {
+      "tool": "syntx",
+      "folder": "syntx-go-proxy",
+      "subdomain": "syntx",
+      "port": 4981,
+      "fqdn": "syntx.gt4rents.com"
+    },
+    {
+      "tool": "fishaudio",
+      "folder": "fishaudio-go-proxy",
+      "subdomain": "fishaudio",
+      "port": 4991,
+      "fqdn": "fishaudio.gt4rents.com"
+    },
+    {
+      "tool": "chatbotapp",
+      "folder": "chatbotapp-go-proxy",
+      "subdomain": "chatbotapp",
+      "port": 5001,
+      "fqdn": "chatbotapp.gt4rents.com"
+    },
+    {
+      "tool": "speechify",
+      "folder": "speechify-go-proxy",
+      "subdomain": "speechify",
+      "port": 5011,
+      "fqdn": "speechify.gt4rents.com"
+    },
+    {
+      "tool": "slidebean",
+      "folder": "slidebean-go-proxy",
+      "subdomain": "slidebean",
+      "port": 5021,
+      "fqdn": "slidebean.gt4rents.com"
+    },
+    {
+      "tool": "joggai",
+      "folder": "joggai-go-proxy",
+      "subdomain": "joggai",
+      "port": 5031,
+      "fqdn": "joggai.gt4rents.com"
+    },
+    {
+      "tool": "videotoblog",
+      "folder": "videotoblog-go-proxy",
+      "subdomain": "videotoblog",
+      "port": 5041,
+      "fqdn": "videotoblog.gt4rents.com"
+    },
+    {
+      "tool": "writecream",
+      "folder": "writecream-go-proxy",
+      "subdomain": "writecream",
+      "port": 5051,
+      "fqdn": "writecream.gt4rents.com"
+    },
+    {
+      "tool": "similarweb",
+      "folder": "similarweb-go-proxy",
+      "subdomain": "similarweb",
+      "port": 5071,
+      "fqdn": "similarweb.gt4rents.com"
+    },
+    {
+      "tool": "branalyzer",
+      "folder": "branalyzer-go-proxy",
+      "subdomain": "branalyzer",
+      "port": 5081,
+      "fqdn": "branalyzer.gt4rents.com"
+    },
+    {
+      "tool": "imgupscaler",
+      "folder": "imgupscaler-go-proxy",
+      "subdomain": "imgupscaler",
+      "port": 5091,
+      "fqdn": "imgupscaler.gt4rents.com"
+    },
+    {
+      "tool": "perplexity",
+      "folder": "perplexity-go-proxy",
+      "subdomain": "perplexity",
+      "port": 5101,
+      "fqdn": "perplexity.gt4rents.com"
+    },
+    {
+      "tool": "zebracat",
+      "folder": "zebracat-go-proxy",
+      "subdomain": "zebracat",
+      "port": 5111,
+      "fqdn": "zebracat.gt4rents.com"
+    },
+    {
+      "tool": "magnific",
+      "folder": "magnific-go-proxy",
+      "subdomain": "magnific",
+      "port": 5121,
+      "fqdn": "magnific.gt4rents.com"
+    },
+    {
+      "tool": "seobuddy",
+      "folder": "seobuddy-go-proxy",
+      "subdomain": "seobuddy",
+      "port": 5131,
+      "fqdn": "seobuddy.gt4rents.com"
+    },
+    {
+      "tool": "semrush-new",
+      "folder": "semrush-new-go-proxy",
+      "subdomain": "smrs",
+      "port": 5141,
+      "fqdn": "smrs.gt4rents.com"
+    },
+    {
+      "tool": "chatgpt",
+      "folder": "chatgpt-go-proxy",
+      "subdomain": "cgpt",
+      "port": 5151,
+      "fqdn": "cgpt.gt4rents.com"
+    },
+    {
+      "tool": "selleramp",
+      "folder": "selleramp-go-proxy",
+      "subdomain": "selleramp",
+      "port": 5161,
+      "fqdn": "selleramp.gt4rents.com"
+    },
+    {
+      "tool": "claude-ai",
+      "folder": "claude-ai-go-proxy",
+      "subdomain": "clud",
+      "port": 5171,
+      "fqdn": "clud.gt4rents.com"
+    },
+    {
+      "tool": "airbrush",
+      "folder": "airbrush-go-proxy",
+      "subdomain": "airbrush",
+      "port": 5181,
+      "fqdn": "airbrush.gt4rents.com"
+    },
+    {
+      "tool": "erank",
+      "folder": "erank-go-proxy",
+      "subdomain": "erank",
+      "port": 5191,
+      "fqdn": "erank.gt4rents.com"
+    },
+    {
+      "tool": "helium10",
+      "folder": "helium10-go-proxy",
+      "subdomain": "helium10",
+      "port": 5201,
+      "fqdn": "helium10.gt4rents.com"
+    },
+    {
+      "tool": "junglescout",
+      "folder": "junglescout-go-proxy",
+      "subdomain": "junglescout",
+      "port": 5211,
+      "fqdn": "junglescout.gt4rents.com"
+    },
+    {
+      "tool": "helium-learning",
+      "folder": "helium-learning-go-proxy",
+      "subdomain": "helium-learning",
+      "port": 5221,
+      "fqdn": "helium-learning.gt4rents.com"
+    },
+    {
+      "tool": "indexification",
+      "folder": "indexification-go-proxy",
+      "subdomain": "indexification",
+      "port": 5231,
+      "fqdn": "indexification.gt4rents.com"
+    },
+    {
+      "tool": "closerscopy",
+      "folder": "closerscopy-go-proxy",
+      "subdomain": "closerscopy",
+      "port": 5241,
+      "fqdn": "closerscopy.gt4rents.com"
+    },
+    {
+      "tool": "zikaanalytics",
+      "folder": "zikaanalytics-go-proxy",
+      "subdomain": "zikaanalytics",
+      "port": 5251,
+      "fqdn": "zikaanalytics.gt4rents.com"
+    },
+    {
+      "tool": "envato",
+      "folder": "envato-go-proxy",
+      "subdomain": "envt",
+      "port": 5261,
+      "fqdn": "envt.gt4rents.com"
+    },
+    {
+      "tool": "digen",
+      "folder": "digen-go-proxy",
+      "subdomain": "digen",
+      "port": 5271,
+      "fqdn": "digen.gt4rents.com"
+    },
+    {
+      "tool": "ubersuggest",
+      "folder": "ubersuggest-go-proxy",
+      "subdomain": "ubersuggest",
+      "port": 5281,
+      "fqdn": "ubersuggest.gt4rents.com"
+    },
+    {
+      "tool": "ahrefs",
+      "folder": "ahrefs-go-proxy",
+      "subdomain": "refs",
+      "port": 5291,
+      "fqdn": "refs.gt4rents.com"
+    },
+    {
+      "tool": "gptzero",
+      "folder": "gptzero-go-proxy",
+      "subdomain": "gptzero",
+      "port": 5301,
+      "fqdn": "gptzero.gt4rents.com"
+    }
+  ]
+}

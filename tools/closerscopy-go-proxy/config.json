@@ -1,0 +1,149 @@
+{
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "port": "5241",
+  "use_database": false,
+  "bypass_auth": true,
+  "target_url": "https://www.closerscopy.com",
+  "cdn_url": "https://www.closerscopy.com",
+  "public_host": "127.0.0.1:5241",
+  "public_scheme": "http",
+  "tool_name": "ClosersCopy",
+  "credit_label": "Credits",
+  "export_label": "Exports",
+  "home_path": "/",
+  "counted_paths": [],
+  "counted_prefixes": [
+    "/api/"
+  ],
+  "blocked_paths": [
+    "/settings",
+    "/billing",
+    "/subscription",
+    "/account",
+    "/pricing",
+    "/login",
+    "/register",
+    "/signup"
+  ],
+  "blocked_prefixes": [
+    "/settings",
+    "/billing",
+    "/account",
+    "/subscription",
+    "/pricing",
+    "/profile",
+    "/users/sign_in",
+    "/users/sign_up"
+  ],
+  "sensitive_cookies": [
+    "session",
+    "_session",
+    "closerscopy_session",
+    "closerscopy_session_ccv2",
+    "remember_user_token",
+    "auth",
+    "token",
+    "access_token",
+    "jwt",
+    "XSRF-TOKEN"
+  ],
+  "watchdog_triggers": [],
+  "cloudflare_bypass": true,
+  "extra_cdn_domains": [],
+  "disable_export_tracking": false,
+  "logout_detection": {
+    "enabled": false,
+    "show_overlay": true,
+    "refresh_seconds": 8,
+    "overlay_title": "Session Update",
+    "overlay_message": "Premium session expired. Refreshing account cookies, please wait...",
+    "url_paths": [
+      "/login",
+      "/register",
+      "/sign_in"
+    ],
+    "text_sniffs": [
+      "Sign in",
+      "Log in",
+      "Login"
+    ],
+    "html_sniffs": []
+  },
+  "automation": {
+    "enabled": false,
+    "url": "https://dashboard.seotoolscart.com/api/tasks/run",
+    "method": "POST",
+    "payload": {
+      "task_uid": "gfx_runCloserscopy"
+    },
+    "headers": {
+      "Authorization": "Bearer goauto_secret_token_12345"
+    },
+    "cooldown_seconds": 300
+  },
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "toolsmandirefct",
+  "mysql_password": "CHANGE_ME",
+  "mysql_db": "toolsmandirefct",
+  "secret_key": "toolsmandi_closerscopy_secret_xyz123",
+  "session_duration_minutes": 120,
+  "member_area_url": "https://toolsmandi.com/",
+  "session_security": {
+    "enabled": false,
+    "single_session_per_user": true,
+    "ip_protection": {
+      "enabled": true,
+      "mode": "soft",
+      "grace_changes_per_30min": 2,
+      "concurrent_kill_enabled": true,
+      "concurrent_window_seconds": 300
+    },
+    "device_cookie": {
+      "enabled": true,
+      "cookie_name": "tm_device"
+    },
+    "domain_check": {
+      "enabled": true,
+      "expected_host": "localhost:6022",
+      "delay_seconds": 2,
+      "immediate_check": true,
+      "recheck_interval_seconds": 60,
+      "action": "logout"
+    },
+    "account_cookie_protection": {
+      "enabled": true,
+      "concurrent_kill_enabled": true,
+      "concurrent_window_seconds": 300
+    },
+    "security_heartbeat": {
+      "enabled": true,
+      "interval_seconds": 45
+    },
+    "headers": {
+      "x_frame_options": "DENY",
+      "csp_frame_ancestors": "'none'",
+      "cors_allow_origin": "http://localhost:6022"
+    },
+    "ott_ip_validation": {
+      "enabled": true,
+      "mode": "soft"
+    },
+    "datacenter_score": {
+      "enabled": false,
+      "score_mode": "asn",
+      "mmdb_path": "/opt/geoip/GeoLite2-ASN.mmdb",
+      "hosting_asns_path": "/opt/geoip/hosting_asns.json",
+      "threshold_kill": 70,
+      "threshold_warn": 40,
+      "block_vpn_alone": false
+    },
+    "cloudflare": {
+      "enabled": false,
+      "trust_connecting_ip": true,
+      "require_cf_ray": false
+    }
+  }
+}

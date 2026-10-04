@@ -1,0 +1,38 @@
+{
+  "port": "8786",
+  "target_url": "https://members.erank.com",
+  "cdn_url": "https://assets.erank.com",
+  "public_host": "erank.1clkaccess.store",
+  "public_scheme": "https",
+  "tool_name": "eRank",
+  "credit_label": "Searches",
+  "home_path": "/",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": ["/plans", "/subscription-thanks", "/account/billing", "/settings"],
+  "blocked_prefixes": ["/account/billing", "/subscription", "/settings"],
+  "sensitive_cookies": [
+    "sid_er",
+    "XSRF-TOKEN",
+    "er_sess_x"
+  ],
+  "watchdog_triggers": [],
+  "extra_cdn_domains": [
+    "public.erank.com",
+    "hc.erank.com"
+  ],
+  "disable_export_tracking": true,
+  "cookie_file": "cookie.txt",
+  "local_test_mode": true,
+  "debug_logging": true,
+  "bind_localhost": true,
+  "mysql_host": "",
+  "mysql_port": "",
+  "mysql_user": "",
+  "mysql_password": "",
+  "mysql_db": "",
+  "secret_key": "change-this-secret-in-production",
+  "session_duration_minutes": 120,
+  "member_area_url": "https://1clkaccess.store/"
+}

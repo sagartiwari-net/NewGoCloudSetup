@@ -1,0 +1,7 @@
+"use strict";import{mutableData}from"../../constants/mutableData.js";import{adjustBody}from"../positionService/adjustBody.js";import{message}from"../../constants/message.js";const composeOkText=a=>a?message.turnOffButtonText:message.turnOnButtonText,hideSASPanel=async()=>{$("#SASContainer").hide(),mutableData.gDisplay=!1,chrome.storage?.sync.set({display:mutableData.gDisplay},function(){chrome.runtime.lastError&&console.log(chrome.runtime.lastError.message)}),await adjustBody(),await manageAutoAnalyzeOption()},manageAutoAnalyzeOption=async()=>{var a=(await chrome.storage?.sync.get("options"))?.options,o=a?.isAutoAnalyzer,t=a?.isDontAskAgain;o&&!t&&mutableData.gAmazonProductPage&&!document.querySelector(".sasextcl-dialog-wrapper")&&showConfirmationDialog(a,o)},showConfirmationDialog=(a,o)=>{var{confirmAutoAnalyzeDisabling:t,confirmAutoAnalyzeEnabling:e}=message;window.dialog.show({content:`<div>
+${o?t:e}
+  <div class="checkbox-wrapper">
+    <input type="checkbox" id="dontAskAgain" name="dontAskAgain"/>
+    <label for="dontAskAgain">Don't ask again</label>
+  </div>
+</div>`,okText:composeOkText(o),cancelText:"Cancel",onOk:setAutoAnalyzerValue(a,!o),onCancel:setAutoAnalyzerValue(a,o)})},setAutoAnalyzerValue=(o,t)=>async()=>{var a=document.querySelector("#dontAskAgain");try{await chrome.storage.sync.set({options:{...o,isAutoAnalyzer:t,isDontAskAgain:a.checked}})}catch(a){console.log(a)}};export{hideSASPanel,showConfirmationDialog};

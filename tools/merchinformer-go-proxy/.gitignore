@@ -1,0 +1,6 @@
+merchinformer-go-proxy
+cookie.txt
+config.json
+config.json.bak
+.DS_Store
+*.log

@@ -1,0 +1,5 @@
+fishaudio-go-proxy
+*.exe
+cookie.txt
+cookie.txt.bak
+config.local.json

@@ -1,0 +1,78 @@
+{
+  "port": "4801",
+  "target_url": "https://suite.seotesteronline.com",
+  "public_host": "127.0.0.1:4801",
+  "public_scheme": "http",
+  "cookie_file": "cookie.txt",
+  "local_test_mode": true,
+  "bind_localhost": false,
+  "debug_log": true,
+  "cloudflare_bypass": true,
+  "tool_name": "SEO Tester Online",
+  "inject_css": "st-select-workspace{display:none!important;visibility:hidden!important;pointer-events:none!important}st-menu-multi-account{display:none!important;visibility:hidden!important;pointer-events:none!important}",
+  "replacements": [
+    {
+      "search": "DigitaVision",
+      "replace": "ToolsMandi"
+    },
+    {
+      "search": "Digitavision",
+      "replace": "ToolsMandi"
+    },
+    {
+      "search": "digitavision",
+      "replace": "ToolsMandi"
+    }
+  ],
+  "extra_domains": [
+    "api.seotesteronline.com",
+    "socket.seotesteronline.com",
+    "proxy.seotesteronline.com",
+    "www.seotesteronline.com",
+    "seotesteronline.com",
+    "suite.seotesteronline.com",
+    "feedback.seotesteronline.com",
+    "partner.seotesteronline.com",
+    "go.seotesteronline.com",
+    "stocdn.s3-eu-west-1.amazonaws.com",
+    "js.stripe.com",
+    "checkout.stripe.com",
+    "m.stripe.com",
+    "api.stripe.com",
+    "static.zdassets.com",
+    "assets.calendly.com",
+    "fonts.googleapis.com",
+    "fonts.gstatic.com",
+    "www.googletagmanager.com",
+    "www.google-analytics.com",
+    "clients1.google.com",
+    "suggestqueries.google.com",
+    "cdnjs.cloudflare.com"
+  ],
+  "blocked_paths": [
+    "/logout",
+    "/login",
+    "/signin",
+    "/signup",
+    "/sign-up",
+    "/sign-in",
+    "/register",
+    "/pricing",
+    "/plans",
+    "/billing",
+    "/billing-info",
+    "/subscription",
+    "/subscriptions",
+    "/account",
+    "/settings",
+    "/checkout",
+    "/choose-plan",
+    "/profile",
+    "/auth/logout",
+    "/auth/login",
+    "/auth/signup",
+    "/auth/signin"
+  ],
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "home_path": "/"
+}

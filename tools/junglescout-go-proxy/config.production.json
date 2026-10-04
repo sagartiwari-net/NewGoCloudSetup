@@ -1,0 +1,112 @@
+{
+  "port": "8785",
+  "use_database": true,
+  "bypass_auth": false,
+  "target_url": "https://members.junglescout.com",
+  "cdn_url": "https://members.junglescout.com",
+  "public_host": "jungle.1clkaccess.store",
+  "public_scheme": "https",
+  "tool_name": "Jungle Scout",
+  "credit_label": "Searches",
+  "home_path": "/",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": ["/account/billing", "/account/subscription", "/pricing"],
+  "blocked_prefixes": ["/account/billing"],
+  "sensitive_cookies": [
+    "auth_token",
+    "STYXKEY_auth_token",
+    "datadome"
+  ],
+  "watchdog_triggers": [],
+  "extra_cdn_domains": [
+    "api.junglescout.com",
+    "app.junglescout.com",
+    "get.junglescout.com",
+    "dd.junglescout.com"
+  ],
+  "disable_export_tracking": true,
+  "disable_limits": true,
+  "logout_detection": {
+    "enabled": false,
+    "url_paths": ["/login", "/signin", "/sign-in"],
+    "text_sniffs": [],
+    "html_sniffs": [],
+    "show_overlay": true,
+    "overlay_title": "Session Update",
+    "overlay_message": "Account logout detected. Switching account and refreshing — please wait...",
+    "refresh_seconds": 8
+  },
+  "automation": {
+    "enabled": false,
+    "url": "https://dashboard.seotoolscart.com/api/tasks/run",
+    "method": "POST",
+    "payload": {
+      "task_uid": "runjjunglescout"
+    },
+    "headers": {
+      "Authorization": "Bearer goauto_secret_token_12345"
+    },
+    "cooldown_seconds": 300
+  },
+  "local_test_mode": false,
+  "debug_logging": true,
+  "bind_localhost": false,
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "toolsmandirefct",
+  "mysql_password": "CHANGE_ME_ON_SERVER",
+  "mysql_db": "toolsmandirefct",
+  "secret_key": "FROM_DATABASE",
+  "session_duration_minutes": 30,
+  "member_area_url": "https://toolsmandi.com/",
+  "session_security": {
+    "enabled": true,
+    "single_session_per_user": true,
+    "ip_protection": {
+      "enabled": true,
+      "mode": "soft",
+      "grace_changes_per_30min": 5,
+      "concurrent_kill_enabled": false,
+      "concurrent_window_seconds": 300
+    },
+    "device_cookie": {
+      "enabled": true,
+      "cookie_name": "tm_device"
+    },
+    "domain_check": {
+      "enabled": false,
+      "expected_host": "jungle.1clkaccess.store",
+      "delay_seconds": 2,
+      "immediate_check": true,
+      "recheck_interval_seconds": 60,
+      "action": "logout"
+    },
+    "account_cookie_protection": {
+      "enabled": true,
+      "concurrent_kill_enabled": false,
+      "concurrent_window_seconds": 300
+    },
+    "security_heartbeat": {
+      "enabled": false,
+      "interval_seconds": 90
+    },
+    "headers": {
+      "x_frame_options": "DENY",
+      "csp_frame_ancestors": "'none'",
+      "cors_allow_origin": "https://jungle.1clkaccess.store"
+    },
+    "ott_ip_validation": {
+      "enabled": false,
+      "mode": "soft"
+    },
+    "datacenter_score": {
+      "enabled": false
+    },
+    "cloudflare": {
+      "enabled": false
+    }
+  }
+}

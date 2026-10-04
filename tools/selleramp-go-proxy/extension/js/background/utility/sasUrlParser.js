@@ -1,0 +1,1 @@
+const sasAutoInjectUrlMatchRegex=RegExp("https?://([^/]+\\.selleramp\\.com|sa01\\.toolswala\\.net)/sas/(history|lookup)"),isSasAutoInjectableUrl=(t="")=>!!t.match(sasAutoInjectUrlMatchRegex)?.length;export{isSasAutoInjectableUrl};

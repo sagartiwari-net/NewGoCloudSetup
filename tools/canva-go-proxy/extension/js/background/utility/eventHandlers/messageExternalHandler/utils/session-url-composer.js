@@ -1,0 +1,1 @@
+const SAS_SESSION_ID_QUERY_PARAM_NAME="sasSessionId",composeSessionUrl=(S,{sasSessionId:s})=>{S=new URL(S);return S.searchParams.set(SAS_SESSION_ID_QUERY_PARAM_NAME,s),S.href};export{SAS_SESSION_ID_QUERY_PARAM_NAME,composeSessionUrl};

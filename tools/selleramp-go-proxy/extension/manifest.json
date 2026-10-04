@@ -1,0 +1,100 @@
+{
+  "update_url": "https://clients2.google.com/service/update2/crx",
+  "name": "SellerAmp SAS - Amazon FBA Analysis Tool",
+  "short_name": "SellerAmp SAS",
+  "version": "2.4.14",
+  "description": "Analyze products to sell on Amazon via Online Arbitrage. Includes Keepa charts, FBA profit calculator, stock levels and more",
+  "manifest_version": 3,
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "webRequest",
+    "tabs",
+    "storage",
+    "cookies",
+    "contextMenus",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "css": [
+        "css/custom.css",
+        "css/jquery-ui.structure.min.css",
+        "css/jquery-ui.min.css",
+        "css/reusableDialog.css"
+      ],
+      "matches": [
+        "*://*/*"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "js/background/background.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules_1.json"
+      }
+    ]
+  },
+  "action": {},
+  "icons": {
+    "16": "images/sas-logo2-16.png",
+    "32": "images/sas-logo2-32.png",
+    "48": "images/sas-logo2-48.png",
+    "128": "images/sas-logo2-128.png"
+  },
+  "externally_connectable": {
+    "ids": [
+      "kdjdiajopilediaadgkjijbcnegggpdd",
+      "kidmffepbniamfbibhfgdakkggchipjl",
+      "jiklpimhblckfpniaalmbkmkbaefndil",
+      "gfkndgikhlecndckncfohdpblncbgffa"
+    ],
+    "matches": [
+      "*://localhost/*",
+      "*://sasend.localhost/*",
+      "*://127.0.0.1/*",
+      "*://*.1clkaccess.store/*",
+      "*://*.selleramp.com/*",
+      "*://*.arbitragehero.com/*",
+      "*://*.sellerampsas.com/*",
+      "*://*.sellertoolkit.co.uk/*",
+      "*://app.wamp.com/*",
+      "*://uat.wamp.com/*",
+      "__SAS_PROXY_MATCH__"
+    ]
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj5vkuFuBHAiLPLFZtOPJI62KEr1doLHLMBZMdmK9K5gTQN34EWCSFYVK8CD8fx5jWcXuhjduJXxW8ucRd4qgKCP48+BUEE/sXXVhmv4bdNIEDXQRx8yJ/ySG2wMov5EMTWZxPyry0OSuOQqq7niFocHqWbnUajgYJA/UYfN5Ie80nz1OzQT4ZV/NU6f+9AzW3JmmIvyZne4msdkME71U+elHAW6vcmPeCk1eBAbARcvsC3OU1x/0dd7MiknsO2WPtbfZB/XXIbkwy7iEiv68wodMn1M1Y+U+zacQQ2jVZCeve5nvMY4noRY8Ewl7U4VLFSRD3xG2pvIsVNwxmUI12wIDAQAB",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "js/content/*",
+        "frame.html",
+        "images/*",
+        "proxy.html",
+        "auth-required.html"
+      ],
+      "matches": [
+        "*://*/*"
+      ]
+    }
+  ]
+}

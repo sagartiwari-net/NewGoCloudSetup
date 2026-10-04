@@ -1,0 +1,55 @@
+{
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "port": "4511",
+  "bypass_auth": true,
+  "target_url": "https://app.jasper.ai",
+  "cdn_url": "https://cdn.jasper.ai",
+  "public_host": "127.0.0.1:4511",
+  "public_scheme": "http",
+  "tool_name": "Jasper",
+  "credit_label": "Words",
+  "home_path": "/",
+  "cookie_domain_suffix": "jasper.ai",
+  "inject_css": "",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": [
+    "/logout"
+  ],
+  "blocked_prefixes": [
+    "/settings"
+  ],
+  "sensitive_cookies": [],
+  "watchdog_triggers": [],
+  "extra_cdn_domains": [
+    "https://cdn.jasper.ai",
+    "https://i.jasper.ai",
+    "https://sage.jasper.ai",
+    "https://mage.jasper.ai",
+    "https://secure.jasper.ai",
+    "https://copilot.jasper.ai",
+    "https://og.jasper.ai",
+    "https://t.jasper.ai",
+    "https://universal-sidebar.jasper.ai",
+    "https://identitytoolkit.googleapis.com",
+    "https://securetoken.googleapis.com",
+    "https://www.googleapis.com",
+    "https://firestore.googleapis.com",
+    "https://firebaseinstallations.googleapis.com"
+  ],
+  "disable_export_tracking": true,
+  "cloudflare_bypass": true,
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "root",
+  "mysql_password": "",
+  "mysql_db": "jasper_local",
+  "secret_key": "local_jasper_secret",
+  "session_duration_minutes": 120,
+  "member_area_url": "http://127.0.0.1:4511/",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "replacements": [
+    { "search": "DigitaVision", "replace": "ToolsMandi" }
+  ]
+}

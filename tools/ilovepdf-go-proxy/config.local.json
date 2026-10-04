@@ -1,0 +1,67 @@
+{
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "port": "4531",
+  "bypass_auth": true,
+  "target_url": "https://www.ilovepdf.com",
+  "cdn_url": "https://www.ilovepdf.com",
+  "public_host": "127.0.0.1:4531",
+  "public_scheme": "http",
+  "tool_name": "iLovePDF",
+  "credit_label": "Files",
+  "home_path": "/",
+  "cookie_domain_suffix": "ilovepdf.com",
+  "inject_css": ".nav-actions li.nav-has-dropdown[data-account=\"true\"]{display:none!important;visibility:hidden!important;pointer-events:none!important}",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": [
+    "/logout",
+    "/user/logout",
+    "/user",
+    "/login",
+    "/register"
+  ],
+  "blocked_prefixes": [
+    "/logout",
+    "/user",
+    "/login",
+    "/register",
+    "/pricing"
+  ],
+  "sensitive_cookies": [
+    "_identity-ilovepdf",
+    "_identity_ulc",
+    "_ilovepdf",
+    "_csrf-ilovepdf",
+    "__cf_bm"
+  ],
+  "watchdog_triggers": [],
+  "extra_cdn_domains": [
+    "https://api1-c-in.ilovepdf.com",
+    "https://api2-c-in.ilovepdf.com",
+    "https://api3-c-in.ilovepdf.com",
+    "https://api4-c-in.ilovepdf.com",
+    "https://api5-c-in.ilovepdf.com",
+    "https://api6-c-in.ilovepdf.com",
+    "https://api7-c-in.ilovepdf.com",
+    "https://api8-c-in.ilovepdf.com",
+    "https://api9-c-in.ilovepdf.com",
+    "https://api10-c-in.ilovepdf.com",
+    "https://www.iloveapi.com",
+    "https://www.iloveimg.com"
+  ],
+  "disable_export_tracking": true,
+  "cloudflare_bypass": true,
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "root",
+  "mysql_password": "",
+  "mysql_db": "ilovepdf_local",
+  "secret_key": "local_ilovepdf_secret",
+  "session_duration_minutes": 120,
+  "member_area_url": "http://127.0.0.1:4531/",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "replacements": [
+    { "search": "DigitaVision", "replace": "ToolsMandi" }
+  ]
+}

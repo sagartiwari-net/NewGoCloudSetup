@@ -1,0 +1,6 @@
+helium10-go-proxy
+cookie.txt
+config.json
+cdn-cache/
+.DS_Store
+*.log

@@ -1,0 +1,57 @@
+{
+  "port": "5231",
+  "target_url": "http://www.indexification.com",
+  "cookie_path": "cookie.txt",
+  "public_host": "127.0.0.1:5231",
+  "public_scheme": "http",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "logout_detect_text": "Log In",
+  "automation_url": "",
+  "automation_payload": {},
+  "automation_headers": {},
+  "logo_text": "",
+  "cooldown_file_path": "cooldown.txt",
+  "cooldown_seconds": 180,
+  "tool_name": "Indexification",
+  "logout_detect_texts": [
+    "Log In",
+    "Login",
+    "Create Account",
+    "Create Your Account",
+    "Remember Me"
+  ],
+  "login_redirect_keywords": [
+    "login",
+    "signin",
+    "create account",
+    "register"
+  ],
+  "extra_rewrite_domains": [
+    "indexification.com"
+  ],
+  "domain_path_map": {},
+  "refresh_loop_seconds": 5,
+  "inject_export_tool": false,
+  "home_path": "/members/index.php",
+  "blocked_paths": [
+    "/members/profile.php",
+    "/members/billing.php",
+    "/members/api.php"
+  ],
+  "blocked_suffixes": [
+    "/profile.php",
+    "/billing.php",
+    "/api.php"
+  ],
+  "custom_css": "#user-logout, #accupgrade, .welcomeuser, #tipsy-apikey { display: none !important; visibility: hidden !important; pointer-events: none !important; } li.ui-menu-item:has(a[href=\"api.php\"]), li.ui-menu-item:has(a[href=\"billing.php\"]), li.ui-menu-item:has(a[href=\"profile.php\"]), li.ui-menu-item:has(a[href=\"/members/api.php\"]), li.ui-menu-item:has(a[href=\"/members/billing.php\"]), li.ui-menu-item:has(a[href=\"/members/profile.php\"]) { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; margin: 0 !important; padding: 0 !important; }",
+  "custom_js": "(function(){var H='/members/index.php';var S=['/profile.php','/billing.php','/api.php'];function blocked(p){p=(p||'').split('?')[0];for(var i=0;i<S.length;i++){if(p===S[i]||p.endsWith(S[i]))return true;}return false;}function hideNav(){document.querySelectorAll('a[href=\"api.php\"],a[href=\"billing.php\"],a[href=\"profile.php\"],a[href=\"/members/api.php\"],a[href=\"/members/billing.php\"],a[href=\"/members/profile.php\"]').forEach(function(a){var li=a.closest('li.ui-menu-item');if(li)li.style.display='none';});}document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a'):null;if(!a||!a.href)return;try{if(blocked(new URL(a.href,location.origin).pathname)){e.preventDefault();e.stopPropagation();window.location.href=H;}}catch(err){}},true);if(blocked(location.pathname)){location.replace(H);}hideNav();document.addEventListener('DOMContentLoaded',hideNav);setInterval(hideNav,1000);})();",
+  "local_test_mode": true,
+  "debug_log": true,
+  "mysql_host": "",
+  "mysql_port": "3306",
+  "mysql_user": "",
+  "mysql_password": "",
+  "mysql_db": "",
+  "replacements": [],
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
+}

@@ -1,0 +1,71 @@
+{
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "port": "4971",
+  "bypass_auth": true,
+  "target_url": "https://www.storyblocks.com",
+  "cdn_url": "https://www.storyblocks.com",
+  "public_host": "127.0.0.1:4971",
+  "public_scheme": "http",
+  "tool_name": "Storyblocks",
+  "credit_label": "Credits",
+  "home_path": "/",
+  "cookie_domain_suffix": "storyblocks.com",
+  "inject_css": "iframe[name=\"intercom-banner-frame\"][title=\"Intercom live chat banner\"]{display:none!important}div.relative:has(> button[aria-label=\"Account\"][aria-haspopup=\"true\"]){display:none!important}div.relative:has(> button[aria-label=\"Account\"][aria-haspopup=\"menu\"]){display:none!important}a[href^=\"/video/upgrade-my-plan/\"][class~=\"bg-yellow-400\"][class~=\"h-10\"]{display:none!important}",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": [
+    "/logout",
+    "/signup",
+    "/sign-up",
+    "/register",
+    "/join",
+    "/pricing",
+    "/plans",
+    "/billing",
+    "/subscription"
+  ],
+  "blocked_prefixes": [
+    "/logout",
+    "/signup",
+    "/sign-up",
+    "/register",
+    "/join",
+    "/pricing",
+    "/plans",
+    "/billing",
+    "/subscription"
+  ],
+  "sensitive_cookies": [
+    "login_session",
+    "laravel_session"
+  ],
+  "watchdog_triggers": [],
+  "extra_cdn_domains": [
+    "https://js.stripe.com",
+    "https://m.stripe.com",
+    "https://api.stripe.com",
+    "https://fonts.googleapis.com",
+    "https://fonts.gstatic.com",
+    "https://www.googletagmanager.com",
+    "https://www.google-analytics.com",
+    "https://static.cloudflareinsights.com",
+    "https://challenges.cloudflare.com"
+  ],
+  "disable_export_tracking": true,
+  "cloudflare_bypass": true,
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "root",
+  "mysql_password": "",
+  "mysql_db": "storyblocks_local",
+  "secret_key": "local_storyblocks_secret",
+  "session_duration_minutes": 120,
+  "member_area_url": "http://localhost:4971/",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+  "replacements": [
+    { "search": "DigitaVision", "replace": "ToolsMandi" },
+    { "search": "Digitavision", "replace": "ToolsMandi" },
+    { "search": "digitavision", "replace": "ToolsMandi" }
+  ]
+}

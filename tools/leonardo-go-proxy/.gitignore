@@ -1,0 +1,7 @@
+leonardo-go-proxy
+*.exe
+.DS_Store
+cookie.txt
+cookie.txt.bak
+config.local.json
+cdn-cache/

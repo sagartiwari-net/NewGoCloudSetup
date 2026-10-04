@@ -1,0 +1,18 @@
+[Unit]
+Description=LHUB Ubersuggest Recloud Proxy #1 (app.neilpatel.com)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/1clkaccess.store/lhuber1
+ExecStart=/www/wwwroot/1clkaccess.store/lhuber1/ubersuggest-go-proxy
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lhuber1-recloud
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

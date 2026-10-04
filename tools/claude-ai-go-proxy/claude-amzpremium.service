@@ -1,0 +1,18 @@
+[Unit]
+Description=Claude AI Proxy (amzpremiumsoftware.com)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/amzpremiumsoftware.com/claude
+ExecStart=/www/wwwroot/amzpremiumsoftware.com/claude/claude-ai-go-proxy
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claude-amzpremium
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

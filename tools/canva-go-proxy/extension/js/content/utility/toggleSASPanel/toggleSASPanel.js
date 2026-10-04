@@ -1,0 +1,1 @@
+"use strict";import{showSASPanel}from"./showSASPanel.js";import{hideSASPanel}from"./hideSASPanel.js";const toggleSASPanel=async()=>{$("#SASContainer").is(":visible")?await hideSASPanel():await showSASPanel()};export{toggleSASPanel};

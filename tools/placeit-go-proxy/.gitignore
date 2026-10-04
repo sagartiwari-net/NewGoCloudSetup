@@ -1,0 +1,7 @@
+placeit-go-proxy
+*.exe
+cookie.txt
+config.json
+config.json.bak
+.DS_Store
+*.log

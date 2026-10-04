@@ -1,0 +1,25 @@
+# secrets / local migrate (never push)
+migrate-bundle/
+setup.md
+*.local.md
+.env
+.env.*
+
+# junk / heavy
+**/cdn-cache/
+**/node_modules/
+**/*.db
+**/cookie.txt
+**/.DS_Store
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.webp
+
+# built binaries (build on Linux server) — keep folders, ignore known binary names
+**/panel-api/panel-api
+tools/**/main
+tools/**/proxy
+tools/*-go-proxy/*-go-proxy
+tools/*-go-proxy/*-proxy
+*.exe

@@ -1,0 +1,18 @@
+[Unit]
+Description=ClosersCopy Go Proxy (ToolsMandi)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/1clkaccess.store/closerscopy
+ExecStart=/www/wwwroot/1clkaccess.store/closerscopy/closerscopy-proxy
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=closerscopy-proxy
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

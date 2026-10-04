@@ -1,0 +1,5 @@
+keepa-go-proxy
+config.json
+config.local.json
+cookie.txt
+*.log

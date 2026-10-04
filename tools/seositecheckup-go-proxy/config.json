@@ -1,0 +1,125 @@
+{
+  "port": "6023",
+  "use_database": false,
+  "bypass_auth": true,
+  "target_url": "https://app.seositecheckup.com",
+  "cdn_url": "https://app.seositecheckup.com",
+  "public_host": "localhost:6023",
+  "public_scheme": "http",
+  "tool_name": "SEO Site Checkup",
+  "credit_label": "Checks",
+  "export_label": "Reports",
+  "home_path": "/dashboard",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": ["/user/account/billing", "/user/account/subscription", "/free-trial-setup"],
+  "blocked_prefixes": ["/user/account/billing", "/user/account/subscription"],
+  "sensitive_cookies": [],
+  "watchdog_triggers": [],
+  "cloudflare_bypass": false,
+  "extra_cdn_domains": [
+    "https://49hoac1ew7.execute-api.us-east-1.amazonaws.com",
+    "https://7bwzwx5ph1.execute-api.us-east-1.amazonaws.com",
+    "https://ahzwgxc91a.execute-api.us-east-1.amazonaws.com",
+    "https://cmdk76y7p9.execute-api.us-east-1.amazonaws.com",
+    "https://hz3ze04fo6.execute-api.us-east-1.amazonaws.com",
+    "https://jy7ej2riu8.execute-api.us-east-1.amazonaws.com",
+    "https://okm60s2hbb.execute-api.us-east-1.amazonaws.com",
+    "https://p9wi49bt8f.execute-api.us-east-1.amazonaws.com",
+    "https://d26qan9dacvn8e.cloudfront.net",
+    "https://deep-analysis.ssc-app-services.com",
+    "https://fes-analysis.ssc-app-services.com",
+    "https://ssgtm.ssc-app-services.com"
+  ],
+  "disable_export_tracking": false,
+  "logout_detection": {
+    "enabled": false,
+    "show_overlay": true,
+    "refresh_seconds": 8,
+    "overlay_title": "Session Update",
+    "overlay_message": "Premium session expired. Refreshing account tokens, please wait...",
+    "url_paths": ["/login", "/sign-in"],
+    "text_sniffs": ["Sign in", "Log in", "session expired"],
+    "html_sniffs": []
+  },
+  "automation": {
+    "enabled": false,
+    "url": "https://dashboard.seotoolscart.com/api/tasks/run",
+    "method": "POST",
+    "payload": {
+      "task_uid": "gfx_runSeositecheckup"
+    },
+    "headers": {
+      "Authorization": "Bearer goauto_secret_token_12345"
+    },
+    "cooldown_seconds": 300
+  },
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "cookie_file": "cookie.txt",
+  "iam_file": "iam.txt",
+  "iam_storage_key": "ssc.iam",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "toolsmandirefct",
+  "mysql_password": "CHANGE_ME",
+  "mysql_db": "toolsmandirefct",
+  "secret_key": "toolsmandi_seositecheckup_secret_xyz123",
+  "session_duration_minutes": 120,
+  "member_area_url": "https://toolsmandi.com/",
+
+  "session_security": {
+    "enabled": false,
+    "single_session_per_user": true,
+    "ip_protection": {
+      "enabled": true,
+      "mode": "soft",
+      "grace_changes_per_30min": 2,
+      "concurrent_kill_enabled": true,
+      "concurrent_window_seconds": 300
+    },
+    "device_cookie": {
+      "enabled": true,
+      "cookie_name": "tm_device"
+    },
+    "domain_check": {
+      "enabled": true,
+      "expected_host": "localhost:6023",
+      "delay_seconds": 2,
+      "immediate_check": true,
+      "recheck_interval_seconds": 60,
+      "action": "logout"
+    },
+    "account_cookie_protection": {
+      "enabled": true,
+      "concurrent_kill_enabled": true,
+      "concurrent_window_seconds": 300
+    },
+    "security_heartbeat": {
+      "enabled": true,
+      "interval_seconds": 45
+    },
+    "headers": {
+      "x_frame_options": "DENY",
+      "csp_frame_ancestors": "'none'",
+      "cors_allow_origin": "http://localhost:6023"
+    },
+    "ott_ip_validation": {
+      "enabled": true,
+      "mode": "soft"
+    },
+    "datacenter_score": {
+      "enabled": false,
+      "score_mode": "asn",
+      "mmdb_path": "/opt/geoip/GeoLite2-ASN.mmdb",
+      "hosting_asns_path": "/opt/geoip/hosting_asns.json",
+      "threshold_kill": 70,
+      "threshold_warn": 40,
+      "block_vpn_alone": false
+    },
+    "cloudflare": {
+      "enabled": false,
+      "trust_connecting_ip": true,
+      "require_cf_ray": false
+    }
+  }
+}

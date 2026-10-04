@@ -1,0 +1,18 @@
+[Unit]
+Description=ZIK Analytics Go Proxy
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/toolsmandi.com/zikanalytics
+ExecStart=/www/wwwroot/toolsmandi.com/zikanalytics/zikaanalytics-proxy
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zikaanalytics-proxy
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

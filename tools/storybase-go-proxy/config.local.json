@@ -1,0 +1,63 @@
+{
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "port": "4551",
+  "bypass_auth": true,
+  "target_url": "https://www.storybase.com",
+  "cdn_url": "https://www.storybase.com",
+  "public_host": "127.0.0.1:4551",
+  "public_scheme": "http",
+  "tool_name": "StoryBase",
+  "credit_label": "Searches",
+  "home_path": "/app/overview/",
+  "cookie_domain_suffix": "storybase.com",
+  "inject_css": "#profile-widget-navigation,.profile-widget-nav{display:none!important;visibility:hidden!important;pointer-events:none!important}",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": [
+    "/logout",
+    "/logout/",
+    "/wp-login.php",
+    "/pricing",
+    "/pricing/",
+    "/member",
+    "/member/",
+    "/member/profile",
+    "/member/profile/",
+    "/member/team",
+    "/member/team/"
+  ],
+  "blocked_prefixes": [
+    "/logout",
+    "/wp-login.php",
+    "/pricing",
+    "/member"
+  ],
+  "sensitive_cookies": [
+    "wordpress_logged_in_14fe50121580262971a34520037069a4",
+    "fakesessid",
+    "pmpro_visit",
+    "__cf_bm"
+  ],
+  "watchdog_triggers": [],
+  "extra_cdn_domains": [
+    "https://dna8twue3dlxq.cloudfront.net",
+    "https://storybase.com"
+  ],
+  "disable_export_tracking": true,
+  "cloudflare_bypass": true,
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "root",
+  "mysql_password": "",
+  "mysql_db": "storybase_local",
+  "secret_key": "local_storybase_secret",
+  "session_duration_minutes": 120,
+  "member_area_url": "http://127.0.0.1:4551/",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "replacements": [
+    { "search": "DigitaVision", "replace": "ToolsMandi" },
+    { "search": "Digitavision", "replace": "ToolsMandi" },
+    { "search": "digitavision", "replace": "ToolsMandi" }
+  ]
+}

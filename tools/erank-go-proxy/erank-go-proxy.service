@@ -1,0 +1,22 @@
+[Unit]
+Description=eRank Go Proxy (ToolsMandi)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/1clkaccess.store/erank
+ExecStartPre=/bin/bash -c 'fuser -k 8786/tcp 2>/dev/null || true; sleep 2'
+ExecStart=/www/wwwroot/1clkaccess.store/erank/erank-go-proxy
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=erank-go-proxy
+LimitNOFILE=65536
+KillMode=control-group
+TimeoutStopSec=15
+Environment=CONFIG_FILE=config.json
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+# Secrets / runtime
+config.json
+cookie.json
+cookie.txt
+proxy.txt
+*.log
+
+# CDN disk cache
+cdn-cache/
+
+# Binaries
+envato-proxy
+envato-proxy-linux
+envato-go-proxy
+
+# Scratch
+scratch/
+
+# OS
+.DS_Store
+*.bak

@@ -1,0 +1,7 @@
+# One line — Semrush upstream exit IP (residential/mobile recommended).
+# Examples:
+#   socks5://user:pass@1.2.3.4:1080
+#   http://user:pass@1.2.3.4:8080
+#
+# Contabo/datacenter IPs get Cloudflare reCAPTCHA on semrush.com.
+# This file is loaded hot (no rebuild). Leave empty / delete to use direct VPS IP.

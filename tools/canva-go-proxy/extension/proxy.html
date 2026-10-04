@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Proxy Frame</title>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #f6f8fb;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+      .auth-message {
+        align-items: center;
+        box-sizing: border-box;
+        display: none;
+        font-family: Arial, sans-serif;
+        height: 100%;
+        justify-content: center;
+        line-height: 1.4;
+        padding: 22px;
+        text-align: center;
+      }
+      .auth-card {
+        background: #ffffff;
+        border: 1px solid #dce3ea;
+        border-radius: 8px;
+        box-shadow: 0 8px 22px rgba(22, 34, 51, 0.08);
+        box-sizing: border-box;
+        max-width: 360px;
+        padding: 22px 20px;
+        width: 100%;
+      }
+      .auth-icon {
+        align-items: center;
+        background: #eaf4fb;
+        border: 1px solid #c9e4f4;
+        border-radius: 8px;
+        color: #0678bd;
+        display: inline-flex;
+        font-size: 20px;
+        font-weight: 700;
+        height: 42px;
+        justify-content: center;
+        margin-bottom: 14px;
+        width: 42px;
+      }
+      .auth-title {
+        color: #18212c;
+        font-size: 17px;
+        font-weight: 700;
+        margin-bottom: 7px;
+      }
+      .auth-copy {
+        color: #586575;
+        font-size: 13px;
+        margin: 0 auto 16px;
+        max-width: 280px;
+      }
+      .auth-message a {
+        background: #0678bd;
+        border-radius: 6px;
+        color: #ffffff;
+        display: inline-block;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 10px 14px;
+        text-decoration: none;
+      }
+      .auth-note {
+        color: #7b8794;
+        font-size: 12px;
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="auth-message" id="authMessage">
+      <div class="auth-card">
+        <div class="auth-icon" id="authIcon">!</div>
+        <div class="auth-title" id="authTitle">Refresh Required</div>
+        <p class="auth-copy" id="authCopy">
+          The extension was reloaded while this Amazon page was open.
+        </p>
+        <a id="authLink" target="_blank" rel="noreferrer">Refresh Amazon Page</a>
+        <div class="auth-note" id="authNote">Refresh the Amazon tab, then open SellerAmp again.</div>
+      </div>
+    </div>
+    <iframe
+      id="appFrame"
+      sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-downloads allow-modals"
+    ></iframe>
+
+    <script src="js/proxy.js"></script>
+  </body>
+</html>

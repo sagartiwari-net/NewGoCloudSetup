@@ -1,0 +1,50 @@
+{
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "port": "5201",
+  "bypass_auth": true,
+  "target_url": "https://members.helium10.com",
+  "cdn_url": "https://members.helium10.com",
+  "public_host": "127.0.0.1:5201",
+  "public_scheme": "http",
+  "tool_name": "Helium10 Local",
+  "credit_label": "Searches",
+  "home_path": "/dashboard",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": [
+    "/account/billing",
+    "/account/subscription",
+    "/account/payment"
+  ],
+  "blocked_prefixes": [
+    "/account/billing",
+    "/account/subscription"
+  ],
+  "sensitive_cookies": [
+    "BSSESSID",
+    "session_token"
+  ],
+  "watchdog_triggers": [
+    "Your session has expired",
+    "Please log in",
+    "Subscribe to unlock",
+    "Upgrade your plan"
+  ],
+  "extra_cdn_domains": [
+    "app.helium10.com",
+    "re-cdn.helium10.com",
+    "h10api.pacvue.com",
+    "mrs.helium10.com"
+  ],
+  "inject_css": ".sc-hwoTEC.kYiWIH{display:none !important}",
+  "disable_export_tracking": false,
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "root",
+  "mysql_password": "",
+  "mysql_db": "toolsmandi_local",
+  "secret_key": "local_only",
+  "session_duration_minutes": 1440,
+  "member_area_url": "http://127.0.0.1:7851/"
+}

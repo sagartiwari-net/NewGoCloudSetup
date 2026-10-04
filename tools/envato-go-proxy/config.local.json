@@ -1,0 +1,17 @@
+{
+  "port": "5261",
+  "target_url": "https://app.envato.com",
+  "public_host": "127.0.0.1:5261",
+  "public_scheme": "http",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+  "cookie_path": "cookie.json",
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "bypass_auth": false,
+  "proxy": "",
+  "mysql_host": "",
+  "mysql_port": "3306",
+  "mysql_user": "",
+  "mysql_password": "",
+  "mysql_db": "",
+  "website_id": 0
+}

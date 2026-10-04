@@ -1,0 +1,75 @@
+{
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "port": "5191",
+  "target_url": "https://members.erank.com",
+  "cdn_url": "https://assets.erank.com",
+  "public_host": "127.0.0.1:5191",
+  "public_scheme": "http",
+  "tool_name": "eRank",
+  "credit_label": "Searches",
+  "home_path": "/",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": [
+    "/plans",
+    "/subscription-thanks",
+    "/account/billing",
+    "/settings"
+  ],
+  "blocked_prefixes": [
+    "/account/billing",
+    "/subscription",
+    "/settings"
+  ],
+  "sensitive_cookies": [
+    "sid_er",
+    "XSRF-TOKEN",
+    "er_sess_x"
+  ],
+  "watchdog_triggers": [
+    "Your session has expired",
+    "Please sign in"
+  ],
+  "extra_cdn_domains": [
+    "public.erank.com",
+    "hc.erank.com"
+  ],
+  "disable_export_tracking": true,
+  "cookie_file": "cookie.txt",
+  "local_test_mode": true,
+  "debug_logging": true,
+  "bind_localhost": true,
+  "mysql_host": "",
+  "mysql_port": "3306",
+  "mysql_user": "",
+  "mysql_password": "",
+  "mysql_db": "",
+  "secret_key": "erank_proxy_secret_local",
+  "session_duration_minutes": 120,
+  "member_area_url": "http://127.0.0.1:3210/access",
+  "disable_limits": true,
+  "logout_detection": {
+    "enabled": true,
+    "url_paths": ["/login"],
+    "text_sniffs": ["Welcome back — Login"],
+    "html_sniffs": ["Welcome back — Login"],
+    "show_overlay": true,
+    "overlay_title": "Switching account",
+    "overlay_message": "This account signed out. Trying the next available account.",
+    "refresh_seconds": 2
+  },
+  "session_security": {
+    "enabled": true,
+    "single_session_per_user": true,
+    "device_cookie": { "enabled": true, "cookie_name": "tm_device" },
+    "domain_check": {
+      "enabled": true,
+      "expected_host": "127.0.0.1",
+      "allowed_hosts": ["127.0.0.1", "localhost"],
+      "action": "logout"
+    },
+    "ip_protection": { "enabled": true, "mode": "soft" },
+    "security_heartbeat": { "enabled": true, "interval_seconds": 30 }
+  }
+}

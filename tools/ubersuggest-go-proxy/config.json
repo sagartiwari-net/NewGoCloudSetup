@@ -1,0 +1,59 @@
+{
+  "port": "5281",
+  "target_url": "https://app.neilpatel.com",
+  "cookie_path": "cookie.txt",
+  "public_host": "127.0.0.1:5281",
+  "public_scheme": "http",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "logout_detect_text": "Sign in",
+  "automation_url": "",
+  "automation_payload": {},
+  "automation_headers": {},
+  "logo_text": "ToolsMandi.com",
+  "cooldown_file_path": "cooldown.txt",
+  "cooldown_seconds": 180,
+  "tool_name": "Ubersuggest",
+  "logout_detect_texts": [
+    "Sign in to continue",
+    "Please sign in",
+    "session expired",
+    "Your session has expired"
+  ],
+  "login_redirect_keywords": [
+    "login",
+    "signin",
+    "sign-in",
+    "neilpatel.com/en/login",
+    "accounts.neilpatel.com",
+    "auth.neilpatel.com"
+  ],
+  "extra_rewrite_domains": [],
+  "domain_path_map": {},
+  "refresh_loop_seconds": 5,
+  "inject_export_tool": false,
+  "custom_css": "",
+  "custom_js": "",
+  "local_test_mode": true,
+  "debug_log": true,
+  "mysql_host": "",
+  "mysql_port": "3306",
+  "mysql_user": "",
+  "mysql_password": "",
+  "mysql_db": "",
+  "replacements": [
+    {
+      "search": "Neil Patel",
+      "replace": "ToolsMandi"
+    },
+    {
+      "search": "neilpatel.com",
+      "replace": "toolsmandi.com"
+    },
+    {
+      "search": "Ubersuggest by NP Digital",
+      "replace": "ToolsMandi"
+    }
+  ],
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "home_path": "/"
+}

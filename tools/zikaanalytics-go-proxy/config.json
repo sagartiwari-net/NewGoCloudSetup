@@ -1,0 +1,57 @@
+{
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "port": "5251",
+  "target_url": "https://app.zikanalytics.com",
+  "cdn_url": "https://app.zikanalytics.com",
+  "public_host": "127.0.0.1:5251",
+  "public_scheme": "http",
+  "tool_name": "Zik Analytics",
+  "credit_label": "Searches",
+  "home_path": "/dashboard",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "counted_paths": [],
+  "counted_prefixes": [
+    "/api/",
+    "/research/"
+  ],
+  "blocked_paths": [
+    "/account/billing",
+    "/pricing",
+    "/plans",
+    "/upgrade"
+  ],
+  "blocked_prefixes": [],
+  "blocked_routes": [
+    "/management-panel?tab=saved-searches",
+    "/management-panel?tab=manage-payments",
+    "/management-panel?tab=affiliate-manager",
+    "/quick-settings?tab=account",
+    "/quick-settings?tab=search-preferences",
+    "/quick-settings?tab=store-settings",
+    "/quick-settings?tab=competitor-settings",
+    "/quick-settings?tab=integrations",
+    "/quick-settings?tab=supplier-settings"
+  ],
+  "sensitive_cookies": [
+    "access_token",
+    "refresh_token"
+  ],
+  "watchdog_triggers": [
+    "Please sign in",
+    "Session expired",
+    "Upgrade to Pro"
+  ],
+  "extra_cdn_domains": [
+    "api.zikanalytics.com"
+  ],
+  "disable_export_tracking": false,
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "toolsmandirefct",
+  "mysql_password": "jAwaF3rpcXM3tNJh",
+  "mysql_db": "toolsmandirefct",
+  "secret_key": "zikanalytics_proxy_secret_xyz123",
+  "session_duration_minutes": 120,
+  "member_area_url": "https://toolsmandi.com/"
+}

@@ -1,0 +1,151 @@
+{
+  "port": "6041",
+  "use_database": true,
+  "bypass_auth": false,
+  "target_url": "https://chatgpt.com",
+  "cdn_url": "https://cdn.oaistatic.com",
+  "public_host": "chat.1clkaccess.store",
+  "public_scheme": "https",
+  "tool_name": "ChatGPT",
+  "credit_label": "Messages",
+  "export_label": "Exports",
+  "home_path": "/",
+  "counted_paths": [],
+  "counted_prefixes": [
+    "/backend-api/conversation"
+  ],
+  "blocked_paths": [
+    "/settings",
+    "/admin",
+    "/auth/login",
+    "/login",
+    "/signup"
+  ],
+  "blocked_prefixes": [
+    "/settings",
+    "/admin",
+    "/payments",
+    "/account",
+    "/api/auth/signin",
+    "/api/auth/signout"
+  ],
+  "sensitive_cookies": [
+    "__secure-next-auth.session-token.0",
+    "__secure-next-auth.session-token.1",
+    "__host-next-auth.csrf-token",
+    "__secure-next-auth.callback-url",
+    "_puid",
+    "oai-sc",
+    "__secure-oai-is"
+  ],
+  "watchdog_triggers": [
+    "Your session has expired",
+    "Please log in again"
+  ],
+  "cloudflare_bypass": true,
+  "extra_cdn_domains": [
+    "https://cdn.openai.com",
+    "https://auth-cdn.oaistatic.com",
+    "https://api.oaistatsig.com",
+    "https://persistent.oaistatic.com",
+    "https://ws.chatgpt.com",
+    "https://ab.chatgpt.com",
+    "https://images.openai.com",
+    "https://files.oaiusercontent.com",
+    "https://oaiusercontent.com",
+    "https://realtime.chatgpt.com"
+  ],
+  "disable_export_tracking": true,
+  "logout_detection": {
+    "enabled": true,
+    "show_overlay": true,
+    "refresh_seconds": 8,
+    "overlay_title": "Session Update",
+    "overlay_message": "Premium ChatGPT session expired. Refreshing cookies, please wait...",
+    "url_paths": [
+      "/auth/login",
+      "/login"
+    ],
+    "text_sniffs": [
+      "Your session has expired",
+      "Please log in again",
+      "Please log in again to continue"
+    ],
+    "html_sniffs": []
+  },
+  "automation": {
+    "enabled": true,
+    "url": "https://ctrl.toolsmandi.com/api/updateauto?key=chatgpt_acc1",
+    "method": "POST",
+    "payload": {},
+    "headers": {
+      "Authorization": "Bearer goauto_secret_token_12345"
+    },
+    "cooldown_seconds": 300
+  },
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "toolsmandirefct",
+  "mysql_password": "jAwaF3rpcXM3tNJh",
+  "mysql_db": "toolsmandirefct",
+  "secret_key": "amzpremiumsoftware_chatgpt_secret_xyz123",
+  "session_duration_minutes": 120,
+  "member_area_url": "https://toolsmandi.com/",
+  "session_security": {
+    "enabled": true,
+    "single_session_per_user": true,
+    "ip_protection": {
+      "enabled": true,
+      "mode": "soft",
+      "grace_changes_per_30min": 5,
+      "concurrent_kill_enabled": false,
+      "concurrent_window_seconds": 300
+    },
+    "device_cookie": {
+      "enabled": true,
+      "cookie_name": "tm_device"
+    },
+    "domain_check": {
+      "enabled": true,
+      "expected_host": "chat.1clkaccess.store",
+      "delay_seconds": 2,
+      "immediate_check": true,
+      "recheck_interval_seconds": 60,
+      "action": "logout"
+    },
+    "account_cookie_protection": {
+      "enabled": true,
+      "concurrent_kill_enabled": false,
+      "concurrent_window_seconds": 300
+    },
+    "security_heartbeat": {
+      "enabled": true,
+      "interval_seconds": 90
+    },
+    "headers": {
+      "x_frame_options": "DENY",
+      "csp_frame_ancestors": "'none'",
+      "cors_allow_origin": "https://chat.1clkaccess.store"
+    },
+    "ott_ip_validation": {
+      "enabled": true,
+      "mode": "soft"
+    },
+    "datacenter_score": {
+      "enabled": false,
+      "score_mode": "asn",
+      "mmdb_path": "/opt/geoip/GeoLite2-ASN.mmdb",
+      "hosting_asns_path": "/opt/geoip/hosting_asns.json",
+      "threshold_kill": 70,
+      "threshold_warn": 40,
+      "block_vpn_alone": false
+    },
+    "cloudflare": {
+      "enabled": false,
+      "trust_connecting_ip": true,
+      "require_cf_ray": false
+    }
+  }
+}

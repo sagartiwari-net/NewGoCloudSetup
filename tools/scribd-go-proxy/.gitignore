@@ -1,0 +1,7 @@
+scribd-go-proxy
+cookie.txt
+cookie.txt.bak
+config.local.json
+config.json.bak
+.DS_Store
+*.log

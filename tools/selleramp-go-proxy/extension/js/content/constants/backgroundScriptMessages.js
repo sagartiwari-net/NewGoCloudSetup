@@ -1,0 +1,1 @@
+const backgroundScriptMessages={EXTENSION_DISABLED:"extension_disabled",SHOW_SAS_EXTENSION:"show_sas_ext",DO_SAS:"dosas",TOGGLE_SAS:"togglesas",TOGGLE_POPUP:"togglePopup",GET_HTML:"getHTML",SHOW_ALERT:"showAlert",CHECK_INJECTION:"checkInjection",DO_IMAGE_SEARCH:"doImageSearch"};export{backgroundScriptMessages};

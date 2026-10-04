@@ -1,0 +1,14 @@
+{
+  "port": "5031",
+  "public_host": "joggai.gt4rents.com",
+  "public_scheme": "https",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "gt4rents",
+  "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
+  "mysql_db": "gt4rents",
+  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+}

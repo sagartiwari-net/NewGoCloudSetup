@@ -1,0 +1,23 @@
+[Unit]
+Description=SellerAmp SAS Go Proxy (sellamp.1clkaccess.store)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/1clkaccess.store/sellamp
+ExecStartPre=/bin/bash -c 'fuser -k 5152/tcp 2>/dev/null || true; sleep 2'
+ExecStart=/www/wwwroot/1clkaccess.store/sellamp/selleramp-go-proxy
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=selleramp-go-proxy
+LimitNOFILE=65536
+KillMode=control-group
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

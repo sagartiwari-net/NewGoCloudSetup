@@ -1,0 +1,7 @@
+canva-go-proxy
+cookie.txt
+config.json
+config.json.bak
+cdn-cache/
+.DS_Store
+*.log

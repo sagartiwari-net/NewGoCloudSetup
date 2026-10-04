@@ -1,0 +1,8 @@
+epidemicsound-go-proxy
+wordtune-go-proxy
+cookie.txt
+config.json
+config.json.bak
+.DS_Store
+*.log
+_adapt.py

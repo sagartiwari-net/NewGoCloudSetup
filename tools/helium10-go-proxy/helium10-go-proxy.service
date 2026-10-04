@@ -1,0 +1,23 @@
+[Unit]
+Description=Helium10 Go Proxy (hm.1clkaccess.store)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/1clkaccess.store/hm
+ExecStartPre=/bin/bash -c 'fuser -k 5151/tcp 2>/dev/null || true; sleep 2'
+ExecStart=/www/wwwroot/1clkaccess.store/hm/helium10-go-proxy
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=helium10-go-proxy
+LimitNOFILE=65536
+KillMode=control-group
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

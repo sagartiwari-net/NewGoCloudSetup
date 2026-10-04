@@ -1,0 +1,18 @@
+{
+  "port": "5271",
+  "target_url": "https://digen.ai",
+  "public_host": "127.0.0.1:5271",
+  "public_scheme": "http",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "website_id": 43,
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "toolsmandirefct",
+  "mysql_password": "jAwaF3rpcXM3tNJh",
+  "mysql_db": "toolsmandirefct",
+  "cookie": "",
+  "proxy": "",
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
+  "home_path": "/",
+  "tool_name": "Digen"
+}

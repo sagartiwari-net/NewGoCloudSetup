@@ -1,0 +1,43 @@
+{
+  "referer": "https://app.jasper.ai/",
+  "includedFormats": [
+    "indexedDB"
+  ],
+  "indexedDB": {
+    "firebase-heartbeat-database": {
+      "stores": {
+        "firebase-heartbeat-store": [
+          {
+            "heartbeats": [],
+            "lastSentHeartbeatDate": "2026-09-20"
+          }
+        ]
+      }
+    },
+    "firebaseLocalStorageDb": {
+      "stores": {
+        "firebaseLocalStorage": [
+          {
+            "fbase_key": "firebase:authUser:AIzaSyCawBlyCbiRm8cyy_iSMwQCSi-eYQAlZ-E:[DEFAULT]",
+            "value": {
+              "apiKey": "AIzaSyCawBlyCbiRm8cyy_iSMwQCSi-eYQAlZ-E",
+              "appName": "[DEFAULT]",
+              "createdAt": "1788867076902",
+              "email": "digitavision080926@scheduled.email",
+              "emailVerified": true,
+              "isAnonymous": false,
+              "lastLoginAt": "1789361925730",
+              "providerData": [],
+              "stsTokenManager": {
+                "accessToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImVjMjdhOWI2YWEzMDg4ZDI3Y2FkYjFjNjRmYTJmYTQ1Y2Y5ZmQ5ZTciLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vY29udmVyc2lvbmFpLS0tcHJvZCIsImF1ZCI6ImNvbnZlcnNpb25haS0tLXByb2QiLCJhdXRoX3RpbWUiOjE3ODkzNjExMzIsInVzZXJfaWQiOiJkMWVIYVlsM3JnVkxCVXh6Zkl5SU5CVW1GalIyIiwic3ViIjoiZDFlSGFZbDNyZ1ZMQlV4emZJeUlOQlVtRmpSMiIsImlhdCI6MTc4OTkwNjM0NCwiZXhwIjoxNzg5OTA5OTQ0LCJlbWFpbCI6ImRpZ2l0YXZpc2lvbjA4MDkyNkBzY2hlZHVsZWQuZW1haWwiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6eyJlbWFpbCI6WyJkaWdpdGF2aXNpb24wODA5MjZAc2NoZWR1bGVkLmVtYWlsIl19LCJzaWduX2luX3Byb3ZpZGVyIjoiY3VzdG9tIn19.W6E7sE96ItcjMBgp3-c0y4cDKmlyMubx8_SwbqNi6bFa40HEzs2oXONRQXQV2mcfZKSHqZKMSQXqJr6RFpO4DX1h8_-vRLAlzAVDtht0HMHGm51hdVgAcxqtyqAlVgE-4R_JBDrElif3IQM9oY3oKip5aLee9kzkgdt9H3aRDBl0niPAJ7OmnMic_eAshEK6kpRPTb7Lav_NH1ugXvPpP1l5X24ePn49g92wveSAONwaRh5wR0KAzONCHh2HbaMuXOmK2lqmnv64HkD_TpcmppiTOzNSfKtDEEwdUY7WT9u0LE1ePqKUdfh5ghlrrCvlN0Kr0CbJwOWYrbcDDksFiQ",
+                "expirationTime": 1789909945124,
+                "refreshToken": "AMf-vBxZ8ShntnNXV7vEGQFCiG5PqzA1RVMw4eRjeABknt4ZRMkmTVG5eiQssbPrGf-NNhwB4K5QovcbpoDQhUQOTCdy9hBce1RvvfNhkkpcWYDT0h_ZWe-6kX_bKtVRpEI7Ic24FheSc5Y6TZD3cae7Z6nB9FgftaX93q_Der93PROKPeYqgNYaNnuS1WBaF63byR1uNJJO"
+              },
+              "uid": "d1eHaYl3rgVLBUxzfIyINBUmFjR2"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

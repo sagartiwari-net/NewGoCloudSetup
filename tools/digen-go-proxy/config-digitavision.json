@@ -1,0 +1,15 @@
+{
+  "port": "7896",
+  "target_url": "https://digen.ai",
+  "public_host": "digen.digitavision.com",
+  "public_scheme": "https",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "website_id": 44,
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "toolsmandirefct",
+  "mysql_password": "jAwaF3rpcXM3tNJh",
+  "mysql_db": "toolsmandirefct",
+  "cookie": "",
+  "proxy": ""
+}
