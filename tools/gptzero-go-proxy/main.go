@@ -522,6 +522,32 @@ func forcePremiumPlanValue(v interface{}) bool {
 	changed := false
 	switch t := v.(type) {
 	case map[string]interface{}:
+		_, hasEmail := t["email"]
+		_, hasFullPlan := t["full_plan"]
+		_, hasPlan := t["plan"]
+		looksLikeProfile := hasEmail && (hasFullPlan || hasPlan || t["id"] != nil)
+		if looksLikeProfile {
+			fp, _ := t["full_plan"].(map[string]interface{})
+			if fp == nil {
+				fp = map[string]interface{}{}
+				t["full_plan"] = fp
+				changed = true
+			}
+			if name, _ := fp["name"].(string); normalizeGPTZeroPlan(name) != name || name == "" {
+				fp["name"] = "Premium (Annual)"
+				changed = true
+			}
+			if fp["char_limit"] == nil {
+				fp["char_limit"] = 500000
+				changed = true
+			}
+			if fp["word_limit"] == nil {
+				fp["word_limit"] = 300000
+				changed = true
+			}
+			t["plan"] = "Premium (Annual)"
+			changed = true
+		}
 		if plan, ok := t["plan"].(string); ok {
 			n := normalizeGPTZeroPlan(plan)
 			if n != plan {
@@ -534,8 +560,6 @@ func forcePremiumPlanValue(v interface{}) bool {
 				fp["name"] = "Premium (Annual)"
 				changed = true
 			}
-			t["plan"] = "Premium (Annual)"
-			changed = true
 		}
 		if planObj, ok := t["plan"].(map[string]interface{}); ok {
 			if name, _ := planObj["name"].(string); normalizeGPTZeroPlan(name) != name || name == "" {
@@ -628,6 +652,8 @@ func lsJSONForBrowser(ls map[string]string, plan, publicHost string) []byte {
 	out["redirectToFreeTrial"] = "false"
 	out["anonymousCheckoutPlan"] = "null"
 	out["isInitialSession"] = "false"
+	out["trialSubscriptionUsed"] = "true"
+	out["trial_subscription_used"] = "true"
 	b, err := json.Marshal(out)
 	if err != nil {
 		return []byte("{}")
@@ -1311,16 +1337,35 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     });
   };
 
-  // Dismiss free-upsell once if it appears.
-  var dismissed = false;
-  function dismiss() {
-    if (dismissed) return;
-    document.querySelectorAll('button, a').forEach(function(el) {
-      var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-      if (t === 'Pass on premium, continue free') { dismissed = true; try { el.click(); } catch (e) {} }
-    });
+  // Auto-close Premium / upgrade modals that blur and "hide" left/right panels.
+  function dismissUpsells() {
+    try {
+      var closeBtn = document.querySelector(
+        '[data-testid="upgrade-plan-modal-close-button"], #close-UpgradePlanModalV3-button'
+      );
+      if (closeBtn) { try { closeBtn.click(); } catch (e) {} }
+      document.querySelectorAll('button, a').forEach(function(el) {
+        var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t === 'Pass on premium, continue free' || t === 'Maybe later' ||
+            t === 'Not now' || t === 'No thanks' || t === 'Continue with free') {
+          try { el.click(); } catch (e2) {}
+        }
+      });
+      // Remove modal node if React keeps reopening it briefly.
+      document.querySelectorAll('[data-testid="upgrade-plan-modal"]').forEach(function(el) {
+        var root = el.closest('[role="dialog"], [data-state="open"], .fixed, .absolute') || el.parentElement;
+        if (root && root !== document.body) {
+          root.style.setProperty('display', 'none', 'important');
+          root.style.setProperty('visibility', 'hidden', 'important');
+          root.style.setProperty('pointer-events', 'none', 'important');
+        }
+      });
+    } catch (e) {}
   }
-  setInterval(dismiss, 1000);
+  setInterval(dismissUpsells, 400);
+  try {
+    new MutationObserver(function() { dismissUpsells(); }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
 
   // Hide only the listed profile/sidebar/header chrome (keep Scans + main app).
   try {
@@ -1338,8 +1383,15 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       'li:has(>#account-settings-link),',
       '[data-testid="profile-menu-logout-button"],',
       'button.amplitude-survey-feedback,',
-      '.amplitude-survey-feedback',
-      '{display:none!important;visibility:hidden!important;pointer-events:none!important;max-height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;border:0!important}'
+      '.amplitude-survey-feedback,',
+      '[data-testid="upgrade-plan-modal"],',
+      '[data-testid="upgrade-plan-modal"] *,',
+      '#close-UpgradePlanModalV3-button',
+      '{display:none!important;visibility:hidden!important;pointer-events:none!important;max-height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;border:0!important}',
+      /* Kill blurred modal backdrop that makes side panels look missing */
+      'body:has([data-testid="upgrade-plan-modal"]) [data-testid="upgrade-plan-modal"],',
+      '[data-testid="upgrade-plan-modal"]',
+      '{display:none!important}'
     ].join('');
     (document.head || document.documentElement).appendChild(st);
   } catch (e) {}
@@ -1582,14 +1634,14 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
           if ((el.className || '').indexOf('bg-text-blue') === -1) return;
         }
         var pct = Math.max(0, Math.min(100, nums.pct));
-        var next = st.replace(/width\s*:\s*[^;]+/i, 'width: ' + pct.toFixed(4) + '%');
+        var next = st.replace(/width\s*:\s*[^;]+/i, 'width: ' + pct.toFixed(4) + '%%');
         if (next === st && st.indexOf('width') !== -1) {
-          next = st.replace(/width\s*:\s*[^;]+/i, 'width: ' + pct.toFixed(4) + '%');
+          next = st.replace(/width\s*:\s*[^;]+/i, 'width: ' + pct.toFixed(4) + '%%');
         }
-        if (!/width\s*:/i.test(next)) next = 'width: ' + pct.toFixed(4) + '%;' + st;
-        if (el.getAttribute('data-tm-credit-sig') === sig && el.style.width === pct.toFixed(4) + '%') return;
+        if (!/width\s*:/i.test(next)) next = 'width: ' + pct.toFixed(4) + '%%;' + st;
+        if (el.getAttribute('data-tm-credit-sig') === sig && el.style.width === pct.toFixed(4) + '%%') return;
         el.setAttribute('style', next);
-        el.style.width = pct.toFixed(4) + '%';
+        el.style.width = pct.toFixed(4) + '%%';
         el.setAttribute('data-tm-credit-sig', sig);
       });
     } catch (e) {}
