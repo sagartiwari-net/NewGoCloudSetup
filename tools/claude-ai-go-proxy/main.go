@@ -1619,48 +1619,62 @@ func main() {
 		// (do not leave a blank SPA open on a dead cookie).
 		if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/edge-api/bootstrap") &&
 			strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "json") {
-			peek, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-			rest, _ := io.ReadAll(resp.Body)
+			// MUST decompress before inspecting/serving. Old path deleted Content-Encoding while
+			// leaving gzip/br bytes → browser JSON.parse saw no top-level "account".
+			full, enc, derr := decompressResponseBody(resp)
 			resp.Body.Close()
-			full := append(peek, rest...)
+			if derr != nil {
+				log.Printf("[AUTH] bootstrap decompress failed: %v", derr)
+				resp.Body = io.NopCloser(bytes.NewReader(nil))
+				return derr
+			}
 			lower := strings.ToLower(string(full))
+			var top map[string]json.RawMessage
+			hasAccount := false
+			topKeys := make([]string, 0, 12)
+			if json.Unmarshal(full, &top) == nil {
+				_, hasAccount = top["account"]
+				for k := range top {
+					topKeys = append(topKeys, k)
+					if len(topKeys) >= 12 {
+						break
+					}
+				}
+			}
 			loggedOut := resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden ||
 				strings.Contains(lower, `"account":null`) || strings.Contains(lower, `"account": null`) ||
 				strings.Contains(lower, `"authenticated":false`) || strings.Contains(lower, `"loggedout":true`)
-			// Claude signed-in bootstrap is large and includes account/org membership fields.
-			// Markers vary by build — also treat large 200 JSON as signed-in unless account is null.
-			signedIn := !loggedOut && (len(full) > 20000 ||
-				strings.Contains(lower, `"email_address"`) ||
-				strings.Contains(lower, `"account_uuid"`) ||
-				strings.Contains(lower, `"memberships"`) ||
-				strings.Contains(lower, `"organization_uuid"`) ||
-				strings.Contains(lower, `"full_name"`) ||
-				(strings.Contains(lower, `"account"`) && strings.Contains(lower, `"uuid"`)))
+			if !hasAccount && len(full) > 20000 {
+				log.Printf("[AUTH] bootstrap WARN no top-level account field path=%s bytes=%d enc=%s keys=%v",
+					resp.Request.URL.Path, len(full), enc, topKeys)
+			}
 			if loggedOut && usesPanelAccountMode(cfg) {
-				log.Printf("[AUTH] bootstrap LOGGED OUT — forcing account switch path=%s status=%d bytes=%d", resp.Request.URL.Path, resp.StatusCode, len(full))
+				log.Printf("[AUTH] bootstrap LOGGED OUT path=%s status=%d bytes=%d enc=%s has_account=%v keys=%v",
+					resp.Request.URL.Path, resp.StatusCode, len(full), enc, hasAccount, topKeys)
 				payload := []byte(`{"error":"logged_out","message":"switching_account"}`)
 				resp.StatusCode = http.StatusUnauthorized
 				resp.Status = "401 Unauthorized"
 				resp.Header.Set("Content-Type", "application/json; charset=utf-8")
+				resp.Header.Set("Cache-Control", "no-store, no-cache, must-revalidate")
 				resp.Header.Del("Content-Encoding")
+				resp.Header.Del("Transfer-Encoding")
 				resp.Body = io.NopCloser(bytes.NewReader(payload))
 				resp.ContentLength = int64(len(payload))
 				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(payload)))
 				return nil
 			}
-			if signedIn {
-				log.Printf("[AUTH] bootstrap signed-in path=%s bytes=%d", resp.Request.URL.Path, len(full))
-			} else {
-				snip := string(full)
-				if len(snip) > 180 {
-					snip = snip[:180]
-				}
-				log.Printf("[AUTH] bootstrap opaque (%d bytes) path=%s status=%d snip=%q", len(full), resp.Request.URL.Path, resp.StatusCode, snip)
-			}
+			log.Printf("[AUTH] bootstrap signed-in path=%s bytes=%d enc=%s has_account=%v keys=%v",
+				resp.Request.URL.Path, len(full), enc, hasAccount, topKeys)
+			resp.Header.Set("Content-Type", "application/json; charset=utf-8")
+			resp.Header.Set("Cache-Control", "no-store, no-cache, must-revalidate")
+			resp.Header.Del("Content-Encoding")
+			resp.Header.Del("Transfer-Encoding")
+			resp.Header.Del("ETag")
+			resp.Header.Del("Last-Modified")
 			resp.Body = io.NopCloser(bytes.NewReader(full))
 			resp.ContentLength = int64(len(full))
 			resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(full)))
-			resp.Header.Del("Content-Encoding")
+			return nil // skip later JSON rewrite/passthrough — body is final
 		}
 
 		if isBillableCompletion(resp.Request) && resp.StatusCode >= 200 && resp.StatusCode < 300 {
