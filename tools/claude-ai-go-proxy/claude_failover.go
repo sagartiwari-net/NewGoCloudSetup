@@ -205,6 +205,31 @@ func claudeLoginWatchScript(cfg Config) string {
     switching = true;
     location.replace("/login?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "claude_login_wall"));
   }
+  function bootstrapLoggedOut(text){
+    if (!text) return false;
+    if (text.indexOf('"account":null') !== -1 || text.indexOf('"account": null') !== -1) return true;
+    if (text.indexOf('"authenticated":false') !== -1 || text.indexOf('"loggedOut":true') !== -1) return true;
+    return false;
+  }
+  var fo = window.fetch;
+  if (fo && !window.__claudeBootstrapWatch) {
+    window.__claudeBootstrapWatch = true;
+    window.fetch = function(input, init) {
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      return fo.apply(this, arguments).then(function(res) {
+        if (String(url).indexOf("/edge-api/bootstrap") === -1) return res;
+        if (res && (res.status === 401 || res.status === 403)) {
+          switchAccount("bootstrap_http_" + res.status);
+          return res;
+        }
+        if (!res || !res.clone) return res;
+        return res.clone().text().then(function(t) {
+          if (bootstrapLoggedOut(t || "")) switchAccount("bootstrap_logged_out");
+          return res;
+        }).catch(function(){ return res; });
+      });
+    };
+  }
   setInterval(function(){
     if (wallPath() || logoutQuery() || wallText()) switchAccount(wallPath() || logoutQuery() ? "claude_login_path" : "claude_login_text");
   }, 1200);

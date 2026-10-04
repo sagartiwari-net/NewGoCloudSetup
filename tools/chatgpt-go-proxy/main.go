@@ -2137,7 +2137,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "chatgpt-v22-session-probe"
+const proxyBuildTag = "chatgpt-v23-force-switch"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 
@@ -3797,6 +3797,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(contentType, "text/html") {
 		fo := runHTMLAccountFailover(r, upstreamReq, upstreamResp, activeAcc, sessionToken, currentUser, path, sendCookies, cfg)
 		if fo.waiting {
+			if fo.activeAcc.ID == 0 || fo.activeAcc.ID == activeAcc.ID {
+				// Switch failed / only one dead account — do not keep ChatGPT open.
+				renderNoActiveAccountsPage(w, cfg)
+				return
+			}
 			writeAccountSwitchPage(w, fo.activeAcc.Name)
 			return
 		}

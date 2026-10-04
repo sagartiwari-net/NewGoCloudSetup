@@ -270,124 +270,166 @@ const panelAccountOrder = `ORDER BY CASE WHEN a.last_used_at = '' THEN 0 ELSE 1 
 
 var panelPickMu sync.Mutex
 
-// claimPanelAccount picks the least recently used active account with a live ChatGPT session.
-// Dead cookies still render the SPA shell (no send button) — probe /api/auth/session first.
-func claimPanelAccount(cfg Config) (ToolAccount, error) {
+func listActivePanelAccounts(cfg Config, excludeID int) ([]ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
 	db, err := openPanelDB(cfg)
 	if err != nil {
-		return ToolAccount{}, err
+		return nil, err
 	}
-	rows, err := db.Query(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder, cfg.PublicHost)
+	var rows *sql.Rows
+	if excludeID > 0 {
+		rows, err = db.Query(panelAccountSelect+`
+			WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
+			`+panelAccountOrder, cfg.PublicHost, excludeID)
+	} else {
+		rows, err = db.Query(panelAccountSelect+`
+			WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
+			`+panelAccountOrder, cfg.PublicHost)
+	}
 	if err != nil {
-		return ToolAccount{}, err
+		return nil, err
 	}
 	defer rows.Close()
-	var lastErr error
-	tried := 0
+	var out []ToolAccount
 	for rows.Next() {
 		acc, scanErr := scanPanelAccount(rows)
 		if scanErr != nil {
-			lastErr = scanErr
 			continue
 		}
-		tried++
+		out = append(out, acc)
+	}
+	return out, rows.Err()
+}
+
+func pinPanelAccount(cfg Config, sessionToken string, acc ToolAccount, bumpFailureID int, record bool, currentName, username, reason string) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if record && bumpFailureID > 0 {
+		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, bumpFailureID)
+	}
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+	if sessionToken != "" {
+		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+	}
+	if !record {
+		return
+	}
+	var websiteID int
+	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+	if websiteID > 0 && currentName != "" {
+		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
+			websiteID, username, currentName, acc.Name, reason, now)
+		log.Printf("[LB] switched '%s' (ID:%d) -> '%s' (ID:%d) reason=%s", currentName, bumpFailureID, acc.Name, acc.ID, reason)
+		notify := panelSwitchNote{websiteID: websiteID, username: username, from: currentName, to: acc.Name, reason: reason, sessionToken: sessionToken, at: now}
+		go notifyPanelSwitch(cfg, notify)
+	}
+}
+
+// claimPanelAccount picks the least recently used active account with a live ChatGPT session.
+// Dead cookies still render the SPA shell (no send button) — probe /api/auth/session first.
+func claimPanelAccount(cfg Config) (ToolAccount, error) {
+	cands, err := listActivePanelAccounts(cfg, 0)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	if len(cands) == 0 {
+		return ToolAccount{}, fmt.Errorf("no active account")
+	}
+	var lastErr error
+	for _, acc := range cands {
 		ok, reason := probeChatGPTSession(cfg, acc)
 		if !ok {
 			log.Printf("[LB] skip '%s' (ID:%d) session_probe=%s", acc.Name, acc.ID, reason)
 			lastErr = fmt.Errorf("session_probe:%s", reason)
 			continue
 		}
-		now := time.Now().UTC().Format(time.RFC3339)
-		_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+		pinPanelAccount(cfg, "", acc, 0, false, "", "", "")
 		log.Printf("[LB] claimed account '%s' (ID:%d) for %s (session ok)", acc.Name, acc.ID, cfg.PublicHost)
 		return acc, nil
 	}
-	if tried == 0 {
-		if lastErr != nil {
-			return ToolAccount{}, lastErr
-		}
-		return ToolAccount{}, fmt.Errorf("no active account")
-	}
 	if lastErr != nil {
-		return ToolAccount{}, fmt.Errorf("all ChatGPT cookies logged out (%d tried): %w", tried, lastErr)
+		return ToolAccount{}, fmt.Errorf("all ChatGPT cookies logged out (%d tried): %w", len(cands), lastErr)
 	}
-	return ToolAccount{}, fmt.Errorf("all ChatGPT cookies logged out (%d tried)", tried)
+	return ToolAccount{}, fmt.Errorf("all ChatGPT cookies logged out (%d tried)", len(cands))
 }
 
 // loadPanelSessionAccount uses the account pinned on the live session.
-// assigned_account_id 0 means auto: claim the least recently used account and pin it.
+// If the pinned cookie is logged out, rotate to the next live account (never keep a dead shell open).
 func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 	panelPickMu.Lock()
-	defer panelPickMu.Unlock()
 	db, err := openPanelDB(cfg)
 	if err != nil {
+		panelPickMu.Unlock()
 		return ToolAccount{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	var assigned int
 	err = db.QueryRow(`SELECT assigned_account_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned)
-	if err != nil {
-		return ToolAccount{}, err
-	}
-	if assigned > 0 {
-		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
-		if accErr == nil {
-			return acc, nil
+	var assignedAcc ToolAccount
+	var assignedOK bool
+	if err == nil && assigned > 0 {
+		if acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost)); accErr == nil {
+			assignedAcc = acc
+			assignedOK = true
 		}
 	}
-	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+	panelPickMu.Unlock()
 	if err != nil {
 		return ToolAccount{}, err
 	}
-	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
-	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+
+	if assignedOK {
+		ok, reason := probeChatGPTSession(cfg, assignedAcc)
+		if ok {
+			return assignedAcc, nil
+		}
+		log.Printf("[LB] assigned '%s' (ID:%d) logged out (%s) — rotating", assignedAcc.Name, assignedAcc.ID, reason)
+		next, swErr := panelSwitchAccount(cfg, sessionToken, assignedAcc.ID, assignedAcc.Name, "", "html_failover:session_probe:"+reason)
+		if swErr == nil {
+			return next, nil
+		}
+		return ToolAccount{}, fmt.Errorf("assigned account logged out and no live alternate: %w", swErr)
+	}
+
+	acc, err := claimPanelAccount(cfg)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	pinPanelAccount(cfg, sessionToken, acc, 0, false, "", "", "")
 	log.Printf("[LB] auto-assigned '%s' (ID:%d) to session", acc.Name, acc.ID)
 	return acc, nil
 }
 
-// panelSwitchAccount moves this session to the next active account.
+// panelSwitchAccount moves this session to the next live account (session probe required).
 // failure_count goes up. status stays active so the account can be used again later.
 func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentName, username, reason string) (ToolAccount, error) {
-	panelPickMu.Lock()
-	defer panelPickMu.Unlock()
-	db, err := openPanelDB(cfg)
+	cands, err := listActivePanelAccounts(cfg, currentID)
 	if err != nil {
 		return ToolAccount{}, err
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	record := shouldRecordFailover(currentID, reason)
-	if record && currentID > 0 {
-		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
+	var lastErr error
+	for _, acc := range cands {
+		ok, probeReason := probeChatGPTSession(cfg, acc)
+		if !ok {
+			log.Printf("[LB] switch-skip '%s' (ID:%d) session_probe=%s", acc.Name, acc.ID, probeReason)
+			lastErr = fmt.Errorf("session_probe:%s", probeReason)
+			continue
+		}
+		record := shouldRecordFailover(currentID, reason)
+		pinPanelAccount(cfg, sessionToken, acc, currentID, record, currentName, username, reason)
+		return acc, nil
 	}
-	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
-	if err != nil {
-		return ToolAccount{}, fmt.Errorf("no other active account")
+	if lastErr != nil {
+		return ToolAccount{}, fmt.Errorf("no other live account: %w", lastErr)
 	}
-	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
-	if sessionToken != "" {
-		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
-	}
-	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
-	if record && websiteID > 0 {
-		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-			websiteID, username, currentName, acc.Name, reason, now)
-	}
-	if record {
-		log.Printf("[LB] switched '%s' (ID:%d) -> '%s' (ID:%d) reason=%s", currentName, currentID, acc.Name, acc.ID, reason)
-		notify := panelSwitchNote{websiteID: websiteID, username: username, from: currentName, to: acc.Name, reason: reason, sessionToken: sessionToken, at: now}
-		go notifyPanelSwitch(cfg, notify)
-	}
-	return acc, nil
+	return ToolAccount{}, fmt.Errorf("no other active account")
 }
 
 var (

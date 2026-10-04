@@ -1594,21 +1594,41 @@ func main() {
 		debugLog(cfg, "Response %s status=%d proxy=%s://%s ctype=%s",
 			resp.Request.URL.Path, resp.StatusCode, proxyScheme, proxyHost, resp.Header.Get("Content-Type"))
 
-		// Bootstrap JSON: log auth health so blank SPA is diagnosable from app.log.
+		// Bootstrap JSON: if logged out, return 401 so client login-watch switches accounts
+		// (do not leave a blank SPA open on a dead cookie).
 		if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/edge-api/bootstrap") &&
-			strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "json") &&
-			resp.StatusCode == http.StatusOK {
-			peek, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-			resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek), resp.Body))
-			lower := strings.ToLower(string(peek))
-			switch {
-			case strings.Contains(lower, `"account"`) && !strings.Contains(lower, `"account":null`):
-				log.Printf("[AUTH] bootstrap looks signed-in path=%s", resp.Request.URL.Path)
-			case strings.Contains(lower, "sign in") || strings.Contains(lower, "login") || strings.Contains(lower, `"account":null`):
-				log.Printf("[AUTH] bootstrap looks LOGGED OUT — refresh Claude cookies in Panel path=%s", resp.Request.URL.Path)
-			default:
-				log.Printf("[AUTH] bootstrap opaque (%d bytes) path=%s", len(peek), resp.Request.URL.Path)
+			strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "json") {
+			peek, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			rest, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			full := append(peek, rest...)
+			lower := strings.ToLower(string(full))
+			loggedOut := resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden ||
+				strings.Contains(lower, `"account":null`) || strings.Contains(lower, `"account": null`) ||
+				strings.Contains(lower, `"authenticated":false`) || strings.Contains(lower, `"loggedout":true`)
+			signedIn := !loggedOut && (strings.Contains(lower, `"uuid"`) || strings.Contains(lower, `"account_uuid"`) ||
+				(strings.Contains(lower, `"account"`) && strings.Contains(lower, `"email_address"`)))
+			if loggedOut && usesPanelAccountMode(cfg) {
+				log.Printf("[AUTH] bootstrap LOGGED OUT — forcing account switch path=%s status=%d", resp.Request.URL.Path, resp.StatusCode)
+				payload := []byte(`{"error":"logged_out","message":"switching_account"}`)
+				resp.StatusCode = http.StatusUnauthorized
+				resp.Status = "401 Unauthorized"
+				resp.Header.Set("Content-Type", "application/json; charset=utf-8")
+				resp.Header.Del("Content-Encoding")
+				resp.Body = io.NopCloser(bytes.NewReader(payload))
+				resp.ContentLength = int64(len(payload))
+				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+				return nil
 			}
+			if signedIn {
+				log.Printf("[AUTH] bootstrap signed-in path=%s", resp.Request.URL.Path)
+			} else {
+				log.Printf("[AUTH] bootstrap opaque (%d bytes) path=%s status=%d", len(full), resp.Request.URL.Path, resp.StatusCode)
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(full))
+			resp.ContentLength = int64(len(full))
+			resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(full)))
+			resp.Header.Del("Content-Encoding")
 		}
 
 		if isBillableCompletion(resp.Request) && resp.StatusCode >= 200 && resp.StatusCode < 300 {

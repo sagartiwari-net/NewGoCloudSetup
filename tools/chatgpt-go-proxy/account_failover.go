@@ -59,7 +59,7 @@ func probeChatGPTSession(cfg Config, acc ToolAccount) (bool, string) {
 	if cookie == "" {
 		return false, "empty_cookie"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	if px := strings.TrimSpace(acc.Proxy); px != "" {
 		ctx = context.WithValue(ctx, proxyContextKey, px)
@@ -187,13 +187,28 @@ func runHTMLAccountFailover(
 	out.ran = true
 	out.bodyBytes = bodyBytes
 
-	// Valid app shell — do not scan JS bundles for login strings (causes 15-account retry loop).
+	// Strong auth markers in HTML → keep serving.
 	if chatGPTLoggedInHTML(bodyBytes) {
 		return out
 	}
 
-	tried := map[int]bool{activeAcc.ID: true}
 	detected, reason := chatGPTLogoutDetected(path, bodyBytes, cfg)
+
+	// Panel mode: logged-out SPA still looks "open" (composer, no send). Never serve it —
+	// probe the account session and rotate when cookies are dead.
+	if usesPanelAccountMode(cfg) && isDocumentNavigation(r) && sessionToken != "" && activeAcc.ID > 0 {
+		ok, probeReason := probeChatGPTSession(cfg, activeAcc)
+		if !ok {
+			detected = true
+			if reason == "" {
+				reason = "session_probe:" + probeReason
+			}
+		} else if !detected {
+			// Live session without strong HTML markers — allow shell.
+			return out
+		}
+	}
+
 	if !detected {
 		out.bodyBytes = bodyBytes
 		return out
@@ -202,15 +217,16 @@ func runHTMLAccountFailover(
 		activeAcc.Name, activeAcc.ID, currentUser, reason)
 
 	nextAcc, swErr := switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "html_failover:"+reason)
-	if swErr == nil && !tried[nextAcc.ID] {
-		activeAcc = nextAcc
-		out.activeAcc = activeAcc
+	if swErr == nil && nextAcc.ID != activeAcc.ID {
+		out.activeAcc = nextAcc
+		log.Printf("[FAILOVER] switched → %s (ID:%d) user=%s — reload will try next account", nextAcc.Name, nextAcc.ID, currentUser)
 	} else {
 		log.Printf("[FAILOVER] no other account yet for user %s: %v", currentUser, swErr)
+		out.activeAcc = activeAcc
 	}
+	// Never return the logged-out shell — always show switching / cookies-expired UI.
 	out.waiting = true
-	out.bodyBytes = bodyBytes
-	log.Printf("[FAILOVER] waiting to try %s user=%s", activeAcc.Name, currentUser)
+	out.bodyBytes = nil
 	return out
 }
 
