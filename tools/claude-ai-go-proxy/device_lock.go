@@ -360,7 +360,16 @@ func deviceBootScript(home string) string {
 (function () {
   var home = ` + fmt.Sprintf("%q", home) + `;
   var started = Date.now();
+  var left = false;
+  function goHome() {
+    if (left) return;
+    left = true;
+    try { window.location.replace(home); } catch (e) { location.href = home; }
+  }
+  // Never stay on Authenticating forever (SW/IndexedDB hangs on some browsers).
+  setTimeout(goHome, 2500);
   function fail() {
+    if (left) return;
     var title = document.querySelector("h1");
     var msg = document.querySelector(".msg");
     var pill = document.querySelector(".pill");
@@ -375,26 +384,42 @@ func deviceBootScript(home string) string {
     });
   }).then(function (dev) {
     return tmStore(dev.fp, dev.proof).then(function () {
-      var clearSW = navigator.serviceWorker
-        ? navigator.serviceWorker.getRegistrations().then(function (regs) {
-            return Promise.all(regs.map(function (r) { return r.unregister(); }));
-          })
-        : Promise.resolve();
-      return clearSW.then(function () {
+      function doBind() {
         return fetch("/api/device-bind", {
           method: "POST",
           credentials: "same-origin",
           headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
         });
-      });
+      }
+      // Match ChatGPT/Envato: register SW on HTTPS with timeout; never await unregister-all.
+      if (!navigator.serviceWorker || !window.isSecureContext) {
+        return doBind();
+      }
+      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
+        return navigator.serviceWorker.ready;
+      }).then(function () {
+        if (navigator.serviceWorker.controller) return dev;
+        return new Promise(function (resolve) {
+          var timer = setTimeout(function () { resolve(dev); }, 1200);
+          navigator.serviceWorker.addEventListener("controllerchange", function () {
+            clearTimeout(timer);
+            resolve(dev);
+          }, { once: true });
+        });
+      }).then(function () {
+        try {
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
+          }
+        } catch (e) {}
+        return doBind();
+      }).catch(function () { return doBind(); });
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");
     var wait = 400 - (Date.now() - started);
     return new Promise(function (resolve) { setTimeout(resolve, wait > 0 ? wait : 0); });
-  }).then(function () {
-    window.location.replace(home);
-  }).catch(function () { fail(); });
+  }).then(goHome).catch(function () { fail(); });
 })();
 </script>`
 }
