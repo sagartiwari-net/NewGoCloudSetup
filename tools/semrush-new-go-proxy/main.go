@@ -940,11 +940,18 @@ func main() {
 		parsedDbCookie := parseCookieFromDB(dbCookie)
 		mergedCookies := mergeCookiesForUpstream(cfg, clientCookies, parsedDbCookie)
 		if mergedCookies != "" {
+			hasSSO := cookieValueFromString(mergedCookies, "sso_token") != "" ||
+				cookieValueFromString(mergedCookies, "SSO-JWT") != ""
+			if !hasSSO {
+				log.Printf("[COOKIE] ⚠️ upstream cookie missing sso_token/SSO-JWT path=%s — account likely dead", req.URL.Path)
+			}
 			// Never block API/page requests on SSO activate — warm session in background.
 			if shouldWarmSemrushSession(req.URL.Path) {
 				ensureSemrushSessionActivatedAsync(cfg, mergedCookies, dbUserAgent)
 			}
 			applySemrushSessionHeaders(req, cfg, mergedCookies, dbUserAgent)
+		} else if semrushPanelMode(cfg) && !semrushStaticGet(req) {
+			log.Printf("[COOKIE] ⚠️ empty upstream cookie path=%s", req.URL.Path)
 		}
 		if rl := getRequestLogger(req.Context()); rl != nil && debugEnabled(cfg) {
 			rl.upstream = targetHost
@@ -1099,8 +1106,8 @@ func main() {
 				resp.Request != nil {
 
 				log.Printf("[SWAP] 🔄 Upstream redirected to login page: %s. Swapping account!", loc)
-				// Panel mode (local): rotate mapped account from panel.db
-				if db == nil {
+				// Panel mode: always rotate via panel.db (MySQL may still be open for legacy).
+				if semrushPanelMode(cfg) || db == nil {
 					page, switched := semrushAccountSwapPage(resp.Request)
 					credit = false
 					log.Printf("[SWAP] panel login-redirect switch switched=%v", switched)
@@ -1205,6 +1212,51 @@ func main() {
 			for _, cookie := range resp.Cookies() {
 				cookie.Domain = ""
 				cookie.Secure = false
+			}
+		}
+
+		// Dead Semrush cookie often returns 401/403 on APIs while the SPA shell stays up
+		// (infinite home spinner). Rotate panel account and tell the browser to reload.
+		if semrushPanelMode(cfg) && resp.Request != nil &&
+			(resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+			reqPath := resp.Request.URL.Path
+			skipAuthSwap := strings.HasPrefix(reqPath, "/access") ||
+				reqPath == "/api/device-bind" ||
+				reqPath == "/api/user-limits" ||
+				strings.HasPrefix(reqPath, "/static-proxy/") ||
+				strings.HasPrefix(reqPath, "/secure-proxy/") ||
+				strings.HasPrefix(reqPath, "/cdn-proxy/") ||
+				strings.HasPrefix(reqPath, "/ai-proxy/")
+			if !skipAuthSwap {
+				if _, htmlPage, switched := trySemrushPanelAuthSwap(resp.Request, resp.StatusCode, reqPath); switched {
+					credit = false
+					if resp.Body != nil {
+						_, _ = io.Copy(io.Discard, resp.Body)
+						resp.Body.Close()
+					}
+					accept := strings.ToLower(resp.Request.Header.Get("Accept"))
+					if semrushDocument(resp.Request) || strings.Contains(accept, "text/html") {
+						resp.StatusCode = http.StatusOK
+						resp.Header.Set("Content-Type", "text/html; charset=utf-8")
+						resp.Header.Set("Cache-Control", "no-store")
+						resp.Header.Del("Content-Encoding")
+						resp.Header.Del("Location")
+						resp.Body = io.NopCloser(strings.NewReader(htmlPage))
+						resp.ContentLength = int64(len(htmlPage))
+						resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(htmlPage)))
+						return nil
+					}
+					payload := []byte(`{"error":"account_switched","message":"retry"}`)
+					resp.StatusCode = http.StatusServiceUnavailable
+					resp.Header.Set("Content-Type", "application/json; charset=utf-8")
+					resp.Header.Set("Cache-Control", "no-store")
+					resp.Header.Set("X-TM-Account-Switch", "1")
+					resp.Header.Del("Content-Encoding")
+					resp.Body = io.NopCloser(bytes.NewReader(payload))
+					resp.ContentLength = int64(len(payload))
+					resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+					return nil
+				}
 			}
 		}
 
@@ -1325,7 +1377,7 @@ func main() {
 			// Detect limits, register prompts, and upgrade buttons in HTML response
 			if isHTML {
 				if detectLimitOrLogout(bodyStr) {
-					if resp.Request != nil && db == nil {
+					if resp.Request != nil && (semrushPanelMode(cfg) || db == nil) {
 						page, switched := semrushAccountSwapPage(resp.Request)
 						credit = false
 						log.Printf("[SWAP] panel limit/logout body switch switched=%v path=%s", switched, resp.Request.URL.Path)
@@ -1339,7 +1391,7 @@ func main() {
 						resp.Header.Del("Location")
 						return nil
 					}
-					if db != nil && resp.Request != nil {
+					if db != nil && !semrushPanelMode(cfg) && resp.Request != nil {
 						sessionCookie, errC := resp.Request.Cookie("sem_session")
 						if errC == nil && sessionCookie != nil && sessionCookie.Value != "" {
 							// Check swap count to prevent loops
@@ -1656,6 +1708,7 @@ func main() {
 					
 					var __originalFetch = window.__semrushFetch || window.fetch;
 					window.__semrushFetch = __originalFetch;
+					var __tmSwapReload = false;
 					window.fetch = function(input, init) {
 						if (input) {
 							if (typeof input === "string") {
@@ -1696,7 +1749,15 @@ func main() {
 								}
 							}
 						}
-						return __originalFetch.call(this, input, init);
+						return __originalFetch.call(this, input, init).then(function(res) {
+							try {
+								if (res && res.headers && res.headers.get("X-TM-Account-Switch") && !__tmSwapReload) {
+									__tmSwapReload = true;
+									setTimeout(function(){ location.reload(); }, 500);
+								}
+							} catch (e) {}
+							return res;
+						});
 					};
 					
 					var __originalSendBeacon = window.__semrushBeacon || window.navigator.sendBeacon;

@@ -155,7 +155,7 @@ func (rl *requestLogger) finish(cfg Config) {
 			proxyDiag.api2xx++
 		case rl.status >= 400 && rl.status < 500:
 			proxyDiag.api4xx++
-		default:
+		case rl.status >= 500:
 			proxyDiag.api5xx++
 		}
 	case "MULTILOGIN":

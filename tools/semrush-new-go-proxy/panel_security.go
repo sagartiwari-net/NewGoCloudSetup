@@ -356,25 +356,76 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 	return semrushPanelAccount(publicHost, sessionToken)
 }
 
+func semrushPanelMode(cfg Config) bool {
+	return strings.TrimSpace(cfg.PanelDB) != ""
+}
+
+func semrushSwitchingHTML(r *http.Request, acc semrushAccount) string {
+	dest := semrushSafeReturn(r)
+	name := strings.TrimSpace(acc.Name)
+	message := "Account logged out. Switching to another account..."
+	if name != "" {
+		message = "Account logged out. Switching to " + html.EscapeString(name) + "..."
+	}
+	script := fmt.Sprintf(`setTimeout(function(){location.replace(%q);},1200);`, dest)
+	return semrushLightPage("Switching account", "Switching account",
+		message,
+		`<div class="pill"><span class="dot"></span>Trying one account at a time</div><p class="foot">This keeps trying until an account is available</p>`,
+		true, script)
+}
+
 func semrushAccountSwapPage(r *http.Request) (string, bool) {
 	cfg := loadConfig()
 	token := semrushSessionToken(r)
 	if acc, ok := semrushRotatePanelAccount(cfg.PublicHost, token); ok {
-		dest := semrushSafeReturn(r)
-		name := strings.TrimSpace(acc.Name)
-		message := "Account logged out. Switching to another account..."
-		if name != "" {
-			message = "Account logged out. Switching to " + html.EscapeString(name) + "..."
-		}
-		script := fmt.Sprintf(`setTimeout(function(){location.replace(%q);},2500);`, dest)
-		return semrushLightPage("Switching account", "Switching account",
-			message,
-			`<div class="pill"><span class="dot"></span>Trying one account at a time</div><p class="foot">This keeps trying until an account is available</p>`,
-			true, script), true
+		return semrushSwitchingHTML(r, acc), true
 	}
 	return semrushLightPage("Account logged out", "Account logged out",
 		"Account logged out. Contact the admin.",
 		"", false, ""), false
+}
+
+var (
+	semrushAPISwapMu sync.Mutex
+	semrushAPISwapAt = map[string]time.Time{}
+)
+
+// semrushAllowAPISwap debounces API-triggered account rotation (avoid reload storms).
+func semrushAllowAPISwap(token string) bool {
+	if token == "" {
+		return false
+	}
+	semrushAPISwapMu.Lock()
+	defer semrushAPISwapMu.Unlock()
+	if t, ok := semrushAPISwapAt[token]; ok && time.Since(t) < 8*time.Second {
+		return false
+	}
+	semrushAPISwapAt[token] = time.Now()
+	return true
+}
+
+// trySemrushPanelAuthSwap rotates the panel account after upstream 401/403/login.
+// htmlPage is set for document navigations; APIs should use the X-TM-Account-Switch header.
+func trySemrushPanelAuthSwap(r *http.Request, status int, path string) (acc semrushAccount, htmlPage string, switched bool) {
+	cfg := loadConfig()
+	if !semrushPanelMode(cfg) || r == nil {
+		return semrushAccount{}, "", false
+	}
+	token := semrushSessionToken(r)
+	if token == "" {
+		return semrushAccount{}, "", false
+	}
+	if !semrushAllowAPISwap(token) {
+		log.Printf("[SWAP] debounce skip status=%d path=%s", status, path)
+		return semrushAccount{}, "", false
+	}
+	acc, ok := semrushRotatePanelAccount(cfg.PublicHost, token)
+	if !ok {
+		log.Printf("[SWAP] no next account after upstream %d on %s", status, path)
+		return semrushAccount{}, "", false
+	}
+	log.Printf("[SWAP] upstream %d on %s → next account id=%d name=%s", status, path, acc.ID, acc.Name)
+	return acc, semrushSwitchingHTML(r, acc), true
 }
 
 func serveSemrushAccountSwap(w http.ResponseWriter, r *http.Request) {
