@@ -2201,9 +2201,12 @@ func main() {
 			return
 		}
 
-		// 2. Session verification & active sliding window (skip for static assets)
+		// 2. Legacy MySQL session gate (ahrefs_sessions).
+		// gt4rents panel mode already authenticated via semrushRequireSession + panel.db
+		// live_sessions — do NOT also require MySQL ahrefs_sessions (tokens live only in panel.db).
 		isStatic := strings.HasPrefix(r.URL.Path, "/static-proxy/") || strings.HasPrefix(r.URL.Path, "/secure-proxy/") || strings.HasPrefix(r.URL.Path, "/cdn-proxy/") || strings.HasPrefix(r.URL.Path, "/ai-proxy/")
-		if !isStatic && db != nil && !cfg.LocalTestMode {
+		panelMode := strings.TrimSpace(cfg.PanelDB) != ""
+		if !isStatic && db != nil && !cfg.LocalTestMode && !panelMode {
 			var isAuthed bool
 			cookie, errC := r.Cookie("sem_session")
 			if errC == nil && cookie.Value != "" {
