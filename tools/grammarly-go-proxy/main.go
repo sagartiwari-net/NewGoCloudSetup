@@ -2473,7 +2473,11 @@ func patcherScript(cfg Config) string {
     }
 
     function patchURL(u) {
-        if (typeof u !== 'string') return u;
+        // URL objects / Location must coerce — otherwise gates/treatment stay cross-origin → CORS blank UI.
+        if (u == null) return u;
+        if (typeof u !== 'string') {
+            try { u = String(u); } catch (e) { return u; }
+        }
         // Strip accidental wrapping quotes (broken relative URLs)
         if (u.length > 1 && ((u.charAt(0) === '"' && u.charAt(u.length-1) === '"') || (u.charAt(0) === "'" && u.charAt(u.length-1) === "'"))) {
             u = u.substring(1, u.length-1);
@@ -2497,6 +2501,12 @@ func patcherScript(cfg Config) string {
                 u = u.split(from).join(wsO + to);
             } else {
                 u = u.split(from).join(O + to);
+                // Protocol-relative //host/... (do not touch https://)
+                if (from.indexOf('https://') === 0) {
+                    var bare = from.substring('https://'.length);
+                    var re = new RegExp('(^|[^:])//' + bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+                    u = u.replace(re, '$1' + O + to);
+                }
             }
         }
         u = u.replace('https://'+T, O).replace('http://'+T, O);
@@ -2505,9 +2515,9 @@ func patcherScript(cfg Config) string {
         if (CHUNK_COMPOSE) {
             u = u.replace(/https?:\/\/chunk-composing\.[^/]+/g, O + CHUNK_COMPOSE);
         }
-        // Coda doc blobs live on random *.codacontent.io hosts. A direct fetch
-        // shows "firewall preventing access to codacontent.io" on some new docs.
-        u = u.replace(/(https?:|wss?:)?\/\/((?:[a-z0-9-]+\.)*(?:codacontent\.io|grammarly\.io))(?::\d+)?(?=\/|$)/gi, function(match, proto, host) {
+        // Any leftover *.grammarly.com / *.grammarly.io / codacontent → same-origin proxy (kills CORS on /properties etc.)
+        u = u.replace(/(https?:|wss?:)?\/\/((?:[a-z0-9-]+\.)+(?:grammarly\.com|grammarly\.io|grammarly\.net|codacontent\.io))(?::\d+)?(?=\/|$)/gi, function(match, proto, host) {
+            if (host === T || (C && host === C)) return match;
             var ws = proto && proto.indexOf('ws') === 0;
             return (ws ? WS_O : O) + '/ext-host/' + host;
         });
@@ -2516,7 +2526,7 @@ func patcherScript(cfg Config) string {
     window.__tmPatchURL = patchURL;
 
     function isNoiseURL(u) {
-        return /telemetry\.canva\.com|ingest\.sentry\.io|\/traces\?/i.test(String(u || ''));
+        return /telemetry\.canva\.com|ingest\.sentry\.io|\/traces\?|api\.amplitude\.com|api2\.amplitude\.com|api\.iterable\.com|googletagmanager|google-analytics|cloudflareinsights/i.test(String(u || ''));
     }
 
     // Plupload stores worker URL at init — rewrite settings.url and setOption('url')
@@ -2621,13 +2631,27 @@ func patcherScript(cfg Config) string {
     // ── Fetch patch ──
     var fo = window.fetch;
     window.fetch = function(inp, init) {
+        try {
+            if (typeof inp !== 'string' && !(inp instanceof Request) && inp != null) {
+                // URL / Request-like objects (Zone, vendors) — coerce before patch
+                if (typeof inp.url === 'string') inp = inp.url;
+                else inp = String(inp);
+            }
+        } catch (e) {}
         var urlStr = typeof inp === 'string' ? inp : (inp && inp.url) || '';
         if (isNoiseURL(urlStr)) {
-            return Promise.resolve(new Response('', {status: 204, statusText: 'No Content'}));
+            return Promise.resolve(new Response('{}', {status: 200, statusText: 'OK', headers: {'Content-Type': 'application/json'}}));
         }
         if (typeof inp === 'string') inp = patchURL(inp);
         else if (inp instanceof Request) inp = new Request(patchURL(inp.url), inp);
         var finalURL = typeof inp === 'string' ? inp : (inp && inp.url) || urlStr;
+        // Soft-stub feature-flag /properties CORS if still cross-origin after patch
+        try {
+            var abs = new URL(finalURL, location.href);
+            if (abs.origin !== location.origin && /\/properties(?:\?|$)/i.test(abs.pathname + abs.search)) {
+                return Promise.resolve(new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}}));
+            }
+        } catch (e) {}
         var doFetch = function() { return fo(inp, init); };
         var runner = shouldRetry429(finalURL) ? function() { return ajaxSlot(doFetch); } : doFetch;
         return runner().then(function(res) {
@@ -2640,6 +2664,13 @@ func patcherScript(cfg Config) string {
                 });
             }
             return res;
+        }).catch(function(err) {
+            try {
+                if (/\/properties(?:\?|$)/i.test(String(finalURL))) {
+                    return new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}});
+                }
+            } catch (e) {}
+            throw err;
         });
     };
 

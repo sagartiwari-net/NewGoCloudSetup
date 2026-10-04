@@ -280,11 +280,21 @@ function tmReveal() {
   var lock = document.querySelector("style[data-tm-device]");
   if (lock) lock.remove();
   try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+  try { document.documentElement.style.setProperty("opacity", "1", "important"); } catch (e) {}
   try { if (document.body) document.body.style.setProperty("display", "block", "important"); } catch (e) {}
+  try { if (document.body) document.body.style.setProperty("visibility", "visible", "important"); } catch (e) {}
 }
 // Never leave users on a permanent blank page if bind/fingerprint hangs.
 tmReveal();
 setTimeout(function () { try { tmReveal(); } catch (e) {} }, 800);
+// Keep forcing reveal for a few seconds (SPA can re-hide during boot).
+(function () {
+  var n = 0;
+  var t = setInterval(function () {
+    try { tmReveal(); } catch (e) {}
+    if (++n > 20) clearInterval(t);
+  }, 500);
+})();
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
   window.__tmWatch = setInterval(function () {
