@@ -2949,7 +2949,7 @@ func patcherScript(cfg Config) string {
             watchdogDone = true;
             var over = document.createElement('div');
             over.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0f172a;color:#fff;z-index:99999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;gap:16px;';
-            over.innerHTML = '<div style="width:40px;height:40px;border:4px solid #f8fafc;border-top-color:#4f46e5;border-radius:50%%;animation:tm-spin 1s linear infinite;"></div><span style="font-weight:600;">Reconnecting session... Please wait...</span><style>@keyframes tm-spin{0%%{transform:rotate(0deg)}100%%{transform:rotate(360deg)}}</style>';
+            over.innerHTML = '<div style="width:40px;height:40px;border:4px solid #f8fafc;border-top-color:#4f46e5;border-radius:50%%;animation:tm-spin 1s linear infinite;"></div><span style="font-weight:600;">Reconnecting session... Please wait...</span><style>@keyframes tm-spin{0%%{transform:rotate(0deg)}100%%{transform:rotate(360deg)}}<\/style>';
             document.body.appendChild(over);
             fetch('/api/rotate-session?reason=' + encodeURIComponent(reason))
             .then(function() { setTimeout(function() { window.location.href = HOME; }, 1200); })
