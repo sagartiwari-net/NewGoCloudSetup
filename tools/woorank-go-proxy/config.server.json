@@ -81,6 +81,9 @@
   "replacements": [
     { "search": "DigitaVision", "replace": "ToolsMandi" },
     { "search": "Digitavision", "replace": "ToolsMandi" },
-    { "search": "digitavision", "replace": "ToolsMandi" }
+    { "search": "digitavision", "replace": "ToolsMandi" },
+    { "search": "eval(atob('aWYgKCEoZG9jdW1lbnQubG9jYXRpb24uaG9zdG5hbWUuZW5kc1dpdGgoJy53b29yYW5rLmNvbScpIHx8IGRvY3VtZW50LmxvY2F0aW9uLmhvc3RuYW1lID09PSAnbG9jYWxob3N0JykpIHdpbmRvdy5sb2NhdGlvbiA9ICdodHRwczovL3gvJzs='));", "replace": "/* wrank host-check disabled */" },
+    { "search": "window.location = 'https://x/'", "replace": "/* wrank */void 0" },
+    { "search": "window.location=\"https://x/\"", "replace": "/* wrank */void 0" }
   ]
 }

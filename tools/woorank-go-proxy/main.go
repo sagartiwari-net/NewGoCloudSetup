@@ -1974,6 +1974,64 @@ func applyTextReplacements(body []byte, cfg Config) []byte {
 	return body
 }
 
+// patchWoorankJail removes WooRank's anti-proxy host check that sends users to https://x/
+// when hostname is not *.woorank.com (NXDOMAIN → "This site can't be reached").
+func patchWoorankJail(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	// Canonical DigitaVision/tools paste + common minified variants.
+	body = bytes.ReplaceAll(body, []byte(`eval(atob('aWYgKCEoZG9jdW1lbnQubG9jYXRpb24uaG9zdG5hbWUuZW5kc1dpdGgoJy53b29yYW5rLmNvbScpIHx8IGRvY3VtZW50LmxvY2F0aW9uLmhvc3RuYW1lID09PSAnbG9jYWxob3N0JykpIHdpbmRvdy5sb2NhdGlvbiA9ICdodHRwczovL3gvJzs='));`), []byte(`/* wrank host-check disabled */`))
+	body = bytes.ReplaceAll(body, []byte(`eval(atob("aWYgKCEoZG9jdW1lbnQubG9jYXRpb24uaG9zdG5hbWUuZW5kc1dpdGgoJy53b29yYW5rLmNvbScpIHx8IGRvY3VtZW50LmxvY2F0aW9uLmhvc3RuYW1lID09PSAnbG9jYWxob3N0JykpIHdpbmRvdy5sb2NhdGlvbiA9ICdodHRwczovL3gvJzs="));`), []byte(`/* wrank host-check disabled */`))
+	body = bytes.ReplaceAll(body, []byte(`window.location = 'https://x/'`), []byte(`/* wrank */void 0`))
+	body = bytes.ReplaceAll(body, []byte(`window.location="https://x/"`), []byte(`/* wrank */void 0`))
+	body = bytes.ReplaceAll(body, []byte(`window.location='https://x/'`), []byte(`/* wrank */void 0`))
+	body = bytes.ReplaceAll(body, []byte(`location = 'https://x/'`), []byte(`/* wrank */void 0`))
+	body = bytes.ReplaceAll(body, []byte(`location="https://x/"`), []byte(`/* wrank */void 0`))
+	body = bytes.ReplaceAll(body, []byte(`location.href='https://x/'`), []byte(`/* wrank */void 0`))
+	body = bytes.ReplaceAll(body, []byte(`location.href="https://x/"`), []byte(`/* wrank */void 0`))
+	return body
+}
+
+func wrankJailBlockScript() string {
+	return `<script data-tm-wrank-jail="1">
+(function(){
+  function isX(v){
+    try {
+      if (!v) return false;
+      var s = String(v);
+      return /^https?:\/\/x\/?$/i.test(s) || s === 'x' || s === 'x/' || /^https?:\/\/x\./i.test(s);
+    } catch (e) { return false; }
+  }
+  try {
+    var desc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+    if (desc && desc.set) {
+      var origSet = desc.set;
+      Object.defineProperty(Location.prototype, 'href', {
+        configurable: true,
+        enumerable: desc.enumerable,
+        get: desc.get,
+        set: function(v){ if (isX(v)) return; return origSet.call(this, v); }
+      });
+    }
+  } catch (e) {}
+  try {
+    var a = Location.prototype.assign;
+    Location.prototype.assign = function(v){ if (isX(v)) return; return a.call(this, v); };
+  } catch (e2) {}
+  try {
+    var r = Location.prototype.replace;
+    Location.prototype.replace = function(v){ if (isX(v)) return; return r.call(this, v); };
+  } catch (e3) {}
+  try {
+    if (isX(location.href) || location.hostname === 'x') {
+      location.replace((location.origin || '') + '/en/overview');
+    }
+  } catch (e4) {}
+})();
+</script>`
+}
+
 // buildTextReplaceInjectHTML installs a light DOM walker so Vue/React-rendered
 // text also picks up config replacements after hydration.
 func buildTextReplaceInjectHTML(cfg Config) string {
@@ -3376,6 +3434,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 		bodyBytes = rewriteBody(bodyBytes, pairs)
 		bodyBytes = applyTextReplacements(bodyBytes, cfg)
+		bodyBytes = patchWoorankJail(bodyBytes)
 
 		// Strip SRI — HTML attributes AND Canva bootstrap asset manifests
 		// (`"C":"sha512-..."`). Dynamic chunk loader verifies these hashes;
@@ -3392,7 +3451,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr := wrankJailBlockScript() + patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -3427,6 +3486,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 			bodyBytes = rewriteBody(bodyBytes, pairs)
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)
+			bodyBytes = patchWoorankJail(bodyBytes)
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
 			} else if strings.Contains(contentType, "text/css") {
