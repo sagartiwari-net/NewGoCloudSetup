@@ -362,8 +362,7 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	var websiteID int
 	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 	if websiteID > 0 {
-		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-			websiteID, username, currentName, acc.Name, reason, now)
+		tmRecordSwitchLogout(db, websiteID, username, currentName, acc.Name, reason)
 	}
 	log.Printf("[LB] switched '%s' (ID:%d) -> '%s' (ID:%d) reason=%s", currentName, currentID, acc.Name, acc.ID, reason)
 	return acc, nil

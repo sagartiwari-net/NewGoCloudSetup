@@ -166,6 +166,14 @@ func serveGrammarlyCookieFailover(w http.ResponseWriter, r *http.Request, cfg Co
 		return
 	}
 	log.Printf("[FAILOVER] contact-admin user=%s account=%s reason=%s err=%v", currentUser, activeAcc.Name, reason, err)
+	if activeAcc.ID > 0 {
+		if db, dbErr := openPanelDB(cfg); dbErr == nil {
+			_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, activeAcc.ID)
+			var websiteID int
+			_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+			tmRecordSwitchLogout(db, websiteID, currentUser, activeAcc.Name, "(none)", "no_other_active:"+reason)
+		}
+	}
 	pushProxyLog(ProxyLogEntry{
 		Source:  "FAILOVER",
 		Level:   "error",

@@ -1061,10 +1061,33 @@ func (s *server) clearLogouts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
+// sanitizeEventReason keeps Analytics tables readable (no huge JSON bodies).
+func sanitizeEventReason(reason string) string {
+	reason = strings.TrimSpace(reason)
+	reason = strings.ReplaceAll(reason, "\n", " ")
+	reason = strings.ReplaceAll(reason, "\r", " ")
+	for strings.Contains(reason, "  ") {
+		reason = strings.ReplaceAll(reason, "  ", " ")
+	}
+	// Drop raw JSON payloads that blow up table layout.
+	if i := strings.Index(reason, "{"); i >= 0 {
+		reason = strings.TrimSpace(reason[:i])
+	}
+	if i := strings.Index(reason, "["); i >= 0 && i < 40 {
+		reason = strings.TrimSpace(reason[:i])
+	}
+	const max = 160
+	if len(reason) > max {
+		reason = reason[:max] + "…"
+	}
+	return reason
+}
+
 func (s *server) insertLogoutEvent(websiteID int, username, accountName, nextAccount, reason, clientIP string) {
 	if websiteID <= 0 {
 		return
 	}
+	reason = sanitizeEventReason(reason)
 	_, err := s.db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
 		websiteID, username, accountName, nextAccount, reason, clientIP, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
@@ -1838,15 +1861,16 @@ func (s *server) useAccount(w http.ResponseWriter, r *http.Request) {
 		fromName := ""
 		_ = s.db.QueryRow(`SELECT name FROM accounts WHERE id=?`, prev).Scan(&fromName)
 		toName := ""
+		reason := sanitizeEventReason(body.Reason)
 		if chosen != 0 {
 			_ = s.db.QueryRow(`SELECT name FROM accounts WHERE id=?`, chosen).Scan(&toName)
 			_, _ = s.db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-				websiteID, body.Username, fromName, toName, body.Reason, now)
+				websiteID, body.Username, fromName, toName, reason, now)
 		} else {
 			toName = "(none)"
 		}
-		s.insertLogoutEvent(websiteID, body.Username, fromName, toName, body.Reason, body.ClientIP)
-		s.recordLogout(websiteID, body.Username, body.ClientIP, body.Reason)
+		s.insertLogoutEvent(websiteID, body.Username, fromName, toName, reason, body.ClientIP)
+		s.recordLogout(websiteID, body.Username, body.ClientIP, reason)
 	}
 	if chosen == 0 {
 		writeJSON(w, 200, map[string]any{"account_id": 0})

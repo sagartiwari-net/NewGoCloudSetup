@@ -62,7 +62,12 @@ const switchColumns: DataColumn<SwitchEvent>[] = [
   { id: "website", header: "Website", cell: (row) => row.domain, sortValue: (row) => row.domain },
   { id: "from", header: "From account", cell: (row) => row.from_account_name, sortValue: (row) => row.from_account_name },
   { id: "to", header: "To account", cell: (row) => row.to_account_name, sortValue: (row) => row.to_account_name },
-  { id: "reason", header: "Reason", cell: (row) => row.reason, sortValue: (row) => row.reason },
+  {
+    id: "reason",
+    header: "Reason",
+    cell: (row) => <Truncated value={row.reason} maxWidthClass="max-w-[220px]" />,
+    sortValue: (row) => row.reason,
+  },
   { id: "time", header: "Time", cell: (row) => formatTime(row.switched_at), sortValue: (row) => row.switched_at },
 ]
 
@@ -76,7 +81,12 @@ const logoutColumns: DataColumn<LogoutEvent>[] = [
   { id: "website", header: "Website", cell: (row) => row.domain, sortValue: (row) => row.domain },
   { id: "account", header: "Logged-out account", cell: (row) => row.account_name || "—", sortValue: (row) => row.account_name },
   { id: "next", header: "Next account", cell: (row) => row.next_account_name || "—", sortValue: (row) => row.next_account_name },
-  { id: "reason", header: "Reason", cell: (row) => row.reason, sortValue: (row) => row.reason },
+  {
+    id: "reason",
+    header: "Reason",
+    cell: (row) => <Truncated value={row.reason} maxWidthClass="max-w-[220px]" />,
+    sortValue: (row) => row.reason,
+  },
   { id: "ip", header: "Client IP", cell: (row) => <IpLink ip={row.client_ip} />, sortValue: (row) => row.client_ip },
   { id: "time", header: "Time", cell: (row) => formatTime(row.created_at), sortValue: (row) => row.created_at },
 ]

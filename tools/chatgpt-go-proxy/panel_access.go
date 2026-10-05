@@ -323,8 +323,7 @@ func pinPanelAccount(cfg Config, sessionToken string, acc ToolAccount, bumpFailu
 	var websiteID int
 	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 	if websiteID > 0 && currentName != "" {
-		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-			websiteID, username, currentName, acc.Name, reason, now)
+		tmRecordSwitchLogout(db, websiteID, username, currentName, acc.Name, reason)
 		log.Printf("[LB] switched '%s' (ID:%d) -> '%s' (ID:%d) reason=%s", currentName, bumpFailureID, acc.Name, acc.ID, reason)
 		notify := panelSwitchNote{websiteID: websiteID, username: username, from: currentName, to: acc.Name, reason: reason, sessionToken: sessionToken, at: now}
 		go notifyPanelSwitch(cfg, notify)

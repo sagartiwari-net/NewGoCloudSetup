@@ -139,13 +139,12 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 			`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
 		if err != nil {
 			if currentID > 0 {
-				_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
+				_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, currentID)
 			}
 			var websiteID int
 			_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 			if websiteID > 0 {
-				_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-					websiteID, username, currentName, "", "no_other_active:"+reason, now)
+				tmRecordSwitchLogout(db, websiteID, username, currentName, "(none)", "no_other_active:"+reason)
 			}
 			log.Printf("[SWAP] no other active account current=%s(%d) reason=%s user=%s",
 				currentName, currentID, reason, username)
@@ -164,8 +163,7 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	var websiteID int
 	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 	if websiteID > 0 {
-		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-			websiteID, username, currentName, next.Name, reason, now)
+		tmRecordSwitchLogout(db, websiteID, username, currentName, next.Name, reason)
 	}
 	log.Printf("[SWAP] '%s' (ID:%d) → '%s' (ID:%d) reason=%s user=%s",
 		currentName, currentID, next.Name, next.ID, reason, username)

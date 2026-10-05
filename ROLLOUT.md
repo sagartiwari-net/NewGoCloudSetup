@@ -116,6 +116,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** (2026-10-05): local OK; server still blank `/home` (no `GetAccountInfo` in Network). Partial fixes on main (`a7551d9`+) — **do not tick until HTTPS access-link + real UI verified**  
 - [x] `grammarly` — grammarly (:4911) — **HTTPS OK**: device-lock (no visibility:hidden), gateway CORS/`ext-host`, `/internalAppApi`→coda, `/newdoc` device allow, dox docs JSON, Sign out (`logout-lnk`) hide
 - [x] `placeit` — Placeit (:4611) — **HTTPS OK** (2026-10-05): S3/CDN `/ext-host`+`extra-cdn`, request-body unrewrite, related_templates stub (speed), classic-editor upload gate + panel username, `/account`+pricing/logout hide
+- [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts
 
 ### Rest (alphabetical)
 
@@ -190,7 +191,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `wrank` (:4561) — **parked** (2026-10-05): Chrome Safe Browsing on brand host; rename to `wrank` partial — resume later (nginx map + SB review)  
 
 
-- [ ] `wordtune` (:4631)  
+- [x] `wordtune` (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com target, device-lock reveal, avatar menu hide + panel username, cookie reload from panel.db, logout detect → switch / `logged_out` + Analytics Logouts  
+
 - [ ] `writecream` (:5051)  
 - [ ] `zebracat` (:5111)  
 - [ ] `zikaanalytics` (:5251)  

@@ -367,21 +367,24 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
 		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
+	var websiteID int
+	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 	if err != nil {
+		if currentID > 0 {
+			_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, currentID)
+		}
+		tmRecordSwitchLogout(db, websiteID, username, currentName, "(none)", "no_other_active:"+reason)
 		return ToolAccount{}, fmt.Errorf("no other active account")
 	}
 	if currentID > 0 {
-		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
+		_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, currentID)
 	}
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
 	if sessionToken != "" {
 		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
 	}
-	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 	if websiteID > 0 {
-		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-			websiteID, username, currentName, acc.Name, reason, now)
+		tmRecordSwitchLogout(db, websiteID, username, currentName, acc.Name, reason)
 	}
 	log.Printf("[LB] switched '%s' (ID:%d) -> '%s' (ID:%d) reason=%s", currentName, currentID, acc.Name, acc.ID, reason)
 	return acc, nil

@@ -203,8 +203,7 @@ func switchAhrefsPanelAccount(publicHost, sessionToken string, current AhrefsAcc
 	var websiteID int
 	_ = db.QueryRow(`SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?) LIMIT 1`, publicHost).Scan(&websiteID)
 	if websiteID != 0 {
-		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-			websiteID, username, current.Name, next.Name, reason, now)
+		tmRecordSwitchLogout(db, websiteID, username, current.Name, next.Name, reason)
 	}
 	log.Printf("[LB] switched %s -> %s reason=%s", current.Name, next.Name, reason)
 	return next, nil

@@ -413,8 +413,7 @@ func panelSwitchToOtherAccount(cfg Config, sessionToken, reason string) (ToolAcc
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
 	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
 	if websiteID > 0 {
-		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-			websiteID, username, fromName, acc.Name, reason, now)
+		tmRecordSwitchLogout(db, websiteID, username, fromName, acc.Name, reason)
 	}
 	log.Printf("[LB] grammarly switched %s -> %s reason=%s", fromName, acc.Name, reason)
 	return acc, acc.Name, nil

@@ -437,6 +437,7 @@ func panelRecordLogoutEvent(cfg Config, sessionToken, fromName, toName, reason s
 	if reason == "" {
 		reason = "wordtune-logout"
 	}
+	reason = tmSanitizeReason(reason)
 	_, err = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
 		websiteID, username, fromName, toName, reason, "", now)
 	if err != nil {

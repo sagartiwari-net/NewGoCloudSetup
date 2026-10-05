@@ -3460,6 +3460,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logUpstream(bodyBytes)
+		if usesPanelAccountMode(cfg) && isDocumentNavigation(r) && sessionToken != "" && activeAcc.ID > 0 {
+			locHdr := upstreamResp.Header.Get("Location")
+			if dead, why := placeitLooksLoggedOut(path, bodyBytes, upstreamResp.StatusCode, locHdr); dead {
+				log.Printf("[COOKIE] html looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+				if !placeitFailoverRecently(sessionToken) {
+					w.Header().Del("Location")
+					servePlaceitCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+			}
+		}
 
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)

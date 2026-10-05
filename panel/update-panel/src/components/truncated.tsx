@@ -11,17 +11,19 @@ import {
 export function Truncated({
   value,
   className,
+  maxWidthClass = "max-w-56",
 }: {
   value: string
   className?: string
+  maxWidthClass?: string
 }) {
   const text = value || "—"
   return (
     <Tooltip>
-      <TooltipTrigger className={cn("block max-w-56 truncate text-left", className)}>
+      <TooltipTrigger className={cn("block truncate text-left", maxWidthClass, className)}>
         {text}
       </TooltipTrigger>
-      <TooltipContent>{text}</TooltipContent>
+      <TooltipContent className="max-w-sm break-words whitespace-pre-wrap">{text}</TooltipContent>
     </Tooltip>
   )
 }

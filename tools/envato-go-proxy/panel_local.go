@@ -374,8 +374,7 @@ func envatoPanelSwitch(sessionToken, reason string) (bool, string) {
 	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, nextID, sessionToken)
 	var fromName string
 	_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, currentID).Scan(&fromName)
-	_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-		websiteID, username, fromName, nextName, reason, now)
+	tmRecordSwitchLogout(db, websiteID, username, fromName, nextName, reason)
 	cookieJarMu.Lock()
 	for k := range cookieJar {
 		delete(cookieJar, k)

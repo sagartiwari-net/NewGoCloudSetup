@@ -4719,6 +4719,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logUpstream(bodyBytes)
+		if usesPanelAccountMode(cfg) && isDocumentNavigation(r) && sessionToken != "" && activeAcc.ID > 0 {
+			locHdr := upstreamResp.Header.Get("Location")
+			if dead, why := magnificLooksLoggedOut(path, bodyBytes, upstreamResp.StatusCode, locHdr); dead {
+				log.Printf("[COOKIE] html looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+				if !magnificFailoverRecently(sessionToken) {
+					w.Header().Del("Location")
+					serveMagnificCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+			}
+		}
 
 		// Magnific WAF "security filter" is a dark #080808 page. After rewrite the
 		// fonts/CDN assets 401 and the browser looks blank black — never passthrough.

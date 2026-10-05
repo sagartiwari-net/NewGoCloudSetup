@@ -346,11 +346,29 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 			again.Close()
 		}
 	}
+	var websiteID int
+	var username, fromName string
+	_ = db.QueryRow(`SELECT website_id, username FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID, &username)
+	if current > 0 {
+		_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, current).Scan(&fromName)
+	}
 	if nextID == 0 {
+		if current > 0 {
+			_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, current)
+		}
+		if websiteID > 0 {
+			tmRecordSwitchLogout(db, websiteID, username, fromName, "(none)", "no_other_active:semrush_logout")
+		}
 		log.Printf("[SWAP] no further active account after id=%d", current)
 		return semrushAccount{}, false
 	}
 	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, nextID, sessionToken)
+	if current > 0 {
+		_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, current)
+	}
+	if websiteID > 0 {
+		tmRecordSwitchLogout(db, websiteID, username, fromName, nextName, "semrush_logout")
+	}
 	invalidateSessionAccountCache(sessionToken)
 	log.Printf("[SWAP] account id=%d logged out, next id=%d name=%s", current, nextID, nextName)
 	return semrushPanelAccount(publicHost, sessionToken)

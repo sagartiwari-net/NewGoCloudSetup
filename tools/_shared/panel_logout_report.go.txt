@@ -1,0 +1,65 @@
+// Shared snippet for tool proxies — copy into each tool as panel_logout_report.go
+// (package main). Truncates Analytics reasons and dual-writes logout_events.
+
+package main
+
+import (
+	"database/sql"
+	"log"
+	"strings"
+	"time"
+)
+
+func sanitizeEventReason(reason string) string {
+	reason = strings.TrimSpace(reason)
+	reason = strings.ReplaceAll(reason, "\n", " ")
+	reason = strings.ReplaceAll(reason, "\r", " ")
+	for strings.Contains(reason, "  ") {
+		reason = strings.ReplaceAll(reason, "  ", " ")
+	}
+	if i := strings.Index(reason, "{"); i >= 0 {
+		reason = strings.TrimSpace(reason[:i])
+	}
+	const max = 160
+	if len(reason) > max {
+		reason = reason[:max] + "…"
+	}
+	return reason
+}
+
+func ensureLogoutEventsTable(db *sql.DB) {
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS logout_events (
+		id INTEGER PRIMARY KEY,
+		website_id INTEGER NOT NULL,
+		username TEXT NOT NULL DEFAULT '',
+		account_name TEXT NOT NULL DEFAULT '',
+		next_account_name TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		client_ip TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL
+	)`)
+}
+
+// recordPanelSwitchAndLogout writes switch_events + logout_events with a short reason.
+// nextName "" or "(none)" means sole-account logout (no switch target).
+func recordPanelSwitchAndLogout(db *sql.DB, websiteID int, username, fromName, nextName, reason string) {
+	if db == nil || websiteID <= 0 {
+		return
+	}
+	ensureLogoutEventsTable(db)
+	reason = sanitizeEventReason(reason)
+	if nextName == "" {
+		nextName = "(none)"
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
+		websiteID, username, fromName, nextName, reason, now)
+	if err != nil {
+		log.Printf("[LB] switch_events insert failed: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
+		websiteID, username, fromName, nextName, reason, "", now)
+	if err != nil {
+		log.Printf("[LB] logout_events insert failed: %v", err)
+	}
+}
