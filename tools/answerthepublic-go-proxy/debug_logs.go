@@ -96,10 +96,10 @@ func liveLogsPageHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SellerAmp Live Logs</title>
+<title>ATP Live Logs</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b1220;color:#e5eefc}
-.wrap{max-width:1100px;margin:0 auto;padding:20px}
+.wrap{max-width:1200px;margin:0 auto;padding:20px}
 h1{font-size:18px;margin:0 0 8px}p{color:#93a4bd;font-size:13px;margin:0 0 16px}
 .bar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 button,a.btn{background:#1d4ed8;color:#fff;border:0;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;text-decoration:none}
@@ -109,17 +109,18 @@ table{width:100%;border-collapse:collapse;font-size:12px}
 th,td{border-bottom:1px solid #1e293b;padding:8px 6px;vertical-align:top;text-align:left}
 th{color:#93a4bd;font-weight:600}
 .s401,.s403{color:#fb7185}.s4xx{color:#fbbf24}.sok{color:#4ade80}
-.detail{color:#cbd5e1;word-break:break-word;max-width:420px}
+.detail{color:#cbd5e1;word-break:break-word;max-width:520px}
+.src{color:#7dd3fc}
 </style></head><body><div class="wrap">
-<h1>SellerAmp live error logs</h1>
-<p>Shows recent upstream 401/403 and /api/* failures. Auto-refreshes every 3s.</p>
+<h1>AnswerThePublic live logs</h1>
+<p>CLIENT-DIAG (browser network) + NET (proxy API) + AUTH/UPSTREAM. Also: <code>tail -f app.log | grep -E 'CLIENT-DIAG|NET|FAILOVER'</code></p>
 <div class="bar">
   <button onclick="loadLogs()">Refresh</button>
   <a class="btn secondary" href="/__logs.json" target="_blank">JSON</a>
   <span class="meta" id="meta">loading…</span>
 </div>
 <table><thead><tr>
-  <th>Time</th><th>Status</th><th>Method</th><th>Path</th><th>Auth</th><th>Detail</th>
+  <th>Time</th><th>Src</th><th>Status</th><th>Method</th><th>Path</th><th>Detail</th>
 </tr></thead><tbody id="rows"></tbody></table>
 <script>
 async function loadLogs(){
@@ -130,8 +131,9 @@ async function loadLogs(){
     document.getElementById('meta').textContent=rows.length+' entries · updated '+new Date().toLocaleTimeString();
     document.getElementById('rows').innerHTML=rows.map(e=>{
       const cls=e.status===401||e.status===403?'s401':(e.status>=400?'s4xx':'sok');
-      const auth='uid='+(e.has_x_uid?'Y':'N')+' token='+(e.has_x_api_token?'Y':'N')+' cookies='+(e.cookie_names||0);
-      return '<tr><td>'+new Date(e.time).toLocaleTimeString()+'</td><td class="'+cls+'">'+e.status+'</td><td>'+e.method+'</td><td>'+e.path+'</td><td>'+auth+'</td><td class="detail">'+(e.detail||'')+'</td></tr>';
+      const src=(e.source||'')+'';
+      const detail=(e.detail||'')+(e.user?' · user='+e.user:'')+(e.account?' · '+e.account:'');
+      return '<tr><td>'+new Date(e.time).toLocaleTimeString()+'</td><td class="src">'+src+'</td><td class="'+cls+'">'+e.status+'</td><td>'+e.method+'</td><td>'+e.path+'</td><td class="detail">'+detail+'</td></tr>';
     }).join('');
   }catch(err){
     document.getElementById('meta').textContent='failed: '+err;

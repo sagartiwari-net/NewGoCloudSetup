@@ -2588,6 +2588,13 @@ func patcherScript(cfg Config) string {
                 u = u.split(from).join(wsO + to);
             } else {
                 u = u.split(from).join(O + to);
+                // Protocol-relative //api.answerthepublic.com/... (CORS if left absolute)
+                try {
+                    var hostOnly = from.replace(/^https?:\/\//i, '');
+                    if (hostOnly && u.indexOf('//' + hostOnly) !== -1) {
+                        u = u.split('//' + hostOnly).join(O + to);
+                    }
+                } catch (eHost) {}
             }
         }
         u = u.replace('https://'+T, O).replace('http://'+T, O);
@@ -2746,6 +2753,13 @@ func patcherScript(cfg Config) string {
                 init.credentials = 'include';
             }
         }
+        // Soft-stub pricing / bare sign_in RSC so the SPA does not hang the dashboard.
+        try {
+            var stubPath = new URL(finalURL, O).pathname || '';
+            if (isBlocked(stubPath) || (stubPath.indexOf('/users/sign_in') !== -1 && String(finalURL).indexOf('location=') === -1)) {
+                return Promise.resolve(new Response('null', {status: 204, statusText: 'No Content'}));
+            }
+        } catch (eStub) {}
         var doFetch = function() { return fo(inp, init); };
         var runner = shouldRetry429(finalURL) ? function() { return ajaxSlot(doFetch); } : doFetch;
         return runner().then(function(res) {
@@ -3372,6 +3386,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 0. Skip proxy for admin API routes ──────────────────────────────────────
 	if strings.HasPrefix(path, "/api/auth-handshake") ||
 		strings.HasPrefix(path, "/api/device-bind") ||
+		strings.HasPrefix(path, "/api/client-diag") ||
 		path == "/tm-device-sw.js" ||
 		strings.HasPrefix(path, "/api/user-limits") ||
 		strings.HasPrefix(path, "/api/rotate-session") ||
@@ -3385,7 +3400,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
-	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
+	isFavicon := strings.Contains(strings.ToLower(path), "favicon") ||
+		path == "/manifest.json" || strings.HasSuffix(path, "/manifest.json")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
 	if authErr != nil && !isFavicon {
 		_, hasSess := r.Cookie("ct_session")
@@ -3885,6 +3901,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamResp, err := doUpstreamWith429Retry(upstreamReq, accountCookieStr)
 	if err != nil {
 		log.Printf("[PROXY] Upstream request failed for user '%s' path '%s': %v", currentUser, path, err)
+		if shouldLogATPNet(path, isExtraCDN, http.StatusBadGateway) {
+			logATPNet(r.Method, path, currentUser, activeAcc.Name, upstreamURL.Host, http.StatusBadGateway,
+				r.Header.Get("Origin"), "", countCookieNames(accountCookieStr), "dial_error="+err.Error())
+		}
 		if strings.Contains(err.Error(), "proxy dial") {
 			renderProxyProblem(w, r)
 			return
@@ -3909,6 +3929,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer upstreamResp.Body.Close()
+
+	if shouldLogATPNet(path, isExtraCDN, upstreamResp.StatusCode) {
+		logATPNet(r.Method, path, currentUser, activeAcc.Name, upstreamURL.Host, upstreamResp.StatusCode,
+			r.Header.Get("Origin"), upstreamResp.Header.Get("Access-Control-Allow-Origin"),
+			countCookieNames(accountCookieStr), "ct="+upstreamResp.Header.Get("Content-Type"))
+	}
 
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
@@ -4118,6 +4144,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if usesPanelAccountMode(cfg) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
 		}
+
+		// Early API rewrite MUST run before any ATP modules (CORS on /me + /plan_limits).
+		bodyBytes = injectHeadStart(bodyBytes, atpEarlyAPIPatch(cfg)+atpClientNetDiagScript())
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
@@ -4410,6 +4439,7 @@ func main() {
 	mux.HandleFunc("/api/auth-handshake", withCORS(authHandshakeHandler))
 	mux.HandleFunc("/api/user-limits", withCORS(userLimitsAPIHandler))
 	mux.HandleFunc("/api/rotate-session", withCORS(rotateSessionHandler))
+	mux.HandleFunc("/api/client-diag", atpClientDiagHandler)
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
