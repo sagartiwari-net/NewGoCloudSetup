@@ -3149,7 +3149,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
 			if panelErr != nil {
 				log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
-				renderNoActiveAccountsPage(w, cfg)
+				// After logout detection marks the only account logged_out, show contact-admin
+				// (not the generic "maintenance" page).
+				renderWordtuneContactAdminPage(w, cfg, "no_active_account")
 				return
 			}
 		}
@@ -3195,6 +3197,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	// Logged-out signup URL (e.g. /editor/auth/signup) → switch or contact admin.
+	if usesPanelAccountMode(cfg) && isDocumentNavigation(r) && sessionToken != "" && activeAcc.ID > 0 &&
+		wordtuneLooksLoggedOutPath(path) {
+		log.Printf("[COOKIE] path looks logged-out user=%s account=%s path=%s", currentUser, activeAcc.Name, path)
+		if !wordtuneFailoverRecently(sessionToken) {
+			serveWordtuneCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, "url_path:"+truncateForLog(path, 80))
+			return
+		}
+		renderWordtuneContactAdminPage(w, cfg, "logged_out")
+		return
 	}
 
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
@@ -3587,6 +3601,21 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect → signup/login wall (before WriteHeader)
+	locHdr := upstreamResp.Header.Get("Location")
+	if usesPanelAccountMode(cfg) && isDocumentNavigation(r) && sessionToken != "" && activeAcc.ID > 0 {
+		if dead, why := wordtuneLooksLoggedOutHTML(path, nil, upstreamResp.StatusCode, locHdr); dead && strings.HasPrefix(why, "redirect:") {
+			log.Printf("[COOKIE] redirect looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+			w.Header().Del("Location")
+			if !wordtuneFailoverRecently(sessionToken) {
+				serveWordtuneCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+				return
+			}
+			renderWordtuneContactAdminPage(w, cfg, why)
+			return
+		}
+	}
+
 	// ── 9. Process HTML responses (inject scripts, rewrite URLs) ──────────────────
 	isHTML := strings.Contains(contentType, "text/html")
 	if isHTML {
@@ -3596,6 +3625,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logUpstream(bodyBytes)
+
+		if usesPanelAccountMode(cfg) && isDocumentNavigation(r) && sessionToken != "" && activeAcc.ID > 0 {
+			if dead, why := wordtuneLooksLoggedOutHTML(path, bodyBytes, upstreamResp.StatusCode, locHdr); dead {
+				log.Printf("[COOKIE] html looks logged-out user=%s account=%s why=%s status=%d loc=%s",
+					currentUser, activeAcc.Name, why, upstreamResp.StatusCode, truncateForLog(locHdr, 100))
+				w.Header().Del("Location")
+				if !wordtuneFailoverRecently(sessionToken) {
+					serveWordtuneCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+				renderWordtuneContactAdminPage(w, cfg, why)
+				return
+			}
+		}
 
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
@@ -3625,7 +3668,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		sessionInject := buildWordtuneSessionInjectHTML(accountCookieStr)
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg) + wordtuneChromeScript(currentUser)
+		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg) + wordtuneChromeScript(currentUser) + wordtuneFailoverWatchScript()
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -3911,6 +3954,7 @@ func main() {
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
+	mux.HandleFunc("/api/wordtune-failover", wordtuneFailoverAPIHandler)
 	mux.HandleFunc("/__tm_access_denied", serveAccessDeniedHTML)
 	mux.HandleFunc("/tm-device-sw.js", serveDeviceSW)
 	mux.HandleFunc("/access", accessHandler)
