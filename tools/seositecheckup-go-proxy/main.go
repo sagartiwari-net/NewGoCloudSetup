@@ -81,6 +81,8 @@ type Config struct {
 	CookieFile             string   `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
 	PanelDB string `json:"panel_db"`
+	// WebsiteID pins panel/MySQL website id (17 = seositecheckup.gt4rents.com).
+	WebsiteID int `json:"website_id"`
 	// IamFile: localStorage IAM JSON for JWT-auth SPAs (e.g. SEO Site Checkup ssc.iam)
 	IamFile                string   `json:"iam_file"`
 	IamStorageKey          string   `json:"iam_storage_key"`
@@ -184,22 +186,40 @@ var (
 )
 
 func resolveWebsiteID(publicHost string) {
+	cfg := loadConfig()
+	if cfg.WebsiteID > 0 {
+		currentWebsiteID = cfg.WebsiteID
+		log.Printf("[DB] Using config website_id = %d (public_host=%s)", currentWebsiteID, publicHost)
+	}
+
 	if !dbConnected {
-		log.Printf("[LOCAL] Running in Standalone/Local mode, website_id = 1")
-		currentWebsiteID = 1
+		if currentWebsiteID <= 0 {
+			currentWebsiteID = 1
+		}
+		log.Printf("[LOCAL] Running in Standalone/Local mode, website_id = %d", currentWebsiteID)
 		return
 	}
 	if publicHost == "" {
-		log.Printf("[DB] public_host not specified in config.json, using default website_id = 1")
-		currentWebsiteID = 1
+		if currentWebsiteID <= 0 {
+			currentWebsiteID = 1
+			log.Printf("[DB] public_host empty — website_id = 1")
+		}
 		return
 	}
 	var wid int
-	err := db.QueryRow("SELECT id FROM ahrefs_websites WHERE domain = ?", publicHost).Scan(&wid)
+	err := db.QueryRow("SELECT id FROM ahrefs_websites WHERE domain = ? OR domain = ?", publicHost, strings.TrimPrefix(publicHost, "www.")).Scan(&wid)
 	if err == sql.ErrNoRows {
+		if currentWebsiteID > 0 {
+			log.Printf("[DB] ⚠️ Domain '%s' not found — keeping config website_id = %d", publicHost, currentWebsiteID)
+			return
+		}
 		log.Printf("[DB] ⚠️ Domain '%s' not registered in ahrefs_websites table! Using website_id = 1", publicHost)
 		currentWebsiteID = 1
 	} else if err != nil {
+		if currentWebsiteID > 0 {
+			log.Printf("[DB] ⚠️ website_id lookup error for '%s': %v — keeping config website_id = %d", publicHost, err, currentWebsiteID)
+			return
+		}
 		log.Printf("[DB] ⚠️ Error querying website_id for '%s': %v. Using website_id = 1", publicHost, err)
 		currentWebsiteID = 1
 	} else {
@@ -3463,6 +3483,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	upstreamResp, err := httpClient.Do(upstreamReq)
+	// Broken account/website proxy is a common 502 cause — one direct retry for safe methods.
+	if err != nil && strings.TrimSpace(activeAcc.Proxy) != "" &&
+		(r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions) {
+		log.Printf("[PROXY] retry without account proxy after: %v", err)
+		retryReq := upstreamReq.Clone(context.WithValue(r.Context(), proxyContextKey, ""))
+		if retryResp, retryErr := httpClient.Do(retryReq); retryErr == nil {
+			upstreamResp, err = retryResp, nil
+		} else {
+			log.Printf("[PROXY] direct retry also failed: %v", retryErr)
+		}
+	}
 	if err != nil {
 		log.Printf("[PROXY] Upstream request failed for user '%s' path '%s': %v", currentUser, path, err)
 		if strings.Contains(err.Error(), "proxy dial") {
