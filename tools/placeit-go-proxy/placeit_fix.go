@@ -22,6 +22,9 @@ func placeitEarlyCDNPatch() string {
     if (typeof u !== 'string') {
       try { u = (u && u.url) ? String(u.url) : String(u); } catch (e) { return u; }
     }
+    // User uploads + marketing buckets (s3 / s3-accelerate) — direct fetch = CORS fail
+    u = u.replace(/https?:\/\/(placeit[a-z0-9.-]*\.amazonaws\.com)/gi, O + '/ext-host/$1');
+    u = u.replace(/(^|[^:\/])\/\/(placeit[a-z0-9.-]*\.amazonaws\.com)/gi, '$1' + O + '/ext-host/$2');
     // Dynamic mockup image CDNs (placeit-img-1-p, placeit-img-2-p, …)
     u = u.replace(/https?:\/\/((?:[a-z0-9-]+\.)*cdn\.aws\.placeit\.net)/gi, O + '/ext-host/$1');
     u = u.replace(/https?:\/\/((?:[a-z0-9-]+\.)*placeitcode\.net)/gi, O + '/ext-host/$1');
@@ -35,6 +38,9 @@ func placeitEarlyCDNPatch() string {
     u = u.replace(/(^|[^:\/])\/\/((?:[a-z0-9-]+\.)*placeitcode\.net)/gi, '$1' + O + '/ext-host/$2');
     return u;
   }
+  function isAdsNoise(u){
+    return /doubleclick\.net|googlesyndication\.com|google-analytics\.com|googletagmanager\.com|facebook\.net\/tr/i.test(String(u||''));
+  }
   window.__tmForcePlaceit = forcePI;
   var nf = window.fetch;
   if (typeof nf === 'function') {
@@ -45,8 +51,11 @@ func placeitEarlyCDNPatch() string {
           input = new Request(forcePI(input.url), input);
       } catch (e) {}
       try {
-        var u = typeof input === 'string' ? input : (input && input.url) || '';
-        var abs = new URL(u, location.href);
+        var u0 = typeof input === 'string' ? input : (input && input.url) || '';
+        if (isAdsNoise(u0)) {
+          return Promise.resolve(new Response('', {status:204, statusText:'No Content'}));
+        }
+        var abs = new URL(u0, location.href);
         if (abs.origin === location.origin) {
           init = init ? Object.assign({}, init) : {};
           init.credentials = 'include';
@@ -75,6 +84,19 @@ func placeitEarlyCDNPatch() string {
     args[1] = u;
     return xo.apply(this, args);
   };
+  // img/srcset — library thumbnails often set .src, not fetch
+  try {
+    function patchSrcProp(proto, prop){
+      var desc = Object.getOwnPropertyDescriptor(proto, prop);
+      if (!desc || !desc.set) return;
+      Object.defineProperty(proto, prop, {
+        configurable: true, enumerable: desc.enumerable, get: desc.get,
+        set: function(v){ if (typeof v === 'string') v = forcePI(v); return desc.set.call(this, v); }
+      });
+    }
+    if (typeof HTMLImageElement !== 'undefined') patchSrcProp(HTMLImageElement.prototype, 'src');
+    if (typeof HTMLSourceElement !== 'undefined') patchSrcProp(HTMLSourceElement.prototype, 'src');
+  } catch (eImg) {}
 })();
 </script>`
 }

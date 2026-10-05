@@ -2232,9 +2232,10 @@ func patcherScript(cfg Config) string {
                 u = u.split(from).join(O + to);
             }
         }
-        // Dynamic Placeit mockup CDNs (img-1, img-2, …) + placeitcode
+        // Dynamic Placeit mockup CDNs (img-1, img-2, …) + placeitcode + S3 uploads
         if (window.__tmForcePlaceit) { try { u = window.__tmForcePlaceit(u); } catch (ePI) {} }
         else {
+          u = u.replace(/https?:\/\/(placeit[a-z0-9.-]*\.amazonaws\.com)/gi, O + '/ext-host/$1');
           u = u.replace(/https?:\/\/((?:[a-z0-9-]+\.)*cdn\.aws\.placeit\.net)/gi, O + '/ext-host/$1');
           u = u.replace(/https?:\/\/((?:[a-z0-9-]+\.)*placeitcode\.net)/gi, O + '/ext-host/$1');
         }
@@ -2248,7 +2249,7 @@ func patcherScript(cfg Config) string {
     }
 
     function isNoiseURL(u) {
-        return /telemetry\.canva\.com|ingest\.sentry\.io|\/traces\?/i.test(String(u || ''));
+        return /telemetry\.canva\.com|ingest\.sentry\.io|\/traces\?|doubleclick\.net|googlesyndication\.com|google-analytics\.com|googletagmanager\.com/i.test(String(u || ''));
     }
 
     // Plupload stores worker URL at init — rewrite settings.url and setOption('url')
@@ -2523,6 +2524,8 @@ func patcherScript(cfg Config) string {
     try {
         patchProp(HTMLScriptElement.prototype, 'src');
         patchProp(HTMLLinkElement.prototype, 'href');
+        patchProp(HTMLImageElement.prototype, 'src');
+        if (typeof HTMLSourceElement !== 'undefined') patchProp(HTMLSourceElement.prototype, 'src');
     } catch (e) {}
 
     // ── Strip integrity + rewrite src/href on dynamically created tags ──
