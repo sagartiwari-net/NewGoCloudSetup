@@ -520,6 +520,57 @@ func placeitSkipHeavyJSONRewrite(path string, contentLength int64) bool {
 	return false
 }
 
+// placeitChromeScript hides ONLY pricing / My Account / Log out nav items,
+// and replaces .username-container .username with the panel member username.
+func placeitChromeScript(panelUsername string) string {
+	userJS, _ := json.Marshal(strings.TrimSpace(panelUsername))
+	return fmt.Sprintf(`<script data-tm-placeit-chrome="1">
+(function(){
+  if (window.__tmPlaceitChrome) return;
+  window.__tmPlaceitChrome = true;
+  var TM_USER = %s;
+  function hide(el){
+    if (!el || (el.dataset && el.dataset.tmPiHide === '1')) return;
+    el.style.setProperty('display','none','important');
+    el.style.setProperty('visibility','hidden','important');
+    el.setAttribute('aria-hidden','true');
+    if (el.dataset) el.dataset.tmPiHide = '1';
+  }
+  function run(){
+    try {
+      // 1) "Go Annual!" pricing button only
+      document.querySelectorAll('#buy-a-subscription-mobile, a.main-pricing-button').forEach(function(a){
+        hide(a.closest('div.item.pricing') || a.closest('.item.pricing') || a);
+      });
+      document.querySelectorAll('div.item.pricing.square-button.has-subscription').forEach(hide);
+
+      // 2) My Account → /account (exact href only — do not touch other links)
+      document.querySelectorAll('a[href="/account"], a[href="/account/"]').forEach(function(a){
+        hide(a.closest('li') || a);
+      });
+
+      // 3) Log out
+      document.querySelectorAll('a.logout-button, a#logout-button, #logout-button, a[href="/logout"], a[href="/logout/"]').forEach(function(a){
+        hide(a.closest('li') || a);
+      });
+
+      // 4) Show panel username instead of Placeit account name
+      if (TM_USER) {
+        document.querySelectorAll('.username-container span.username, .username-container .username').forEach(function(span){
+          if (span.textContent !== TM_USER) span.textContent = TM_USER;
+        });
+      }
+    } catch (e) {}
+  }
+  run();
+  try {
+    new MutationObserver(run).observe(document.documentElement, {childList:true, subtree:true});
+  } catch (e2) {}
+  setInterval(run, 1000);
+})();
+</script>`, userJS)
+}
+
 // placeitShouldUnrewriteBody — only JSON/text APIs. Multipart uploads must stream.
 func placeitShouldUnrewriteBody(method, path, contentType string) bool {
 	m := strings.ToUpper(method)

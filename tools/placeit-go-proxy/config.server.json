@@ -30,6 +30,7 @@
     "/billing",
     "/subscription",
     "/subscriptions",
+    "/account",
     "/account/billing",
     "/account/subscription",
     "/account/settings",
