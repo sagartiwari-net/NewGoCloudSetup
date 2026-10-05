@@ -1,7 +1,8 @@
 {
   "port": "4921",
   "public_host": "flaticon.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "website_id": 43,
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -10,5 +11,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "website_id 43 = flaticon in panel websites / ahrefs_websites mapping"
 }
