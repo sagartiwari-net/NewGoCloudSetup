@@ -86,10 +86,29 @@ func isDocumentNavigation(r *http.Request) bool {
 	}
 	mode := r.Header.Get("Sec-Fetch-Mode")
 	dest := r.Header.Get("Sec-Fetch-Dest")
-	if mode == "navigate" || dest == "document" || dest == "iframe" {
+	if mode == "navigate" || dest == "document" || dest == "iframe" || dest == "frame" {
 		return true
 	}
-	return mode == "" && dest == "" && strings.Contains(r.Header.Get("Accept"), "text/html")
+	// Top-level HTML navigations (some proxies strip Sec-Fetch-*).
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		return true
+	}
+	return mode == "" && dest == ""
+}
+
+// grammarlyHTMLShellPath: Coda/Grammarly editor routes loaded as full documents.
+// They cannot send X-Device-* headers — must not return device_required JSON.
+func grammarlyHTMLShellPath(path string) bool {
+	if path == "/" || path == "" {
+		return true
+	}
+	if strings.HasPrefix(path, "/newdoc") || path == "/d" || strings.HasPrefix(path, "/d/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/ddocs") || strings.HasPrefix(path, "/signin") {
+		return true
+	}
+	return false
 }
 
 // rejectPanelDevice blocks a copied cookie jar. A document request with a missing
@@ -119,13 +138,19 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
+		// A normal refresh /newdoc|/d HTML load cannot send X-Device-* headers.
+		// The page script re-binds after load. Never return raw JSON on shell paths
+		// (Chrome shows Pretty-print JSON instead of the editor).
+		if isDocumentNavigation(r) || grammarlyHTMLShellPath(r.URL.Path) || browserSubresource(r) {
 			return false
 		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
+		log.Printf("[DEVICE] required path=%s mode=%s dest=%s accept=%s",
+			r.URL.Path, r.Header.Get("Sec-Fetch-Mode"), r.Header.Get("Sec-Fetch-Dest"),
+			truncateForLog(r.Header.Get("Accept"), 60))
+		if strings.Contains(r.Header.Get("Accept"), "text/html") || grammarlyHTMLShellPath(r.URL.Path) {
+			renderAccessDeniedPage(w, cfg)
+			return true
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
