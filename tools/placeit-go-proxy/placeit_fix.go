@@ -234,6 +234,13 @@ func placeitEarlyCDNPatch() string {
       if (isAdsNoise(u) || isAdsNoise(before)) {
         return Promise.resolve(new Response('', {status:204, statusText:'No Content'}));
       }
+      // related_templates_jobs is Placeit-server-slow (multi‑MB base64 × many calls).
+      // Instant stub so Design apply / Processing doesn't wait 30–60s on "You might like".
+      if (/related_templates_jobs/i.test(u) && method === 'POST') {
+        report('related_fast', {url: clip(u, 180)});
+        var stub = '{"_internalRemoveWatermark":true,"previewImage":{"type":"base64","value":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="},"highResolution":false,"migrated":true}';
+        return Promise.resolve(new Response(stub, {status:200, headers:{'Content-Type':'application/json'}}));
+      }
       // Leak detection (rewrite missed)
       var kindHint = classify(before);
       if (kindHint === 's3_leak' || kindHint === 'placeit_leak') {
@@ -306,6 +313,25 @@ func placeitEarlyCDNPatch() string {
     var xhr = this;
     var u = xhr.__tmNetURL || '';
     var method = xhr.__tmNetMethod || 'GET';
+    if (/related_templates_jobs/i.test(u) && method === 'POST') {
+      report('related_fast_xhr', {url: clip(u, 180)});
+      var stub = '{"_internalRemoveWatermark":true,"previewImage":{"type":"base64","value":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="},"highResolution":false,"migrated":true}';
+      try {
+        Object.defineProperty(xhr, 'readyState', {configurable:true, get:function(){ return 4; }});
+        Object.defineProperty(xhr, 'status', {configurable:true, get:function(){ return 200; }});
+        Object.defineProperty(xhr, 'responseText', {configurable:true, get:function(){ return stub; }});
+        Object.defineProperty(xhr, 'response', {configurable:true, get:function(){ return stub; }});
+        xhr.getResponseHeader = function(h){ if (String(h).toLowerCase() === 'content-type') return 'application/json'; return null; };
+        xhr.getAllResponseHeaders = function(){ return 'content-type: application/json\r\n'; };
+      } catch (eStub) {}
+      setTimeout(function(){
+        try { if (typeof xhr.onreadystatechange === 'function') xhr.onreadystatechange(); } catch (e1) {}
+        try { if (typeof xhr.onload === 'function') xhr.onload(); } catch (e2) {}
+        try { xhr.dispatchEvent && xhr.dispatchEvent(new Event('load')); } catch (e3) {}
+        try { xhr.dispatchEvent && xhr.dispatchEvent(new Event('loadend')); } catch (e4) {}
+      }, 0);
+      return;
+    }
     if (/placeit[a-z0-9.-]*\.amazonaws\.com/i.test(u) && u.indexOf('/ext-host/') === -1) {
       report('s3_leak_xhr', {url: clip(u, 240), method: method});
     }
@@ -489,6 +515,33 @@ func placeitSkipHeavyJSONRewrite(path string, contentLength int64) bool {
 		return true
 	}
 	if contentLength > 350000 {
+		return true
+	}
+	return false
+}
+
+// placeitShouldUnrewriteBody — only JSON/text APIs. Multipart uploads must stream.
+func placeitShouldUnrewriteBody(method, path, contentType string) bool {
+	m := strings.ToUpper(method)
+	if m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions {
+		return false
+	}
+	ct := strings.ToLower(contentType)
+	if strings.Contains(ct, "multipart/") || strings.Contains(ct, "octet-stream") ||
+		strings.Contains(ct, "image/") || strings.Contains(ct, "video/") || strings.Contains(ct, "audio/") {
+		return false
+	}
+	p := strings.ToLower(path)
+	if strings.Contains(p, "/cropper/upload") || strings.Contains(p, "/upload") && strings.Contains(ct, "multipart") {
+		return false
+	}
+	if strings.Contains(ct, "json") || strings.Contains(ct, "text/") ||
+		strings.Contains(ct, "javascript") || strings.Contains(ct, "urlencoded") {
+		return true
+	}
+	// JSON APIs sometimes omit Content-Type
+	if strings.Contains(p, "related_templates") || strings.Contains(p, "/api/v4/jobs") ||
+		strings.Contains(p, "/api/") {
 		return true
 	}
 	return false
