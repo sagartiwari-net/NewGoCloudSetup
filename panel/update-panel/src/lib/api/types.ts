@@ -57,7 +57,8 @@ export type MappedAccount = {
   user_agent: string
   proxy_id: number | null
   proxy: string
-  status: "active" | "inactive"
+  /** Tools may set logged_out on failover; saving a cookie revives to active. */
+  status: "active" | "inactive" | "logged_out" | "blocked"
   last_used_at: string
   failure_count: number
   show_limit: boolean

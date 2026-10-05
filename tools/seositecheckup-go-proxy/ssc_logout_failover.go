@@ -157,7 +157,7 @@ func trySscPanelRevive(w http.ResponseWriter, r *http.Request, cfg Config, sessi
 	return true
 }
 
-// serveSscCookieFailover: mark logged_out → switch if another active account → else contact-admin.
+// serveSscCookieFailover: try other account first → mark logged_out → else contact-admin.
 func serveSscCookieFailover(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken, currentUser string, activeAcc ToolAccount, reason string) {
 	log.Printf("[FAILOVER] start user=%s account=%s(%d) reason=%s", currentUser, activeAcc.Name, activeAcc.ID, reason)
 	home := cfg.HomePath
@@ -184,17 +184,22 @@ func serveSscCookieFailover(w http.ResponseWriter, r *http.Request, cfg Config, 
 		return
 	}
 
-	if activeAcc.ID > 0 {
-		panelMarkAccountLoggedOut(cfg, activeAcc.ID, reason)
-	}
-	clearSscIamCache(cfg)
-
+	// Switch FIRST while current is still claimable as fallback; then mark old logged_out.
 	next, nextName, err := panelSwitchToOtherAccount(cfg, sessionToken, reason)
-	if err == nil && next.ID != activeAcc.ID {
+	if err == nil && next.ID > 0 && next.ID != activeAcc.ID {
+		if activeAcc.ID > 0 {
+			panelMarkAccountLoggedOut(cfg, activeAcc.ID, reason)
+		}
+		clearSscIamCache(cfg)
 		log.Printf("[FAILOVER] switched user=%s %s -> %s reason=%s", currentUser, activeAcc.Name, nextName, reason)
 		renderSscSwitchPage(w, cfg, nextName, home)
 		return
 	}
+
+	if activeAcc.ID > 0 {
+		panelMarkAccountLoggedOut(cfg, activeAcc.ID, reason)
+	}
+	clearSscIamCache(cfg)
 
 	log.Printf("[FAILOVER] contact-admin user=%s account=%s reason=%s err=%v", currentUser, activeAcc.Name, reason, err)
 	if db, dbErr := openPanelDB(cfg); dbErr == nil {
@@ -258,20 +263,16 @@ func sscFailoverWatchScript() string {
     try { location.replace('/api/ssc-failover?reason=' + encodeURIComponent(reason || 'client')); }
     catch (e) {}
   }
-  function hasIamCookie(){
-    try { return /(?:^|;\\s*)ssc\\.iam=/.test(document.cookie || ''); } catch (e) { return false; }
-  }
   function looksLogout(){
     try {
       var h = location.pathname || '';
       var onAuth = /\\/auth\\/(login|sign-?in|sign-?up)/i.test(h) || /^\\/(login|sign-?in|sign-?up)(\\/|$)/i.test(h);
       if (!onAuth) { authSince = 0; return ''; }
       if (!authSince) authSince = Date.now();
-      // Give IAM inject + SPA boot time; path alone is not enough (false client_path).
-      if (Date.now() - authSince < 4000) return '';
+      // Wait for IAM inject + SPA; only treat real password wall as logout.
+      if (Date.now() - authSince < 6000) return '';
       var t = (document.body && document.body.innerText || '').replace(/\\s+/g,' ').trim().slice(0,900);
       if (/sign in|log in/i.test(t) && /password/i.test(t)) return 'wall';
-      if (!hasIamCookie() && Date.now() - authSince > 6000) return 'path_no_iam';
     } catch (e) {}
     return '';
   }
@@ -279,8 +280,8 @@ func sscFailoverWatchScript() string {
     var why = looksLogout();
     if (why) go('client_' + why);
   }
-  setTimeout(tick, 1500);
-  setInterval(tick, 2500);
+  setTimeout(tick, 2500);
+  setInterval(tick, 3000);
   try {
     var _push = history.pushState;
     var _replace = history.replaceState;

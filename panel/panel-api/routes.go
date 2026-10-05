@@ -327,18 +327,24 @@ func (s *server) saveAccount(w http.ResponseWriter, r *http.Request) {
 	if body.ShowLimit {
 		show = 1
 	}
+	// Tools mark accounts logged_out on failover. UI historically used inactive.
+	// Cookie paste always revives unless admin explicitly sets inactive/blocked.
+	status := strings.ToLower(strings.TrimSpace(body.Status))
+	if status != "inactive" && status != "blocked" {
+		status = "active"
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if body.ID == 0 {
 		_, err := s.db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent_id, user_agent, proxy_id, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
 			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'')`,
-			body.WebsiteID, body.Name, body.Cookie, body.UserAgentID, body.UserAgent, body.ProxyID, body.Proxy, body.Status, show, body.Description, body.Task, strings.ToLower(body.Ingest), now)
+			body.WebsiteID, body.Name, body.Cookie, body.UserAgentID, body.UserAgent, body.ProxyID, body.Proxy, status, show, body.Description, body.Task, strings.ToLower(body.Ingest), now)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
 		}
 	} else {
-		_, err := s.db.Exec(`UPDATE accounts SET website_id=?, name=?, cookie=?, user_agent_id=?, user_agent=?, proxy_id=?, proxy=?, status=?, show_limit=?, description=?, automation_task_uid=?, automation_ingest_key=?, cookie_updated_at=? WHERE id=?`,
-			body.WebsiteID, body.Name, body.Cookie, body.UserAgentID, body.UserAgent, body.ProxyID, body.Proxy, body.Status, show, body.Description, body.Task, strings.ToLower(body.Ingest), now, body.ID)
+		_, err := s.db.Exec(`UPDATE accounts SET website_id=?, name=?, cookie=?, user_agent_id=?, user_agent=?, proxy_id=?, proxy=?, status=?, show_limit=?, description=?, automation_task_uid=?, automation_ingest_key=?, cookie_updated_at=?, failure_count=CASE WHEN ?='active' THEN 0 ELSE failure_count END WHERE id=?`,
+			body.WebsiteID, body.Name, body.Cookie, body.UserAgentID, body.UserAgent, body.ProxyID, body.Proxy, status, show, body.Description, body.Task, strings.ToLower(body.Ingest), now, status, body.ID)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return

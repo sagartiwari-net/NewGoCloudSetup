@@ -108,7 +108,7 @@ func openPanelDB(cfg Config) (*sql.DB, error) {
 }
 
 // pickPanelAccount loads cookie from Update Panel accounts table only.
-// Prefers status=active; if none, revives a logged_out row that still has a cookie
+// Prefers status=active; if none, revives logged_out/inactive rows that still have a cookie
 // (admin re-pasted cookie in Update Panel but status may still say logged_out).
 func pickPanelAccount(db *sql.DB, domain string, excludeID int) (ToolAccount, error) {
 	try := func(status string) (ToolAccount, error) {
@@ -126,13 +126,15 @@ func pickPanelAccount(db *sql.DB, domain string, excludeID int) (ToolAccount, er
 	if err == nil {
 		return acc, nil
 	}
-	acc, err = try("logged_out")
-	if err != nil {
-		return ToolAccount{}, err
+	for _, st := range []string{"logged_out", "inactive"} {
+		acc, err = try(st)
+		if err == nil {
+			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=?`, acc.ID)
+			log.Printf("[PANEL] revived account id=%d name=%q from panel.db (cookie present, was %s)", acc.ID, acc.Name, st)
+			return acc, nil
+		}
 	}
-	_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=?`, acc.ID)
-	log.Printf("[PANEL] revived account id=%d name=%q from panel.db (cookie present, was logged_out)", acc.ID, acc.Name)
-	return acc, nil
+	return ToolAccount{}, fmt.Errorf("no mapped account with cookie")
 }
 
 func panelSessionUsername(r *http.Request) (string, error) {
@@ -407,7 +409,7 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('active','logged_out')`, assigned, cfg.PublicHost))
+			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('active','logged_out','inactive')`, assigned, cfg.PublicHost))
 		if accErr == nil {
 			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=? AND status='logged_out'`, acc.ID)
 			return acc, nil
@@ -438,7 +440,7 @@ func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('active','logged_out')`, assigned, cfg.PublicHost))
+			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('active','logged_out','inactive')`, assigned, cfg.PublicHost))
 		if accErr == nil {
 			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=? AND status='logged_out'`, acc.ID)
 			return acc, nil

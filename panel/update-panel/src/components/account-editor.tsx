@@ -37,7 +37,7 @@ const schema = z.object({
       (value) => value === "" || /^(socks5|https?):\/\//i.test(value),
       "Use a pool proxy or a socks5:// or http:// URL",
     ),
-  status: z.enum(["active", "inactive"]),
+  status: z.enum(["active", "inactive", "logged_out", "blocked"]),
   show_limit: z.boolean(),
   automation_task_uid: z.string(),
   automation_ingest_key: z
@@ -50,6 +50,12 @@ const schema = z.object({
 })
 
 type FormValues = z.infer<typeof schema>
+
+function editorStatus(status: string): FormValues["status"] {
+  if (status === "inactive" || status === "blocked") return status
+  // logged_out (tool failover) → edit as active so a cookie paste can save cleanly
+  return "active"
+}
 
 export function AccountEditor({
   account,
@@ -83,7 +89,7 @@ export function AccountEditor({
           user_agent_id: account.user_agent_id ? String(account.user_agent_id) : "",
           proxy: account.proxy,
           proxy_id: account.proxy_id ? String(account.proxy_id) : "",
-          status: account.status,
+          status: editorStatus(account.status),
           show_limit: account.show_limit,
           automation_task_uid: account.automation_task_uid,
           automation_ingest_key: account.automation_ingest_key,
@@ -106,6 +112,8 @@ export function AccountEditor({
   const errors = form.formState.errors
 
   async function onSubmit(values: FormValues) {
+    // Cookie paste after tool failover must revive — never leave logged_out stuck.
+    const nextStatus = values.cookie.trim() && values.status !== "inactive" && values.status !== "blocked" ? "active" : values.status
     const ok = await runMutation(
       () =>
         saveAccount({
@@ -118,7 +126,7 @@ export function AccountEditor({
           user_agent_id: values.user_agent_id ? Number(values.user_agent_id) : null,
           proxy: values.proxy,
           proxy_id: values.proxy_id ? Number(values.proxy_id) : null,
-          status: values.status,
+          status: nextStatus,
           show_limit: values.show_limit,
           automation_task_uid: role === "master" ? values.automation_task_uid.trim() : account?.automation_task_uid ?? "",
           automation_ingest_key:
