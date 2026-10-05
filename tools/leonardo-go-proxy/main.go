@@ -998,7 +998,16 @@ func isCacheableStaticPath(path string) bool {
 
 func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	if isLeonardoCDNPath(path) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		// Browser-side cache (Semrush/Ahrefs style). Hashed/_next + CDN static
+		// images are immutable; other safe assets still get a long public TTL.
+		lower := strings.ToLower(path)
+		if strings.HasPrefix(lower, "/_next/static/") ||
+			strings.Contains(lower, "/static/") ||
+			strings.HasSuffix(lower, ".woff2") || strings.HasSuffix(lower, ".woff") {
+			w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
 		w.Header().Del("Pragma")
 		w.Header().Del("Expires")
 		return
@@ -1008,6 +1017,22 @@ func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 	_ = contentType
+}
+
+// Only app/API hosts need the Cognito/session cookie. Attaching the full
+// account Cookie to cdn.leonardo.ai / assets.leonardo.ai makes S3 return
+// 400 RequestHeaderSectionTooLarge (max 8192) → broken Featured thumbnails.
+func leonardoUpstreamNeedsCookie(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if hh, _, err := net.SplitHostPort(h); err == nil {
+		h = hh
+	}
+	switch h {
+	case "app.leonardo.ai", "cloud.leonardo.ai", "api.leonardo.ai", "auth.leonardo.ai":
+		return true
+	default:
+		return false
+	}
 }
 
 var absorbCookieNames = map[string]bool{
@@ -1145,8 +1170,17 @@ func doUpstreamWith429Retry(req *http.Request, cookieStr string) (*http.Response
 				}
 				req.Body = b
 			}
-			// Refresh CF cookies onto the retried request
-			req.Header.Set("Cookie", applyLocalCookieOverlay(cookieStr))
+			// Refresh CF cookies onto the retried request — never on CDN/S3 hosts
+			// (oversized Cookie → 400 RequestHeaderSectionTooLarge).
+			host := ""
+			if req.URL != nil {
+				host = req.URL.Host
+			}
+			if leonardoUpstreamNeedsCookie(host) && cookieStr != "" {
+				req.Header.Set("Cookie", applyLocalCookieOverlay(cookieStr))
+			} else {
+				req.Header.Del("Cookie")
+			}
 			delay := time.Duration(attempt*attempt) * 800 * time.Millisecond
 			if lastResp != nil {
 				if ra := lastResp.Header.Get("Retry-After"); ra != "" {
@@ -3186,6 +3220,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// IMPORTANT: use ONLY the premium/account cookie for upstream.
 	// Merging the browser Cookie header caused "400 Request Header Or Cookie Too Large"
 	// on sas.selleramp.com nginx and broke CSRF/session → Unauthorized toasts.
+	// Leonardo CDN (cdn/assets) is S3 behind Cloudflare — never send Cognito cookies
+	// there or S3 returns 400 RequestHeaderSectionTooLarge and Featured images break.
 	accountCookieStr := applyLocalCookieOverlay(parseCookieFromDB(activeAcc.Cookie))
 	upstreamReq.Header.Del("Cookie")
 	hostWithoutPort := upstreamURL.Host
@@ -3207,7 +3243,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if accountCookieStr != "" && cookieSuffix != "" && strings.HasSuffix(hostWithoutPort, cookieSuffix) {
+	needsCookie := leonardoUpstreamNeedsCookie(hostWithoutPort)
+	if !needsCookie {
+		upstreamReq.Header.Del("Authorization")
+		upstreamReq.Header.Del("Cookie")
+	} else if accountCookieStr != "" && cookieSuffix != "" && strings.HasSuffix(hostWithoutPort, cookieSuffix) {
 		upstreamReq.Header.Set("Cookie", accountCookieStr)
 	}
 
