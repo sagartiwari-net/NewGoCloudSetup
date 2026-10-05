@@ -238,7 +238,7 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
 		return
 	}
-	log.Printf("[DEVICE] proof stored")
+	// Avoid log spam — tmWatch rebinds every few seconds.
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
 

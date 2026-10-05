@@ -2232,6 +2232,12 @@ func patcherScript(cfg Config) string {
                 u = u.split(from).join(O + to);
             }
         }
+        // Dynamic Placeit mockup CDNs (img-1, img-2, …) + placeitcode
+        if (window.__tmForcePlaceit) { try { u = window.__tmForcePlaceit(u); } catch (ePI) {} }
+        else {
+          u = u.replace(/https?:\/\/((?:[a-z0-9-]+\.)*cdn\.aws\.placeit\.net)/gi, O + '/ext-host/$1');
+          u = u.replace(/https?:\/\/((?:[a-z0-9-]+\.)*placeitcode\.net)/gi, O + '/ext-host/$1');
+        }
         u = u.replace('https://'+T, O).replace('http://'+T, O);
         if (C && C !== T) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
         // Dynamic chunk-composing hosts (any TLD / mangled IP-derived host)
@@ -2351,21 +2357,33 @@ func patcherScript(cfg Config) string {
         if (isNoiseURL(urlStr)) {
             return Promise.resolve(new Response('', {status: 204, statusText: 'No Content'}));
         }
+        init = init ? Object.assign({}, init) : {};
         if (typeof inp === 'string') inp = patchURL(inp);
         else if (inp instanceof Request) inp = new Request(patchURL(inp.url), inp);
         var finalURL = typeof inp === 'string' ? inp : (inp && inp.url) || urlStr;
+        try {
+            var resolved = new URL(finalURL, O);
+            if (resolved.origin === O || String(finalURL).indexOf('/extra-cdn-') === 0 || String(finalURL).indexOf('/ext-host/') !== -1) {
+                init.credentials = 'include';
+            }
+        } catch (eCred) {}
         var doFetch = function() { return fo(inp, init); };
         var runner = shouldRetry429(finalURL) ? function() { return ajaxSlot(doFetch); } : doFetch;
         return runner().then(function(res) {
+            if (res == null) {
+                return new Response('{}', {status: 502, headers:{'Content-Type':'application/json'}});
+            }
             if (res && res.status === 429 && shouldRetry429(finalURL)) {
                 return sleep(800).then(function(){ return runner(); }).then(function(res2) {
                     if (res2 && res2.status === 429) {
                         return sleep(1600).then(function(){ return runner(); });
                     }
-                    return res2;
+                    return res2 || new Response('{}', {status: 502, headers:{'Content-Type':'application/json'}});
                 });
             }
             return res;
+        }).catch(function(){
+            return new Response('{}', {status: 502, headers:{'Content-Type':'application/json'}});
         });
     };
 
@@ -2861,6 +2879,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 0. Skip proxy for admin API routes ──────────────────────────────────────
 	if strings.HasPrefix(path, "/api/auth-handshake") ||
 		strings.HasPrefix(path, "/api/device-bind") ||
+		strings.HasPrefix(path, "/api/client-diag") ||
 		path == "/tm-device-sw.js" ||
 		strings.HasPrefix(path, "/api/user-limits") ||
 		strings.HasPrefix(path, "/api/rotate-session") ||
@@ -2912,8 +2931,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── 2. Check blocked paths ────────────────────────────────────────────────────
-	if isBlockedPath(path, cfg) {
+	// ── 2. Check blocked paths (document navigations only — editor may call /account APIs)
+	if isBlockedPath(path, cfg) && isDocumentNavigation(r) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
 		if dbConnected {
 			_, _ = db.Exec(
@@ -3101,7 +3120,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if suffix == "" {
 			suffix = "woorank.com"
 		}
-		allowed := host == suffix || strings.HasSuffix(host, "."+suffix)
+		allowed := host == suffix || strings.HasSuffix(host, "."+suffix) ||
+			host == "placeitcode.net" || strings.HasSuffix(host, ".placeitcode.net") ||
+			strings.HasSuffix(host, ".cdn.aws.placeit.net") || host == "cdn.aws.placeit.net" ||
+			strings.HasSuffix(host, ".amazonaws.com")
 		// Never allow punching out to arbitrary hosts or looping to primary www host
 		if !allowed || strings.Contains(host, "/") || strings.Contains(host, "..") || host == "www.woorank.com" {
 			http.Error(w, "Forbidden host", http.StatusForbidden)
@@ -3427,6 +3449,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("Content-Security-Policy")
 		w.Header().Del("Content-Security-Policy-Report-Only")
 		w.Header().Del("X-Frame-Options")
+
+		// Early CDN rewrite MUST run before Placeit editor modules (CORS → reading 'ok').
+		bodyBytes = placeitInjectHeadStart(bodyBytes, placeitEarlyCDNPatch())
+
 		if usesPanelAccountMode(cfg) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
 		}
@@ -3701,6 +3727,7 @@ func main() {
 	mux.HandleFunc("/api/auth-handshake", withCORS(authHandshakeHandler))
 	mux.HandleFunc("/api/user-limits", withCORS(userLimitsAPIHandler))
 	mux.HandleFunc("/api/rotate-session", withCORS(rotateSessionHandler))
+	mux.HandleFunc("/api/client-diag", placeitClientDiagHandler)
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
