@@ -3528,7 +3528,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		sessionInject := buildWordtuneSessionInjectHTML(accountCookieStr)
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg) + wordtuneChromeScript(currentUser)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
