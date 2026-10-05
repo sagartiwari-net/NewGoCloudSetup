@@ -1051,9 +1051,37 @@ func ensureGrammarlyDoxClient(upstreamReq *http.Request, upstreamHost string) {
 	if !strings.EqualFold(upstreamHost, "dox.grammarly.com") {
 		return
 	}
+	// dox returns {"status":"error","info":"unknown client type"} without these.
 	if strings.TrimSpace(upstreamReq.Header.Get("X-Client-Type")) == "" {
 		upstreamReq.Header.Set("X-Client-Type", "web")
 	}
+	if strings.TrimSpace(upstreamReq.Header.Get("X-Client-Version")) == "" {
+		upstreamReq.Header.Set("X-Client-Version", "1.0")
+	}
+	if strings.TrimSpace(upstreamReq.Header.Get("Accept")) == "" {
+		upstreamReq.Header.Set("Accept", "application/json, text/plain, */*")
+	}
+}
+
+func grammarlyDocsPath(path string) bool {
+	p := strings.ToLower(path)
+	return strings.Contains(p, "/documents") || strings.Contains(p, "/recent") ||
+		strings.Contains(p, "dox.grammarly") || strings.Contains(p, "/library") ||
+		strings.Contains(p, "/folders") || strings.Contains(p, "widget-config")
+}
+
+func cookieNamesList(cookieHeader string) string {
+	names := make([]string, 0, 16)
+	for _, part := range strings.Split(cookieHeader, ";") {
+		trimmed := strings.TrimSpace(part)
+		if i := strings.IndexByte(trimmed, '='); i > 0 {
+			names = append(names, trimmed[:i])
+		}
+	}
+	if len(names) > 24 {
+		names = names[:24]
+	}
+	return strings.Join(names, ",")
 }
 
 // cookieNamed returns one cookie value from a Cookie header.
@@ -3417,7 +3445,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if isDocumentNavigation(r) && (path == "/" || path == "") {
-				sum := grammarlyCookieSummary(activeAcc.Cookie)
+				sum := grammarlyCookieSummary(activeAcc.Cookie) + " names_list=" + cookieNamesList(activeAcc.Cookie)
 				log.Printf("[COOKIE] user=%s account=%s(%d) %s", currentUser, activeAcc.Name, activeAcc.ID, sum)
 				pushProxyLog(ProxyLogEntry{
 					Source: "COOKIE", Level: "info", Method: r.Method, Path: path, Status: 200,
@@ -3817,12 +3845,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.EqualFold(upstreamURL.Host, "dox.grammarly.com") {
 		upstreamReq.Host = "dox.grammarly.com"
-		if upstreamReq.Header.Get("Origin") == "" {
-			upstreamReq.Header.Set("Origin", "https://app.grammarly.com")
-		}
-		if upstreamReq.Header.Get("Referer") == "" {
-			upstreamReq.Header.Set("Referer", "https://app.grammarly.com/")
-		}
+		// Always force app origin — proxy host Origin is rejected by dox.
+		upstreamReq.Header.Set("Origin", "https://app.grammarly.com")
+		upstreamReq.Header.Set("Referer", "https://app.grammarly.com/")
+		ensureGrammarlyDoxClient(upstreamReq, "dox.grammarly.com")
+		ensureGrammarlyCsrf(upstreamReq, accountCookieStr)
 	}
 
 	upstreamResp, err := doUpstreamWith429Retry(upstreamReq, accountCookieStr)
@@ -3854,18 +3881,29 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	defer upstreamResp.Body.Close()
 
 	logUpstream := func(body []byte) {
-		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
+		docsPath := grammarlyDocsPath(path) || strings.EqualFold(upstreamURL.Host, "dox.grammarly.com")
+		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) && !docsPath {
 			return
+		}
+		level := "error"
+		if upstreamResp.StatusCode >= 200 && upstreamResp.StatusCode < 400 {
+			level = "info"
+		}
+		detail := snippetForLog(body, upstreamResp.Header.Get("Content-Type"))
+		if docsPath {
+			detail = "host=" + upstreamURL.Host + " " + detail
+			log.Printf("[DOCS] %s %s → %d user=%s account=%s %s",
+				r.Method, path, upstreamResp.StatusCode, currentUser, activeAcc.Name, truncateForLog(detail, 220))
 		}
 		pushProxyLog(ProxyLogEntry{
 			Source:  "UPSTREAM",
-			Level:   "error",
+			Level:   level,
 			Method:  r.Method,
 			Path:    path,
 			Status:  upstreamResp.StatusCode,
 			User:    currentUser,
 			Account: activeAcc.Name,
-			Detail:  snippetForLog(body, upstreamResp.Header.Get("Content-Type")),
+			Detail:  detail,
 			HasUID:  r.Header.Get("X-UID") != "" || upstreamReq.Header.Get("X-UID") != "",
 			HasAPI:  r.Header.Get("X-API-TOKEN") != "" || upstreamReq.Header.Get("X-API-TOKEN") != "",
 			CookieN: countCookieNames(accountCookieStr),

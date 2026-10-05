@@ -353,8 +353,12 @@ func grammarlyDiagAndFailoverScript() string {
   function interesting(u){
     try {
       var s = String(u || '');
-      return /subscription|\/info|documents|\/auth|identity|\/me|account|properties|extra-cdn|ext-host|gateway|treatment|gates/i.test(s);
+      return /subscription|\/info|documents|\/recent|\/auth|identity|\/me|account|properties|extra-cdn|ext-host|gateway|treatment|gates|dox\.|widget-config|folders|library/i.test(s);
     } catch (e) { return false; }
+  }
+  function isDocsURL(u){
+    try { return /documents|\/recent|dox\.grammarly|folders|library|widget-config/i.test(String(u||'')); }
+    catch (e) { return false; }
   }
   var ofetch = window.fetch;
   if (typeof ofetch === 'function') {
@@ -371,9 +375,21 @@ func grammarlyDiagAndFailoverScript() string {
       var url = typeof input === 'string' ? input : (input && input.url) || '';
       return ofetch.call(this, input, init).then(function(res){
         try {
-          if (res && (res.status === 401 || res.status === 403) && interesting(url) && url.indexOf('/ext-host/') === -1 && url.indexOf('/extra-cdn') === -1 && url.indexOf(location.origin) === 0) {
-            // same-origin API 401 after rewrite — real cookie problem
-            if (/subscription|documents|\/info|passport|identity/i.test(url)) {
+          if (res && isDocsURL(url) && (res.status >= 400 || res.status === 0)) {
+            postDiag({event:'docs_fail', status: res.status, url: String(url).slice(0,200)});
+          }
+          if (res && res.ok && isDocsURL(url)) {
+            // Peek error JSON without breaking the body for the app
+            try {
+              res.clone().text().then(function(t){
+                if (t && /\"status\"\s*:\s*\"error\"|unknown client|unauthorized|forbidden/i.test(t.slice(0,300))) {
+                  postDiag({event:'docs_error_body', status: res.status, url: String(url).slice(0,160), body: t.slice(0,180)});
+                }
+              }).catch(function(){});
+            } catch (e2) {}
+          }
+          if (res && (res.status === 401 || res.status === 403) && interesting(url) && (url.indexOf(location.origin) === 0 || url.indexOf('/ext-host/') !== -1 || url.indexOf('/extra-cdn') !== -1)) {
+            if (/subscription|documents|\/info|passport|identity|\/recent/i.test(url)) {
               postDiag({event:'auth_status', status: res.status, url: String(url).slice(0,180)});
               goFailover('api_' + res.status);
             }
