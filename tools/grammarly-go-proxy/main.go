@@ -2200,6 +2200,20 @@ func jsonSlashEscape(s string) string {
 	return strings.ReplaceAll(s, "/", `\/`)
 }
 
+// findDocumentHeadEnd returns the index of the real </head> before <body>.
+// Using the first match is unsafe after we inject scripts that may mention head end tags.
+func findDocumentHeadEnd(body []byte) int {
+	lower := bytes.ToLower(body)
+	limit := len(lower)
+	if b := bytes.Index(lower, []byte("<body")); b >= 0 {
+		limit = b
+	}
+	if limit <= 0 {
+		return bytes.LastIndex(lower, []byte("</head>"))
+	}
+	return bytes.LastIndex(lower[:limit], []byte("</head>"))
+}
+
 // buildDomainReplacements creates a list of old→new domain pairs for HTML rewriting.
 func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
@@ -4023,15 +4037,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			// Keep header nav hidden even after Next.js client navigations/re-renders
 			injectStr += `<script>(function(){function hideSasNav(){document.querySelectorAll('a[href*="/r/sas/advanced-search"],a[href*="/sas/history"]').forEach(function(a){var ul=a.closest("ul");if(ul)ul.style.setProperty("display","none","important");});}hideSasNav();new MutationObserver(hideSasNav).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
 		}
-		// Inject only before the FIRST </head>. Canva embeds a full error-page
-		// HTML string (with its own </head>) in bootstrap — ReplaceAll would
-		// splice our script into that JS string → SyntaxError and zero API calls.
-		if loc := regexp.MustCompile(`(?i)</head>`).FindIndex(bodyBytes); loc != nil {
+		// Inject before the real document </head> (last match before <body>).
+		// FIRST match is wrong once device/early scripts contain the letters
+		// "<"+"/head>" in a comment — that splices patcher mid-script and dumps
+		// JS onto the page as visible text ("Couldn't load your docs").
+		if loc := findDocumentHeadEnd(bodyBytes); loc >= 0 {
 			inj := []byte(injectStr + "</head>")
 			out := make([]byte, 0, len(bodyBytes)+len(inj))
-			out = append(out, bodyBytes[:loc[0]]...)
+			out = append(out, bodyBytes[:loc]...)
 			out = append(out, inj...)
-			out = append(out, bodyBytes[loc[1]:]...)
+			out = append(out, bodyBytes[loc+len("</head>"):]...)
 			bodyBytes = out
 		}
 
