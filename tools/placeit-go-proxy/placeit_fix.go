@@ -6,8 +6,80 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 )
+
+// placeitUnrewriteRequestBody maps browser-facing proxy URLs back to real Placeit/S3
+// hosts before POSTing upstream. Without this, nicev2 jobs see
+// placeit.gt4rents.com/extra-cdn-N/... and return "Failed to get output image".
+func placeitUnrewriteRequestBody(body []byte, publicScheme, publicHost string, cfg Config) []byte {
+	if len(body) == 0 || publicHost == "" {
+		return body
+	}
+	if !bytes.Contains(body, []byte(publicHost)) {
+		return body
+	}
+	if publicScheme == "" {
+		publicScheme = "https"
+	}
+	publicBase := publicScheme + "://" + publicHost
+
+	// Longer proxy prefixes first (extra-cdn / cdn-proxy / ext-host) before bare origin.
+	for i, extra := range cfg.ExtraCDNDomains {
+		host := strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
+		host = strings.Split(host, "/")[0]
+		if host == "" {
+			continue
+		}
+		from := fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)
+		to := "https://" + host
+		body = bytes.ReplaceAll(body, []byte(from), []byte(to))
+		body = bytes.ReplaceAll(body,
+			[]byte(strings.ReplaceAll(from, "/", `\/`)),
+			[]byte(strings.ReplaceAll(to, "/", `\/`)))
+		// http:// public variants
+		fromHTTP := fmt.Sprintf("http://%s/extra-cdn-%d", publicHost, i)
+		body = bytes.ReplaceAll(body, []byte(fromHTTP), []byte(to))
+		body = bytes.ReplaceAll(body,
+			[]byte(strings.ReplaceAll(fromHTTP, "/", `\/`)),
+			[]byte(strings.ReplaceAll(to, "/", `\/`)))
+	}
+
+	if cfg.CDNURL != "" {
+		if cdn, err := url.Parse(cfg.CDNURL); err == nil && cdn.Host != "" {
+			from := publicBase + "/cdn-proxy"
+			to := "https://" + cdn.Host
+			body = bytes.ReplaceAll(body, []byte(from), []byte(to))
+			body = bytes.ReplaceAll(body,
+				[]byte(strings.ReplaceAll(from, "/", `\/`)),
+				[]byte(strings.ReplaceAll(to, "/", `\/`)))
+		}
+	}
+
+	reExt := regexp.MustCompile(`(?i)https?://` + regexp.QuoteMeta(publicHost) + `/ext-host/([a-z0-9.-]+)`)
+	body = reExt.ReplaceAll(body, []byte("https://$1"))
+	reExtEsc := regexp.MustCompile(`(?i)https?:\\/\\/` + regexp.QuoteMeta(publicHost) + `\\/ext-host\\/([a-z0-9.-]+)`)
+	body = reExtEsc.ReplaceAll(body, []byte(`https:\/\/$1`))
+
+	targetHost := ""
+	if u, err := url.Parse(cfg.TargetURL); err == nil {
+		targetHost = u.Host
+	}
+	if targetHost != "" {
+		to := "https://" + targetHost
+		body = bytes.ReplaceAll(body, []byte(publicBase), []byte(to))
+		body = bytes.ReplaceAll(body,
+			[]byte(strings.ReplaceAll(publicBase, "/", `\/`)),
+			[]byte(strings.ReplaceAll(to, "/", `\/`)))
+		body = bytes.ReplaceAll(body, []byte("http://"+publicHost), []byte(to))
+		body = bytes.ReplaceAll(body,
+			[]byte(strings.ReplaceAll("http://"+publicHost, "/", `\/`)),
+			[]byte(strings.ReplaceAll(to, "/", `\/`)))
+	}
+	return body
+}
 
 // placeitEarlyCDNPatch rewrites Placeit commercial / img / placeitcode / S3 hosts
 // before the editor boots, and beacons Network-style CLIENT-DIAG to app.log.

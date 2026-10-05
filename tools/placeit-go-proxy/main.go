@@ -3278,6 +3278,31 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	publicBase := fmt.Sprintf("%s://%s", publicScheme, publicHost)
 	targetBase := cfg.TargetURL
 
+	// Reverse-rewrite JSON/text bodies so Placeit backends can fetch real S3/CDN URLs
+	// (browser sees placeit.gt4rents.com/extra-cdn-N — upstream must see amazonaws/placeit).
+	if upstreamReq.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		raw, readErr := io.ReadAll(io.LimitReader(upstreamReq.Body, 32<<20))
+		_ = upstreamReq.Body.Close()
+		if readErr == nil {
+			if len(raw) > 0 && bytes.Contains(raw, []byte(publicHost)) {
+				fixed := placeitUnrewriteRequestBody(raw, publicScheme, publicHost, cfg)
+				if !bytes.Equal(fixed, raw) {
+					log.Printf("[NET] unrewrote body %s %s (%d→%d bytes)", r.Method, path, len(raw), len(fixed))
+					raw = fixed
+				}
+			}
+			upstreamReq.Body = io.NopCloser(bytes.NewReader(raw))
+			upstreamReq.ContentLength = int64(len(raw))
+			upstreamReq.Header.Set("Content-Length", fmt.Sprintf("%d", len(raw)))
+			upstreamReq.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(raw)), nil
+			}
+		} else {
+			upstreamReq.Body = io.NopCloser(bytes.NewReader(nil))
+			upstreamReq.ContentLength = 0
+		}
+	}
+
 	origOrigin := r.Header.Get("Origin")
 	origReferer := r.Header.Get("Referer")
 
