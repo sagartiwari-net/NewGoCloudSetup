@@ -3964,7 +3964,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Upstream redirect to login wall → account switch (document navigations only)
+	// Upstream redirect to login wall / blocked marketing → account switch or soft home
 	if usesPanelAccountMode(cfg) && currentUser != "" && sessionToken != "" &&
 		upstreamResp.StatusCode >= 300 && upstreamResp.StatusCode < 400 &&
 		isDocumentNavigation(r) {
@@ -3974,8 +3974,30 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				locPath = u.Path
 			}
 			if atpIsLoginPath(locPath) {
+				// Live cookie + mid-hydrate often 302→sign_in; don't start a switch loop.
+				if atpCookieAlive(cfg, activeAcc) {
+					home := strings.TrimSpace(cfg.HomePath)
+					if home == "" {
+						home = "/"
+					}
+					log.Printf("[FAILOVER] skip login redirect (cookie alive) path=%s → %s", path, home)
+					w.Header().Set("Location", home)
+					w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+					upstreamResp.Body.Close()
+					w.WriteHeader(http.StatusFound)
+					return
+				}
 				serveATPAccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc)
 				return
+			}
+			// /pricing etc. would bounce home via BLOCK then re-hit login HTML — short-circuit.
+			if isBlockedPath(locPath, cfg) {
+				home := strings.TrimSpace(cfg.HomePath)
+				if home == "" {
+					home = "/"
+				}
+				log.Printf("[BLOCK] rewrite upstream redirect %s → %s (user=%s)", locPath, home, currentUser)
+				w.Header().Set("Location", home)
 			}
 		}
 	}
@@ -4043,11 +4065,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logUpstream(bodyBytes)
 
-		// Login wall HTML on any path (e.g. /en/dashboard/...) → eRank-style account switch
+		// Login wall HTML on any path (e.g. /en/dashboard/...) → account switch.
+		// If the panel cookie is still authorized, this is usually a hydrate race
+		// (guest shell for a few seconds) — pass HTML through and let the client
+		// watch wait ~6s instead of spinning FAILOVER every request.
 		if usesPanelAccountMode(cfg) && currentUser != "" && sessionToken != "" &&
 			isDocumentNavigation(r) && atpBodyLooksLikeLogin(bodyBytes) {
-			serveATPAccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc)
-			return
+			if atpCookieAlive(cfg, activeAcc) {
+				log.Printf("[FAILOVER] pass-through login HTML (cookie alive) path=%s account=%s", path, activeAcc.Name)
+			} else {
+				serveATPAccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc)
+				return
+			}
 		}
 
 		// Cache api token/uid from page payload for later /api/v2 calls

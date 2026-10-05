@@ -115,15 +115,25 @@ func clearLocalCookieOverlay() {
 	localCookieMu.Unlock()
 }
 
-func atpShouldThrottleFailover(sessionToken string) bool {
+const atpFailoverCooldown = 15 * time.Second
+
+func atpInFailoverCooldown(sessionToken string) bool {
+	if sessionToken == "" {
+		return false
+	}
 	atpFailoverMu.Lock()
 	defer atpFailoverMu.Unlock()
-	now := time.Now()
-	if last, ok := atpFailoverLast[sessionToken]; ok && now.Sub(last) < 6*time.Second {
-		return true
+	last, ok := atpFailoverLast[sessionToken]
+	return ok && time.Since(last) < atpFailoverCooldown
+}
+
+func atpMarkFailover(sessionToken string) {
+	if sessionToken == "" {
+		return
 	}
-	atpFailoverLast[sessionToken] = now
-	return false
+	atpFailoverMu.Lock()
+	atpFailoverLast[sessionToken] = time.Now()
+	atpFailoverMu.Unlock()
 }
 
 func atpCookieFingerprint(cookieHeader string) string {
@@ -207,6 +217,22 @@ func serveATPInvalidCookie(w http.ResponseWriter, home, accountName string) {
 	})
 }
 
+func serveATPCookieOKRetry(w http.ResponseWriter, home, accountName string) {
+	msg := "Cookie looks good. Opening the tool again."
+	if accountName != "" {
+		msg = "Cookie looks good for <span class=\"brand\">" + html.EscapeString(accountName) + "</span>. Opening the tool again."
+	}
+	writeLightCard(w, http.StatusOK, lightCard{
+		Title:       "Switching account",
+		Heading:     "Switching account",
+		Message:     msg,
+		Badge:       "Checking the account cookie",
+		Footer:      "This page refreshes automatically",
+		Spin:        true,
+		ExtraScript: atpWaitingRetryScript(home, 6000),
+	})
+}
+
 // serveATPAccountSwitch runs when AnswerThePublic shows the login wall.
 // Pins the next panel account (or reloads the only one) and returns a light card.
 func serveATPAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken, currentUser string, activeAcc ToolAccount) {
@@ -220,6 +246,15 @@ func serveATPAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 		}
 		home = atpSafeReturn(cand, cfg)
 	}
+
+	// Cool-down: avoid wipe/switch loops while ATP is still hydrating a live cookie.
+	// Previous bug: every /pricing bounce + guest HTML called panelSwitch + clearLocalCookieOverlay.
+	if atpInFailoverCooldown(sessionToken) && atpCookieAlive(cfg, activeAcc) {
+		log.Printf("[FAILOVER] cooldown soft-retry user=%s account=%s → %s", currentUser, activeAcc.Name, home)
+		serveATPCookieOKRetry(w, home, activeAcc.Name)
+		return
+	}
+
 	heading := "Switching account"
 	message := "This account signed out. Trying the next available account."
 	next, nextName, err := panelSwitchAccount(cfg, sessionToken, "atp_login_wall")
@@ -236,33 +271,26 @@ func serveATPAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 		})
 		return
 	}
-	// Drop stale absorbed CF/session overlay so the freshly loaded panel cookie wins.
-	clearLocalCookieOverlay()
 
 	// Probe the assigned cookie before sending the user into a guest Sign-in shell.
 	if !atpCookieAlive(cfg, next) {
+		// Dead cookie — drop absorbed overlay so a later panel paste can win.
+		clearLocalCookieOverlay()
 		log.Printf("[FAILOVER] login wall user=%s account=%s cookie still unauthorized after reload", currentUser, next.Name)
 		serveATPInvalidCookie(w, home, next.Name)
 		return
 	}
 
-	// Same account with a working cookie — open the app.
-	// Wait ~6s before reopen: ATP session hydrate is slow; a quick bounce re-hits the
-	// guest/Sign-in shell and false-triggers logout failover again.
+	atpMarkFailover(sessionToken)
+
+	// Same account with a working cookie — open the app (do NOT clear overlay; hydrate needs it).
 	if next.ID == activeAcc.ID {
 		log.Printf("[FAILOVER] login wall user=%s reloaded live cookie for %s (ID:%d) → %s", currentUser, next.Name, next.ID, home)
-		_ = atpShouldThrottleFailover(sessionToken) // still rate-limit rapid sole-account switches
-		writeLightCard(w, http.StatusOK, lightCard{
-			Title:       "Switching account",
-			Heading:     "Switching account",
-			Message:     "Cookie looks good. Opening the tool again.",
-			Badge:       "Checking the account cookie",
-			Footer:      "This page refreshes automatically",
-			Spin:        true,
-			ExtraScript: atpWaitingRetryScript(home, 6000),
-		})
+		serveATPCookieOKRetry(w, home, next.Name)
 		return
 	}
+	// Real account change — drop old absorbed CF/session so the new panel cookie wins.
+	clearLocalCookieOverlay()
 	if nextName != "" {
 		message = "Account logged out. Switching to " + nextName + "..."
 	}
