@@ -247,28 +247,19 @@ func serveATPAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	}
 
 	// Same account with a working cookie — open the app.
+	// Wait ~6s before reopen: ATP session hydrate is slow; a quick bounce re-hits the
+	// guest/Sign-in shell and false-triggers logout failover again.
 	if next.ID == activeAcc.ID {
 		log.Printf("[FAILOVER] login wall user=%s reloaded live cookie for %s (ID:%d) → %s", currentUser, next.Name, next.ID, home)
-		if atpShouldThrottleFailover(sessionToken) {
-			writeLightCard(w, http.StatusOK, lightCard{
-				Title:       "Switching account",
-				Heading:     "Switching account",
-				Message:     "Cookie looks good. Opening the tool again.",
-				Badge:       "Checking the account cookie",
-				Footer:      "This page refreshes automatically",
-				Spin:        true,
-				ExtraScript: atpWaitingRetryScript(home, 1500),
-			})
-			return
-		}
+		_ = atpShouldThrottleFailover(sessionToken) // still rate-limit rapid sole-account switches
 		writeLightCard(w, http.StatusOK, lightCard{
-			Title:    "Switching account",
-			Heading:  "Switching account",
-			Message:  "Cookie looks good. Opening the tool again.",
-			Badge:    "Checking the account cookie",
-			Footer:   "This page refreshes automatically",
-			Spin:     true,
-			Redirect: home,
+			Title:       "Switching account",
+			Heading:     "Switching account",
+			Message:     "Cookie looks good. Opening the tool again.",
+			Badge:       "Checking the account cookie",
+			Footer:      "This page refreshes automatically",
+			Spin:        true,
+			ExtraScript: atpWaitingRetryScript(home, 6000),
 		})
 		return
 	}
@@ -302,14 +293,14 @@ func atpLoginWatchScript(cfg Config) string {
 		home = "/"
 	}
 	homeJSON := mustJSON(home)
-	// ATP hydrates auth in ~2–3s. Wait 5s before treating Sign-in/guest UI as a real logout,
-	// then switch account only if still logged out.
+	// ATP hydrates auth in ~5–6s after a panel cookie update. Wait before treating
+	// Sign-in/guest UI as a real logout, then require a few stable ticks.
 	return fmt.Sprintf(`<script>
 (function(){
   if (window.__atpLogoutWatch) return;
   window.__atpLogoutWatch = true;
   var HOME = %s;
-  var READY_AT = Date.now() + 5000;
+  var READY_AT = Date.now() + 6000;
   var failHits = 0;
   function goFailover(back){
     if (window.__atpReloading) return;
@@ -357,8 +348,8 @@ func atpLoginWatchScript(cfg Config) string {
     if (loggedIn()) { failHits = 0; return; }
     if (wall() || guestShell()) {
       failHits++;
-      // After the 5s grace, require one more tick (~1.5s) so a late hydrate can still win.
-      if (failHits >= 2) goFailover(location.pathname + location.search);
+      // After the 6s grace, need ~3s of still-logged-out UI before switching.
+      if (failHits >= 3) goFailover(location.pathname + location.search);
       return;
     }
     failHits = 0;
