@@ -354,8 +354,72 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	return acc, nil
 }
 
-// panelSwitchAccount moves this session to the next active account.
-// failure_count goes up. status stays active so the account can be used again later.
+// panelReloadAccount refreshes the mapped account cookie from panel.db (same ID).
+func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var assigned int
+	if err := db.QueryRow(`SELECT COALESCE(assigned_account_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned); err != nil {
+		return ToolAccount{}, err
+	}
+	if assigned > 0 {
+		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+		if accErr == nil {
+			return acc, nil
+		}
+	}
+	return scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+}
+
+// panelSwitchToOtherAccount pins a different active account. No other account → caller shows contact admin.
+func panelSwitchToOtherAccount(cfg Config, sessionToken, reason string) (ToolAccount, string, error) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, "", err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var websiteID, currentID int
+	var username string
+	err = db.QueryRow(`SELECT website_id, COALESCE(assigned_account_id, 0), username FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).
+		Scan(&websiteID, &currentID, &username)
+	if err != nil {
+		return ToolAccount{}, "", err
+	}
+	if reason == "" {
+		reason = "grammarly-failover"
+	}
+	var fromName string
+	_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, currentID).Scan(&fromName)
+
+	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
+	if err != nil {
+		return ToolAccount{}, "", fmt.Errorf("no other active account")
+	}
+	if currentID > 0 {
+		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
+	}
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+	if websiteID > 0 {
+		_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
+			websiteID, username, fromName, acc.Name, reason, now)
+	}
+	log.Printf("[LB] grammarly switched %s -> %s reason=%s", fromName, acc.Name, reason)
+	return acc, acc.Name, nil
+}
+
 func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 	var acc ToolAccount
 	var showLimit int

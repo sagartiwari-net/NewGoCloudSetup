@@ -75,6 +75,17 @@ func shouldLogUpstreamStatus(status int, path string) bool {
 	if status >= 400 && (strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/r/api/")) {
 		return true
 	}
+	// Grammarly: always capture auth-ish / app bootstrap failures for blank-page debug.
+	p := strings.ToLower(path)
+	if status >= 400 && (strings.Contains(p, "subscription") || strings.Contains(p, "documents") ||
+		strings.Contains(p, "/info") || strings.Contains(p, "properties") ||
+		strings.Contains(p, "extra-cdn") || strings.Contains(p, "ext-host") ||
+		strings.Contains(p, "auth") || strings.Contains(p, "gateway")) {
+		return true
+	}
+	if status >= 300 && status < 400 && (p == "/" || p == "" || strings.Contains(p, "login") || strings.Contains(p, "signin")) {
+		return true
+	}
 	return false
 }
 
@@ -96,7 +107,7 @@ func liveLogsPageHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SellerAmp Live Logs</title>
+<title>Grammarly Live Logs</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b1220;color:#e5eefc}
 .wrap{max-width:1100px;margin:0 auto;padding:20px}
@@ -111,8 +122,8 @@ th{color:#93a4bd;font-weight:600}
 .s401,.s403{color:#fb7185}.s4xx{color:#fbbf24}.sok{color:#4ade80}
 .detail{color:#cbd5e1;word-break:break-word;max-width:420px}
 </style></head><body><div class="wrap">
-<h1>SellerAmp live error logs</h1>
-<p>Shows recent upstream 401/403 and /api/* failures. Auto-refreshes every 3s.</p>
+<h1>Grammarly live logs</h1>
+<p>COOKIE / FAILOVER / CLIENT-DIAG / upstream 401–403. Auto-refreshes every 3s. Also: <code>tail -f app.log</code></p>
 <div class="bar">
   <button onclick="loadLogs()">Refresh</button>
   <a class="btn secondary" href="/__logs.json" target="_blank">JSON</a>

@@ -1796,6 +1796,50 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
+	cfg := loadConfig()
+	reason := r.URL.Query().Get("reason")
+	if reason == "" {
+		reason = "client-side watchdog trigger"
+	}
+	// Panel mode: switch mapped accounts in panel.db (not MySQL ahrefs_*).
+	if usesPanelAccountMode(cfg) {
+		username, sessErr := panelSessionUsername(r)
+		if sessErr != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"unauthorized"}`)
+			return
+		}
+		token, _, ok := sessionFromRequest(r)
+		if !ok || token == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"unauthorized"}`)
+			return
+		}
+		activeAcc, err := loadPanelSessionAccount(cfg, token)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":"no_active_accounts"}`)
+			return
+		}
+		nextAcc, nextName, switchErr := panelSwitchToOtherAccount(cfg, token, reason)
+		if switchErr != nil {
+			log.Printf("[ROTATE] panel no other account user=%s account=%s: %v", username, activeAcc.Name, switchErr)
+			pushProxyLog(ProxyLogEntry{
+				Source: "ROTATE", Level: "error", Method: r.Method, Path: "/api/rotate-session", Status: 503,
+				User: username, Account: activeAcc.Name, Detail: "contact_admin " + switchErr.Error(),
+			})
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, `{"error":"no_other_accounts","message":"%v","contact_admin":true}`, switchErr)
+			return
+		}
+		log.Printf("[ROTATE] panel user=%s %s -> %s reason=%s", username, activeAcc.Name, nextName, reason)
+		pushProxyLog(ProxyLogEntry{
+			Source: "ROTATE", Level: "info", Method: r.Method, Path: "/api/rotate-session", Status: 200,
+			User: username, Account: nextName, Detail: "from=" + activeAcc.Name + " reason=" + reason,
+		})
+		fmt.Fprintf(w, `{"status":"ok","switched_to":"%s","id":%d}`, nextName, nextAcc.ID)
+		return
+	}
 	if !dbConnected {
 		fmt.Fprint(w, `{"status":"ok","switched_to":"Local Dev","id":1}`)
 		return
@@ -1816,10 +1860,6 @@ func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, `{"error":"no_active_accounts"}`)
 			return
 		}
-	}
-	reason := r.URL.Query().Get("reason")
-	if reason == "" {
-		reason = "client-side watchdog trigger"
 	}
 	var currentUser string
 	err = db.QueryRow("SELECT username FROM ahrefs_sessions WHERE session_token = ? AND website_id = ?", sessionToken, currentWebsiteID).Scan(&currentUser)
@@ -2444,8 +2484,15 @@ func patcherScript(cfg Config) string {
             over.innerHTML = '<div style="border:4px solid #f8fafc;border-top-color:#4f46e5;border-radius:50%%;width:40px;height:40px;"></div><span>Reconnecting... Please wait</span>';
             document.body.appendChild(over);
             fetch('/api/rotate-session?reason=' + encodeURIComponent(reason))
-            .then(function() { setTimeout(function() { window.location.href = HOME; }, 1200); })
-            .catch(function() { setTimeout(function() { window.location.href = HOME; }, 1200); });
+            .then(function(res) { return res.json().then(function(j){ return {ok: res.ok, j: j}; }).catch(function(){ return {ok: res.ok, j: null}; }); })
+            .then(function(x) {
+                if (!x.ok || (x.j && x.j.contact_admin) || (x.j && x.j.error === 'no_other_accounts')) {
+                    location.replace('/api/grammarly-failover?reason=' + encodeURIComponent(reason || 'watchdog'));
+                    return;
+                }
+                setTimeout(function() { window.location.href = HOME; }, 1200);
+            })
+            .catch(function() { location.replace('/api/grammarly-failover?reason=watchdog_error'); });
         }
     }
     if (%s) { setTimeout(checkWatchdog, 1000); setInterval(checkWatchdog, 4000); }
@@ -3234,6 +3281,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 0. Skip proxy for admin API routes ──────────────────────────────────────
 	if strings.HasPrefix(path, "/api/auth-handshake") ||
 		strings.HasPrefix(path, "/api/device-bind") ||
+		strings.HasPrefix(path, "/api/grammarly-failover") ||
+		strings.HasPrefix(path, "/api/client-diag") ||
 		path == "/tm-device-sw.js" ||
 		strings.HasPrefix(path, "/api/user-limits") ||
 		strings.HasPrefix(path, "/api/rotate-session") ||
@@ -3336,8 +3385,25 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
 			if panelErr != nil {
 				log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
+				pushProxyLog(ProxyLogEntry{
+					Source: "PANEL", Level: "error", Method: r.Method, Path: path, Status: 503,
+					User: currentUser, Detail: panelErr.Error(),
+				})
 				renderNoActiveAccountsPage(w, cfg)
 				return
+			}
+			if isDocumentNavigation(r) && (path == "/" || path == "") {
+				sum := grammarlyCookieSummary(activeAcc.Cookie)
+				log.Printf("[COOKIE] user=%s account=%s(%d) %s", currentUser, activeAcc.Name, activeAcc.ID, sum)
+				pushProxyLog(ProxyLogEntry{
+					Source: "COOKIE", Level: "info", Method: r.Method, Path: path, Status: 200,
+					User: currentUser, Account: activeAcc.Name, Detail: sum,
+					CookieN: countCookieNames(activeAcc.Cookie),
+				})
+				if cookieNamed(activeAcc.Cookie, "grauth") == "" && !grammarlyFailoverRecently(sessionToken) {
+					serveGrammarlyCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, "missing_grauth")
+					return
+				}
 			}
 		}
 	} else if cfg.BypassAuth || !dbConnected {
@@ -3893,6 +3959,23 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logUpstream(bodyBytes)
+		locHdr := upstreamResp.Header.Get("Location")
+		if locHdr == "" {
+			locHdr = w.Header().Get("Location")
+		}
+		if usesPanelAccountMode(cfg) && isDocumentNavigation(r) && sessionToken != "" {
+			if dead, why := grammarlyLooksLoggedOutHTML(bodyBytes, upstreamResp.StatusCode, locHdr); dead {
+				log.Printf("[COOKIE] html looks logged-out user=%s account=%s why=%s status=%d loc=%s",
+					currentUser, activeAcc.Name, why, upstreamResp.StatusCode, truncateForLog(locHdr, 100))
+				if !grammarlyFailoverRecently(sessionToken) {
+					serveGrammarlyCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+			}
+			log.Printf("[NET] HTML user=%s account=%s status=%d path=%s bytes=%d loc=%s cookie=%s",
+				currentUser, activeAcc.Name, upstreamResp.StatusCode, path, len(bodyBytes),
+				truncateForLog(locHdr, 80), grammarlyCookieSummary(accountCookieStr))
+		}
 
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
@@ -3919,7 +4002,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr := patcherScript(cfg) + grammarlyDiagAndFailoverScript() + buildTextReplaceInjectHTML(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -3951,6 +4034,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
 			logUpstream(bodyBytes)
+			if usesPanelAccountMode(cfg) && (upstreamResp.StatusCode == 401 || upstreamResp.StatusCode == 403) && grammarlyAPIAuthFailPath(path) {
+				log.Printf("[NET] API auth-fail user=%s account=%s status=%d path=%s cookie=%s snip=%s",
+					currentUser, activeAcc.Name, upstreamResp.StatusCode, path,
+					grammarlyCookieSummary(accountCookieStr), snippetForLog(bodyBytes, contentType))
+			}
 			pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 			bodyBytes = rewriteBody(bodyBytes, pairs)
 			bodyBytes = rewriteGrammarlyContentHosts(bodyBytes, publicBase)
@@ -4201,6 +4289,8 @@ func main() {
 	mux.HandleFunc("/api/auth-handshake", withCORS(authHandshakeHandler))
 	mux.HandleFunc("/api/user-limits", withCORS(userLimitsAPIHandler))
 	mux.HandleFunc("/api/rotate-session", withCORS(rotateSessionHandler))
+	mux.HandleFunc("/api/grammarly-failover", grammarlyFailoverAPIHandler)
+	mux.HandleFunc("/api/client-diag", withCORS(grammarlyClientDiagHandler))
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)

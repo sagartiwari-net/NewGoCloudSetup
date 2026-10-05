@@ -46,7 +46,12 @@
     "cf_clearance",
     "__cf_bm"
   ],
-  "watchdog_triggers": [],
+  "watchdog_triggers": [
+    "Log in to Grammarly",
+    "Create an account",
+    "Sign up for free",
+    "isAuthenticated\":false"
+  ],
   "extra_cdn_domains": [
     "https://www.grammarly.com",
     "https://static.grammarly.com",
