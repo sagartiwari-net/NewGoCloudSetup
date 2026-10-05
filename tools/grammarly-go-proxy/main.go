@@ -2529,6 +2529,14 @@ func patcherScript(cfg Config) string {
         if (u.length > 1 && ((u.charAt(0) === '"' && u.charAt(u.length-1) === '"') || (u.charAt(0) === "'" && u.charAt(u.length-1) === "'"))) {
             u = u.substring(1, u.length-1);
         }
+        // HARD rewrite — CLIENT-DIAG proved gateway.grammarly.com still leaked cross-origin.
+        // Do this before EXTRA loop so experimentation/properties never hits real Grammarly origin.
+        u = u.replace(/https?:\/\/gateway\.grammarly\.com/gi, O + '/ext-host/gateway.grammarly.com');
+        u = u.replace(/https?:\/\/treatment\.grammarly\.com/gi, O + '/ext-host/treatment.grammarly.com');
+        u = u.replace(/https?:\/\/gates\.grammarly\.com/gi, O + '/ext-host/gates.grammarly.com');
+        u = u.replace(/https?:\/\/institution\.grammarly\.com/gi, O + '/ext-host/institution.grammarly.com');
+        u = u.replace(/https?:\/\/auth\.grammarly\.com/gi, O + '/ext-host/auth.grammarly.com');
+        u = u.replace(/(^|[^:])\/\/gateway\.grammarly\.com/gi, '$1' + O + '/ext-host/gateway.grammarly.com');
         // WooRank sibling hosts via /ext-host/ (extra CDN list also covers these)
         // New doc lives on coda.grammarly.com — keep it on this origin (/newdoc, /d/).
         var WS_O = O.replace(/^http/, 'ws');
@@ -2692,10 +2700,12 @@ func patcherScript(cfg Config) string {
         if (typeof inp === 'string') inp = patchURL(inp);
         else if (inp instanceof Request) inp = new Request(patchURL(inp.url), inp);
         var finalURL = typeof inp === 'string' ? inp : (inp && inp.url) || urlStr;
-        // Soft-stub feature-flag /properties CORS if still cross-origin after patch
+        // Soft-stub experimentation / feature-flag CORS if still cross-origin after patch
         try {
             var abs = new URL(finalURL, location.href);
-            if (abs.origin !== location.origin && /\/properties(?:\?|$)/i.test(abs.pathname + abs.search)) {
+            if (abs.origin !== location.origin &&
+                (/grammarly\.com$/i.test(abs.hostname) || /grammarly\.com$/i.test(abs.hostname.split('.').slice(-2).join('.'))) &&
+                /experimentation|\/properties|\/treatment|\/gates\//i.test(abs.pathname)) {
                 return Promise.resolve(new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}}));
             }
         } catch (e) {}
@@ -2713,7 +2723,7 @@ func patcherScript(cfg Config) string {
             return res;
         }).catch(function(err) {
             try {
-                if (/\/properties(?:\?|$)/i.test(String(finalURL))) {
+                if (/gateway\.grammarly\.com|experimentation|\/properties|\/treatment|\/gates\//i.test(String(finalURL))) {
                     return new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}});
                 }
             } catch (e) {}
@@ -3996,6 +4006,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("Content-Security-Policy")
 		w.Header().Del("Content-Security-Policy-Report-Only")
 		w.Header().Del("X-Frame-Options")
+		// Early gateway rewrite FIRST — before device-lock — so experimentation/*
+		// cannot race out to gateway.grammarly.com (CORS blank page).
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "grammarly.com") {
+			bodyBytes = injectHeadStart(bodyBytes, grammarlyEarlyGatewayPatch())
+		}
 		// Device hide/reveal gate only in real panel mode — BypassAuth local stays visible.
 		if usesPanelAccountMode(cfg) && !cfg.BypassAuth {
 			bodyBytes = injectDeviceHTML(bodyBytes)
@@ -4026,10 +4041,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── 10. For JSON/CSS: rewrite and stream ─────────────────────────────────────
-	// Do not rewrite JavaScript bodies — Canva uses SRI; mutating JS breaks loads.
-	// Runtime URL rewriting is handled by the injected fetch/XHR patcher.
-	isRewritable := strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/css")
+	// ── 10. For JSON/CSS (+ Grammarly JS bake): rewrite and stream ───────────────
+	// Canva JS must not be rewritten (SRI). Grammarly vendor JS embeds absolute
+	// https://gateway.grammarly.com/... — bake through /ext-host/ or SPA stays blank (CORS).
+	isGrammarlyJS := strings.Contains(strings.ToLower(cfg.TargetURL), "grammarly.com") &&
+		(strings.Contains(contentType, "javascript") || strings.Contains(contentType, "ecmascript") ||
+			strings.HasSuffix(strings.ToLower(path), ".js"))
+	isRewritable := strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/css") || isGrammarlyJS
 	if isRewritable {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
@@ -4042,12 +4060,21 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 			bodyBytes = rewriteBody(bodyBytes, pairs)
 			bodyBytes = rewriteGrammarlyContentHosts(bodyBytes, publicBase)
+			if isGrammarlyJS {
+				// Explicit gateway bake (pairs order can miss some escaped forms)
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://gateway.grammarly.com"), []byte(publicBase+"/ext-host/gateway.grammarly.com"))
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("http://gateway.grammarly.com"), []byte(publicBase+"/ext-host/gateway.grammarly.com"))
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`https:\/\/gateway.grammarly.com`), []byte(jsonSlashEscape(publicBase+"/ext-host/gateway.grammarly.com")))
+			}
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
-			} else if strings.Contains(contentType, "text/css") {
+			} else if strings.Contains(contentType, "text/css") || isGrammarlyJS {
 				putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", bodyBytes)
 			}
+			w.Header().Del("Content-Encoding")
+			w.Header().Del("Content-Length")
+			w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
 			return

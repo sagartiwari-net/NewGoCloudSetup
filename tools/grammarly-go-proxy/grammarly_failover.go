@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"html"
 	"io"
@@ -244,6 +245,83 @@ func grammarlyClientDiagHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `{"status":"ok"}`)
 }
 
+// grammarlyEarlyGatewayPatch runs FIRST in <head> so gateway.grammarly.com never
+// leaves this origin (CLIENT-DIAG showed experimentation/* CORS blanking the SPA).
+func grammarlyEarlyGatewayPatch() string {
+	return `<script data-tm-early-gw="1">
+(function(){
+  if (window.__tmEarlyGW) return;
+  window.__tmEarlyGW = true;
+  var O = location.origin;
+  function forceGW(u){
+    if (u == null) return u;
+    if (typeof u !== 'string') {
+      try { u = (u && u.url) ? String(u.url) : String(u); } catch (e) { return u; }
+    }
+    u = u.replace(/https?:\/\/gateway\.grammarly\.com/gi, O + '/ext-host/gateway.grammarly.com');
+    u = u.replace(/https?:\/\/treatment\.grammarly\.com/gi, O + '/ext-host/treatment.grammarly.com');
+    u = u.replace(/https?:\/\/gates\.grammarly\.com/gi, O + '/ext-host/gates.grammarly.com');
+    u = u.replace(/https?:\/\/institution\.grammarly\.com/gi, O + '/ext-host/institution.grammarly.com');
+    u = u.replace(/(^|[^:])\/\/gateway\.grammarly\.com/gi, '$1' + O + '/ext-host/gateway.grammarly.com');
+    // Any other *.grammarly.com still absolute → ext-host (except this host)
+    u = u.replace(/https?:\/\/((?:[a-z0-9-]+\.)+grammarly\.com)(?=\/|$)/gi, function(m, host){
+      if (host === 'app.grammarly.com') return O;
+      return O + '/ext-host/' + host;
+    });
+    return u;
+  }
+  window.__tmForceGW = forceGW;
+  var nf = window.fetch;
+  if (typeof nf === 'function') {
+    window.fetch = function(input, init){
+      try {
+        if (typeof input === 'string') input = forceGW(input);
+        else if (input && typeof Request !== 'undefined' && input instanceof Request)
+          input = new Request(forceGW(input.url), input);
+        else if (input && typeof input.url === 'string')
+          input = new Request(forceGW(input.url), input);
+      } catch (e) {}
+      var u = typeof input === 'string' ? input : (input && input.url) || '';
+      try {
+        var abs = new URL(u, location.href);
+        if (abs.origin !== location.origin && /grammarly\.com$/i.test(abs.hostname) &&
+            /experimentation|\/properties|\/treatment|\/gates\//i.test(abs.pathname)) {
+          return Promise.resolve(new Response('{}', {status:200, headers:{'Content-Type':'application/json'}}));
+        }
+      } catch (e) {}
+      return nf.call(this, input, init);
+    };
+  }
+  var xo = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(m, u){
+    try { u = forceGW(u); } catch (e) {}
+    var args = Array.prototype.slice.call(arguments);
+    args[1] = u;
+    return xo.apply(this, args);
+  };
+})();
+</script>`
+}
+
+func injectHeadStart(body []byte, script string) []byte {
+	if script == "" || bytes.Contains(body, []byte("data-tm-early-gw")) {
+		return body
+	}
+	inj := []byte(script)
+	lower := bytes.ToLower(body)
+	if h := bytes.Index(lower, []byte("<head")); h >= 0 {
+		if gt := bytes.IndexByte(lower[h:], '>'); gt >= 0 {
+			at := h + gt + 1
+			out := make([]byte, 0, len(body)+len(inj))
+			out = append(out, body[:at]...)
+			out = append(out, inj...)
+			out = append(out, body[at:]...)
+			return out
+		}
+	}
+	return append(inj, body...)
+}
+
 // Injected into Grammarly HTML: report blank/CORS + bounce to failover on auth 401.
 func grammarlyDiagAndFailoverScript() string {
 	return `<script data-tm-grammarly-diag="1">
@@ -252,11 +330,16 @@ func grammarlyDiagAndFailoverScript() string {
   window.__tmGrammarlyDiag = true;
   function postDiag(payload){
     try {
+      // Use raw path only — avoid recursion through patched fetch noise
+      var body = JSON.stringify(payload);
+      if (navigator.sendBeacon) {
+        try { navigator.sendBeacon('/api/client-diag', new Blob([body], {type:'application/json'})); return; } catch (e) {}
+      }
       fetch('/api/client-diag', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
+        body: body
       }).catch(function(){});
     } catch (e) {}
   }
@@ -276,12 +359,24 @@ func grammarlyDiagAndFailoverScript() string {
   var ofetch = window.fetch;
   if (typeof ofetch === 'function') {
     window.fetch = function(input, init){
+      try {
+        if (typeof window.__tmForceGW === 'function') {
+          if (typeof input === 'string') input = window.__tmForceGW(input);
+          else if (input && input.url) input = new Request(window.__tmForceGW(input.url), input);
+        } else if (typeof window.__tmPatchURL === 'function') {
+          if (typeof input === 'string') input = window.__tmPatchURL(input);
+          else if (input && input.url) input = new Request(window.__tmPatchURL(input.url), input);
+        }
+      } catch (e) {}
       var url = typeof input === 'string' ? input : (input && input.url) || '';
-      return ofetch.apply(this, arguments).then(function(res){
+      return ofetch.call(this, input, init).then(function(res){
         try {
-          if (res && (res.status === 401 || res.status === 403) && interesting(url)) {
-            postDiag({event:'auth_status', status: res.status, url: String(url).slice(0,180)});
-            goFailover('api_' + res.status);
+          if (res && (res.status === 401 || res.status === 403) && interesting(url) && url.indexOf('/ext-host/') === -1 && url.indexOf('/extra-cdn') === -1 && url.indexOf(location.origin) === 0) {
+            // same-origin API 401 after rewrite — real cookie problem
+            if (/subscription|documents|\/info|passport|identity/i.test(url)) {
+              postDiag({event:'auth_status', status: res.status, url: String(url).slice(0,180)});
+              goFailover('api_' + res.status);
+            }
           }
         } catch (e) {}
         return res;
@@ -291,6 +386,10 @@ func grammarlyDiagAndFailoverScript() string {
             postDiag({event:'fetch_error', url: String(url).slice(0,180), err: String(err && err.message || err)});
           }
         } catch (e) {}
+        // Never blank the SPA on experimentation CORS
+        if (/gateway\.grammarly\.com|experimentation|\/properties/i.test(String(url))) {
+          return new Response('{}', {status:200, headers:{'Content-Type':'application/json'}});
+        }
         throw err;
       });
     };

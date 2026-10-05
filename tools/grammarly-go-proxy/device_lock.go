@@ -463,7 +463,10 @@ function tmPatchRequests(fp, proof) {
   if (origFetch) {
     window.fetch = function (input, init) {
       try {
-        if (typeof window.__tmPatchURL === "function") {
+        if (typeof window.__tmForceGW === "function") {
+          if (typeof input === "string") input = window.__tmForceGW(input);
+          else if (input && typeof input.url === "string") input = new Request(window.__tmForceGW(input.url), input);
+        } else if (typeof window.__tmPatchURL === "function") {
           if (typeof input === "string") input = window.__tmPatchURL(input);
           else if (input && typeof input.url === "string") input = new Request(window.__tmPatchURL(input.url), input);
         }
