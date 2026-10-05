@@ -3210,7 +3210,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if accountCookieStr != "" && cookieSuffix != "" && strings.HasSuffix(hostWithoutPort, cookieSuffix) {
+	// Attach premium cookies to Placeit apex + siblings (nicev2 / placeitcode / alloy).
+	// placeitcode.net is a separate registrable domain — suffix match on placeit.net alone missed it.
+	attachPlaceitCookie := accountCookieStr != "" && (
+		(cookieSuffix != "" && strings.HasSuffix(hostWithoutPort, cookieSuffix)) ||
+			hostWithoutPort == "placeitcode.net" || strings.HasSuffix(hostWithoutPort, ".placeitcode.net") ||
+			strings.HasSuffix(hostWithoutPort, ".cdn.aws.placeit.net") || hostWithoutPort == "cdn.aws.placeit.net")
+	if attachPlaceitCookie {
 		upstreamReq.Header.Set("Cookie", accountCookieStr)
 	}
 

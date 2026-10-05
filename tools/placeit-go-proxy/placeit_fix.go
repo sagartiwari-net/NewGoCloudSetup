@@ -96,15 +96,16 @@ func placeitEarlyCDNPatch() string {
     return u;
   }
   function isAdsNoise(u){
-    return /doubleclick\.net|googlesyndication\.com|google-analytics\.com|googletagmanager\.com|facebook\.net\/tr|\/api\/client-diag/i.test(String(u||''));
+    return /doubleclick\.net|googlesyndication\.com|google-analytics\.com|googletagmanager\.com|facebook\.net\/tr|recurly\.com|kaptcha\.com|\/api\/client-diag/i.test(String(u||''));
   }
   function isStaticAsset(u){
-    return /\.(js|css|png|jpe?g|gif|webp|svg|woff2?|ttf|map|ico)(\?|$)/i.test(String(u||''));
+    return /\.(js|css|png|jpe?g|gif|webp|svg|woff2?|ttf|map|ico|msh)(\?|$)/i.test(String(u||'')) ||
+      /\/_next\/static\/|fonts\.googleapis|fonts\.gstatic/i.test(String(u||''));
   }
   function isInteresting(u){
     u = String(u || '');
     if (!u || isAdsNoise(u) || isStaticAsset(u)) return false;
-    return /\/ext-host\/|\/extra-cdn-|amazonaws|placeit\.net|nicev2|\/api\/|\/account|\/user|upload|library|session|auth|login|logged|me\b|palette|image|design|member|subscription|credits?/i.test(u);
+    return /\/ext-host\/|\/extra-cdn-|amazonaws|placeit\.net|placeitcode\.net|nicev2|alloy\.|\/api\/|\/account|\/user|upload|library|\/session|\/auth|\/login|logged|\/me(?:\?|$)|palette|member|subscription/i.test(u);
   }
   function classify(u){
     u = String(u || '');
@@ -348,6 +349,16 @@ func placeitShouldNetLog(path string, status int) bool {
 	if strings.HasPrefix(p, "/api/client-diag") || strings.HasPrefix(p, "/api/device-bind") {
 		return status >= 400
 	}
+	// Skip static/CDN noise unless error
+	if strings.Contains(p, ".map") || strings.Contains(p, "/_next/static/") ||
+		strings.Contains(p, "fonts.googleapis") || strings.Contains(p, "/css") && strings.Contains(p, "extra-cdn") {
+		return status >= 400
+	}
+	if strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") ||
+		strings.HasSuffix(p, ".woff") || strings.HasSuffix(p, ".woff2") ||
+		strings.HasSuffix(p, ".msh") || strings.Contains(p, "/fonts/") {
+		return status >= 400
+	}
 	interesting := strings.Contains(p, "/ext-host/") ||
 		strings.Contains(p, "/extra-cdn-") ||
 		strings.Contains(p, "/api/") ||
@@ -356,9 +367,21 @@ func placeitShouldNetLog(path string, status int) bool {
 		strings.Contains(p, "session") ||
 		strings.Contains(p, "user") ||
 		strings.Contains(p, "library") ||
-		strings.Contains(p, "palette")
+		strings.Contains(p, "palette") ||
+		strings.Contains(p, "placeitcode") ||
+		strings.Contains(p, "alloy.")
 	if !interesting {
 		return status == 401 || status == 403 || status >= 500
+	}
+	// Healthy static-ish CDN GETs under extra-cdn/ext-host images: only log APIs / uploads / errors
+	if status == 200 && (strings.Contains(p, "/extra-cdn-") || strings.Contains(p, "/ext-host/")) {
+		if strings.Contains(p, "/api/") || strings.Contains(p, "upload") ||
+			strings.Contains(p, "token") || strings.Contains(p, "user_image") ||
+			strings.Contains(p, "data.json") || strings.Contains(p, "palette") ||
+			strings.Contains(p, "related_templates") || strings.Contains(p, "stages/") {
+			return true
+		}
+		return false
 	}
 	return true
 }
