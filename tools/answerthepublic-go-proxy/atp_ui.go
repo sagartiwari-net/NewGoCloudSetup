@@ -57,7 +57,8 @@ func atpUIChromeScript(panelUsername string) string {
       '[data-testid="nav-notifications-bell"]',
       '[data-testid="nav-avatar-button"]',
       'a[href*="discord.gg"]',
-      'a[href*="answerthepublic.zendesk.com"]'
+      'a[href*="answerthepublic.zendesk.com"]',
+      'div[data-testid="email-verification-banner"]'
     ];
     for (var s = 0; s < sels.length; s++) {
       var nodes = root.querySelectorAll(sels[s]);
