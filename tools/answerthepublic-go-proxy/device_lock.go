@@ -56,8 +56,20 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 }
 
 func browserSubresource(r *http.Request) bool {
-	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	dest := strings.ToLower(r.Header.Get("Sec-Fetch-Dest"))
+	switch dest {
+	case "image", "style", "font", "script", "empty", "worker", "sharedworker", "serviceworker":
+		return true
+	}
+	path := strings.ToLower(r.URL.Path)
+	// Cloudflare challenge + SW scripts must never get device_required JSON.
+	if strings.HasPrefix(path, "/cdn-cgi/") || strings.Contains(path, "service_worker") || strings.HasSuffix(path, "/sw.js") {
+		return true
+	}
+	// fetch/XHR often have empty Dest + cors/same-origin — do not 401 those or
+	// ATP guest shell / CF clearance / SPA routes fail and bounce via /pricing.
+	mode := strings.ToLower(r.Header.Get("Sec-Fetch-Mode"))
+	if dest == "" && (mode == "cors" || mode == "same-origin" || mode == "no-cors") {
 		return true
 	}
 	return false
@@ -69,10 +81,13 @@ func isDocumentNavigation(r *http.Request) bool {
 	}
 	mode := r.Header.Get("Sec-Fetch-Mode")
 	dest := r.Header.Get("Sec-Fetch-Dest")
-	if mode == "navigate" || dest == "document" || dest == "iframe" {
+	if mode == "navigate" || dest == "document" || dest == "iframe" || dest == "frame" {
 		return true
 	}
-	return mode == "" && dest == "" && strings.Contains(r.Header.Get("Accept"), "text/html")
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		return true
+	}
+	return mode == "" && dest == ""
 }
 
 // rejectPanelDevice blocks a copied cookie jar. A document request with a missing
@@ -102,13 +117,13 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
+		// Document loads + fetch/XHR (browserSubresource) cannot always send headers.
+		// Returning device_required JSON breaks CF challenges and ATP SPA hydrate.
+		if isDocumentNavigation(r) || browserSubresource(r) {
 			return false
 		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
+		log.Printf("[DEVICE] required path=%s mode=%s dest=%s",
+			r.URL.Path, r.Header.Get("Sec-Fetch-Mode"), r.Header.Get("Sec-Fetch-Dest"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)

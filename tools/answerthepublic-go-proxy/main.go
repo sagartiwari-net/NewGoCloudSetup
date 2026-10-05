@@ -3008,6 +3008,15 @@ func patcherScript(cfg Config) string {
                 return next.origin === cur.origin && next.pathname === cur.pathname && next.search === cur.search;
             } catch (e) { return false; }
         }
+        function guardNav(u) {
+            if (typeof u !== 'string') return u;
+            u = patchURL(u);
+            try {
+                var p = new URL(u, O).pathname || '';
+                if (isBlocked(p)) return HOME;
+            } catch (e) {}
+            return u;
+        }
         var hrefDesc = Object.getOwnPropertyDescriptor(locProto, 'href');
         if (hrefDesc && hrefDesc.set && hrefDesc.get) {
             var origHrefSet = hrefDesc.set;
@@ -3016,19 +3025,27 @@ func patcherScript(cfg Config) string {
                 enumerable: hrefDesc.enumerable,
                 get: hrefDesc.get,
                 set: function(v) {
-                    if (typeof v === 'string') v = patchURL(v);
+                    if (typeof v === 'string') v = guardNav(v);
                     if (samePage(v) || isAuthWall(v)) return;
                     return origHrefSet.call(this, v);
                 }
             });
         }
         var _locAssign = window.location.assign.bind(window.location);
-        window.location.assign = function(u) { u = patchURL(String(u)); if (samePage(u) || isAuthWall(u)) return; return _locAssign(u); };
+        window.location.assign = function(u) {
+            u = guardNav(String(u));
+            if (samePage(u) || isAuthWall(u)) return;
+            return _locAssign(u);
+        };
         var _locReplace = window.location.replace.bind(window.location);
-        window.location.replace = function(u) { u = patchURL(String(u)); if (samePage(u) || isAuthWall(u)) return; return _locReplace(u); };
+        window.location.replace = function(u) {
+            u = guardNav(String(u));
+            if (samePage(u) || isAuthWall(u)) return;
+            return _locReplace(u);
+        };
         var _open = window.open;
         window.open = function(u, name, specs) {
-            if (typeof u === 'string') u = patchURL(u);
+            if (typeof u === 'string') u = guardNav(u);
             return _open.call(window, u, name, specs);
         };
     } catch (e) {}

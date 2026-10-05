@@ -328,10 +328,16 @@ func atpLoginWatchScript(cfg Config) string {
   if (window.__atpLogoutWatch) return;
   window.__atpLogoutWatch = true;
   var HOME = %s;
-  var READY_AT = Date.now() + 6000;
+  var READY_AT = Date.now() + 8000;
   var failHits = 0;
   function goFailover(back){
     if (window.__atpReloading) return;
+    // Soft lockout: after one failover attempt, wait before another (stops /pricing loops).
+    try {
+      var last = parseInt(sessionStorage.getItem("__atpFailoverAt") || "0", 10);
+      if (last && Date.now() - last < 20000) return;
+      sessionStorage.setItem("__atpFailoverAt", String(Date.now()));
+    } catch (e) {}
     window.__atpReloading = true;
     if (!back || back.indexOf("/users/sign_in") !== -1 || back === "/login" || back.indexOf("/login?") === 0) {
       back = HOME;
@@ -362,21 +368,14 @@ func atpLoginWatchScript(cfg Config) string {
     var signIn = text.indexOf("Sign in with " + "email") !== -1 || text.indexOf("Continue with " + "Google") !== -1 || text.indexOf("Sign in to your existing " + "account") !== -1;
     return welcome && signIn;
   }
-  // Guest shell: top-right Sign in + register promo (common while ATP is still hydrating)
-  function guestShell(){
-    try {
-      var text = bodyText();
-      if (text.indexOf("Register for FREE") !== -1 && text.indexOf("Sign in") !== -1) return true;
-    } catch (e) {}
-    return false;
-  }
+  // Guest shell alone is too noisy (marketing /for/* pages). Only count it with Welcome-back wall,
+  // or a hard sign_in path.
   setInterval(function(){
     if (window.__atpReloading) return;
     if (Date.now() < READY_AT) return;
     if (loggedIn()) { failHits = 0; return; }
-    if (wall() || guestShell()) {
+    if (wall()) {
       failHits++;
-      // After the 6s grace, need ~3s of still-logged-out UI before switching.
       if (failHits >= 3) goFailover(location.pathname + location.search);
       return;
     }
