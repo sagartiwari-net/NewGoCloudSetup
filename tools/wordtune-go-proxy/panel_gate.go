@@ -380,6 +380,7 @@ func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 }
 
 // panelMarkAccountLoggedOut sets panel.db accounts.status = logged_out for DigitaVision / admin.
+// Visible in Panel → Mapped Accounts (Status column).
 func panelMarkAccountLoggedOut(cfg Config, accountID int, reason string) {
 	if accountID <= 0 {
 		return
@@ -396,6 +397,38 @@ func panelMarkAccountLoggedOut(cfg Config, accountID int, reason string) {
 	}
 	n, _ := res.RowsAffected()
 	log.Printf("[LB] marked logged_out account=%d rows=%d reason=%s", accountID, n, reason)
+}
+
+// panelRecordLogoutEvent writes Analytics → Account switches even when no next account exists.
+func panelRecordLogoutEvent(cfg Config, sessionToken, fromName, toName, reason string) {
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var websiteID int
+	var username string
+	if err := db.QueryRow(`SELECT website_id, username FROM live_sessions WHERE session_token=? ORDER BY created_at DESC LIMIT 1`, sessionToken).
+		Scan(&websiteID, &username); err != nil || websiteID <= 0 {
+		// Fall back via public_host when session row is already gone.
+		_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+		if websiteID <= 0 {
+			return
+		}
+	}
+	if toName == "" {
+		toName = "(none)"
+	}
+	if reason == "" {
+		reason = "wordtune-logout"
+	}
+	_, err = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
+		websiteID, username, fromName, toName, reason, now)
+	if err != nil {
+		log.Printf("[LB] switch_events insert failed: %v", err)
+		return
+	}
+	log.Printf("[LB] logout event recorded from=%s to=%s reason=%s", fromName, toName, reason)
 }
 
 // panelSwitchToOtherAccount pins a different active account. No other account → caller shows contact admin.

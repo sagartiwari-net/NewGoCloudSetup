@@ -203,6 +203,8 @@ func serveWordtuneCookieFailover(w http.ResponseWriter, r *http.Request, cfg Con
 	}
 
 	log.Printf("[FAILOVER] contact-admin user=%s account=%s reason=%s err=%v", currentUser, activeAcc.Name, reason, err)
+	// So Panel → Analytics → Account switches shows sole-account logouts too.
+	panelRecordLogoutEvent(cfg, sessionToken, activeAcc.Name, "(none)", "no_other_active:"+reason)
 	pushProxyLog(ProxyLogEntry{
 		Source:  "FAILOVER",
 		Level:   "error",
