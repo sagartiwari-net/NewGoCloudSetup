@@ -135,7 +135,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `epidemicsound` (:4641)  
 - [ ] `erank` (:5191)  
 - [ ] `fishaudio` (:4991)  
-- [ ] `flaticon` (:4921)  
+- [ ] `flaticon` (:4921) — **parked** (Freepik WAF 403 on Hetzner; needs Proxy Manager)  
 - [ ] `flexclip` (:4671)  
 - [ ] `glorify` (:4681)  
 - [x] `grammarly` (:4911) — see Priority  

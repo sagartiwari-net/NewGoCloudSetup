@@ -56,8 +56,19 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 }
 
 func browserSubresource(r *http.Request) bool {
-	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	dest := strings.ToLower(r.Header.Get("Sec-Fetch-Dest"))
+	switch dest {
+	case "image", "style", "font", "script", "empty", "worker", "sharedworker", "serviceworker":
+		return true
+	}
+	path := strings.ToLower(r.URL.Path)
+	if strings.HasPrefix(path, "/cdn-cgi/") || strings.Contains(path, "service_worker") ||
+		strings.HasSuffix(path, "/sw.js") {
+		return true
+	}
+	// fetch/XHR often have empty Dest + cors/same-origin — do not 401 those.
+	mode := strings.ToLower(r.Header.Get("Sec-Fetch-Mode"))
+	if dest == "" && (mode == "cors" || mode == "same-origin" || mode == "no-cors") {
 		return true
 	}
 	return false
@@ -69,10 +80,13 @@ func isDocumentNavigation(r *http.Request) bool {
 	}
 	mode := r.Header.Get("Sec-Fetch-Mode")
 	dest := r.Header.Get("Sec-Fetch-Dest")
-	if mode == "navigate" || dest == "document" || dest == "iframe" {
+	if mode == "navigate" || dest == "document" || dest == "iframe" || dest == "frame" {
 		return true
 	}
-	return mode == "" && dest == "" && strings.Contains(r.Header.Get("Accept"), "text/html")
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		return true
+	}
+	return mode == "" && dest == ""
 }
 
 // rejectPanelDevice blocks a copied cookie jar. A document request with a missing
@@ -102,13 +116,11 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
+		if isDocumentNavigation(r) || browserSubresource(r) {
 			return false
 		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
+		log.Printf("[DEVICE] required path=%s mode=%s dest=%s",
+			r.URL.Path, r.Header.Get("Sec-Fetch-Mode"), r.Header.Get("Sec-Fetch-Dest"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
@@ -249,26 +261,30 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func devicePageScript() string {
-	return `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>` + deviceSharedJS() + `
+	// Do NOT use html{visibility:hidden} — blank UI race (same as Grammarly/ATP).
+	return `<script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  var page = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Access Denied</title><style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#eef3f8;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center}.ring{width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);display:grid;place-items:center}.lock{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px}h1{font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin-bottom:12px}.msg{color:#64748b;font-size:15px;line-height:1.55}.foot{margin-top:18px;color:#94a3b8;font-size:13px}</style></head><body><div class=\"card\"><div class=\"ring\"><div class=\"lock\">🔒</div></div><h1>Access Denied</h1><p class=\"msg\">Open this tool again from your access link.</p><p class=\"foot\">Your session ended or this browser is not authorized</p></div></body></html>";
-  try {
-    document.open("text/html","replace");
-    document.write(page);
-    document.close();
-  } catch (e) {
-    try { document.documentElement.innerHTML = page; } catch (e2) {
-      location.replace("/__tm_access_denied");
-    }
-  }
+  location.replace("/__tm_access_denied");
 }
 function tmReveal() {
-  document.documentElement.style.visibility = "visible";
-  var lock = document.querySelector("style[data-tm-device]");
-  if (lock) lock.remove();
+  try {
+    document.querySelectorAll("style[data-tm-device]").forEach(function (s) { s.remove(); });
+  } catch (e) {}
+  try {
+    var force = document.getElementById("tm-force-visible");
+    if (!force) {
+      force = document.createElement("style");
+      force.id = "tm-force-visible";
+      force.textContent = "html,body{visibility:visible!important;opacity:1!important}";
+      (document.documentElement || document.head).appendChild(force);
+    }
+  } catch (e) {}
+  try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+  try { document.documentElement.style.setProperty("opacity", "1", "important"); } catch (e) {}
+  try { if (document.body) document.body.style.setProperty("visibility", "visible", "important"); } catch (e) {}
 }
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
