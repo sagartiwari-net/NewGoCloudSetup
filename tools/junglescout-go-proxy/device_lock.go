@@ -285,7 +285,7 @@ function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  // Never embed Access Denied HTML here — a literal </style></head><body> inside
+  // Never put raw HTML end-tag sequences in this inline script (comments included).
   // this script string can break HTML parsing and dump the rest of the script as text.
   location.replace("/__tm_access_denied");
 }

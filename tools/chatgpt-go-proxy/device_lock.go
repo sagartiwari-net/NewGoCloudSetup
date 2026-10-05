@@ -262,8 +262,8 @@ function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  // Never embed a full HTML document in an inline <script> string — browsers
-  // parse tags like </style>/</head> out of the JS string and leak the rest as text.
+  // Never put raw end-style/end-head/end-script sequences in this inline script
+  // (comments included) — HTML parsers can treat them as real closers.
   location.replace("/__tm_access_denied");
 }
 function tmReveal() {

@@ -3097,15 +3097,30 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			// Keep header nav hidden even after Next.js client navigations/re-renders
 			injectStr += `<script>(function(){function hideSasNav(){document.querySelectorAll('a[href*="/r/sas/advanced-search"],a[href*="/sas/history"]').forEach(function(a){var ul=a.closest("ul");if(ul)ul.style.setProperty("display","none","important");});}hideSasNav();new MutationObserver(hideSasNav).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
 		}
-		// Inject only before the FIRST </head>. Canva embeds a full error-page
-		// HTML string (with its own </head>) in bootstrap — ReplaceAll would
-		// splice our script into that JS string → SyntaxError and zero API calls.
-		if loc := regexp.MustCompile(`(?i)</head>`).FindIndex(bodyBytes); loc != nil {
+		// Inject before the document </head> that precedes <body>.
+		// Do NOT use the first </head> in the file — Canva (and our own
+		// scripts) can embed that sequence inside JS strings/comments.
+		injectAt := -1
+		lowerBody := bytes.ToLower(bodyBytes)
+		bodyTag := regexp.MustCompile(`(?i)<body\b`).FindIndex(lowerBody)
+		searchEnd := len(lowerBody)
+		if bodyTag != nil {
+			searchEnd = bodyTag[0]
+		}
+		headClose := regexp.MustCompile(`(?i)</head>`)
+		if all := headClose.FindAllIndex(lowerBody[:searchEnd], -1); len(all) > 0 {
+			injectAt = all[len(all)-1][0]
+		} else if loc := headClose.FindIndex(lowerBody); loc != nil {
+			injectAt = loc[0]
+		}
+		if injectAt >= 0 {
 			inj := []byte(injectStr + "</head>")
 			out := make([]byte, 0, len(bodyBytes)+len(inj))
-			out = append(out, bodyBytes[:loc[0]]...)
+			out = append(out, bodyBytes[:injectAt]...)
 			out = append(out, inj...)
-			out = append(out, bodyBytes[loc[1]:]...)
+			// skip the original </head> (5 chars) — case may vary
+			closeLen := len("</head>")
+			out = append(out, bodyBytes[injectAt+closeLen:]...)
 			bodyBytes = out
 		}
 
