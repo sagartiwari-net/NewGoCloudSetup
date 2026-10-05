@@ -2343,6 +2343,14 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
@@ -2383,7 +2391,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "seositecheckup-v5"
+const proxyBuildTag = "seositecheckup-v6-h2-conn"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 
@@ -3430,7 +3438,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
 	}
 
-	// Remove proxy headers
+	// Remove hop-by-hop + proxy headers. nginx/browser "Connection: upgrade"
+	// must never reach HTTP/2 upstream (Go: invalid Connection request header).
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("Transfer-Encoding")
+	upstreamReq.Header.Del("TE")
+	upstreamReq.Header.Del("Trailer")
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
 	upstreamReq.Header.Del("X-Forwarded-For")
