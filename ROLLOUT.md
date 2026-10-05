@@ -114,7 +114,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
 - [x] `junglescout` — JungleScout (:5211) — **HTTPS OK**: HTTP/2 Connection strip, panel logout→switch/contact-admin, device-lock reveal + safe deny redirect, extension icons + home→baked proxy origin, proxy optional  
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** (2026-10-05): local OK; server still blank `/home` (no `GetAccountInfo` in Network). Partial fixes on main (`a7551d9`+) — **do not tick until HTTPS access-link + real UI verified**  
-- [ ] `grammarly` — grammarly (:4911) — blank-page fix pushed (device-lock reveal + safe deny + no SW/fetch hang; `public_scheme=https`; Connection strip) — **verify HTTPS access-link before ticking**
+- [ ] `grammarly` — grammarly (:4911) — blank UI: CORS `/properties` + access-page still registered device SW; fixes on main — **verify HTTPS access-link (and Safe Browsing clear) before ticking**
 
 ### Rest (alphabetical)
 

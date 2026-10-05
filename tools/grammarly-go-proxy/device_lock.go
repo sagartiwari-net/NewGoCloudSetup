@@ -178,30 +178,9 @@ func renderDeviceGate(w http.ResponseWriter, cfg Config) {
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
     return tmStore(fp, proof).then(function () {
       tmPatchRequests(fp, proof);
-      if (!navigator.serviceWorker) {
-        window.location.reload();
-        return new Promise(function () {});
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-          window.location.reload();
-          return new Promise(function () {});
-        }
-        return new Promise(function (resolve, reject) {
-          var timer = setTimeout(function () { reject(new Error("sw")); }, 4000);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            if (navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-            }
-            window.location.reload();
-            resolve();
-          }, { once: true });
-        });
-      });
+      // No device SW — reload after bind headers are available via fetch patch.
+      window.location.reload();
+      return new Promise(function () {});
     });
   }).catch(function () {
     var title = document.querySelector("h1");
@@ -375,6 +354,12 @@ func deviceBootScript(home string) string {
     if (msg) msg.textContent = "This browser could not verify the device. Open the tool again from your access link.";
     if (pill) pill.remove();
   }
+  // Never register device SW — it races with Grammarly SPA boots and leaves a blank white page.
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister(); });
+    }).catch(function () {});
+  }
   tmEnsureProof().then(function (proof) {
     return tmFingerprint().then(function (fp) {
       try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
@@ -382,36 +367,11 @@ func deviceBootScript(home string) string {
     });
   }).then(function (dev) {
     return tmStore(dev.fp, dev.proof).then(function () {
-      function doBind() {
-        return fetch("/api/device-bind", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
-        });
-      }
-      // Service workers require a secure context. On plain HTTP skip SW and bind directly.
-      if (!navigator.serviceWorker || !window.isSecureContext) {
-        return doBind();
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1500);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+      return fetch("/api/device-bind", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
+      });
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");
