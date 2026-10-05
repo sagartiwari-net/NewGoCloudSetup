@@ -118,6 +118,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `placeit` — Placeit (:4611) — **HTTPS OK** (2026-10-05): S3/CDN `/ext-host`+`extra-cdn`, request-body unrewrite, related_templates stub (speed), classic-editor upload gate + panel username, `/account`+pricing/logout hide
 - [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
+- [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
 
 ### Rest (alphabetical)
 
@@ -189,7 +190,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `uncensoredchat` (:4891)  
 - [ ] `videotoblog` (:5041)  
 - [ ] `vistacreate` (:4581)  
-- [ ] `wrank` (:4561) — **fixing nginx/binary** (2026-10-05): was nginx 404 + wrong ChatGPT binary on :4561; run `./deploy/fix-wrank-nginx.sh` then `build-one.sh wrank && start-tool.sh wrank` — tick only after access-link + overview works  
+- [x] `wrank` (:4561) — see Priority  
 
 
 - [x] `wordtune` (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com target, device-lock reveal, avatar menu hide + panel username, cookie reload from panel.db, logout detect → switch / `logged_out` + Analytics Logouts  
@@ -209,7 +210,6 @@ If fail: note in “Open issues”, fix, re-tick.
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
-| `wrank` (WooRank) | nginx 404 on `/access` + `:4561` had ChatGPT binary; domain rename incomplete | Run `./deploy/fix-wrank-nginx.sh` + `build-one.sh wrank && start-tool.sh wrank`; panel.db + MySQL domain=`wrank.gt4rents.com`; then retest access-link |
 | `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
 
 ### Chrome Safe Browsing (“Dangerous site”) — who got hit
@@ -218,7 +218,7 @@ Not a proxy crash — Google flags phishing-like pages. Seen / noted on gt4rents
 
 | Host / tool | Why it triggered | Status |
 |-------------|------------------|--------|
-| `woorank.gt4rents.com` → `wrank` | Brand-name subdomain + lookalike UI | Rename to `wrank`; finish nginx + rebuild (see Open issues) |
+| `woorank.gt4rents.com` → `wrank` | Brand-name subdomain + lookalike UI | **OK** — live on `wrank.gt4rents.com` |
 | `seositecheckup.gt4rents.com` | Access URL had `/access?user=…&token=…` (looks like credential phishing) | **Mitigated** — panel now opens `/access?token=` only; tool OK (`v17`) |
 | `grammarly.gt4rents.com` | Same class of risk (brand subdomain + tokenized access) during HTTPS verify | Tool OK; if warning returns → [report false positive](https://safebrowsing.google.com/safebrowsing/report_error/?hl=en) |
 
