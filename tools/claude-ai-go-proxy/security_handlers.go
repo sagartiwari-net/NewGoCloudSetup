@@ -265,7 +265,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 		host = r.Host
 	}
 	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
-		scheme, host, url.QueryEscape(payload.Username), url.QueryEscape(ott))
+		scheme, host, url.QueryEscape(ott))
 	log.Printf("[HANDSHAKE] ✅ OTT generated user=%s website_id=%d client_ip=%s → %s",
 		payload.Username, currentWebsiteID, payload.ClientIP, redirectURL)
 	w.Header().Set("Content-Type", "application/json")
@@ -290,7 +290,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	username := strings.TrimSpace(r.URL.Query().Get("user"))
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if username == "" || token == "" {
+	if token == "" {
 		recordSecurityEvent(r, username, "access_denied", "missing user or token")
 		renderAccessErrorPage(w, cfg, "missing_params")
 		return
@@ -325,7 +325,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		renderAccessErrorPage(w, cfg, "link_expired")
 		return
 	}
-	if !strings.EqualFold(dbUsername, username) {
+	if username != "" && !strings.EqualFold(dbUsername, username) {
 		log.Printf("[ACCESS] ❌ Username mismatch token_user=%s query_user=%s", dbUsername, username)
 		recordSecurityEvent(r, username, "access_denied", "username mismatch")
 		renderAccessErrorPage(w, cfg, "username_mismatch")

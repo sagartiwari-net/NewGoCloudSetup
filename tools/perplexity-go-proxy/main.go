@@ -1887,9 +1887,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	go func() { _, _ = db.Exec("DELETE FROM ahrefs_tokens WHERE expires_at < NOW()") }()
 
 	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
-		cfg.PublicScheme, cfg.PublicHost,
-		url.QueryEscape(payload.Username), url.QueryEscape(ott),
-	)
+		cfg.PublicScheme, cfg.PublicHost, url.QueryEscape(ott))
 	log.Printf("[HANDSHAKE] ✅ OTT generated for user=%s website_id=%d redirect=%s", payload.Username, currentWebsiteID, redirectURL)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -1912,9 +1910,9 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	username := r.URL.Query().Get("user")
-	token := r.URL.Query().Get("token")
-	if username == "" || token == "" {
+	username := strings.TrimSpace(r.URL.Query().Get("user"))
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
 		log.Printf("[ACCESS] ❌ missing user/token (user_empty=%v token_empty=%v) — open via Member Area Access button", username == "", token == "")
 		renderAccessDeniedPage(w, cfg)
 		return
@@ -1948,11 +1946,12 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	if dbUsername != username {
+	if username != "" && dbUsername != username {
 		log.Printf("[ACCESS] ❌ username mismatch query=%s token_user=%s", username, dbUsername)
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
+	username = dbUsername
 	_, _ = db.Exec("DELETE FROM ahrefs_tokens WHERE token = ? AND website_id = ?", token, currentWebsiteID)
 
 	// Generate session token

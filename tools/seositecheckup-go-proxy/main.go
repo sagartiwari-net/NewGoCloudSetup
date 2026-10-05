@@ -1508,9 +1508,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 		host = r.Host
 	}
 	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
-		scheme, host,
-		url.QueryEscape(payload.Username), url.QueryEscape(ott),
-	)
+		scheme, host, url.QueryEscape(ott))
 	log.Printf("[HANDSHAKE] ✅ OTT generated for user: %s → %s", payload.Username, redirectURL)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -1538,6 +1536,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
+	username := strings.TrimSpace(r.URL.Query().Get("user"))
 	var dbUsername, dbClientIP string
 	var expiresAt time.Time
 	err := db.QueryRow(
@@ -1550,7 +1549,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	username := strings.TrimSpace(dbUsername)
+	username = strings.TrimSpace(dbUsername)
 	if username == "" {
 		recordSecurityEvent(r, "", "access_denied", "token has empty username")
 		renderAccessDeniedPage(w, cfg)

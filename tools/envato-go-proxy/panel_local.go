@@ -125,6 +125,11 @@ func setSessionCookie(w http.ResponseWriter, token string, expires time.Time) {
 
 func serveEnvatoPanelAccess(w http.ResponseWriter, r *http.Request, username, token string) {
 	cfg := loadConfig()
+	token = strings.TrimSpace(token)
+	if token == "" {
+		renderAccessDeniedPage(w)
+		return
+	}
 	db, err := openEnvatoPanel()
 	if err != nil {
 		log.Printf("[PANEL] database open failed: %v", err)
@@ -138,8 +143,9 @@ func serveEnvatoPanelAccess(w http.ResponseWriter, r *http.Request, username, to
 		RETURNING username, COALESCE(client_ip, '')`,
 		token, time.Now().UTC().Format(time.RFC3339), "127.0.0.1:5261", cfg.PublicHost).
 		Scan(&dbUser, &clientIP)
-	if err != nil || dbUser != username {
-		log.Printf("[PANEL] token rejected user=%s err=%v", username, err)
+	username = strings.TrimSpace(dbUser)
+	if err != nil || username == "" {
+		log.Printf("[PANEL] token rejected err=%v", err)
 		renderAccessDeniedPage(w)
 		return
 	}

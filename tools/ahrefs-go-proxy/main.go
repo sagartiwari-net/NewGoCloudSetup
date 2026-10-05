@@ -1196,10 +1196,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	go func() { _, _ = db.Exec("DELETE FROM ahrefs_tokens WHERE expires_at < NOW()") }()
 
 	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
-		cfg.PublicScheme, cfg.PublicHost,
-		url.QueryEscape(payload.Username),
-		url.QueryEscape(ott),
-	)
+		cfg.PublicScheme, cfg.PublicHost, url.QueryEscape(ott))
 
 	log.Printf("[HANDSHAKE] ✅ OTT generated for user: %s (IP: %s, expires: %v)", payload.Username, payload.ClientIP, expires)
 

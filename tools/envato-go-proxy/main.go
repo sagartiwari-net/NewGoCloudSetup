@@ -1428,7 +1428,7 @@ func handleAuthHandshake(w http.ResponseWriter, r *http.Request) {
 
 	// Return secure handshake redirect URL
 	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
-		currentScheme, currentHost, url.QueryEscape(payload.Username), ott)
+		currentScheme, currentHost, ott)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -1437,19 +1437,18 @@ func handleAuthHandshake(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAccess(w http.ResponseWriter, r *http.Request) {
-	username := r.URL.Query().Get("user")
-	ott := r.URL.Query().Get("token")
-
-	if username == "" || ott == "" {
+	ott := strings.TrimSpace(r.URL.Query().Get("token"))
+	if ott == "" {
 		renderAccessDeniedPage(w)
 		return
 	}
 
 	cfgAccess := loadConfig()
 	if db == nil || usesPanelAccountMode(cfgAccess) {
-		serveEnvatoPanelAccess(w, r, username, ott)
+		serveEnvatoPanelAccess(w, r, "", ott)
 		return
 	}
+	username := strings.TrimSpace(r.URL.Query().Get("user"))
 
 	var storedUsername, storedIP string
 	var expiresAt time.Time
@@ -1481,11 +1480,12 @@ func handleAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if storedUsername != username {
+	if username != "" && storedUsername != username {
 		log.Printf("[ACCESS] ❌ Username mismatch: token was for '%s', got '%s'", storedUsername, username)
 		renderAccessDeniedPage(w)
 		return
 	}
+	username = storedUsername
 
 	var dbStatus string
 	err = db.QueryRow("SELECT status FROM ahrefs_users WHERE username = ? AND website_id = ?", username, currentWebsiteID).Scan(&dbStatus)

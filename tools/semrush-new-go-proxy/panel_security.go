@@ -455,9 +455,8 @@ func serveSemrushAccountSwap(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
-	username := strings.TrimSpace(r.URL.Query().Get("user"))
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if username == "" || token == "" {
+	if token == "" {
 		renderSemrushDenied(w)
 		return
 	}
@@ -471,8 +470,9 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 	var websiteID, minutes int
 	err = db.QueryRow(`DELETE FROM access_tokens WHERE token=? AND expires_at>? RETURNING username, product_id, COALESCE(client_ip, ''), expires_at, website_id`,
 		token, time.Now().UTC().Format(time.RFC3339)).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
-	if err != nil || dbUser != username {
-		log.Printf("[PANEL] token rejected user=%s err=%v", username, err)
+	username := strings.TrimSpace(dbUser)
+	if err != nil || username == "" {
+		log.Printf("[PANEL] token rejected err=%v", err)
 		renderSemrushDenied(w)
 		return
 	}

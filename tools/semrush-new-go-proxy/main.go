@@ -2173,7 +2173,7 @@ func main() {
 
 			// Return secure handshake redirect URL
 			redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
-				currentScheme, currentHost, url.QueryEscape(payload.Username), ott)
+				currentScheme, currentHost, ott)
 
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
@@ -2184,13 +2184,12 @@ func main() {
 
 		// 1. OTT access token handshake
 		if r.URL.Path == "/access" {
-			username := r.URL.Query().Get("user")
-			ott := r.URL.Query().Get("token")
-
-			if username == "" || ott == "" {
-				http.Error(w, "Bad Request: Missing user or token", http.StatusBadRequest)
+			ott := strings.TrimSpace(r.URL.Query().Get("token"))
+			if ott == "" {
+				http.Error(w, "Bad Request: Missing token", http.StatusBadRequest)
 				return
 			}
+			username := strings.TrimSpace(r.URL.Query().Get("user"))
 
 			if db == nil {
 				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
@@ -2225,7 +2224,7 @@ func main() {
 				return
 			}
 
-			if !strings.EqualFold(strings.TrimSpace(storedUsername), strings.TrimSpace(username)) {
+			if username != "" && !strings.EqualFold(strings.TrimSpace(storedUsername), strings.TrimSpace(username)) {
 				log.Printf("[ACCESS] ❌ Username mismatch: token was for '%s', got '%s'", storedUsername, username)
 				_, _ = db.Exec("DELETE FROM ahrefs_tokens WHERE id = ?", tokenID)
 				renderAccessDeniedPage(w)

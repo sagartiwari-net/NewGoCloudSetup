@@ -1247,9 +1247,9 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-	username := r.URL.Query().Get("user")
-	token := r.URL.Query().Get("token")
-	if username == "" || token == "" {
+	username := strings.TrimSpace(r.URL.Query().Get("user"))
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
 		recordSecurityEvent(r, username, "access_denied", "missing user or token")
 		renderAccessDeniedPage(w, cfg)
 		return
@@ -1271,11 +1271,12 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	if dbUsername != username {
+	if username != "" && dbUsername != username {
 		recordSecurityEvent(r, username, "access_denied", "username mismatch")
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
+	username = dbUsername
 
 	clientIP := realClientIP(r)
 	ottOK, ottMode := proxysec.ValidateOTTClientIP(dbClientIP, clientIP, cfg.SessionSecurity, toolCtx(cfg), currentWebsiteSecurityEnabled)

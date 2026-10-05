@@ -449,10 +449,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
-		cfg.PublicScheme, cfg.PublicHost,
-		url.QueryEscape(payload.Username),
-		url.QueryEscape(ott),
-	)
+		cfg.PublicScheme, cfg.PublicHost, url.QueryEscape(ott))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -462,13 +459,16 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 // accessHandler validates One-Time Token from handshake, sets session cookie, redirects
 func accessHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := loadConfig()
-	username := r.URL.Query().Get("user")
-	ott := r.URL.Query().Get("token")
-
-	if username == "" || ott == "" {
-		http.Error(w, "Bad Request: Missing user or token", http.StatusBadRequest)
+	if usesPanelAccountMode(cfg) {
+		servePanelAccess(w, r, cfg)
 		return
 	}
+	ott := strings.TrimSpace(r.URL.Query().Get("token"))
+	if ott == "" {
+		http.Error(w, "Bad Request: Missing token", http.StatusBadRequest)
+		return
+	}
+	username := strings.TrimSpace(r.URL.Query().Get("user"))
 
 	if db == nil {
 		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
@@ -504,11 +504,12 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if storedUsername != username {
+	if username != "" && storedUsername != username {
 		log.Printf("[ACCESS] ❌ Username mismatch: token for '%s', got '%s'", storedUsername, username)
 		renderAccessDeniedPage(w)
 		return
 	}
+	username = storedUsername
 
 	clientIP := realClientIP(r)
 

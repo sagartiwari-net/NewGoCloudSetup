@@ -30,9 +30,8 @@ var ahrefsSessions sync.Map
 
 func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 	cfg := loadConfig()
-	user := r.URL.Query().Get("user")
-	token := r.URL.Query().Get("token")
-	if user == "" || token == "" {
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
 		renderAhrefsDenied(w)
 		return
 	}
@@ -48,8 +47,9 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 		AND website_id IN (SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?))
 		RETURNING username, COALESCE(client_ip, '')`,
 		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost).Scan(&dbUser, &clientIP)
-	if err != nil || dbUser != user {
-		log.Printf("[PANEL] token rejected user=%s err=%v", user, err)
+	user := strings.TrimSpace(dbUser)
+	if err != nil || user == "" {
+		log.Printf("[PANEL] token rejected err=%v", err)
 		renderAhrefsDenied(w)
 		return
 	}

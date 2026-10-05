@@ -1155,9 +1155,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
-		publicScheme, publicHost,
-		url.QueryEscape(payload.Username), url.QueryEscape(ott),
-	)
+		publicScheme, publicHost, url.QueryEscape(ott))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -1170,10 +1168,10 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 func accessHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[ACCESS] 📥 /access called: Host=%s, URL=%s, Query=%s", r.Host, r.URL.Path, r.URL.RawQuery)
 
-	username := r.URL.Query().Get("user")
-	token := r.URL.Query().Get("token")
+	username := strings.TrimSpace(r.URL.Query().Get("user"))
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
 
-	if username == "" || token == "" || db == nil {
+	if token == "" || db == nil {
 		log.Printf("[ACCESS] ❌ Rejected: username=%q, token_present=%t, db_nil=%t", username, token != "", db == nil)
 		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprint(w, "Access Denied: Invalid credentials.")
@@ -1234,7 +1232,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err != nil || time.Now().After(expiresAt) || dbUsername != username {
+	if err != nil || time.Now().After(expiresAt) || (username != "" && dbUsername != username) {
 		nowTime := time.Now()
 		log.Printf("[ACCESS] ❌ Token validation failed: err=%v, expired=%t (now=%v, expiresAt=%v), username_match=%t (db=%q, req=%q), websiteID=%d",
 			err, err == nil && nowTime.After(expiresAt), nowTime.Format(time.RFC3339), expiresAt.Format(time.RFC3339), dbUsername == username, dbUsername, username, websiteID)
@@ -1270,6 +1268,8 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "Access Denied: Expired or invalid token.")
 		return
 	}
+
+	username = dbUsername
 
 	log.Printf("[ACCESS] ✅ Token validated: User=%s, WebsiteID=%d", username, websiteID)
 

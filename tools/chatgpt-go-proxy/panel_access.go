@@ -185,12 +185,12 @@ func issuePanelSession(username string, duration time.Duration) (string, time.Ti
 }
 
 func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
-	username := strings.TrimSpace(r.URL.Query().Get("user"))
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if username == "" || token == "" {
+	if token == "" {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
+	username := strings.TrimSpace(r.URL.Query().Get("user"))
 	db, err := openPanelDB(cfg)
 	if err != nil {
 		log.Printf("[PANEL] database open failed: %v", err)
@@ -205,13 +205,19 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		token, time.Now().UTC().Format(time.RFC3339)).
 		Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	if err != nil {
-		log.Printf("[PANEL] token rejected user=%s err=%v", username, err)
+		log.Printf("[PANEL] token rejected err=%v", err)
+		renderAccessDeniedPage(w, cfg)
+		return
+	}
+	username = strings.TrimSpace(dbUser)
+	if username == "" {
+		log.Printf("[PANEL] token has empty username")
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
 	var domain string
 	err = db.QueryRow(`SELECT domain, COALESCE(session_duration, 30) FROM websites WHERE id = ?`, websiteID).Scan(&domain, &durationMin)
-	if err != nil || domain != cfg.PublicHost || dbUser != username {
+	if err != nil || domain != cfg.PublicHost {
 		log.Printf("[PANEL] token mismatch user=%s domain=%s", username, domain)
 		renderAccessDeniedPage(w, cfg)
 		return
