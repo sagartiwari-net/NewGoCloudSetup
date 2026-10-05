@@ -56,9 +56,9 @@
     {
       "tool": "woorank",
       "folder": "woorank-go-proxy",
-      "subdomain": "woorank",
+      "subdomain": "wrank",
       "port": 4561,
-      "fqdn": "woorank.gt4rents.com"
+      "fqdn": "wrank.gt4rents.com"
     },
     {
       "tool": "linkedin-learning",
