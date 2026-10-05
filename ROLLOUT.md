@@ -117,6 +117,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `grammarly` — grammarly (:4911) — **HTTPS OK**: device-lock (no visibility:hidden), gateway CORS/`ext-host`, `/internalAppApi`→coda, `/newdoc` device allow, dox docs JSON, Sign out (`logout-lnk`) hide
 - [x] `placeit` — Placeit (:4611) — **HTTPS OK** (2026-10-05): S3/CDN `/ext-host`+`extra-cdn`, request-body unrewrite, related_templates stub (speed), classic-editor upload gate + panel username, `/account`+pricing/logout hide
 - [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts
+- [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
 
 ### Rest (alphabetical)
 
@@ -173,7 +174,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `sellthetrend` (:4591)  
 - [ ] `seobility` (:4731)  
 - [ ] `seobuddy` (:5131)  
-- [ ] `seositecheckup` (:4661)  
+- [x] `seositecheckup` (:4661) — see Priority  
 - [ ] `seotesteronline` (:4801)  
 - [ ] `shortform` (:4771)  
 - [ ] `similarweb` (:5071)  
@@ -210,6 +211,18 @@ If fail: note in “Open issues”, fix, re-tick.
 | `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
 | `wrank` (WooRank) | Chrome Safe Browsing “Dangerous site” (brand lookalike); `wrank` rename + nginx map incomplete | **Parked.** Resume later: finish nginx `wrank→4561`, MySQL `ahrefs_websites` domain, SB review; or keep users off this tool for now. |
 | `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
+
+### Chrome Safe Browsing (“Dangerous site”) — who got hit
+
+Not a proxy crash — Google flags phishing-like pages. Seen / noted on gt4rents:
+
+| Host / tool | Why it triggered | Status |
+|-------------|------------------|--------|
+| `woorank.gt4rents.com` → `wrank` | Brand-name subdomain + lookalike UI | **Parked** — rename incomplete |
+| `seositecheckup.gt4rents.com` | Access URL had `/access?user=…&token=…` (looks like credential phishing) | **Mitigated** — panel now opens `/access?token=` only; tool OK (`v17`) |
+| `grammarly.gt4rents.com` | Same class of risk (brand subdomain + tokenized access) during HTTPS verify | Tool OK; if warning returns → [report false positive](https://safebrowsing.google.com/safebrowsing/report_error/?hl=en) |
+
+**Platform fix (all tools):** access links no longer put `user=` in the URL (commit `fad80ac`+). Brand-heavy subs (`grammarly`, `woorank`, etc.) still higher SB risk than short slugs (`refs`, `smrs`, `cgpt`).
 
 ---
 
