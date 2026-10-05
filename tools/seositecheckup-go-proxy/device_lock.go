@@ -252,7 +252,7 @@ func devicePageScript() string {
 	// Never html{visibility:hidden}. Never install a temp fetch wrapper that
 	// re-enters window.fetch after tmPatchRequests (infinite loop → blank SPA).
 	// Unregister device SW — it races with SSC boot and can leave a white page.
-	return `<style id="tm-force-visible">html,body{visibility:visible!important;opacity:1!important}</style><script data-tm-device>` + deviceSharedJS() + `
+	return `<style id="tm-force-visible">html,body,#root,#app,#__next{visibility:visible!important;opacity:1!important}</style><script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
@@ -265,19 +265,26 @@ function tmReveal() {
   } catch (e) {}
   try {
     var force = document.getElementById("tm-force-visible");
+    var css = "html,body,#root,#app,#__next{visibility:visible!important;opacity:1!important}";
     if (!force) {
       force = document.createElement("style");
       force.id = "tm-force-visible";
-      force.textContent = "html,body{visibility:visible!important;opacity:1!important}";
+      force.textContent = css;
       (document.documentElement || document.head).appendChild(force);
     } else {
-      force.textContent = "html,body{visibility:visible!important;opacity:1!important}";
+      force.textContent = css;
     }
   } catch (e) {}
-  try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
-  try { document.documentElement.style.setProperty("opacity", "1", "important"); } catch (e) {}
-  try { if (document.body) document.body.style.setProperty("visibility", "visible", "important"); } catch (e) {}
-  try { if (document.body) document.body.style.setProperty("opacity", "1", "important"); } catch (e) {}
+  try {
+    [document.documentElement, document.body].forEach(function (el) {
+      if (!el || !el.style) return;
+      // Strip FOUC / boot hides — never leave visibility:hidden on the document.
+      if ((el.style.visibility || "").toLowerCase() === "hidden") el.style.removeProperty("visibility");
+      if ((el.style.opacity || "") === "0") el.style.removeProperty("opacity");
+      el.style.setProperty("visibility", "visible", "important");
+      el.style.setProperty("opacity", "1", "important");
+    });
+  } catch (e) {}
 }
 tmReveal();
 (function () {
@@ -288,7 +295,7 @@ tmReveal();
   var n = 0;
   var t = setInterval(function () {
     try { tmReveal(); } catch (e) {}
-    if (++n > 20) clearInterval(t);
+    if (++n > 40) clearInterval(t);
   }, 500);
 })();
 function tmWatch(fp, proof) {
