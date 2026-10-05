@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fix wrank: nginx host→4561, MySQL+panel.db domain, probe (expect 401/Access Denied — not nginx 404).
+# Fix wrank nginx host→4561 + MySQL/panel.db domain. ONLY patches nginx *.conf maps.
 set -euo pipefail
 
 LINE='    wrank.gt4rents.com    4561;'
@@ -8,31 +8,35 @@ python3 - "$LINE" <<'PY'
 import pathlib, re, sys
 
 LINE = sys.argv[1]
-roots = [
+# ONLY real nginx map configs — never repo docs/logs/binaries.
+candidates = [
     pathlib.Path("/www/wwwroot/gt4rents.com/_repo/deploy/nginx-host-port.map.conf"),
-    pathlib.Path("/www/server/nginx/conf"),
-    pathlib.Path("/www/server/panel/vhost/nginx"),
-    pathlib.Path("/www/wwwroot/gt4rents.com"),
+    pathlib.Path("/www/server/panel/vhost/nginx/gt4rents-host-port.map.conf"),
 ]
-files = []
-for r in roots:
-    if r.is_file():
-        files.append(r)
-    elif r.is_dir():
-        for p in r.rglob("*"):
-            if not p.is_file() or p.suffix in {".bak", ".swp"}:
-                continue
-            try:
-                txt = p.read_text(errors="ignore")
-            except Exception:
-                continue
-            if "woorank.gt4rents.com" in txt or "map $host $tool_port" in txt or "wrank.gt4rents.com" in txt:
-                files.append(p)
+# Also scan nginx vhost dirs for *.conf that contain the tool_port map.
+for root in (
+    pathlib.Path("/www/server/panel/vhost/nginx"),
+    pathlib.Path("/www/server/nginx/conf"),
+):
+    if not root.is_dir():
+        continue
+    for p in root.rglob("*.conf"):
+        if p.name.endswith(".bak") or ".bak-" in p.name:
+            continue
+        try:
+            txt = p.read_text(errors="ignore")
+        except Exception:
+            continue
+        if "map $host $tool_port" in txt:
+            candidates.append(p)
 
 seen = set()
-for f in files:
-    key = str(f.resolve()) if f.exists() else str(f)
-    if key in seen:
+for f in candidates:
+    try:
+        key = str(f.resolve())
+    except Exception:
+        key = str(f)
+    if key in seen or not f.is_file():
         continue
     seen.add(key)
     try:
@@ -40,28 +44,28 @@ for f in files:
     except Exception as e:
         print("SKIP read", f, e)
         continue
-    if re.search(r"(?m)^\s*wrank\.gt4rents\.com\s+\d+", txt):
+    if "map $host $tool_port" not in txt and "woorank.gt4rents.com" not in txt and "wrank.gt4rents.com" not in txt:
+        print("SKIP unrelated:", f)
+        continue
+    if re.search(r"(?m)^\s*wrank\.gt4rents\.com\s+\d+\s*;", txt):
         print("OK already:", f)
         continue
-    if "woorank.gt4rents.com" in txt:
+    if re.search(r"(?m)^\s*woorank\.gt4rents\.com\s+4561\s*;", txt):
         txt2 = re.sub(
             r"(?m)^(\s*)woorank\.gt4rents\.com\s+4561\s*;",
-            LINE + r"\n\1woorank.gt4rents.com    4561;",
+            LINE + "\n\\1woorank.gt4rents.com    4561;",
             txt,
             count=1,
         )
-        if txt2 == txt:
-            txt2 = txt.replace(
-                "woorank.gt4rents.com    4561;",
-                LINE + "\n    woorank.gt4rents.com    4561;",
-                1,
-            )
     elif "map $host $tool_port" in txt:
         txt2 = txt.replace("map $host $tool_port {", "map $host $tool_port {\n" + LINE, 1)
     else:
         print("SKIP no insert point:", f)
         continue
-    bak = f.with_suffix(f.suffix + ".bak-wrank")
+    if txt2 == txt:
+        print("SKIP no change:", f)
+        continue
+    bak = f.with_name(f.name + ".bak-wrank")
     bak.write_text(txt)
     f.write_text(txt2)
     print("PATCHED:", f)
