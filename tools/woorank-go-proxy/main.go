@@ -1847,6 +1847,15 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	// Falling through to h1 on a dial that negotiated h2 → "malformed HTTP response" 502.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
@@ -1855,16 +1864,24 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			rt.h2.CloseIdleConnections()
 		}
 	}
-	// IMPORTANT: do NOT probe-dial before RoundTrip. The old code dialed uTLS
-	// once just to read ALPN, discarded that conn (leak), then dialed AGAIN
-	// inside h1/h2 — doubling TLS cost on every asset and making the SPA
-	// stick on the splash screen for a long time. Let http2.Transport pool
-	// connections via DialTLSContext.
-	resp, err := rt.h2.RoundTrip(req)
-	if err != nil {
-		return rt.h1.RoundTrip(req)
+	addr := req.URL.Host
+	if !strings.Contains(addr, ":") {
+		if req.URL.Scheme == "https" {
+			addr += ":443"
+		} else {
+			addr += ":80"
+		}
 	}
-	return resp, nil
+	conn, err := dialChrome(req.Context(), addr)
+	if err != nil {
+		return nil, err
+	}
+	proto := conn.ConnectionState().NegotiatedProtocol
+	_ = conn.Close() // probe only — h1/h2 DialTLSContext opens the real pooled conn
+	if proto == "h2" {
+		return rt.h2.RoundTripOpt(req, http2.RoundTripOpt{})
+	}
+	return rt.h1.RoundTrip(req)
 }
 
 func buildChromeHTTPClient() *http.Client {
@@ -3094,6 +3111,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Header.Del("Transfer-Encoding")
 	}
 
+	// Remove hop-by-hop + proxy headers. nginx/browser "Connection: upgrade"
+	// must never reach HTTP/2 upstream (Go: invalid Connection / malformed h2).
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("TE")
+	upstreamReq.Header.Del("Trailer")
+	upstreamReq.Header.Del("Transfer-Encoding")
+
 	// SellerAmp /api/v2 needs X-UID + X-API-TOKEN. Browser sometimes omits them
 	// (session hydrate race) → 401 Unauthorized toasts. Inject from cached HTML.
 	ensureAPIAuthHeaders(upstreamReq)
@@ -3228,9 +3255,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			HasAPI:  r.Header.Get("X-API-TOKEN") != "",
 			CookieN: countCookieNames(accountCookieStr),
 		})
-		if dbConnected {
-			activeAcc, _ = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error")
-		}
+		// Transport/ALPN errors are not cookie death — do not rotate mapped accounts.
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
