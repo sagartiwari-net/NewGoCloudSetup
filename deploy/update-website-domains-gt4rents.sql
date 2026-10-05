@@ -15,6 +15,7 @@ UPDATE websites SET domain='placeit.gt4rents.com' WHERE id=12;
 UPDATE ahrefs_websites SET domain='placeit.gt4rents.com' WHERE id=12;
 UPDATE websites SET domain='creaitor.gt4rents.com' WHERE id=13;
 UPDATE websites SET domain='wordtune.gt4rents.com' WHERE id=14;
+UPDATE ahrefs_websites SET domain='wordtune.gt4rents.com' WHERE id=14;
 UPDATE websites SET domain='epidemicsound.gt4rents.com' WHERE id=15;
 UPDATE websites SET domain='merchinformer.gt4rents.com' WHERE id=16;
 UPDATE websites SET domain='seositecheckup.gt4rents.com' WHERE id=17;

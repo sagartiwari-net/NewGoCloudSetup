@@ -1,7 +1,13 @@
 {
   "port": "4631",
   "public_host": "wordtune.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "website_id": 14,
+  "target_url": "https://app.wordtune.com",
+  "cdn_url": "https://app.wordtune.com",
+  "tool_name": "Wordtune",
+  "cookie_domain_suffix": "wordtune.com",
+  "home_path": "/editor/",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -10,5 +16,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "Force Wordtune target — stale OUTDIR once had chatgpt.com. website_id 14 = wordtune"
 }
