@@ -115,6 +115,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `junglescout` — JungleScout (:5211) — **HTTPS OK**: HTTP/2 Connection strip, panel logout→switch/contact-admin, device-lock reveal + safe deny redirect, extension icons + home→baked proxy origin, proxy optional  
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** (2026-10-05): local OK; server still blank `/home` (no `GetAccountInfo` in Network). Partial fixes on main (`a7551d9`+) — **do not tick until HTTPS access-link + real UI verified**  
 - [x] `grammarly` — grammarly (:4911) — **HTTPS OK**: device-lock (no visibility:hidden), gateway CORS/`ext-host`, `/internalAppApi`→coda, `/newdoc` device allow, dox docs JSON, Sign out (`logout-lnk`) hide
+- [x] `placeit` — Placeit (:4611) — **HTTPS OK** (2026-10-05): S3/CDN `/ext-host`+`extra-cdn`, request-body unrewrite, related_templates stub (speed), classic-editor upload gate + panel username, `/account`+pricing/logout hide
 
 ### Rest (alphabetical)
 
@@ -159,7 +160,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `perplexity` (:5101)  
 - [ ] `piktochart` (:4541)  
 - [ ] `pixlr` (:4901)  
-- [ ] `placeit` (:4611)  
+- [x] `placeit` (:4611) — see Priority  
 - [ ] `ppspy` (:4961)  
 - [ ] `prezi` (:4751)  
 - [ ] `rivalflow` (:4811)  
