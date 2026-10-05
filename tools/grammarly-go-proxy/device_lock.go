@@ -245,7 +245,10 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func devicePageScript() string {
-	return `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>` + deviceSharedJS() + `
+	// IMPORTANT: Do NOT use html{visibility:hidden}. CLIENT-DIAG proved Grammarly SPA
+	// boots (title=Grammarly, bodyKids=76) but stayed permanently blank because the
+	// hide style won over tmReveal. Device binding stays; visual gate removed.
+	return `<script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
@@ -254,25 +257,34 @@ function tmDeny() {
   location.replace("/__tm_access_denied");
 }
 function tmReveal() {
-  // Remove !important lock first — inline visibility without !important cannot win
-  // (permanent blank white page on grammarly.gt4rents.com).
-  var lock = document.querySelector("style[data-tm-device]");
-  if (lock) lock.remove();
+  try {
+    document.querySelectorAll("style[data-tm-device]").forEach(function (s) { s.remove(); });
+  } catch (e) {}
+  try {
+    var force = document.getElementById("tm-force-visible");
+    if (!force) {
+      force = document.createElement("style");
+      force.id = "tm-force-visible";
+      force.textContent = "html,body{visibility:visible!important;opacity:1!important}";
+      (document.documentElement || document.head).appendChild(force);
+    }
+  } catch (e) {}
   try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
   try { document.documentElement.style.setProperty("opacity", "1", "important"); } catch (e) {}
-  try { if (document.body) document.body.style.setProperty("display", "block", "important"); } catch (e) {}
   try { if (document.body) document.body.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+  try { if (document.body) document.body.style.setProperty("opacity", "1", "important"); } catch (e) {}
 }
-// Never leave users on a permanent blank page if bind/fingerprint hangs.
 tmReveal();
-setTimeout(function () { try { tmReveal(); } catch (e) {} }, 800);
-// Keep forcing reveal for a few seconds (SPA can re-hide during boot).
+// Kill any leftover hide styles Grammarly/extensions might leave; keep UI visible.
 (function () {
+  try {
+    new MutationObserver(function () { tmReveal(); }).observe(document.documentElement, {childList:true, subtree:true, attributes:true, attributeFilter:["style","class"]});
+  } catch (e) {}
   var n = 0;
   var t = setInterval(function () {
     try { tmReveal(); } catch (e) {}
-    if (++n > 20) clearInterval(t);
-  }, 500);
+    if (++n > 40) clearInterval(t);
+  }, 250);
 })();
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;

@@ -394,9 +394,10 @@ func grammarlyDiagAndFailoverScript() string {
       });
     };
   }
-  // After boot: if page still blank / hidden, report once.
+  // After boot: if page still blank / hidden, force-reveal + report.
   setTimeout(function(){
     try {
+      if (typeof tmReveal === 'function') tmReveal();
       var html = document.documentElement;
       var vis = html ? getComputedStyle(html).visibility : '?';
       var bodyText = (document.body && document.body.innerText || '').replace(/\s+/g,' ').trim().slice(0,120);
@@ -407,13 +408,19 @@ func grammarlyDiagAndFailoverScript() string {
         title: document.title || '',
         bodyKids: kids,
         bodyText: bodyText,
-        href: location.href
+        href: location.href,
+        hasForceStyle: !!document.getElementById('tm-force-visible'),
+        hideStyles: document.querySelectorAll('style[data-tm-device]').length
       });
-      if (vis === 'hidden' || (kids < 2 && bodyText.length < 8)) {
-        postDiag({event:'blank_suspect', visibility: vis, bodyKids: kids});
+      if (vis === 'hidden') {
+        try {
+          document.documentElement.style.cssText += ';visibility:visible!important;opacity:1!important';
+          if (document.body) document.body.style.cssText += ';visibility:visible!important;opacity:1!important';
+        } catch (e2) {}
+        postDiag({event:'blank_suspect', visibility: getComputedStyle(html).visibility, bodyKids: kids});
       }
     } catch (e) {}
-  }, 3500);
+  }, 2000);
 })();
 </script>`
 }
