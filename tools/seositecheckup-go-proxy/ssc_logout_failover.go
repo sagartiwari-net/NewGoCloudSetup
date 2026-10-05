@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"html"
 	"log"
 	"net/http"
@@ -36,6 +35,9 @@ func sscLooksLoggedOutPath(path string) bool {
 	return false
 }
 
+// sscLooksLoggedOut detects a real login wall.
+// Never treat bare API 401/403 as logout — execute-api / analytics often 401
+// even while ssc.iam refresh still works (caused false contact-admin loops).
 func sscLooksLoggedOut(path string, body []byte, status int, location string) (bool, string) {
 	if sscLooksLoggedOutPath(path) {
 		return true, "url:" + truncateForLog(path, 80)
@@ -44,9 +46,7 @@ func sscLooksLoggedOut(path string, body []byte, status int, location string) (b
 	if loc != "" && sscLooksLoggedOutPath(loc) {
 		return true, "redirect:" + truncateForLog(location, 120)
 	}
-	if status == 401 || status == 403 {
-		return true, fmt.Sprintf("status_%d", status)
-	}
+	_ = status // intentionally ignored — API 401 is not account logout
 	if len(body) == 0 {
 		return false, ""
 	}
@@ -66,6 +66,26 @@ func sscLooksLoggedOut(path string, body []byte, status int, location string) (b
 		}
 	}
 	return false, ""
+}
+
+// sscIamStillAlive: refresh_token still works → do NOT mark logged_out / contact-admin.
+func sscIamStillAlive(cookieRaw string) bool {
+	tokens := loadIamFromRaw(cookieRaw, "ssc.iam")
+	if tokens.RefreshToken == "" && tokens.AccessToken == "" {
+		return false
+	}
+	now := time.Now().Unix()
+	if exp := jwtExpUnix(tokens.AccessToken); exp > now+30 {
+		return true
+	}
+	if tokens.RefreshToken == "" {
+		return false
+	}
+	if rtExp := jwtExpUnix(tokens.RefreshToken); rtExp > 0 && rtExp <= now {
+		return false
+	}
+	_, ok := refreshIamAccessToken(tokens.RefreshToken)
+	return ok
 }
 
 func truncateForLog(s string, n int) string {
@@ -145,13 +165,23 @@ func serveSscCookieFailover(w http.ResponseWriter, r *http.Request, cfg Config, 
 		home = "/dashboard"
 	}
 
-	// Panel cookie just updated / status Active again → one revive before marking logged_out.
-	if trySscPanelRevive(w, r, cfg, sessionToken, currentUser, activeAcc) {
+	if reloaded, err := panelReloadAccount(cfg, sessionToken); err == nil && reloaded.ID > 0 {
+		activeAcc = reloaded
+	}
+
+	// Fresh panel cookie / working refresh_token → bounce home, never mark logged_out.
+	// client_path + API 401 false positives were killing good cookies.
+	if sscIamStillAlive(activeAcc.Cookie) {
+		clearSscIamCache(cfg)
+		log.Printf("[FAILOVER] IAM still alive — skip logged_out mark user=%s account=%s reason=%s → %s",
+			currentUser, activeAcc.Name, reason, home)
+		http.Redirect(w, r, home, http.StatusFound)
 		return
 	}
 
-	if reloaded, err := panelReloadAccount(cfg, sessionToken); err == nil && reloaded.ID > 0 {
-		activeAcc = reloaded
+	// Panel cookie just updated → one revive before marking logged_out.
+	if trySscPanelRevive(w, r, cfg, sessionToken, currentUser, activeAcc) {
+		return
 	}
 
 	if activeAcc.ID > 0 {
@@ -221,19 +251,27 @@ func sscFailoverWatchScript() string {
 (function(){
   if (window.__tmSscFailoverWatch) return;
   window.__tmSscFailoverWatch = true;
+  var authSince = 0;
   function go(reason){
     if (window.__tmSscFailing) return;
     window.__tmSscFailing = true;
     try { location.replace('/api/ssc-failover?reason=' + encodeURIComponent(reason || 'client')); }
     catch (e) {}
   }
+  function hasIamCookie(){
+    try { return /(?:^|;\\s*)ssc\\.iam=/.test(document.cookie || ''); } catch (e) { return false; }
+  }
   function looksLogout(){
     try {
       var h = location.pathname || '';
-      if (/\/auth\/(login|sign-?in|sign-?up)/i.test(h)) return 'path';
-      if (/^\/(login|sign-?in|sign-?up)(\/|$)/i.test(h)) return 'path';
-      var t = (document.body && document.body.innerText || '').replace(/\s+/g,' ').trim().slice(0,900);
-      if (/sign in/i.test(t) && /password/i.test(t) && t.length < 800) return 'wall';
+      var onAuth = /\\/auth\\/(login|sign-?in|sign-?up)/i.test(h) || /^\\/(login|sign-?in|sign-?up)(\\/|$)/i.test(h);
+      if (!onAuth) { authSince = 0; return ''; }
+      if (!authSince) authSince = Date.now();
+      // Give IAM inject + SPA boot time; path alone is not enough (false client_path).
+      if (Date.now() - authSince < 4000) return '';
+      var t = (document.body && document.body.innerText || '').replace(/\\s+/g,' ').trim().slice(0,900);
+      if (/sign in|log in/i.test(t) && /password/i.test(t)) return 'wall';
+      if (!hasIamCookie() && Date.now() - authSince > 6000) return 'path_no_iam';
     } catch (e) {}
     return '';
   }
@@ -241,8 +279,8 @@ func sscFailoverWatchScript() string {
     var why = looksLogout();
     if (why) go('client_' + why);
   }
-  setTimeout(tick, 800);
-  setInterval(tick, 2000);
+  setTimeout(tick, 1500);
+  setInterval(tick, 2500);
   try {
     var _push = history.pushState;
     var _replace = history.replaceState;

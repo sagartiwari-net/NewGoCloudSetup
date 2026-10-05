@@ -785,7 +785,19 @@ func parseCookieFromDB(raw string) string {
 	if err := json.Unmarshal([]byte(trimmed), &cookies); err != nil { return raw }
 	parts := make([]string, 0, len(cookies))
 	for _, c := range cookies {
-		if c.Name != "" { parts = append(parts, c.Name+"="+c.Value) }
+		if c.Name == "" {
+			continue
+		}
+		// EditThisCookie often stores ssc.iam value URL-encoded — normalize to JSON cookie.
+		if strings.EqualFold(c.Name, "ssc.iam") {
+			if tokens := parseIamJSON(c.Value); tokens.AccessToken != "" {
+				if b, err := json.Marshal(tokens); err == nil {
+					parts = append(parts, c.Name+"="+url.QueryEscape(string(b)))
+					continue
+				}
+			}
+		}
+		parts = append(parts, c.Name+"="+c.Value)
 	}
 	return strings.Join(parts, "; ")
 }
@@ -1127,7 +1139,9 @@ func injectUpstreamBearer(upstreamReq *http.Request, cfg Config) {
 		return
 	}
 	auth := strings.TrimSpace(upstreamReq.Header.Get("Authorization"))
-	replace := usesCookieFileMode(cfg) ||
+	// Panel mode: always prefer panel.db IAM — browser may send a stale Bearer.
+	replace := usesPanelAccountMode(cfg) ||
+		usesCookieFileMode(cfg) ||
 		auth == "" ||
 		strings.EqualFold(auth, "Bearer null") ||
 		strings.EqualFold(auth, "Bearer undefined") ||
@@ -2456,7 +2470,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "seositecheckup-v9-paneldb-only"
+const proxyBuildTag = "seositecheckup-v10-no-api401-fo"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 
@@ -3399,12 +3413,22 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Panel logout wall (e.g. /auth/login) → switch account or contact admin + Analytics report.
-	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 && sscLooksLoggedOutPath(path) {
+	// Document login wall only → switch / contact-admin (never on XHR/API).
+	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 &&
+		isDocumentNavigation(r) && sscLooksLoggedOutPath(path) {
 		why := "url:" + truncateForLog(path, 80)
 		log.Printf("[COOKIE] path looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
 		if !sscFailoverRecently(sessionToken) {
 			serveSscCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+			return
+		}
+		// IAM may still be alive — send home instead of sticky contact-admin.
+		if sscIamStillAlive(activeAcc.Cookie) {
+			home := cfg.HomePath
+			if home == "" {
+				home = "/dashboard"
+			}
+			http.Redirect(w, r, home, http.StatusFound)
 			return
 		}
 		renderSscContactAdmin(w, cfg, why)
@@ -3613,12 +3637,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
-	// Upstream redirect/status to login wall → failover before forwarding Location.
-	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 {
+	// Document redirect to login wall only — never failover on API 401/403.
+	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 && isDocumentNavigation(r) {
 		locHdr := upstreamResp.Header.Get("Location")
-		if dead, why := sscLooksLoggedOut(path, nil, upstreamResp.StatusCode, locHdr); dead &&
-			(strings.HasPrefix(why, "redirect:") || strings.HasPrefix(why, "status_")) {
-			log.Printf("[COOKIE] upstream looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+		if dead, why := sscLooksLoggedOut(path, nil, upstreamResp.StatusCode, locHdr); dead && strings.HasPrefix(why, "redirect:") {
+			log.Printf("[COOKIE] upstream redirect login wall user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
 			if !sscFailoverRecently(sessionToken) {
 				serveSscCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
 				return
@@ -3684,8 +3707,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Panel cookie logout → switch / contact-admin + Analytics report
-		if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 {
+		// HTML login wall on document navigations only → switch / contact-admin
+		if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 && isDocumentNavigation(r) {
 			locHdr := upstreamResp.Header.Get("Location")
 			if dead, why := sscLooksLoggedOut(path, bodyBytes, upstreamResp.StatusCode, locHdr); dead {
 				log.Printf("[COOKIE] html looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
