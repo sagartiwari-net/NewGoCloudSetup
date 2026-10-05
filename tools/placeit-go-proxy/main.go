@@ -3496,7 +3496,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("X-Frame-Options")
 
 		// Early CDN rewrite MUST run before Placeit editor modules (CORS → reading 'ok').
-		bodyBytes = placeitInjectHeadStart(bodyBytes, placeitEarlyCDNPatch())
+		// Seed browser auth cookies so classic editor upload library doesn't show Login gate.
+		bodyBytes = placeitInjectHeadStart(bodyBytes, placeitAuthCookieSeedScript(accountCookieStr)+placeitEarlyCDNPatch())
+		placeitMirrorBrowserAuthCookies(w, r, accountCookieStr)
 
 		if usesPanelAccountMode(cfg) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
@@ -3530,8 +3532,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 10. For JSON/CSS: rewrite and stream ─────────────────────────────────────
 	// Do not rewrite JavaScript bodies — Canva uses SRI; mutating JS breaks loads.
 	// Runtime URL rewriting is handled by the injected fetch/XHR patcher.
+	// Skip decompress/rewrite on huge job JSON (base64 previews) — was freezing the UI.
 	isRewritable := strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/css")
-	if isRewritable {
+	if isRewritable && placeitSkipHeavyJSONRewrite(path, upstreamResp.ContentLength) {
+		log.Printf("[NET] passthrough heavy JSON %s cl=%d (skip rewrite)", path, upstreamResp.ContentLength)
+		// fall through to encoded passthrough
+	} else if isRewritable {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
 			logUpstream(bodyBytes)

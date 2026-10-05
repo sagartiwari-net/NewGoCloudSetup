@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -190,18 +191,28 @@ func placeitEarlyCDNPatch() string {
     if (/\/api\//i.test(u)) return 'api';
     return 'net';
   }
+  function isHeavyDiagURL(u){
+    // related_templates_jobs returns multi‑MB base64 — never clone/read it
+    return /related_templates_jobs|\/api\/v4\/jobs\/?/i.test(String(u||''));
+  }
   function shouldLogStatus(status, u){
+    if (isHeavyDiagURL(u)) return status === 401 || status === 403 || status >= 500;
     if (status === 401 || status === 403 || status === 404 || status >= 500) return true;
     if (status >= 300 && status < 400 && isInteresting(u)) return true;
-    if (isInteresting(u) && /auth|upload|nicev2|account|session|user|library|s3_proxy/i.test(classify(u))) return true;
+    if (isInteresting(u) && /auth|upload|account|session|user|library|s3_proxy/i.test(classify(u))) return true;
+    // nicev2 OK noise — skip (was flooding + slowing UI)
+    if (/nicev2/i.test(classify(u)) && status === 200) return false;
     return false;
   }
   async function peekBody(res){
     try {
       var ct = (res.headers && res.headers.get('content-type')) || '';
       if (!/json|text|javascript|xml/i.test(ct)) return {ct: ct, body: ''};
+      var cl = parseInt(res.headers.get('content-length') || '0', 10);
+      if (cl > 8000) return {ct: ct, body: '(skipped large body ' + cl + 'b)'};
       var clone = res.clone();
       var t = await clone.text();
+      if (t && t.length > 12000) return {ct: ct, body: '(skipped large body ' + t.length + 'b)'};
       return {ct: ct, body: clip(t.replace(/\s+/g, ' '), 220)};
     } catch (e) {
       return {ct: '', body: ''};
@@ -244,20 +255,24 @@ func placeitEarlyCDNPatch() string {
         try {
           var st = res.status;
           if (shouldLogStatus(st, u) || shouldLogStatus(st, before)) {
-            peekBody(res).then(function(peek){
-              report('fetch_status', {
-                url: clip(u, 240),
-                method: method,
-                status: st,
-                type: classify(u),
-                ct: clip(peek.ct, 80),
-                body: peek.body,
-                redirected: !!res.redirected,
-                final: clip(res.url || '', 180)
+            if (isHeavyDiagURL(u) || isHeavyDiagURL(before)) {
+              report('fetch_status', {url: clip(u, 240), method: method, status: st, type: classify(u), body: '(heavy skipped)'});
+            } else {
+              peekBody(res).then(function(peek){
+                report('fetch_status', {
+                  url: clip(u, 240),
+                  method: method,
+                  status: st,
+                  type: classify(u),
+                  ct: clip(peek.ct, 80),
+                  body: peek.body,
+                  redirected: !!res.redirected,
+                  final: clip(res.url || '', 180)
+                });
+              }).catch(function(){
+                report('fetch_status', {url: clip(u, 240), method: method, status: st, type: classify(u)});
               });
-            }).catch(function(){
-              report('fetch_status', {url: clip(u, 240), method: method, status: st, type: classify(u)});
-            });
+            }
           }
         } catch (eLog) {}
         return res;
@@ -298,10 +313,20 @@ func placeitEarlyCDNPatch() string {
       try {
         var st = xhr.status || 0;
         if (shouldLogStatus(st, u)) {
+          if (isHeavyDiagURL(u)) {
+            report('xhr_status', {url: clip(u, 240), method: method, status: st, type: classify(u), body: '(heavy skipped)'});
+            return;
+          }
           var body = '';
           try {
             var ct = xhr.getResponseHeader('content-type') || '';
-            if (/json|text/i.test(ct)) body = clip(String(xhr.responseText || '').replace(/\s+/g, ' '), 220);
+            var cl = parseInt(xhr.getResponseHeader('content-length') || '0', 10);
+            if (cl > 8000) body = '(skipped large body ' + cl + 'b)';
+            else if (/json|text/i.test(ct)) {
+              var rt = String(xhr.responseText || '');
+              if (rt.length > 12000) body = '(skipped large body ' + rt.length + 'b)';
+              else body = clip(rt.replace(/\s+/g, ' '), 220);
+            }
             report('xhr_status', {url: clip(u, 240), method: method, status: st, type: classify(u), ct: clip(ct, 80), body: body});
           } catch (e) {
             report('xhr_status', {url: clip(u, 240), method: method, status: st, type: classify(u)});
@@ -354,8 +379,119 @@ func placeitEarlyCDNPatch() string {
   }
   setTimeout(function(){ bootSnap('boot'); }, 3500);
   setTimeout(function(){ bootSnap('boot2'); }, 9000);
+
+  // Classic editor upload pane shows "Log in to see…" when client cookies look logged-out
+  // (upstream auth still works via proxy). Hide that gate so library / select works.
+  function fixUploadLibraryGate(){
+    try {
+      var nodes = document.querySelectorAll('div,section,aside');
+      for (var i = 0; i < nodes.length && i < 900; i++) {
+        var el = nodes[i];
+        var kids = el.childNodes ? el.childNodes.length : 99;
+        if (kids > 14) continue;
+        var t = el.textContent || '';
+        if (t.length < 20 || t.length > 420) continue;
+        if (/Log in to see your recently uploaded images/i.test(t) ||
+            (/Ouhh, it's empty in here/i.test(t) && /Login/i.test(t))) {
+          el.style.setProperty('display', 'none', 'important');
+          el.setAttribute('data-tm-upload-gate', '1');
+        }
+      }
+      document.querySelectorAll('button').forEach(function(btn){
+        if (!/^\s*Login\s*$/i.test(btn.textContent || '')) return;
+        var ctx = (btn.parentElement && btn.parentElement.textContent) || '';
+        if (/recently uploaded|Ouhh, it's empty/i.test(ctx)) {
+          btn.style.setProperty('display', 'none', 'important');
+          try { btn.disabled = true; } catch (e) {}
+        }
+      });
+    } catch (e) {}
+  }
+  try {
+    new MutationObserver(fixUploadLibraryGate).observe(document.documentElement, {childList:true, subtree:true});
+    setInterval(fixUploadLibraryGate, 800);
+    setTimeout(fixUploadLibraryGate, 500);
+  } catch (eGate) {}
 })();
 </script>`
+}
+
+func placeitCookieValue(header, name string) string {
+	name = strings.TrimSpace(name)
+	if header == "" || name == "" {
+		return ""
+	}
+	for _, part := range strings.Split(header, ";") {
+		part = strings.TrimSpace(part)
+		eq := strings.Index(part, "=")
+		if eq <= 0 {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(part[:eq]), name) {
+			return strings.TrimSpace(part[eq+1:])
+		}
+	}
+	return ""
+}
+
+// placeitMirrorBrowserAuthCookies exposes Placeit auth cookies to the browser so
+// classic editor client-side checks treat the session as logged-in (upload library).
+func placeitMirrorBrowserAuthCookies(w http.ResponseWriter, r *http.Request, accountCookie string) {
+	if accountCookie == "" {
+		return
+	}
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	for _, name := range []string{"userStatus", "subscriptionType", "logged_session", "_session_id"} {
+		val := placeitCookieValue(accountCookie, name)
+		if val == "" {
+			continue
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    val,
+			Path:     "/",
+			MaxAge:   7 * 24 * 3600,
+			Secure:   secure,
+			HttpOnly: false,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+}
+
+// placeitAuthCookieSeedScript sets auth cookies before Placeit SPA boots.
+func placeitAuthCookieSeedScript(accountCookie string) string {
+	if accountCookie == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(`<script data-tm-placeit-auth="1">(function(){try{`)
+	for _, name := range []string{"userStatus", "subscriptionType", "logged_session", "_session_id"} {
+		val := placeitCookieValue(accountCookie, name)
+		if val == "" {
+			continue
+		}
+		line := name + "=" + val + "; path=/; SameSite=Lax; max-age=604800"
+		raw, err := json.Marshal(line)
+		if err != nil {
+			continue
+		}
+		b.WriteString(`document.cookie=`)
+		b.Write(raw)
+		b.WriteString(`;`)
+	}
+	b.WriteString(`}catch(e){}})();</script>`)
+	return b.String()
+}
+
+func placeitSkipHeavyJSONRewrite(path string, contentLength int64) bool {
+	p := strings.ToLower(path)
+	if strings.Contains(p, "related_templates_jobs") || strings.Contains(p, "/api/v4/jobs") {
+		return true
+	}
+	if contentLength > 350000 {
+		return true
+	}
+	return false
 }
 
 func placeitInjectHeadStart(body []byte, script string) []byte {
