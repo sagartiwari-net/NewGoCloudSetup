@@ -2391,7 +2391,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "seositecheckup-v6-h2-conn"
+const proxyBuildTag = "seositecheckup-v7-logout-fo"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 
@@ -3322,6 +3322,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Panel logout wall (e.g. /auth/login) → switch account or contact admin + Analytics report.
+	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 && sscLooksLoggedOutPath(path) {
+		why := "url:" + truncateForLog(path, 80)
+		log.Printf("[COOKIE] path looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+		if !sscFailoverRecently(sessionToken) {
+			serveSscCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+			return
+		}
+		renderSscContactAdmin(w, cfg, why)
+		return
+	}
+
 	// ── 3b. Logout path hint (full handling on HTML response) ─────────────────────
 	if detected, reason := detectLogout(path, nil, cfg); detected {
 		log.Printf("[LOGOUT] Path hint | user=%s account=%s reason=%s", currentUser, activeAcc.Name, reason)
@@ -3524,6 +3536,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	// Upstream redirect/status to login wall → failover before forwarding Location.
+	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 {
+		locHdr := upstreamResp.Header.Get("Location")
+		if dead, why := sscLooksLoggedOut(path, nil, upstreamResp.StatusCode, locHdr); dead &&
+			(strings.HasPrefix(why, "redirect:") || strings.HasPrefix(why, "status_")) {
+			log.Printf("[COOKIE] upstream looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+			if !sscFailoverRecently(sessionToken) {
+				serveSscCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+				return
+			}
+		}
+	}
+
 	// ── 7. Handle Set-Cookie and Location headers from upstream ──────────────────
 	contentType := upstreamResp.Header.Get("Content-Type")
 	// Build all domain pairs for location header rewriting (same as HTML body rewriting)
@@ -3582,7 +3607,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Logout detection on HTML body — trigger automation + rotate account once per page
+		// Panel cookie logout → switch / contact-admin + Analytics report
+		if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 {
+			locHdr := upstreamResp.Header.Get("Location")
+			if dead, why := sscLooksLoggedOut(path, bodyBytes, upstreamResp.StatusCode, locHdr); dead {
+				log.Printf("[COOKIE] html looks logged-out user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+				if !sscFailoverRecently(sessionToken) {
+					w.Header().Del("Location")
+					serveSscCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+			}
+		}
+
+		// Legacy config logout_detection (MySQL / automation mode)
 		logoutPageDetected := false
 		if detected, reason := detectLogout(path, bodyBytes, cfg); detected {
 			log.Printf("[LOGOUT] HTML detection | user=%s account=%s reason=%s", currentUser, activeAcc.Name, reason)
@@ -3611,6 +3649,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
+		}
+		if usesPanelAccountMode(cfg) {
+			injectStr += sscFailoverWatchScript()
 		}
 		if !usesCookieFileMode(cfg) {
 			injectStr += buildDomainCheckJS(cfg) + buildSecurityHeartbeatJS(cfg)
@@ -3711,6 +3752,7 @@ func main() {
 	mux.HandleFunc("/api/trigger-automation", withCORS(triggerAutomationHandler))
 	mux.HandleFunc("/api/automation-ingest", withCORS(automationIngestHandler))
 	mux.HandleFunc("/api/security-ping", withCORS(securityPingHandler))
+	mux.HandleFunc("/api/ssc-failover", sscFailoverAPIHandler)
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
