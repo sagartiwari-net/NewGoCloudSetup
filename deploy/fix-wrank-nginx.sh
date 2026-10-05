@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Fix wrank 404: ensure wrank.gt4rents.com → 4561 in live nginx maps + MySQL domain.
+# Fix wrank: nginx host→4561, MySQL+panel.db domain, probe (expect 401/Access Denied — not nginx 404).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 python3 - <<'PY'
-import pathlib, re, sys
+import pathlib, re
 
 NEED = "wrank.gt4rents.com"
 LINE = "    wrank.gt4rents.com    4561;"
@@ -20,15 +20,13 @@ for r in roots:
         files.append(r)
     elif r.is_dir():
         for p in r.rglob("*"):
-            if not p.is_file():
-                continue
-            if p.suffix in {".bak", ".swp"}:
+            if not p.is_file() or p.suffix in {".bak", ".swp"}:
                 continue
             try:
                 txt = p.read_text(errors="ignore")
             except Exception:
                 continue
-            if "woorank.gt4rents.com" in txt or "map $host $tool_port" in txt:
+            if "woorank.gt4rents.com" in txt or "map $host $tool_port" in txt or "wrank.gt4rents.com" in txt:
                 files.append(p)
 
 seen = set()
@@ -42,7 +40,7 @@ for f in files:
     except Exception as e:
         print(f"SKIP read {f}: {e}")
         continue
-    if re.search(r"(?m)^\s*wrank\.gt4rents\.com\s+", txt):
+    if re.search(r"(?m)^\s*wrank\.gt4rents\.com\s+\d+", txt):
         print(f"OK already: {f}")
         continue
     if "woorank.gt4rents.com" in txt:
@@ -65,16 +63,11 @@ for f in files:
     print(f"PATCHED: {f}")
 PY
 
-echo "== includes =="
-grep -Rn 'nginx-host-port\|host-port.map\|tool_port' \
-  /www/server/nginx/conf/nginx.conf \
-  /www/server/panel/vhost/nginx/*.conf 2>/dev/null | head -40 || true
-
 echo "== nginx -t && reload =="
 nginx -t
 nginx -s reload
 
-echo "== MySQL =="
+echo "== MySQL ahrefs_websites =="
 if [[ -f /www/wwwroot/gt4rents.com/_secrets/mysql.env ]]; then
   # shellcheck disable=SC1091
   source /www/wwwroot/gt4rents.com/_secrets/mysql.env
@@ -82,8 +75,40 @@ fi
 export MYSQL_PWD="${GT4RENTS_MYSQL_PASSWORD:-${MYSQL_PWD:-}}"
 mysql -u gt4rents gt4rents -e \
   "UPDATE ahrefs_websites SET domain='wrank.gt4rents.com' WHERE id=7;
-   SELECT id, domain FROM ahrefs_websites WHERE id=7;"
+   SELECT id, domain FROM ahrefs_websites WHERE id=7;" || true
 
-echo "== probe (expect 401, not 404) =="
-curl -sS -o /dev/null -w "local Host wrank → %{http_code}\n" -H 'Host: wrank.gt4rents.com' "http://127.0.0.1:4561/" || true
+echo "== panel.db websites =="
+PANEL_DB="/www/wwwroot/gt4rents.com/panel/data/panel.db"
+if [[ -f "$PANEL_DB" ]]; then
+  sqlite3 "$PANEL_DB" "UPDATE websites SET domain='wrank.gt4rents.com' WHERE id=7;
+SELECT id, name, domain FROM websites WHERE id=7 OR domain LIKE '%woorank%' OR domain LIKE '%wrank%';"
+else
+  echo "WARN: missing $PANEL_DB"
+fi
+
+echo "== probe (expect 401/403/200 Access Denied card — NOT nginx 404) =="
+curl -sS -o /dev/null -w "local :4561 → %{http_code}\n" -H 'Host: wrank.gt4rents.com' "http://127.0.0.1:4561/" || true
 curl -sS -o /dev/null -w "https://wrank.gt4rents.com/ → %{http_code}\n" "https://wrank.gt4rents.com/" || true
+curl -sS -o /dev/null -w "https://wrank.gt4rents.com/access → %{http_code}\n" "https://wrank.gt4rents.com/access?token=probe" || true
+
+echo "== config sanity (must be woorank, not chatgpt) =="
+python3 - <<'PY'
+import json
+from pathlib import Path
+p = Path("/www/wwwroot/gt4rents.com/wrank/config.json")
+if not p.exists():
+    print("MISSING config.json — run: ./deploy/build-one.sh wrank")
+else:
+    c = json.loads(p.read_text())
+    print("target_url=", c.get("target_url"))
+    print("tool_name=", c.get("tool_name"))
+    print("public_host=", c.get("public_host"))
+    print("panel_db=", c.get("panel_db"))
+    t = (c.get("target_url") or "").lower()
+    if "chatgpt" in t or "openai" in t:
+        print("ERROR: wrong binary/config — rebuild wrank")
+    elif "woorank" not in t:
+        print("WARN: unexpected target")
+    else:
+        print("OK: WooRank target")
+PY

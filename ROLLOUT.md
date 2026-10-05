@@ -189,7 +189,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `uncensoredchat` (:4891)  
 - [ ] `videotoblog` (:5041)  
 - [ ] `vistacreate` (:4581)  
-- [ ] `wrank` (:4561) — **parked** (2026-10-05): Chrome Safe Browsing on brand host; rename to `wrank` partial — resume later (nginx map + SB review)  
+- [ ] `wrank` (:4561) — **fixing nginx/binary** (2026-10-05): was nginx 404 + wrong ChatGPT binary on :4561; run `./deploy/fix-wrank-nginx.sh` then `build-one.sh wrank && start-tool.sh wrank` — tick only after access-link + overview works  
 
 
 - [x] `wordtune` (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com target, device-lock reveal, avatar menu hide + panel username, cookie reload from panel.db, logout detect → switch / `logged_out` + Analytics Logouts  
@@ -209,7 +209,7 @@ If fail: note in “Open issues”, fix, re-tick.
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
-| `wrank` (WooRank) | Chrome Safe Browsing “Dangerous site” (brand lookalike); `wrank` rename + nginx map incomplete | **Parked.** Resume later: finish nginx `wrank→4561`, MySQL `ahrefs_websites` domain, SB review; or keep users off this tool for now. |
+| `wrank` (WooRank) | nginx 404 on `/access` + `:4561` had ChatGPT binary; domain rename incomplete | Run `./deploy/fix-wrank-nginx.sh` + `build-one.sh wrank && start-tool.sh wrank`; panel.db + MySQL domain=`wrank.gt4rents.com`; then retest access-link |
 | `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
 
 ### Chrome Safe Browsing (“Dangerous site”) — who got hit
@@ -218,7 +218,7 @@ Not a proxy crash — Google flags phishing-like pages. Seen / noted on gt4rents
 
 | Host / tool | Why it triggered | Status |
 |-------------|------------------|--------|
-| `woorank.gt4rents.com` → `wrank` | Brand-name subdomain + lookalike UI | **Parked** — rename incomplete |
+| `woorank.gt4rents.com` → `wrank` | Brand-name subdomain + lookalike UI | Rename to `wrank`; finish nginx + rebuild (see Open issues) |
 | `seositecheckup.gt4rents.com` | Access URL had `/access?user=…&token=…` (looks like credential phishing) | **Mitigated** — panel now opens `/access?token=` only; tool OK (`v17`) |
 | `grammarly.gt4rents.com` | Same class of risk (brand subdomain + tokenized access) during HTTPS verify | Tool OK; if warning returns → [report false positive](https://safebrowsing.google.com/safebrowsing/report_error/?hl=en) |
 

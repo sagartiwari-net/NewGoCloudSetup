@@ -1,0 +1,86 @@
+{
+  "port": "4561",
+  "bypass_auth": false,
+  "use_database": false,
+  "target_url": "https://www.woorank.com",
+  "cdn_url": "https://www.woorank.com",
+  "public_host": "wrank.gt4rents.com",
+  "public_scheme": "https",
+  "website_id": 7,
+  "tool_name": "WooRank",
+  "credit_label": "Reviews",
+  "export_label": "Exports",
+  "home_path": "/en/overview",
+  "cookie_domain_suffix": "woorank.com",
+  "inject_css": ".nr-account-dropdown-btn,.nr-logout-dropdown-btn{display:none!important;visibility:hidden!important;pointer-events:none!important}",
+  "counted_paths": [],
+  "counted_prefixes": [],
+  "blocked_paths": [
+    "/en/logout",
+    "/logout",
+    "/api/user/logout",
+    "/en/login",
+    "/login",
+    "/en/signup",
+    "/signup",
+    "/en/p/pricing",
+    "/en/account",
+    "/en/account/settings",
+    "/en/account/billing",
+    "/en/account/users",
+    "/en/account/subscription"
+  ],
+  "blocked_prefixes": [
+    "/en/logout",
+    "/logout",
+    "/api/user/logout",
+    "/en/login",
+    "/login",
+    "/en/signup",
+    "/signup",
+    "/en/p/pricing",
+    "/en/account",
+    "/api/account"
+  ],
+  "sensitive_cookies": [
+    "PHPSESSID",
+    "assistant_private_key",
+    "__cf_bm"
+  ],
+  "watchdog_triggers": [],
+  "extra_cdn_domains": [
+    "https://assets.woorank.com",
+    "https://help.woorank.com",
+    "https://experts.woorank.com",
+    "https://index.woorank.com",
+    "https://api.woorank.com",
+    "https://woorank.com"
+  ],
+  "disable_export_tracking": true,
+  "cloudflare_bypass": true,
+  "logout_detection": {
+    "enabled": false
+  },
+  "automation": {
+    "enabled": false
+  },
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "cookie_file": "cookie.txt",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "gt4rents",
+  "mysql_password": "",
+  "mysql_db": "gt4rents",
+  "session_duration_minutes": 120,
+  "member_area_url": "https://panel.gt4rents.com",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+  "session_security": {
+    "enabled": false
+  },
+  "replacements": [
+    { "search": "DigitaVision", "replace": "ToolsMandi" },
+    { "search": "Digitavision", "replace": "ToolsMandi" },
+    { "search": "digitavision", "replace": "ToolsMandi" }
+  ]
+}
