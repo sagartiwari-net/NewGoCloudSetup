@@ -907,9 +907,14 @@ func ensureCreaitorCsrf(upstreamReq *http.Request, cookieHeader string) {
 
 // Runtime overlay for cookies Canva/CF rotates via Set-Cookie (__cf_bm etc.).
 // cookie.txt alone goes stale → Cloudflare 429 "bad request".
+// IMPORTANT: Wordtune panel-mode cookies come from panel.db accounts.cookie.
+// When that cookie (or assigned account) changes, overlay MUST be cleared or
+// absorbed GAESA/cf leftovers keep the old login alive after a DB update.
 var (
-	localCookieMu      sync.Mutex
-	localCookieOverlay = map[string]string{}
+	localCookieMu         sync.Mutex
+	localCookieOverlay    = map[string]string{}
+	lastCookieAccountID   int
+	lastCookieSessionFP   string
 )
 
 // Parsed cookie.txt cache — avoid re-reading/parsing JSON on every asset request.
@@ -1090,6 +1095,51 @@ func mapToCookieHeader(m map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+func clearLocalCookieOverlayLocked() {
+	localCookieOverlay = map[string]string{}
+}
+
+func clearLocalCookieOverlay() {
+	localCookieMu.Lock()
+	clearLocalCookieOverlayLocked()
+	localCookieMu.Unlock()
+}
+
+func cookieSessionFingerprint(cookieHeader string) string {
+	sess := cookieValueFromHeader(cookieHeader, "__session")
+	if sess == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(sess))
+	return hex.EncodeToString(sum[:8])
+}
+
+// prepareWordtuneAccountCookie loads the panel.db cookie as source of truth.
+// On account switch or __session change it drops the in-memory Set-Cookie overlay
+// so a DigitaVision / panel cookie update takes effect immediately.
+func prepareWordtuneAccountCookie(accountID int, rawCookie string) string {
+	base := parseCookieFromDB(rawCookie)
+	fp := cookieSessionFingerprint(base)
+
+	localCookieMu.Lock()
+	rotated := accountID != lastCookieAccountID || fp != lastCookieSessionFP
+	if rotated {
+		n := len(localCookieOverlay)
+		if lastCookieAccountID != 0 || lastCookieSessionFP != "" || n > 0 {
+			log.Printf("[COOKIE] panel.db cookie reload account=%d→%d sess_fp=%q→%q overlay_cleared=%d",
+				lastCookieAccountID, accountID, lastCookieSessionFP, fp, n)
+		} else {
+			log.Printf("[COOKIE] panel.db cookie loaded account=%d sess_fp=%q", accountID, fp)
+		}
+		clearLocalCookieOverlayLocked()
+		lastCookieAccountID = accountID
+		lastCookieSessionFP = fp
+	}
+	localCookieMu.Unlock()
+
+	return applyLocalCookieOverlay(base)
+}
+
 func applyLocalCookieOverlay(base string) string {
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
@@ -1097,14 +1147,26 @@ func applyLocalCookieOverlay(base string) string {
 		return base
 	}
 	m := cookieHeaderToMap(base)
+	// panel.db / DigitaVision __session is always authoritative — never overlay it.
+	baseSession := m["__session"]
 	for k, v := range localCookieOverlay {
 		if v == "" {
 			continue
 		}
-		// DigitaVision __session / cf_clearance are authoritative — never let a
-		// shorter 2xx Set-Cookie overlay clobber them (broke Wordtune CF + auth).
-		if k == "__session" || k == "cf_clearance" {
+		if k == "__session" {
+			continue
+		}
+		// DigitaVision cf_clearance is authoritative — never let a
+		// shorter 2xx Set-Cookie overlay clobber it (broke Wordtune CF + auth).
+		if k == "cf_clearance" {
 			if existing := m[k]; existing != "" && len(existing) >= len(v) {
+				continue
+			}
+		}
+		// If __session came from a fresh panel.db cookie, do not keep an old
+		// GAESA from a previous absorb — it pins the prior login.
+		if k == "GAESA" && baseSession != "" {
+			if existing := m[k]; existing != "" {
 				continue
 			}
 		}
@@ -1175,35 +1237,68 @@ func cookieValueFromHeader(header, name string) string {
 // so Wordtune AuthClient (reads __session via getCookie) can hydrate + call
 // /identity/auth/auth_token → Firebase signInWithAccessToken. Upstream-only Cookie
 // headers never reach the browser on localhost.
+// Always runs: clears stale browser auth cookies when panel.db cookie changed/removed.
 func buildWordtuneSessionInjectHTML(cookieHeader string) string {
 	session := cookieValueFromHeader(cookieHeader, "__session")
-	if session == "" || !strings.HasPrefix(session, "eyJ") {
-		return ""
+	if session != "" && !strings.HasPrefix(session, "eyJ") {
+		session = ""
 	}
 	deviceID := cookieValueFromHeader(cookieHeader, "__wtDeviceId")
 	gaesa := cookieValueFromHeader(cookieHeader, "GAESA")
+	fp := cookieSessionFingerprint(cookieHeader)
+	if fp == "" {
+		fp = "none"
+	}
 
 	sessionJS, _ := json.Marshal(session)
 	deviceJS, _ := json.Marshal(deviceID)
 	gaesaJS, _ := json.Marshal(gaesa)
+	fpJS, _ := json.Marshal(fp)
 
 	return `<script data-tm-wt-session="1">
 (function(){
+  var FP = ` + string(fpJS) + `;
+  var SESSION = ` + string(sessionJS) + `;
+  var DEVICE = ` + string(deviceJS) + `;
+  var GAESA = ` + string(gaesaJS) + `;
+  function clr(n){ try { document.cookie = n+'=; path=/; Max-Age=0; SameSite=Lax'; } catch(e){} }
   function setCk(n,v){ if(!n||!v) return; try { document.cookie = n+'='+v+'; path=/; SameSite=Lax'; } catch(e){} }
-  setCk('__session', ` + string(sessionJS) + `);
-  setCk('__wtDeviceId', ` + string(deviceJS) + `);
-  setCk('GAESA', ` + string(gaesaJS) + `);
-  try { console.log('[Wordtune] __session hydrated for AuthClient'); } catch(e){}
+  // Always drop old auth cookies first so a panel.db update cannot leave a prior JWT.
+  clr('__session'); clr('__wtDeviceId'); clr('GAESA');
+  if (SESSION) setCk('__session', SESSION);
+  if (DEVICE) setCk('__wtDeviceId', DEVICE);
+  if (GAESA) setCk('GAESA', GAESA);
+  try {
+    var prev = sessionStorage.getItem('tm_wt_sess_fp') || '';
+    if (prev && prev !== FP) {
+      sessionStorage.setItem('tm_wt_sess_fp', FP);
+      try { console.log('[Wordtune] panel.db cookie changed — reloading AuthClient'); } catch(e){}
+      location.reload();
+      return;
+    }
+    sessionStorage.setItem('tm_wt_sess_fp', FP);
+  } catch (e) {}
+  try { console.log('[Wordtune] __session hydrated fp='+FP+' has='+!!SESSION); } catch(e){}
 })();
 </script>`
 }
 
 // setBrowserWordtuneAuthCookies mirrors DigitaVision auth cookies onto the proxy
 // origin so document.cookie / AuthClient can see them (Set-Cookie + JS inject).
+// Missing names are expired so a panel.db cookie replace cannot leave the old login.
 func setBrowserWordtuneAuthCookies(w http.ResponseWriter, cookieHeader string) {
 	for _, name := range []string{"__session", "__wtDeviceId", "GAESA"} {
 		val := cookieValueFromHeader(cookieHeader, name)
 		if val == "" {
+			http.SetCookie(w, &http.Cookie{
+				Name:     name,
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1,
+				Expires:  time.Unix(0, 0),
+				HttpOnly: false,
+				SameSite: http.SameSiteLaxMode,
+			})
 			continue
 		}
 		http.SetCookie(w, &http.Cookie{
@@ -3255,7 +3350,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// IMPORTANT: use ONLY the premium/account cookie for upstream.
 	// Merging the browser Cookie header caused "400 Request Header Or Cookie Too Large"
 	// on sas.selleramp.com nginx and broke CSRF/session → Unauthorized toasts.
-	accountCookieStr := applyLocalCookieOverlay(parseCookieFromDB(activeAcc.Cookie))
+	// Source of truth: panel.db accounts.cookie (NOT MySQL ahrefs_accounts).
+	// prepare* clears absorbed overlays when DigitaVision/panel cookie is updated.
+	accountCookieStr := prepareWordtuneAccountCookie(activeAcc.ID, activeAcc.Cookie)
 	upstreamReq.Header.Del("Cookie")
 	hostWithoutPort := upstreamURL.Host
 	if h, _, err := net.SplitHostPort(upstreamURL.Host); err == nil {
