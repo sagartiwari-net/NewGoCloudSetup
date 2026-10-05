@@ -114,7 +114,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
 - [x] `junglescout` — JungleScout (:5211) — **HTTPS OK**: HTTP/2 Connection strip, panel logout→switch/contact-admin, device-lock reveal + safe deny redirect, extension icons + home→baked proxy origin, proxy optional  
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** (2026-10-05): local OK; server still blank `/home` (no `GetAccountInfo` in Network). Partial fixes on main (`a7551d9`+) — **do not tick until HTTPS access-link + real UI verified**  
-- [ ] `grammarly` — grammarly (:4911) — blank UI: CORS `/properties` + access-page still registered device SW; fixes on main — **verify HTTPS access-link (and Safe Browsing clear) before ticking**
+- [x] `grammarly` — grammarly (:4911) — **HTTPS OK**: device-lock (no visibility:hidden), gateway CORS/`ext-host`, `/internalAppApi`→coda, `/newdoc` device allow, dox docs JSON, Sign out (`logout-lnk`) hide
 
 ### Rest (alphabetical)
 
@@ -138,6 +138,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `flaticon` (:4921)  
 - [ ] `flexclip` (:4671)  
 - [ ] `glorify` (:4681)  
+- [x] `grammarly` (:4911) — see Priority  
 - [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide  
 - [ ] `grok` (:4831)  
 - [x] `helium10` (:5201) — see Priority  
@@ -199,7 +200,6 @@ If fail: note in “Open issues”, fix, re-tick.
 | Tool | Issue | Action |
 |------|--------|--------|
 | `branalyzer` | Server blank `/home` — Network shows no `GetAccountInfo` (local cookie mode OK) | **Parked.** Resume later: redeploy `a7551d9`+, hard-refresh access-link, confirm `extra-cdn-0` GetAccountInfo + Be Curious UI before ticking `[x]` |
-| `grammarly` | Blank white after panel grant (`proof stored`) — `visibility:hidden !important` not cleared; fetch wrapper could hang SPA | Redeploy latest grammarly device-lock; hard-refresh access-link; also `UPDATE ahrefs_websites SET domain='grammarly.gt4rents.com' WHERE id=42` if domain warning remains |
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
