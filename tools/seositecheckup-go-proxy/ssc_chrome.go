@@ -60,7 +60,7 @@ func sscChromeScript(panelUsername string) string {
   try {
     new MutationObserver(run).observe(document.documentElement, {childList:true, subtree:true});
   } catch (e2) {}
-  setInterval(run, 1000);
+  setInterval(run, 2000);
 })();
 </script>`, userJS)
 }

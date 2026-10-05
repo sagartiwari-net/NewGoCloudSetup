@@ -2470,7 +2470,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "seositecheckup-v13-novis"
+const proxyBuildTag = "seositecheckup-v14-cache"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 
@@ -3413,6 +3413,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Panel logout wall handled later for documents; static assets can hit memory cache first.
+	if ent := getStaticCached(r.Method, path); ent != nil {
+		serveStaticCached(w, r, ent)
+		return
+	}
+
 	// Document login wall only → switch / contact-admin (never on XHR/API).
 	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 &&
 		isDocumentNavigation(r) && sscLooksLoggedOutPath(path) {
@@ -3673,10 +3679,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		for _, v := range vv { w.Header().Add(k, v) }
 	}
 
-	// Force disable browser cache for all dynamic/static/API responses
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Expires", "0")
+	// Cache static assets in browser; keep HTML/API uncached
+	setProxyCacheHeaders(w, path, contentType)
 
 	// ── 8. SSE (Server-Sent Events) passthrough ───────────────────────────────────
 	if isSSEResponse(contentType) {
@@ -3788,6 +3792,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if isRSC {
 				w.Header().Set("Content-Type", "text/x-component")
 			}
+			putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", bodyBytes)
+			w.Header().Set("X-OCG-Cache", "MISS")
+			w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
 			return
@@ -3795,6 +3802,21 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 11. Pass through everything else ─────────────────────────────────────────
+	if isCacheableStaticPath(path) && upstreamResp.StatusCode == 200 {
+		bodyBytes, err := io.ReadAll(upstreamResp.Body)
+		if err == nil {
+			ce := upstreamResp.Header.Get("Content-Encoding")
+			putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, ce, bodyBytes)
+			if ce != "" {
+				w.Header().Set("Content-Encoding", ce)
+			}
+			w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
+			w.Header().Set("X-OCG-Cache", "MISS")
+			w.WriteHeader(upstreamResp.StatusCode)
+			w.Write(bodyBytes)
+			return
+		}
+	}
 	w.WriteHeader(upstreamResp.StatusCode)
 	io.Copy(w, upstreamResp.Body)
 }

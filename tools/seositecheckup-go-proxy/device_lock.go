@@ -281,14 +281,15 @@ function tmReveal() {
 }
 tmReveal();
 (function () {
+  // Light observer — do not watch every attribute (was thrashing CPU → stuck UI).
   try {
-    new MutationObserver(function () { tmReveal(); }).observe(document.documentElement, {childList:true, subtree:true, attributes:true, attributeFilter:["style","class"]});
+    new MutationObserver(function () { tmReveal(); }).observe(document.documentElement, {childList:true, subtree:false});
   } catch (e) {}
   var n = 0;
   var t = setInterval(function () {
     try { tmReveal(); } catch (e) {}
-    if (++n > 40) clearInterval(t);
-  }, 250);
+    if (++n > 20) clearInterval(t);
+  }, 500);
 })();
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
