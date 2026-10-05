@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Fix wrank: nginx host→4561, MySQL+panel.db domain, probe (expect 401/Access Denied — not nginx 404).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-python3 - <<'PY'
-import pathlib, re
+LINE='    wrank.gt4rents.com    4561;'
 
-NEED = "wrank.gt4rents.com"
-LINE = "    wrank.gt4rents.com    4561;"
+python3 - "$LINE" <<'PY'
+import pathlib, re, sys
+
+LINE = sys.argv[1]
 roots = [
     pathlib.Path("/www/wwwroot/gt4rents.com/_repo/deploy/nginx-host-port.map.conf"),
     pathlib.Path("/www/server/nginx/conf"),
@@ -38,29 +38,33 @@ for f in files:
     try:
         txt = f.read_text()
     except Exception as e:
-        print(f"SKIP read {f}: {e}")
+        print("SKIP read", f, e)
         continue
     if re.search(r"(?m)^\s*wrank\.gt4rents\.com\s+\d+", txt):
-        print(f"OK already: {f}")
+        print("OK already:", f)
         continue
     if "woorank.gt4rents.com" in txt:
         txt2 = re.sub(
             r"(?m)^(\s*)woorank\.gt4rents\.com\s+4561\s*;",
-            LINE + "\n\\1woorank.gt4rents.com    4561;",
+            LINE + r"\n\1woorank.gt4rents.com    4561;",
             txt,
             count=1,
         )
         if txt2 == txt:
-            txt2 = txt.replace("woorank.gt4rents.com    4561;", LINE + "\n    woorank.gt4rents.com    4561;", 1)
+            txt2 = txt.replace(
+                "woorank.gt4rents.com    4561;",
+                LINE + "\n    woorank.gt4rents.com    4561;",
+                1,
+            )
     elif "map $host $tool_port" in txt:
         txt2 = txt.replace("map $host $tool_port {", "map $host $tool_port {\n" + LINE, 1)
     else:
-        print(f"SKIP no insert point: {f}")
+        print("SKIP no insert point:", f)
         continue
     bak = f.with_suffix(f.suffix + ".bak-wrank")
     bak.write_text(txt)
     f.write_text(txt2)
-    print(f"PATCHED: {f}")
+    print("PATCHED:", f)
 PY
 
 echo "== nginx -t && reload =="
@@ -86,29 +90,31 @@ else
   echo "WARN: missing $PANEL_DB"
 fi
 
-echo "== probe (expect 401/403/200 Access Denied card — NOT nginx 404) =="
+echo "== probe (expect 401/403 — NOT nginx 404) =="
 curl -sS -o /dev/null -w "local :4561 → %{http_code}\n" -H 'Host: wrank.gt4rents.com' "http://127.0.0.1:4561/" || true
 curl -sS -o /dev/null -w "https://wrank.gt4rents.com/ → %{http_code}\n" "https://wrank.gt4rents.com/" || true
 curl -sS -o /dev/null -w "https://wrank.gt4rents.com/access → %{http_code}\n" "https://wrank.gt4rents.com/access?token=probe" || true
 
-echo "== config sanity (must be woorank, not chatgpt) =="
+echo "== config sanity =="
 python3 - <<'PY'
 import json
 from pathlib import Path
 p = Path("/www/wwwroot/gt4rents.com/wrank/config.json")
 if not p.exists():
     print("MISSING config.json — run: ./deploy/build-one.sh wrank")
+    raise SystemExit(1)
+c = json.loads(p.read_text())
+print("target_url=", c.get("target_url"))
+print("tool_name=", c.get("tool_name"))
+print("public_host=", c.get("public_host"))
+print("panel_db=", c.get("panel_db"))
+t = (c.get("target_url") or "").lower()
+name = (c.get("tool_name") or "").lower()
+if "chatgpt" in t or "openai" in t or name in ("", "tool"):
+    print("ERROR: bad config — rebuild wrank after git pull")
+    raise SystemExit(2)
+if "woorank" not in t:
+    print("WARN: unexpected target")
 else:
-    c = json.loads(p.read_text())
-    print("target_url=", c.get("target_url"))
-    print("tool_name=", c.get("tool_name"))
-    print("public_host=", c.get("public_host"))
-    print("panel_db=", c.get("panel_db"))
-    t = (c.get("target_url") or "").lower()
-    if "chatgpt" in t or "openai" in t:
-        print("ERROR: wrong binary/config — rebuild wrank")
-    elif "woorank" not in t:
-        print("WARN: unexpected target")
-    else:
-        print("OK: WooRank target")
+    print("OK: WooRank target")
 PY
