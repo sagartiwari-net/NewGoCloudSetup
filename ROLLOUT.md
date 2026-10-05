@@ -187,7 +187,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `uncensoredchat` (:4891)  
 - [ ] `videotoblog` (:5041)  
 - [ ] `vistacreate` (:4581)  
-- [ ] `wrank` (:4561) — WooRank proxy; host renamed from `woorank.gt4rents.com` (Safe Browsing) → `wrank.gt4rents.com` (2026-10-05)  
+- [ ] `wrank` (:4561) — **parked** (2026-10-05): Chrome Safe Browsing on brand host; rename to `wrank` partial — resume later (nginx map + SB review)  
+
 
 - [ ] `wordtune` (:4631)  
 - [ ] `writecream` (:5051)  
@@ -205,7 +206,7 @@ If fail: note in “Open issues”, fix, re-tick.
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
-| `wrank` (WooRank) | Was Chrome **Dangerous site** on brand host `woorank.gt4rents.com` | **Renamed → `wrank.gt4rents.com`** (2026-10-05). Deploy slug `wrank`, port 4561. After CF DNS + nginx map + MySQL domain update + rebuild, open access-link on **wrank** only; remove old `woorank` CF record when ready. |
+| `wrank` (WooRank) | Chrome Safe Browsing “Dangerous site” (brand lookalike); `wrank` rename + nginx map incomplete | **Parked.** Resume later: finish nginx `wrank→4561`, MySQL `ahrefs_websites` domain, SB review; or keep users off this tool for now. |
 | `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
 
 ---
