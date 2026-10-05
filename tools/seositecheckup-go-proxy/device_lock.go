@@ -102,17 +102,11 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
-			return false
-		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
+		// Document loads and early SPA fetches cannot send device headers until
+		// tmPatchRequests runs. Missing headers ≠ cookie theft — only wrong proof is.
+		// Returning 401 here made SSC think auth died → soft-nav to /auth/login
+		// (official login HTML, no switch/contact-admin card).
+		return false
 	}
 	panelSess.Delete(token)
 	recordCookieShare(cfg, r, token)
@@ -331,7 +325,11 @@ function tmWatch(fp, proof) {
     return;
   }
   tmReveal();
-  // Always resolve fp then patch once. Never wrap fetch temporarily.
+  // Patch fetch/XHR IMMEDIATELY with stored proof so SPA APIs are not 401'd
+  // before async fingerprint finishes (that race forced /auth/login wall).
+  if (proof && fp) {
+    try { tmPatchRequests(fp, proof); } catch (e) {}
+  }
   var bootFp = fp;
   Promise.resolve(bootFp || tmFingerprint()).then(function (next) {
     bootFp = next || "";

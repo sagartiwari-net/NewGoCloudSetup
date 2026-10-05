@@ -57,8 +57,11 @@ func sscLooksLoggedOut(path string, body []byte, status int, location string) (b
 	pairs := [][2]string{
 		{"sign in", "password"},
 		{"log in", "password"},
+		{"login", "password"},
+		{"email address", "password"},
 		{"sign in to seo", "email"},
 		{"auth/login", "password"},
+		{"invalid domain for site key", "password"},
 	}
 	for _, pair := range pairs {
 		if strings.Contains(low, pair[0]) && strings.Contains(low, pair[1]) {
@@ -263,16 +266,27 @@ func sscFailoverWatchScript() string {
     try { location.replace('/api/ssc-failover?reason=' + encodeURIComponent(reason || 'client')); }
     catch (e) {}
   }
-  function looksLogout(){
+  function onAuthPath(){
     try {
       var h = location.pathname || '';
-      var onAuth = /\\/auth\\/(login|sign-?in|sign-?up)/i.test(h) || /^\\/(login|sign-?in|sign-?up)(\\/|$)/i.test(h);
-      if (!onAuth) { authSince = 0; return ''; }
+      return /\\/auth\\/(login|sign-?in|sign-?up)/i.test(h) || /^\\/(login|sign-?in|sign-?up)(\\/|$)/i.test(h);
+    } catch (e) { return false; }
+  }
+  function looksWall(){
+    try {
+      var t = (document.body && document.body.innerText || '').replace(/\\s+/g,' ').trim().slice(0,1200).toLowerCase();
+      if (!t) return false;
+      if (t.indexOf('password') < 0) return false;
+      return /sign in|log in|\\blogin\\b|email address|invalid domain for site key/.test(t);
+    } catch (e) { return false; }
+  }
+  function looksLogout(){
+    try {
+      if (!onAuthPath()) { authSince = 0; return ''; }
       if (!authSince) authSince = Date.now();
-      // Wait for IAM inject + SPA; only treat real password wall as logout.
-      if (Date.now() - authSince < 6000) return '';
-      var t = (document.body && document.body.innerText || '').replace(/\\s+/g,' ').trim().slice(0,900);
-      if (/sign in|log in/i.test(t) && /password/i.test(t)) return 'wall';
+      // Soft SPA route to /auth/login — do not wait long; official login has no our card.
+      if (Date.now() - authSince < 1200) return '';
+      if (looksWall()) return 'wall';
     } catch (e) {}
     return '';
   }
@@ -280,8 +294,10 @@ func sscFailoverWatchScript() string {
     var why = looksLogout();
     if (why) go('client_' + why);
   }
-  setTimeout(tick, 2500);
-  setInterval(tick, 3000);
+  // Immediate kick if already parked on login wall (soft-nav).
+  if (onAuthPath()) setTimeout(tick, 800);
+  setTimeout(tick, 1500);
+  setInterval(tick, 2000);
   try {
     var _push = history.pushState;
     var _replace = history.replaceState;
