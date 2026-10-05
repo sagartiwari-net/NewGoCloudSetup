@@ -1368,7 +1368,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	if host == "" {
 		host = r.Host
 	}
-	redirectURL := fmt.Sprintf("%s://%s/access?user=%s&token=%s",
+	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
 		scheme, host,
 		url.QueryEscape(payload.Username), url.QueryEscape(ott),
 	)
@@ -1393,10 +1393,9 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-	username := r.URL.Query().Get("user")
-	token := r.URL.Query().Get("token")
-	if username == "" || token == "" {
-		recordSecurityEvent(r, username, "access_denied", "missing user or token")
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
+		recordSecurityEvent(r, "", "access_denied", "missing token")
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
@@ -1407,19 +1406,20 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 		token, currentWebsiteID,
 	).Scan(&dbUsername, &dbClientIP, &expiresAt)
 	if err != nil {
-		log.Printf("[ACCESS] ❌ OTT lookup failed for user=%s: %v", username, err)
-		recordSecurityEvent(r, username, "access_denied", "invalid or used token")
+		log.Printf("[ACCESS] ❌ OTT lookup failed: %v", err)
+		recordSecurityEvent(r, "", "access_denied", "invalid or used token")
+		renderAccessDeniedPage(w, cfg)
+		return
+	}
+	username := strings.TrimSpace(dbUsername)
+	if username == "" {
+		recordSecurityEvent(r, "", "access_denied", "token has empty username")
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
 	if time.Now().After(expiresAt) {
 		_, _ = db.Exec("DELETE FROM ahrefs_tokens WHERE token = ? AND website_id = ?", token, currentWebsiteID)
 		recordSecurityEvent(r, username, "access_denied", "token expired")
-		renderAccessDeniedPage(w, cfg)
-		return
-	}
-	if dbUsername != username {
-		recordSecurityEvent(r, username, "access_denied", "username mismatch")
 		renderAccessDeniedPage(w, cfg)
 		return
 	}

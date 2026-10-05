@@ -2172,7 +2172,7 @@ func main() {
 			}
 
 			// Return secure handshake redirect URL
-			redirectURL := fmt.Sprintf("%s://%s/access?user=%s&token=%s",
+			redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
 				currentScheme, currentHost, url.QueryEscape(payload.Username), ott)
 
 			w.Header().Set("Content-Type", "application/json")

@@ -15,6 +15,6 @@ go build -o envato-go-proxy .
 echo "=========================================="
 echo "  Envato LOCAL (panel security)"
 echo "  Direct:  http://127.0.0.1:$PORT  → Access Denied"
-echo "  Access:  panel Open → /access?user=&token="
+echo "  Access:  panel Open → /access?token="
 echo "=========================================="
 exec ./envato-go-proxy

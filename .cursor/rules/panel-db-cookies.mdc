@@ -21,6 +21,7 @@ On the server, mapped-account cookies for every tool MUST be read from the Updat
 - If admin re-pastes a cookie while status is `logged_out`, revive to `active` when cookie is non-empty
 - IAM/session caches must not override a fresher panel.db cookie
 - Refuse relative/tool-local panel_db paths; force the Update Panel path
+- Access links: `/access?token=…` only — never put `user=` / username in the URL; resolve username from `access_tokens` via the token
 
 ## Why
 Failover may mark accounts `logged_out`. Admins update cookies in Update Panel. Tools must always re-read that panel.db — not a local copy — or users see "Temporarily Unavailable" / dead sessions.

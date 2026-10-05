@@ -1154,7 +1154,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 		cfgMu.RUnlock()
 	}
 
-	redirectURL := fmt.Sprintf("%s://%s/access?user=%s&token=%s",
+	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
 		publicScheme, publicHost,
 		url.QueryEscape(payload.Username), url.QueryEscape(ott),
 	)

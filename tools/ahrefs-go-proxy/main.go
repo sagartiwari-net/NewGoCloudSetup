@@ -1195,7 +1195,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	// Clean up expired tokens periodically
 	go func() { _, _ = db.Exec("DELETE FROM ahrefs_tokens WHERE expires_at < NOW()") }()
 
-	redirectURL := fmt.Sprintf("%s://%s/access?user=%s&token=%s",
+	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
 		cfg.PublicScheme, cfg.PublicHost,
 		url.QueryEscape(payload.Username),
 		url.QueryEscape(ott),

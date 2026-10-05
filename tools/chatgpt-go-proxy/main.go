@@ -1070,7 +1070,7 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	if host == "" {
 		host = r.Host
 	}
-	redirectURL := fmt.Sprintf("%s://%s/access?user=%s&token=%s",
+	redirectURL := fmt.Sprintf("%s://%s/access?token=%s",
 		scheme, host,
 		url.QueryEscape(payload.Username), url.QueryEscape(ott),
 	)

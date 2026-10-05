@@ -83,7 +83,7 @@ print(tok)
 PY
 )
 
-ACCESS="http://${HOST}/access?user=localtest&token=${TOKEN}"
+ACCESS="http://${HOST}/access?token=${TOKEN}"
 
 echo "=========================================="
 echo "  Branalyzer LOCAL (panel mode)"

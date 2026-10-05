@@ -88,7 +88,7 @@ func (s *server) openAccess(w http.ResponseWriter, r *http.Request) {
 	if scheme != "https" {
 		scheme = "http"
 	}
-	openURL := scheme + "://" + domain + "/access?user=" + url.QueryEscape(body.Username) + "&token=" + url.QueryEscape(token)
+	openURL := scheme + "://" + domain + "/access?token=" + url.QueryEscape(token)
 	writeJSON(w, 200, map[string]any{
 		"allowed":    true,
 		"open_url":   openURL,
