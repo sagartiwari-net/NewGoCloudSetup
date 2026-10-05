@@ -120,7 +120,20 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
 
-> **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`). Any tool binary built **before** `fad80ac` will Access Denied. Rebuild priority list above + `wordtune`/`seositecheckup`/`wrank`/`gptzero`/`chatbotapp` if they deny.
+> **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`).  
+> Binaries built **before** `fad80ac` → Access Denied.  
+> **Already OK (skip rebuild):** `refs` `smrs` `cgpt` `clud` `envt` `cnva`  
+> **Rebuild everyone else** (one shot on server):
+>
+> ```bash
+> cd /www/wwwroot/gt4rents.com/_repo
+> git pull --ff-only origin main
+> source /www/wwwroot/gt4rents.com/_secrets/mysql.env
+> chmod +x deploy/rebuild-token-access.sh
+> ./deploy/rebuild-token-access.sh 2>&1 | tee /tmp/gt4-token-rebuild.log
+> ```
+>
+> After that, open each tool with a **fresh** panel access-link (old tokens are one-time).
 ### Rest (alphabetical)
 
 - [ ] `airbrush` (:5181)  
