@@ -10,6 +10,7 @@ import type {
   LiveSession,
   ExtensionEvent,
   LoginEvent,
+  LogoutEvent,
   MappedAccount,
   Operator,
   PanelUser,
@@ -328,6 +329,20 @@ export async function listSwitches(query: {
   websiteId: number
 }): Promise<PageResult<SwitchEvent>> {
   return api(`/api/switches${qs(query)}`)
+}
+
+export async function clearLogouts(): Promise<Ok> {
+  await api("/api/logouts", { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function listLogouts(query: {
+  page: number
+  pageSize: number
+  query: string
+  websiteId: number
+}): Promise<PageResult<LogoutEvent>> {
+  return api(`/api/logouts${qs(query)}`)
 }
 
 export async function listExtensionEvents(query: {

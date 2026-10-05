@@ -90,6 +90,8 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/logins", s.clearLogins)
 	mux.HandleFunc("GET /api/switches", s.listSwitches)
 	mux.HandleFunc("DELETE /api/switches", s.clearSwitches)
+	mux.HandleFunc("GET /api/logouts", s.listLogouts)
+	mux.HandleFunc("DELETE /api/logouts", s.clearLogouts)
 	mux.HandleFunc("GET /api/extension-events", s.listExtensionEvents)
 	mux.HandleFunc("DELETE /api/extension-events", s.clearExtensionEvents)
 	mux.HandleFunc("GET /api/analytics/summary", s.analyticsSummary)

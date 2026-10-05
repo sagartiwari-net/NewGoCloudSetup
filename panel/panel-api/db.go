@@ -69,6 +69,18 @@ func openDB(path string) *sql.DB {
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_extension_events_created ON extension_events(created_at)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_extension_events_website ON extension_events(website_id, created_at)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_extension_events_user ON extension_events(username, created_at)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS logout_events (
+		id INTEGER PRIMARY KEY,
+		website_id INTEGER NOT NULL,
+		username TEXT NOT NULL DEFAULT '',
+		account_name TEXT NOT NULL DEFAULT '',
+		next_account_name TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		client_ip TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_logout_events_created ON logout_events(created_at)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_logout_events_website ON logout_events(website_id, created_at)`)
 	seed(db)
 	ensureResellers(db)
 	ensureAccessAlertSettings(db)

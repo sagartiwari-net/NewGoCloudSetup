@@ -126,6 +126,18 @@ export type LoginEvent = {
   logged_in_at: string
 }
 
+export type LogoutEvent = {
+  id: number
+  website_id: number
+  domain: string
+  username: string
+  account_name: string
+  next_account_name: string
+  reason: string
+  client_ip: string
+  created_at: string
+}
+
 export type SwitchEvent = {
   id: number
   website_id: number

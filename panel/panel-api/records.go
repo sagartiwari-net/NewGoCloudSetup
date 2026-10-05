@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -1006,6 +1007,71 @@ func (s *server) clearSwitches(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
+func (s *server) listLogouts(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok {
+		return
+	}
+	page, size, q := pageQuery(r)
+	where, args := s.scope(op, "e.website_id")
+	if id := queryInt(r, "websiteId"); id > 0 {
+		where += " AND e.website_id=?"
+		args = append(args, id)
+	}
+	if q != "" {
+		where += " AND (e.username LIKE ? OR w.domain LIKE ? OR e.account_name LIKE ? OR e.reason LIKE ?)"
+		like := "%" + q + "%"
+		args = append(args, like, like, like, like)
+	}
+	from := ` FROM logout_events e JOIN websites w ON w.id=e.website_id WHERE ` + where
+	var total int
+	_ = s.db.QueryRow(`SELECT COUNT(*)`+from, args...).Scan(&total)
+	page = clampPage(page, size, total)
+	args = append(args, size, (page-1)*size)
+	rows, err := s.db.Query(`SELECT e.id, e.website_id, w.domain, e.username, e.account_name, e.next_account_name, e.reason, e.client_ip, e.created_at`+from+` ORDER BY e.created_at DESC LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	items := []any{}
+	for rows.Next() {
+		var id, website int
+		var domain, username, account, next, reason, ip, at string
+		_ = rows.Scan(&id, &website, &domain, &username, &account, &next, &reason, &ip, &at)
+		items = append(items, map[string]any{
+			"id": id, "website_id": website, "domain": domain, "username": username,
+			"account_name": account, "next_account_name": next, "reason": reason,
+			"client_ip": ip, "created_at": at,
+		})
+	}
+	s.writePage(w, page, size, total, items)
+}
+
+func (s *server) clearLogouts(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok {
+		return
+	}
+	if op.Role == "master" {
+		_, _ = s.db.Exec(`DELETE FROM logout_events`)
+	} else {
+		_, _ = s.db.Exec(`DELETE FROM logout_events WHERE website_id IN (SELECT website_id FROM operator_websites WHERE operator_id=?)`, op.ID)
+	}
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) insertLogoutEvent(websiteID int, username, accountName, nextAccount, reason, clientIP string) {
+	if websiteID <= 0 {
+		return
+	}
+	_, err := s.db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
+		websiteID, username, accountName, nextAccount, reason, clientIP, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		log.Printf("[logout] insert failed: %v", err)
+	}
+}
+
 func (s *server) listExtensionEvents(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
 	if !ok {
@@ -1776,7 +1842,10 @@ func (s *server) useAccount(w http.ResponseWriter, r *http.Request) {
 			_ = s.db.QueryRow(`SELECT name FROM accounts WHERE id=?`, chosen).Scan(&toName)
 			_, _ = s.db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
 				websiteID, body.Username, fromName, toName, body.Reason, now)
+		} else {
+			toName = "(none)"
 		}
+		s.insertLogoutEvent(websiteID, body.Username, fromName, toName, body.Reason, body.ClientIP)
 		s.recordLogout(websiteID, body.Username, body.ClientIP, body.Reason)
 	}
 	if chosen == 0 {
@@ -1793,6 +1862,7 @@ func (s *server) recordLogout(websiteID int, username, ip, reason string) {
 	var routeID int
 	var eventsRaw string
 	if s.db.QueryRow(`SELECT id, events_json FROM telegram_routes WHERE website_id=?`, websiteID).Scan(&routeID, &eventsRaw) != nil || !strings.Contains(eventsRaw, "logout") {
+		// Still keep a telegram_deliveries breadcrumb; Analytics Logouts come from logout_events.
 		s.insertDelivery(websiteID, username, "logout", "sent", nil)
 		return
 	}

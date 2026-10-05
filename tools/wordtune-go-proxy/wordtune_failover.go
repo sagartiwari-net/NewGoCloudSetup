@@ -183,6 +183,8 @@ func serveWordtuneCookieFailover(w http.ResponseWriter, r *http.Request, cfg Con
 	if err == nil && next.ID != activeAcc.ID {
 		log.Printf("[FAILOVER] switched user=%s %s -> %s reason=%s cookie=%s",
 			currentUser, activeAcc.Name, nextName, reason, wordtuneCookieSummary(next.Cookie))
+		// Analytics → Logouts tab (switch_events already written by panelSwitchToOtherAccount).
+		panelRecordLogoutEvent(cfg, sessionToken, activeAcc.Name, nextName, reason, false)
 		pushProxyLog(ProxyLogEntry{
 			Source:  "FAILOVER",
 			Level:   "info",
@@ -203,8 +205,8 @@ func serveWordtuneCookieFailover(w http.ResponseWriter, r *http.Request, cfg Con
 	}
 
 	log.Printf("[FAILOVER] contact-admin user=%s account=%s reason=%s err=%v", currentUser, activeAcc.Name, reason, err)
-	// So Panel → Analytics → Account switches shows sole-account logouts too.
-	panelRecordLogoutEvent(cfg, sessionToken, activeAcc.Name, "(none)", "no_other_active:"+reason)
+	// Analytics → Logouts (+ Switches breadcrumb) for sole-account logouts.
+	panelRecordLogoutEvent(cfg, sessionToken, activeAcc.Name, "(none)", "no_other_active:"+reason, true)
 	pushProxyLog(ProxyLogEntry{
 		Source:  "FAILOVER",
 		Level:   "error",

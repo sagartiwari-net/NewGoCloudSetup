@@ -20,14 +20,16 @@ import { useResource } from "@/hooks/use-resource"
 import {
   clearExtensionEvents,
   clearLogins,
+  clearLogouts,
   clearSwitches,
   getAnalyticsSummary,
   listAllWebsites,
   listExtensionEvents,
   listLogins,
+  listLogouts,
   listSwitches,
 } from "@/lib/api/client"
-import type { ExtensionEvent, LoginEvent, SwitchEvent } from "@/lib/api/types"
+import type { ExtensionEvent, LoginEvent, LogoutEvent, SwitchEvent } from "@/lib/api/types"
 import { formatTime } from "@/lib/format"
 import { usePageIndex, usePageSize } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
@@ -62,6 +64,21 @@ const switchColumns: DataColumn<SwitchEvent>[] = [
   { id: "to", header: "To account", cell: (row) => row.to_account_name, sortValue: (row) => row.to_account_name },
   { id: "reason", header: "Reason", cell: (row) => row.reason, sortValue: (row) => row.reason },
   { id: "time", header: "Time", cell: (row) => formatTime(row.switched_at), sortValue: (row) => row.switched_at },
+]
+
+const logoutColumns: DataColumn<LogoutEvent>[] = [
+  {
+    id: "username",
+    header: "Username",
+    cell: (row) => <UserLink username={row.username} websiteId={row.website_id} />,
+    sortValue: (row) => row.username,
+  },
+  { id: "website", header: "Website", cell: (row) => row.domain, sortValue: (row) => row.domain },
+  { id: "account", header: "Logged-out account", cell: (row) => row.account_name || "—", sortValue: (row) => row.account_name },
+  { id: "next", header: "Next account", cell: (row) => row.next_account_name || "—", sortValue: (row) => row.next_account_name },
+  { id: "reason", header: "Reason", cell: (row) => row.reason, sortValue: (row) => row.reason },
+  { id: "ip", header: "Client IP", cell: (row) => <IpLink ip={row.client_ip} />, sortValue: (row) => row.client_ip },
+  { id: "time", header: "Time", cell: (row) => formatTime(row.created_at), sortValue: (row) => row.created_at },
 ]
 
 const extensionColumns: DataColumn<ExtensionEvent>[] = [
@@ -103,6 +120,7 @@ export default function AnalyticsPage() {
   const pageSize = usePageSize()
   const [loginPage, setLoginPage] = usePageIndex(pageSize)
   const [switchPage, setSwitchPage] = usePageIndex(pageSize)
+  const [logoutPage, setLogoutPage] = usePageIndex(pageSize)
   const [extensionPage, setExtensionPage] = usePageIndex(pageSize)
   const [confirmClear, setConfirmClear] = useState(false)
   const [clearing, setClearing] = useState(false)
@@ -135,6 +153,14 @@ export default function AnalyticsPage() {
     },
   )
 
+  const { data: logoutsData, loading: logoutsLoading, reload: reloadLogouts } = useResource(
+    `${session?.role ?? "none"}-logouts-${tab}-${pageSize}-${query}-${site}-${logoutPage}`,
+    async () => {
+      if (tab !== "logouts") return null
+      return listLogouts({ page: logoutPage, pageSize, query, websiteId: site })
+    },
+  )
+
   const { data: extensionData, loading: extensionLoading, reload: reloadExtension } = useResource(
     `${session?.role ?? "none"}-extension-${tab}-${pageSize}-${query}-${site}-${extensionPage}`,
     async () => {
@@ -147,33 +173,41 @@ export default function AnalyticsPage() {
     tab === "logins"
       ? {
           title: "Clear logins",
-          description: "Delete every login row? Switches and extension activity stay.",
+          description: "Delete every login row? Switches, logouts, and extension activity stay.",
           run: clearLogins,
           toast: "Logins cleared",
         }
       : tab === "switches"
         ? {
             title: "Clear switches",
-            description: "Delete every switch row? Logins and extension activity stay.",
+            description: "Delete every switch row? Logins, logouts, and extension activity stay.",
             run: clearSwitches,
             toast: "Switches cleared",
           }
-        : {
-            title: "Clear extension activity",
-            description: "Delete every extension activity row? Logins and switches stay.",
-            run: clearExtensionEvents,
-            toast: "Extension activity cleared",
-          }
+        : tab === "logouts"
+          ? {
+              title: "Clear logouts",
+              description: "Delete every logout detection row? Logins, switches, and extension activity stay.",
+              run: clearLogouts,
+              toast: "Logouts cleared",
+            }
+          : {
+              title: "Clear extension activity",
+              description: "Delete every extension activity row? Logins, switches, and logouts stay.",
+              run: clearExtensionEvents,
+              toast: "Extension activity cleared",
+            }
 
   const resetPages = () => {
     setLoginPage(1)
     setSwitchPage(1)
+    setLogoutPage(1)
     setExtensionPage(1)
   }
 
   return (
     <>
-      <PageHeader title="Analytics" description="Dashboard overview plus logins, switches, and extension activity." />
+      <PageHeader title="Analytics" description="Dashboard overview plus logins, switches, logouts, and extension activity." />
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
         <Field className="md:max-w-sm md:flex-1">
           <FieldLabel htmlFor="analytics-search">Search</FieldLabel>
@@ -228,6 +262,7 @@ export default function AnalyticsPage() {
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="logins">Logins</TabsTrigger>
             <TabsTrigger value="switches">Switches</TabsTrigger>
+            <TabsTrigger value="logouts">Logouts</TabsTrigger>
             <TabsTrigger value="extension">Extension</TabsTrigger>
           </TabsList>
           {tab !== "dashboard" ? (
@@ -281,6 +316,27 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        <TabsContent value="logouts">
+          <Card>
+            <CardContent>
+              <DataTable
+                rows={logoutsData?.items ?? []}
+                columns={logoutColumns}
+                rowKey={(row) => row.id}
+                loading={logoutsLoading}
+                paging={{
+                  page: logoutsData?.page ?? logoutPage,
+                  total: logoutsData?.total ?? 0,
+                  pageSize,
+                  onPageChange: setLogoutPage,
+                }}
+                resetKey={`${query}-${websiteId}`}
+                emptyTitle={query ? "No matches" : "No logouts"}
+                emptyDescription="Cookie/session logout detection from tools appears here."
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
         <TabsContent value="extension">
           <Card>
             <CardContent>
@@ -319,6 +375,7 @@ export default function AnalyticsPage() {
             resetPages()
             if (tab === "logins") reloadLogins()
             if (tab === "switches") reloadSwitches()
+            if (tab === "logouts") reloadLogouts()
             if (tab === "extension") reloadExtension()
           })
         }}

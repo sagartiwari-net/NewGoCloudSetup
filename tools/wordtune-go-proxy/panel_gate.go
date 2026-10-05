@@ -399,12 +399,27 @@ func panelMarkAccountLoggedOut(cfg Config, accountID int, reason string) {
 	log.Printf("[LB] marked logged_out account=%d rows=%d reason=%s", accountID, n, reason)
 }
 
-// panelRecordLogoutEvent writes Analytics → Account switches even when no next account exists.
-func panelRecordLogoutEvent(cfg Config, sessionToken, fromName, toName, reason string) {
+func ensureLogoutEventsTable(db *sql.DB) {
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS logout_events (
+		id INTEGER PRIMARY KEY,
+		website_id INTEGER NOT NULL,
+		username TEXT NOT NULL DEFAULT '',
+		account_name TEXT NOT NULL DEFAULT '',
+		next_account_name TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		client_ip TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL
+	)`)
+}
+
+// panelRecordLogoutEvent writes Panel → Analytics → Logouts.
+// pass alsoSwitchBreadcrumb=true for sole-account cases (no next account) so Switches still shows a row.
+func panelRecordLogoutEvent(cfg Config, sessionToken, fromName, toName, reason string, alsoSwitchBreadcrumb bool) {
 	db, err := openPanelDB(cfg)
 	if err != nil {
 		return
 	}
+	ensureLogoutEventsTable(db)
 	now := time.Now().UTC().Format(time.RFC3339)
 	var websiteID int
 	var username string
@@ -422,13 +437,19 @@ func panelRecordLogoutEvent(cfg Config, sessionToken, fromName, toName, reason s
 	if reason == "" {
 		reason = "wordtune-logout"
 	}
-	_, err = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
-		websiteID, username, fromName, toName, reason, now)
+	_, err = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
+		websiteID, username, fromName, toName, reason, "", now)
 	if err != nil {
-		log.Printf("[LB] switch_events insert failed: %v", err)
-		return
+		log.Printf("[LB] logout_events insert failed: %v", err)
+	} else {
+		log.Printf("[LB] logout_events recorded from=%s to=%s reason=%s", fromName, toName, reason)
 	}
-	log.Printf("[LB] logout event recorded from=%s to=%s reason=%s", fromName, toName, reason)
+	if alsoSwitchBreadcrumb {
+		if _, err = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
+			websiteID, username, fromName, toName, reason, now); err != nil {
+			log.Printf("[LB] switch_events insert failed: %v", err)
+		}
+	}
 }
 
 // panelSwitchToOtherAccount pins a different active account. No other account → caller shows contact admin.
