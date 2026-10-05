@@ -3347,6 +3347,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 7. Handle Set-Cookie and Location headers from upstream ──────────────────
 	contentType := upstreamResp.Header.Get("Content-Type")
+	netHost := upstreamURL.Host
+	if isExtHost && extHostName != "" {
+		netHost = extHostName
+	}
+	cookieAttached := upstreamReq.Header.Get("Cookie") != ""
+	netDetail := ""
+	if (isExtHost || strings.Contains(path, "/api/") || strings.Contains(path, "/account")) && !cookieAttached {
+		netDetail = "no_upstream_cookie"
+	}
+	placeitNetLog(r.Method, path, netHost, upstreamResp.StatusCode, contentType,
+		countCookieNames(accountCookieStr), currentUser, activeAcc.Name, netDetail)
 	// Build all domain pairs for location header rewriting (same as HTML body rewriting)
 	locationPairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 	for k, vv := range upstreamResp.Header {
