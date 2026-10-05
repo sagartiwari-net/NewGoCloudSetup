@@ -3285,11 +3285,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		_ = upstreamReq.Body.Close()
 		if readErr == nil {
 			if len(raw) > 0 && bytes.Contains(raw, []byte(publicHost)) {
-				fixed := placeitUnrewriteRequestBody(raw, publicScheme, publicHost, cfg)
-				if !bytes.Equal(fixed, raw) {
-					log.Printf("[NET] unrewrote body %s %s (%d→%d bytes)", r.Method, path, len(raw), len(fixed))
-					raw = fixed
-				}
+				raw = placeitUnrewriteRequestBody(raw, publicScheme, publicHost, cfg)
 			}
 			upstreamReq.Body = io.NopCloser(bytes.NewReader(raw))
 			upstreamReq.ContentLength = int64(len(raw))
@@ -3378,17 +3374,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 7. Handle Set-Cookie and Location headers from upstream ──────────────────
 	contentType := upstreamResp.Header.Get("Content-Type")
-	netHost := upstreamURL.Host
-	if isExtHost && extHostName != "" {
-		netHost = extHostName
-	}
-	cookieAttached := upstreamReq.Header.Get("Cookie") != ""
-	netDetail := ""
-	if (isExtHost || strings.Contains(path, "/api/") || strings.Contains(path, "/account")) && !cookieAttached {
-		netDetail = "no_upstream_cookie"
-	}
-	placeitNetLog(r.Method, path, netHost, upstreamResp.StatusCode, contentType,
-		countCookieNames(accountCookieStr), currentUser, activeAcc.Name, netDetail)
 	// Build all domain pairs for location header rewriting (same as HTML body rewriting)
 	locationPairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 	for k, vv := range upstreamResp.Header {
@@ -3535,8 +3520,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Skip decompress/rewrite on huge job JSON (base64 previews) — was freezing the UI.
 	isRewritable := strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/css")
 	if isRewritable && placeitSkipHeavyJSONRewrite(path, upstreamResp.ContentLength) {
-		log.Printf("[NET] passthrough heavy JSON %s cl=%d (skip rewrite)", path, upstreamResp.ContentLength)
-		// fall through to encoded passthrough
+		// fall through to encoded passthrough (skip decompress/rewrite of huge job JSON)
 	} else if isRewritable {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
