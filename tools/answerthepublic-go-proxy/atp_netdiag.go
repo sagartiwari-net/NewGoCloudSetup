@@ -145,9 +145,18 @@ func atpClientNetDiagScript() string {
   if (typeof nf === 'function') {
     window.fetch = function(input, init){
       var u = urlOf(input);
+      // Apply early rewrite before classifying — otherwise every API call looks like a leak.
+      try {
+        if (window.__tmForceATP) {
+          if (typeof input === 'string') { input = window.__tmForceATP(input); u = input; }
+          else if (input && typeof Request !== 'undefined' && input instanceof Request) {
+            var ru = window.__tmForceATP(input.url); if (ru !== input.url) { input = new Request(ru, input); u = ru; }
+          }
+        }
+      } catch (eForce) {}
       var kindHint = classify(u);
       if (kindHint === 'api_leak' || kindHint === 'composeo_leak') {
-        report(kindHint, {url: clip(u, 220), note: 'cross-origin before/without rewrite'});
+        report(kindHint, {url: clip(u, 220), note: 'still cross-origin after rewrite'});
       }
       return nf.call(this, input, init).then(function(res){
         try {
@@ -200,11 +209,23 @@ func atpClientNetDiagScript() string {
       var auth = '';
       try { auth = localStorage.getItem('auth-storage') || ''; } catch (e) {}
       var hasUser = auth.indexOf('"user"') !== -1 && auth.indexOf('"id"') !== -1;
+      var htmlVis = '', bodyKids = 0, mainKids = 0, hideStyle = false;
+      try { htmlVis = getComputedStyle(document.documentElement).visibility; } catch (e) {}
+      try { bodyKids = document.body ? document.body.children.length : 0; } catch (e) {}
+      try {
+        var main = document.querySelector('main') || document.querySelector('[class*="dashboard"]') || document.querySelector('#__next');
+        mainKids = main ? main.querySelectorAll('*').length : -1;
+      } catch (e) {}
+      try { hideStyle = !!document.querySelector('style[data-tm-device]'); } catch (e) {}
       report('boot', {
         path: location.pathname + location.search,
         hasAuthStorage: hasUser,
         authLen: auth.length,
-        earlyPatch: !!window.__tmEarlyATP
+        earlyPatch: !!window.__tmEarlyATP,
+        htmlVisibility: htmlVis,
+        bodyKids: bodyKids,
+        mainKids: mainKids,
+        deviceHideStyle: hideStyle
       });
     } catch (e6) {}
   }, 4000);

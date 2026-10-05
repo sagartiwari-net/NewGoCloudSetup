@@ -62,12 +62,11 @@ func atpUIChromeScript(panelUsername string) string {
       var nodes = root.querySelectorAll(sels[s]);
       for (var i = 0; i < nodes.length; i++) {
         var el = nodes[i];
-        if (sels[s].indexOf('nav-avatar') !== -1) {
-          hide(el.closest('[data-slot="dropdown-menu-trigger"]') || el.parentElement || el);
-        } else if (sels[s].indexOf('nav-learn') !== -1 || sels[s].indexOf('nav-use-cases') !== -1 || sels[s].indexOf('nav-services') !== -1) {
-          hide(el.closest('.relative') || el);
-        } else if (sels[s].indexOf('nav-upgrade') !== -1) {
-          hide(el.closest('.flex.items-center.gap-3') || el);
+        // Only hide the control itself (or its menu trigger) — never a broad
+        // .relative ancestor (that can wipe the whole dashboard main pane).
+        if (sels[s].indexOf('nav-avatar') !== -1 || sels[s].indexOf('nav-learn') !== -1 ||
+            sels[s].indexOf('nav-use-cases') !== -1 || sels[s].indexOf('nav-services') !== -1) {
+          hide(el.closest('[data-slot="dropdown-menu-trigger"]') || el);
         } else {
           hide(el);
         }

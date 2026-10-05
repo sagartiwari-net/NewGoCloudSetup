@@ -264,26 +264,31 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func devicePageScript() string {
-	return `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>` + deviceSharedJS() + `
+	// Do NOT use html{visibility:hidden}. Same Grammarly blank-UI bug: sidebar can
+	// paint while main stays empty / style wins over a weak tmReveal.
+	return `<script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  var page = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Access Denied</title><style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#eef3f8;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center}.ring{width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);display:grid;place-items:center}.lock{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px}h1{font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin-bottom:12px}.msg{color:#64748b;font-size:15px;line-height:1.55}.foot{margin-top:18px;color:#94a3b8;font-size:13px}</style></head><body><div class=\"card\"><div class=\"ring\"><div class=\"lock\">🔒</div></div><h1>Access Denied</h1><p class=\"msg\">Open this tool again from your access link.</p><p class=\"foot\">Your session ended or this browser is not authorized</p></div></body></html>";
-  try {
-    document.open("text/html","replace");
-    document.write(page);
-    document.close();
-  } catch (e) {
-    try { document.documentElement.innerHTML = page; } catch (e2) {
-      location.replace("/__tm_access_denied");
-    }
-  }
+  location.replace("/__tm_access_denied");
 }
 function tmReveal() {
-  document.documentElement.style.visibility = "visible";
-  var lock = document.querySelector("style[data-tm-device]");
-  if (lock) lock.remove();
+  try {
+    document.querySelectorAll("style[data-tm-device]").forEach(function (s) { s.remove(); });
+  } catch (e) {}
+  try {
+    var force = document.getElementById("tm-force-visible");
+    if (!force) {
+      force = document.createElement("style");
+      force.id = "tm-force-visible";
+      force.textContent = "html,body{visibility:visible!important;opacity:1!important}";
+      (document.documentElement || document.head).appendChild(force);
+    }
+  } catch (e) {}
+  try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+  try { document.documentElement.style.setProperty("opacity", "1", "important"); } catch (e) {}
+  try { if (document.body) document.body.style.setProperty("visibility", "visible", "important"); } catch (e) {}
 }
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
