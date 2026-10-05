@@ -204,6 +204,8 @@ If fail: note in “Open issues”, fix, re-tick.
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
+| `woorank` | Chrome **Dangerous site** (Google Safe Browsing) on `woorank.gt4rents.com` — not a proxy crash; brand-name subdomain + WooRank lookalike triggers phishing/social-engineering flag. `refs`/`smrs`/`cgpt` use short slugs so they often avoid this. | **Not a code bug.** (1) Chrome → Details → note threat type. (2) [Google Safe Browsing review](https://safebrowsing.google.com/safebrowsing/report_error/?hl=en) / Search Console request review for the host. (3) Preferred long-term: rename subdomain to non-brand slug (e.g. `wrk.gt4rents.com`) + update panel `ahrefs_websites.domain` + nginx + rebuild — same pattern as `refs`/`smrs`. |
+| `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
 
 ---
 
