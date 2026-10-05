@@ -354,6 +354,31 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	return acc, nil
 }
 
+// panelReloadAccount refreshes the mapped account cookie from panel.db (same ID).
+func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var assigned int
+	if err := db.QueryRow(`SELECT COALESCE(assigned_account_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned); err != nil {
+		return ToolAccount{}, err
+	}
+	if assigned > 0 {
+		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+		if accErr == nil {
+			return acc, nil
+		}
+	}
+	return scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+}
+
 func panelMarkAccountLoggedOut(cfg Config, accountID int, reason string) {
 	if accountID <= 0 {
 		return

@@ -112,9 +112,48 @@ func renderSscSwitchPage(w http.ResponseWriter, cfg Config, accountName, returnP
 	})
 }
 
+// trySscPanelRevive: after DigitaVision/panel cookie paste, clear stale IAM and retry /dashboard once.
+func trySscPanelRevive(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken, currentUser string, activeAcc ToolAccount) bool {
+	home := cfg.HomePath
+	if home == "" {
+		home = "/dashboard"
+	}
+	if sscReviveRecently(sessionToken) {
+		return false
+	}
+	clearSscIamCache(cfg)
+	reloaded, err := panelReloadAccount(cfg, sessionToken)
+	if err != nil || reloaded.ID <= 0 {
+		reloaded = activeAcc
+	}
+	tokens := loadIamFromRaw(reloaded.Cookie, "ssc.iam")
+	if tokens.AccessToken == "" {
+		return false
+	}
+	sscNoteRevive(sessionToken)
+	log.Printf("[FAILOVER] revive from panel cookie user=%s account=%s iam_fp=%s → %s",
+		currentUser, reloaded.Name, iamFingerprint(tokens), home)
+	http.Redirect(w, r, home, http.StatusFound)
+	return true
+}
+
 // serveSscCookieFailover: mark logged_out → switch if another active account → else contact-admin.
 func serveSscCookieFailover(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken, currentUser string, activeAcc ToolAccount, reason string) {
 	log.Printf("[FAILOVER] start user=%s account=%s(%d) reason=%s", currentUser, activeAcc.Name, activeAcc.ID, reason)
+	home := cfg.HomePath
+	if home == "" {
+		home = "/dashboard"
+	}
+
+	// Panel cookie just updated / status Active again → one revive before marking logged_out.
+	if trySscPanelRevive(w, r, cfg, sessionToken, currentUser, activeAcc) {
+		return
+	}
+
+	if reloaded, err := panelReloadAccount(cfg, sessionToken); err == nil && reloaded.ID > 0 {
+		activeAcc = reloaded
+	}
+
 	if activeAcc.ID > 0 {
 		panelMarkAccountLoggedOut(cfg, activeAcc.ID, reason)
 	}
@@ -123,10 +162,6 @@ func serveSscCookieFailover(w http.ResponseWriter, r *http.Request, cfg Config, 
 	next, nextName, err := panelSwitchToOtherAccount(cfg, sessionToken, reason)
 	if err == nil && next.ID != activeAcc.ID {
 		log.Printf("[FAILOVER] switched user=%s %s -> %s reason=%s", currentUser, activeAcc.Name, nextName, reason)
-		home := cfg.HomePath
-		if home == "" {
-			home = "/dashboard"
-		}
 		renderSscSwitchPage(w, cfg, nextName, home)
 		return
 	}
@@ -222,6 +257,7 @@ func sscFailoverWatchScript() string {
 type sscFOState struct {
 	at           time.Time
 	contactAdmin bool
+	revived      bool
 }
 
 var (
@@ -248,4 +284,20 @@ func sscNoteContactAdmin(sessionToken string) {
 	sscFailoverMu.Lock()
 	defer sscFailoverMu.Unlock()
 	sscFailoverState[sessionToken] = sscFOState{at: time.Now(), contactAdmin: true}
+}
+
+func sscReviveRecently(sessionToken string) bool {
+	sscFailoverMu.Lock()
+	defer sscFailoverMu.Unlock()
+	st, ok := sscFailoverState[sessionToken]
+	if ok && st.revived && time.Since(st.at) < 45*time.Second {
+		return true
+	}
+	return false
+}
+
+func sscNoteRevive(sessionToken string) {
+	sscFailoverMu.Lock()
+	defer sscFailoverMu.Unlock()
+	sscFailoverState[sessionToken] = sscFOState{at: time.Now(), revived: true}
 }

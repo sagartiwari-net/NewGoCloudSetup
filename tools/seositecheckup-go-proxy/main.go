@@ -947,9 +947,88 @@ func loadIamFromFiles(cfg Config) IamTokens {
 	return IamTokens{}
 }
 
+func iamFingerprint(t IamTokens) string {
+	src := strings.TrimSpace(t.RefreshToken)
+	if src == "" {
+		src = strings.TrimSpace(t.AccessToken)
+	}
+	if src == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(src))
+	return hex.EncodeToString(sum[:8])
+}
+
+func cookieRawFingerprint(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:8])
+}
+
+func refreshIamIfNeeded(cfg Config, tokens IamTokens, now, refreshLeadSec int64) IamTokens {
+	if tokens.AccessToken == "" {
+		return tokens
+	}
+	accessExp := jwtExpUnix(tokens.AccessToken)
+	if accessExp > now+refreshLeadSec {
+		return tokens
+	}
+	if tokens.RefreshToken == "" {
+		return tokens
+	}
+	if rtExp := jwtExpUnix(tokens.RefreshToken); rtExp > 0 && rtExp <= now {
+		return tokens
+	}
+	if refreshed, ok := refreshIamAccessToken(tokens.RefreshToken); ok {
+		tokens = refreshed
+		persistIamTokens(cfg, tokens)
+		log.Printf("[IAM] Access token refreshed via /auth/refresh")
+	}
+	return tokens
+}
+
 func ensureFreshIamTokens(cfg Config, accountCookieRaw string) IamTokens {
 	const refreshLeadSec int64 = 180 // refresh ~3 min before 10-min access token expires
 	now := time.Now().Unix()
+	key := cfg.IamStorageKey
+	if key == "" {
+		key = "ssc.iam"
+	}
+
+	raw := strings.TrimSpace(accountCookieRaw)
+	if raw == "" {
+		raw = getRequestAccountCookie()
+	}
+	fromPanel := loadIamFromRaw(raw, key)
+
+	// Panel.db cookie is source of truth — never let stale iam.txt / memory cache win.
+	if usesPanelAccountMode(cfg) {
+		if fromPanel.AccessToken == "" {
+			return IamTokens{}
+		}
+		panelFP := iamFingerprint(fromPanel)
+		if v := cachedIamTokens.Load(); v != nil {
+			cached := v.(IamTokens)
+			cacheFP := iamFingerprint(cached)
+			if cacheFP != "" && cacheFP != panelFP {
+				log.Printf("[IAM] panel cookie changed — drop cache fp=%s→%s", cacheFP, panelFP)
+				cachedIamTokens.Store(IamTokens{})
+			} else if cacheFP == panelFP {
+				if exp := jwtExpUnix(cached.AccessToken); exp > now+refreshLeadSec {
+					return cached
+				}
+				fromPanel = cached
+			}
+		}
+		tokens := refreshIamIfNeeded(cfg, fromPanel, now, refreshLeadSec)
+		if tokens.AccessToken != "" {
+			cachedIamTokens.Store(tokens)
+		}
+		return tokens
+	}
 
 	if v := cachedIamTokens.Load(); v != nil {
 		cached := v.(IamTokens)
@@ -967,37 +1046,14 @@ func ensureFreshIamTokens(cfg Config, accountCookieRaw string) IamTokens {
 		}
 	}
 
-	tokens := loadIamFromFiles(cfg)
+	tokens := fromPanel
 	if tokens.AccessToken == "" {
-		raw := accountCookieRaw
-		if raw == "" {
-			raw = getRequestAccountCookie()
-		}
-		if raw != "" {
-			key := cfg.IamStorageKey
-			if key == "" {
-				key = "ssc.iam"
-			}
-			tokens = loadIamFromRaw(raw, key)
-		}
+		tokens = loadIamFromFiles(cfg)
 	}
 	if tokens.AccessToken == "" {
 		return tokens
 	}
-	accessExp := jwtExpUnix(tokens.AccessToken)
-	if accessExp > now+refreshLeadSec {
-		cachedIamTokens.Store(tokens)
-		return tokens
-	}
-	if tokens.RefreshToken != "" {
-		if rtExp := jwtExpUnix(tokens.RefreshToken); rtExp > now {
-			if refreshed, ok := refreshIamAccessToken(tokens.RefreshToken); ok {
-				tokens = refreshed
-				persistIamTokens(cfg, tokens)
-				log.Printf("[IAM] Access token refreshed via /auth/refresh")
-			}
-		}
-	}
+	tokens = refreshIamIfNeeded(cfg, tokens, now, refreshLeadSec)
 	if tokens.AccessToken != "" {
 		cachedIamTokens.Store(tokens)
 	}
@@ -1006,6 +1062,11 @@ func ensureFreshIamTokens(cfg Config, accountCookieRaw string) IamTokens {
 
 func persistIamTokens(cfg Config, tokens IamTokens) {
 	if tokens.AccessToken == "" {
+		return
+	}
+	// Panel mode: memory cache only — writing iam.txt re-pins a dead session after cookie updates.
+	if usesPanelAccountMode(cfg) {
+		cachedIamTokens.Store(tokens)
 		return
 	}
 	path := cfg.IamFile
@@ -1026,6 +1087,10 @@ func startBackgroundIamRefresh(cfg Config) {
 		defer ticker.Stop()
 		for range ticker.C {
 			c := loadConfig()
+			if usesPanelAccountMode(c) {
+				// Per-request panel.db cookie drives IAM — no global file refresh.
+				continue
+			}
 			var accountRaw string
 			if !usesCookieFileMode(c) && dbConnected {
 				if acc, err := selectActiveAccount(); err == nil {
@@ -2391,7 +2456,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "seositecheckup-v7-logout-fo"
+const proxyBuildTag = "seositecheckup-v8-iam-panel"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 
@@ -3316,6 +3381,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	setRequestAccountCookie(activeAcc.Cookie)
 	defer setRequestAccountCookie("")
+	// Drop stale IAM cache when this request's panel cookie identity changed.
+	if usesPanelAccountMode(cfg) {
+		if panelIAM := loadIamFromRaw(activeAcc.Cookie, cfg.IamStorageKey); panelIAM.AccessToken != "" {
+			panelFP := iamFingerprint(panelIAM)
+			if v := cachedIamTokens.Load(); v != nil {
+				if cachedFP := iamFingerprint(v.(IamTokens)); cachedFP != "" && cachedFP != panelFP {
+					log.Printf("[IAM] request cookie fp mismatch — clear cache %s→%s account=%s", cachedFP, panelFP, activeAcc.Name)
+					clearSscIamCache(cfg)
+				}
+			}
+		}
+	}
 	if !usesCookieFileMode(cfg) {
 		if iam := loadIamTokens(cfg); iam.AccessToken == "" {
 			log.Printf("[IAM] ⚠️ Account '%s' (ID:%d) has no valid ssc.iam — re-export cookies from app.seositecheckup.com while logged in", activeAcc.Name, activeAcc.ID)
