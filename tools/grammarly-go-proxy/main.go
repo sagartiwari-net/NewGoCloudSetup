@@ -1067,7 +1067,9 @@ func grammarlyDocsPath(path string) bool {
 	p := strings.ToLower(path)
 	return strings.Contains(p, "/documents") || strings.Contains(p, "/recent") ||
 		strings.Contains(p, "dox.grammarly") || strings.Contains(p, "/library") ||
-		strings.Contains(p, "/folders") || strings.Contains(p, "widget-config")
+		strings.Contains(p, "/folders") || strings.Contains(p, "widget-config") ||
+		strings.Contains(p, "/internalappapi") || strings.Contains(p, "/internalapi") ||
+		strings.Contains(p, "doclist")
 }
 
 func cookieNamesList(cookieHeader string) string {
@@ -3630,14 +3632,24 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// Coda because the previous page was /d/... makes Coda 302 back to "/",
 		// which the browser follows forever (ERR_TOO_MANY_REDIRECTS).
 		appHome := path == "/" || path == "" || strings.HasPrefix(path, "/ddocs")
+		// New "My docs" UI calls Coda internal APIs on same origin
+		// (/internalAppApi/doclist/recent). Sending those to app.grammarly.com
+		// returns the HTML shell → "Couldn't load your docs".
+		codaAPI := strings.HasPrefix(path, "/internalAppApi") ||
+			strings.HasPrefix(path, "/internalApi") ||
+			strings.HasPrefix(path, "/apis/") ||
+			path == "/packs" || strings.HasPrefix(path, "/packs/")
 		switch {
 		case strings.HasPrefix(path, "/documents"):
 			upstreamURL.Scheme = "https"
 			upstreamURL.Host = "dox.grammarly.com"
-		case !appHome && (codaSocket || strings.HasPrefix(path, "/newdoc") || path == "/d" || strings.HasPrefix(path, "/d/") || codaRef):
+		case codaAPI || (!appHome && (codaSocket || strings.HasPrefix(path, "/newdoc") || path == "/d" || strings.HasPrefix(path, "/d/") || codaRef)):
 			if !strings.HasPrefix(path, "/api/user-limits") &&
 				!strings.HasPrefix(path, "/api/rotate-session") &&
-				!strings.HasPrefix(path, "/api/auth-handshake") {
+				!strings.HasPrefix(path, "/api/auth-handshake") &&
+				!strings.HasPrefix(path, "/api/grammarly-failover") &&
+				!strings.HasPrefix(path, "/api/client-diag") &&
+				!strings.HasPrefix(path, "/api/device-bind") {
 				upstreamURL.Scheme = "https"
 				upstreamURL.Host = "coda.grammarly.com"
 			}
