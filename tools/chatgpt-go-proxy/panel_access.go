@@ -190,35 +190,41 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	username := strings.TrimSpace(r.URL.Query().Get("user"))
 	db, err := openPanelDB(cfg)
 	if err != nil {
 		log.Printf("[PANEL] database open failed: %v", err)
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	var dbUser, productID, clientIP, expiresRaw string
+	reqHost := strings.TrimSpace(r.Host)
+	if i := strings.LastIndex(reqHost, ":"); i > 0 && strings.Count(reqHost, ":") == 1 {
+		reqHost = reqHost[:i]
+	}
+	var dbUser, productID, clientIP, expiresRaw, domain string
 	var websiteID, durationMin int
+	// Consume OTT only when website domain matches public_host or request Host.
 	err = db.QueryRow(`DELETE FROM access_tokens
 		WHERE token = ? AND expires_at > ?
+		AND website_id IN (
+			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
+		)
 		RETURNING username, product_id, COALESCE(client_ip, ''), expires_at, website_id`,
-		token, time.Now().UTC().Format(time.RFC3339)).
+		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).
 		Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	if err != nil {
-		log.Printf("[PANEL] token rejected err=%v", err)
+		log.Printf("[PANEL] token rejected host=%s public_host=%s err=%v", reqHost, cfg.PublicHost, err)
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	username = strings.TrimSpace(dbUser)
+	username := strings.TrimSpace(dbUser)
 	if username == "" {
 		log.Printf("[PANEL] token has empty username")
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	var domain string
 	err = db.QueryRow(`SELECT domain, COALESCE(session_duration, 30) FROM websites WHERE id = ?`, websiteID).Scan(&domain, &durationMin)
-	if err != nil || domain != cfg.PublicHost {
-		log.Printf("[PANEL] token mismatch user=%s domain=%s", username, domain)
+	if err != nil {
+		log.Printf("[PANEL] session_duration lookup failed user=%s wid=%d err=%v", username, websiteID, err)
 		renderAccessDeniedPage(w, cfg)
 		return
 	}

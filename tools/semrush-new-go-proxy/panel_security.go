@@ -466,19 +466,26 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := loadConfig()
+	reqHost := strings.TrimSpace(r.Host)
+	if i := strings.LastIndex(reqHost, ":"); i > 0 && strings.Count(reqHost, ":") == 1 {
+		reqHost = reqHost[:i]
+	}
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, minutes int
-	err = db.QueryRow(`DELETE FROM access_tokens WHERE token=? AND expires_at>? RETURNING username, product_id, COALESCE(client_ip, ''), expires_at, website_id`,
-		token, time.Now().UTC().Format(time.RFC3339)).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
+	err = db.QueryRow(`DELETE FROM access_tokens WHERE token=? AND expires_at>?
+		AND website_id IN (
+			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)), '127.0.0.1:5141')
+		)
+		RETURNING username, product_id, COALESCE(client_ip, ''), expires_at, website_id`,
+		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	username := strings.TrimSpace(dbUser)
 	if err != nil || username == "" {
-		log.Printf("[PANEL] token rejected err=%v", err)
+		log.Printf("[PANEL] token rejected host=%s public_host=%s err=%v", reqHost, cfg.PublicHost, err)
 		renderSemrushDenied(w)
 		return
 	}
-	var domain string
-	err = db.QueryRow(`SELECT domain, COALESCE(session_duration, 30) FROM websites WHERE id=?`, websiteID).Scan(&domain, &minutes)
-	if err != nil || (domain != cfg.PublicHost && domain != "127.0.0.1:5141") {
+	err = db.QueryRow(`SELECT COALESCE(session_duration, 30) FROM websites WHERE id=?`, websiteID).Scan(&minutes)
+	if err != nil {
 		renderSemrushDenied(w)
 		return
 	}

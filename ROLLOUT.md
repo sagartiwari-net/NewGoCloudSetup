@@ -109,17 +109,18 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link); prefer **ChatGPT 1** (ID:65); ChatGPT 2 cookies flaky — refresh later  
 - [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer  
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
-- [ ] `cnva` — Canva (:4501) — Partial (429 / proxy); retest after SSL + account proxy  
-- [x] `helium10` — Helium10 (:5201) — **HTTPS OK**: HTTP/2 Connection strip, `/photos`-style soft login bounce, device empty-header allow, `/ext-install` + extension bake/icons, popup panel-gate + account-switcher lock + panel username  
-- [x] `magnific` — Magnific (:5121) — **HTTPS OK**: GoAuto cookies+LS, Path=/ session, `/photos`→`/people-emotions` WAF bypass, user-menu hide + email hide + panel username  
-- [x] `junglescout` — JungleScout (:5211) — **HTTPS OK**: HTTP/2 Connection strip, panel logout→switch/contact-admin, device-lock reveal + safe deny redirect, extension icons + home→baked proxy origin, proxy optional  
-- [ ] `branalyzer` — Branalyzer (:5081) — **parked** (2026-10-05): local OK; server still blank `/home` (no `GetAccountInfo` in Network). Partial fixes on main (`a7551d9`+) — **do not tick until HTTPS access-link + real UI verified**  
-- [x] `grammarly` — grammarly (:4911) — **HTTPS OK**: device-lock (no visibility:hidden), gateway CORS/`ext-host`, `/internalAppApi`→coda, `/newdoc` device allow, dox docs JSON, Sign out (`logout-lnk`) hide
-- [x] `placeit` — Placeit (:4611) — **HTTPS OK** (2026-10-05): S3/CDN `/ext-host`+`extra-cdn`, request-body unrewrite, related_templates stub (speed), classic-editor upload gate + panel username, `/account`+pricing/logout hide
-- [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts
+- [ ] `cnva` — Canva (:4501) — **rebuild required** (token-only `/access`); Partial (429 / proxy)  
+- [ ] `helium10` — Helium10 (:5201) — **rebuild required** after token-only access (`fad80ac`+); was HTTPS OK before  
+- [ ] `magnific` — Magnific (:5121) — **rebuild required** after token-only access; Access Denied until redeploy  
+- [ ] `junglescout` — JungleScout (:5211) — **rebuild required** after token-only access; was HTTPS OK before  
+- [ ] `branalyzer` — Branalyzer (:5081) — **parked** + rebuild for token-only; blank `/home` still open  
+- [ ] `grammarly` — grammarly (:4911) — **rebuild required** after token-only access; was HTTPS OK before  
+- [ ] `placeit` — Placeit (:4611) — **rebuild required** after token-only access; was HTTPS OK before  
+- [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts — **redeploy if Access Denied**  
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
 
+> **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`). Any tool binary built **before** `fad80ac` will Access Denied. Rebuild priority list above + `wordtune`/`seositecheckup`/`wrank`/`gptzero`/`chatbotapp` if they deny.
 ### Rest (alphabetical)
 
 - [ ] `airbrush` (:5181)  

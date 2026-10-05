@@ -227,15 +227,23 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		panelAccessDenied(w, cfg)
 		return
 	}
+	reqHost := strings.TrimSpace(r.Host)
+	if i := strings.LastIndex(reqHost, ":"); i > 0 && strings.Count(reqHost, ":") == 1 {
+		reqHost = reqHost[:i]
+	}
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, durationMin int
+	// Consume OTT only when website domain matches public_host or request Host.
 	err = db.QueryRow(`DELETE FROM access_tokens
 		WHERE token = ? AND expires_at > ?
+		AND website_id IN (
+			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
+		)
 		RETURNING username, product_id, COALESCE(client_ip, ''), expires_at, website_id`,
-		token, time.Now().UTC().Format(time.RFC3339)).
+		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).
 		Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	if err != nil {
-		log.Printf("[PANEL] token rejected err=%v", err)
+		log.Printf("[PANEL] token rejected host=%s public_host=%s err=%v", reqHost, cfg.PublicHost, err)
 		panelAccessDenied(w, cfg)
 		return
 	}
@@ -247,8 +255,8 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	}
 	var domain string
 	err = db.QueryRow(`SELECT domain, COALESCE(session_duration, 120) FROM websites WHERE id = ?`, websiteID).Scan(&domain, &durationMin)
-	if err != nil || domain != cfg.PublicHost {
-		log.Printf("[PANEL] token mismatch user=%s domain=%s", username, domain)
+	if err != nil {
+		log.Printf("[PANEL] session_duration lookup failed user=%s wid=%d err=%v", username, websiteID, err)
 		panelAccessDenied(w, cfg)
 		return
 	}
