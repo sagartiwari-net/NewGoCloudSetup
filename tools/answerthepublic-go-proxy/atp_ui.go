@@ -22,7 +22,8 @@ func atpHideChromeCSS() string {
 a[href*="discord.gg"],
 a[href*="answerthepublic.zendesk.com"],
 button:has(.tabler-icon-logout-2),
-button:has(svg.tabler-icon-logout-2) {
+button:has(svg.tabler-icon-logout-2),
+div[data-testid="email-verification-banner"] {
   display: none !important;
 }
 `)
