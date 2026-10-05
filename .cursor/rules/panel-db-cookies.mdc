@@ -1,0 +1,26 @@
+---
+description: Cookies must come from Update Panel panel.db only — never tool-local DB/files
+alwaysApply: true
+---
+
+# Panel DB is the only cookie source (gt4rents)
+
+On the server, mapped-account cookies for every tool MUST be read from the Update Panel database:
+
+`/www/wwwroot/gt4rents.com/panel/data/panel.db`
+
+## Never use as cookie source
+- A sqlite/db file created next to the tool binary (`/www/wwwroot/gt4rents.com/<tool>/…`)
+- Relative paths like `./panel.db`, `./data/panel.db`, `cookie.db`
+- Stale `cookie.txt` / `iam.txt` as the account source when `panel_db` mode is on
+- MySQL `ahrefs_accounts` when the tool is in panel.db mode
+
+## Required behavior for new/rolled-out tools
+- Config: `"panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db"`
+- Account load/claim/switch: `accounts` + `websites` tables in that panel.db
+- If admin re-pastes a cookie while status is `logged_out`, revive to `active` when cookie is non-empty
+- IAM/session caches must not override a fresher panel.db cookie
+- Refuse relative/tool-local panel_db paths; force the Update Panel path
+
+## Why
+Failover may mark accounts `logged_out`. Admins update cookies in Update Panel. Tools must always re-read that panel.db — not a local copy — or users see "Temporarily Unavailable" / dead sessions.

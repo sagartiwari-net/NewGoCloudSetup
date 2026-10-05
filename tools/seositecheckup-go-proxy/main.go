@@ -2456,7 +2456,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "seositecheckup-v8-iam-panel"
+const proxyBuildTag = "seositecheckup-v9-paneldb-only"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 

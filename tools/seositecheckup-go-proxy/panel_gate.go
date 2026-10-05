@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -9,6 +8,8 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -35,18 +36,43 @@ var (
 )
 
 
-func panelSQLiteDSN(path string) string {
-	path = strings.TrimSpace(path)
+// canonicalPanelDBPath is the Update Panel database — the only allowed cookie source on server.
+const canonicalPanelDBPath = "/www/wwwroot/gt4rents.com/panel/data/panel.db"
+
+// resolvePanelDBPath returns the Update Panel sqlite path.
+// Never use a relative/local DB next to the tool binary (./panel.db, tool-dir data/).
+func resolvePanelDBPath(cfg Config) string {
+	path := strings.TrimSpace(cfg.PanelDB)
+	if path != "" && !filepath.IsAbs(path) {
+		log.Printf("[PANEL] refusing relative panel_db=%q — cookies must come from Update Panel DB", path)
+		path = ""
+	}
+	// Guard: tool OUTDIR copies / local sqlite are not the Update Panel DB.
+	if path != "" {
+		base := strings.ToLower(filepath.Base(path))
+		if base != "panel.db" {
+			log.Printf("[PANEL] refusing non-panel.db path=%q — forcing Update Panel DB", path)
+			path = ""
+		}
+		if strings.Contains(path, "/seositecheckup/") || strings.Contains(path, "/_repo/") {
+			log.Printf("[PANEL] refusing tool-local path=%q — forcing Update Panel DB", path)
+			path = ""
+		}
+	}
 	if path == "" {
-		if _, err := os.Stat("/www/wwwroot/gt4rents.com/panel/data"); err == nil {
-			path = "/www/wwwroot/gt4rents.com/panel/data/panel.db"
+		if _, err := os.Stat(filepath.Dir(canonicalPanelDBPath)); err == nil {
+			path = canonicalPanelDBPath
 		} else {
 			path = "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
 		}
 	}
+	return path
+}
+
+func panelSQLiteDSN(path string) string {
+	path = strings.TrimSpace(path)
 	q := "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	if strings.Contains(path, "busy_timeout") {
-		// already a full DSN
 		return path
 	}
 	if strings.HasPrefix(path, "/") {
@@ -56,19 +82,57 @@ func panelSQLiteDSN(path string) string {
 }
 
 func usesPanelAccountMode(cfg Config) bool {
-	return strings.TrimSpace(cfg.PanelDB) != ""
+	return strings.TrimSpace(cfg.PanelDB) != "" || fileExists(canonicalPanelDBPath)
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func openPanelDB(cfg Config) (*sql.DB, error) {
 	panelDBOnce.Do(func() {
-		panelDB, panelDBErr = sql.Open("sqlite", panelSQLiteDSN(cfg.PanelDB))
+		path := resolvePanelDBPath(cfg)
+		log.Printf("[PANEL] opening Update Panel DB for cookies path=%s", path)
+		panelDB, panelDBErr = sql.Open("sqlite", panelSQLiteDSN(path))
 		if panelDBErr != nil {
 			return
 		}
 		panelDB.SetMaxOpenConns(1)
 		panelDBErr = panelDB.Ping()
+		if panelDBErr != nil {
+			log.Printf("[PANEL] ping failed path=%s err=%v", path, panelDBErr)
+		}
 	})
 	return panelDB, panelDBErr
+}
+
+// pickPanelAccount loads cookie from Update Panel accounts table only.
+// Prefers status=active; if none, revives a logged_out row that still has a cookie
+// (admin re-pasted cookie in Update Panel but status may still say logged_out).
+func pickPanelAccount(db *sql.DB, domain string, excludeID int) (ToolAccount, error) {
+	try := func(status string) (ToolAccount, error) {
+		q := panelAccountSelect + `
+			WHERE w.domain = ? AND a.status = ? AND a.cookie != ''`
+		args := []interface{}{domain, status}
+		if excludeID > 0 {
+			q += ` AND a.id != ?`
+			args = append(args, excludeID)
+		}
+		q += panelAccountOrder + ` LIMIT 1`
+		return scanPanelAccount(db.QueryRow(q, args...))
+	}
+	acc, err := try("active")
+	if err == nil {
+		return acc, nil
+	}
+	acc, err = try("logged_out")
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=?`, acc.ID)
+	log.Printf("[PANEL] revived account id=%d name=%q from panel.db (cookie present, was logged_out)", acc.ID, acc.Name)
+	return acc, nil
 }
 
 func panelSessionUsername(r *http.Request) (string, error) {
@@ -299,8 +363,7 @@ const panelAccountOrder = `ORDER BY CASE WHEN a.last_used_at = '' THEN 0 ELSE 1 
 
 var panelPickMu sync.Mutex
 
-// claimPanelAccount picks the least recently used active account and stamps last_used_at.
-// Status is left unchanged. The next login then lands on a different account.
+// claimPanelAccount picks the least recently used account from Update Panel DB and stamps last_used_at.
 func claimPanelAccount(cfg Config) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
@@ -308,20 +371,22 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 	if err != nil {
 		return ToolAccount{}, err
 	}
-	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+	acc, err := pickPanelAccount(db, cfg.PublicHost, 0)
 	if err != nil {
+		var nActive, nAny int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM accounts a JOIN websites w ON w.id=a.website_id WHERE w.domain=? AND a.status='active' AND a.cookie!=''`, cfg.PublicHost).Scan(&nActive)
+		_ = db.QueryRow(`SELECT COUNT(*) FROM accounts a JOIN websites w ON w.id=a.website_id WHERE w.domain=? AND a.cookie!=''`, cfg.PublicHost).Scan(&nAny)
+		log.Printf("[PANEL] no usable account domain=%s active_with_cookie=%d any_with_cookie=%d db=%s err=%v",
+			cfg.PublicHost, nActive, nAny, resolvePanelDBPath(cfg), err)
 		return ToolAccount{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
-	log.Printf("[LB] claimed account '%s' (ID:%d) for %s", acc.Name, acc.ID, cfg.PublicHost)
+	log.Printf("[LB] claimed account '%s' (ID:%d) for %s from panel.db", acc.Name, acc.ID, cfg.PublicHost)
 	return acc, nil
 }
 
-// loadPanelSessionAccount uses the account pinned on the live session.
-// assigned_account_id 0 means auto: claim the least recently used account and pin it.
+// loadPanelSessionAccount uses the account pinned on the live session (cookie from panel.db only).
 func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
@@ -337,24 +402,23 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('active','logged_out')`, assigned, cfg.PublicHost))
 		if accErr == nil {
+			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=? AND status='logged_out'`, acc.ID)
 			return acc, nil
 		}
 	}
-	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+	acc, err := pickPanelAccount(db, cfg.PublicHost, 0)
 	if err != nil {
 		return ToolAccount{}, err
 	}
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
 	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
-	log.Printf("[LB] auto-assigned '%s' (ID:%d) to session", acc.Name, acc.ID)
+	log.Printf("[LB] auto-assigned '%s' (ID:%d) to session from panel.db", acc.Name, acc.ID)
 	return acc, nil
 }
 
-// panelReloadAccount refreshes the mapped account cookie from panel.db (same ID).
+// panelReloadAccount refreshes the mapped account cookie from Update Panel DB (same ID).
 func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
@@ -369,14 +433,13 @@ func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('active','logged_out')`, assigned, cfg.PublicHost))
 		if accErr == nil {
+			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=? AND status='logged_out'`, acc.ID)
 			return acc, nil
 		}
 	}
-	return scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+	return pickPanelAccount(db, cfg.PublicHost, 0)
 }
 
 func panelMarkAccountLoggedOut(cfg Config, accountID int, reason string) {
@@ -412,9 +475,7 @@ func panelSwitchToOtherAccount(cfg Config, sessionToken, reason string) (ToolAcc
 	}
 	var fromName string
 	_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, currentID).Scan(&fromName)
-	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
+	acc, err := pickPanelAccount(db, cfg.PublicHost, currentID)
 	if err != nil {
 		return ToolAccount{}, "", fmt.Errorf("no other active account")
 	}
