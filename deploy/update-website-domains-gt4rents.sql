@@ -41,7 +41,6 @@ UPDATE websites SET domain='mojo.gt4rents.com' WHERE id=39;
 UPDATE websites SET domain='uncensoredchat.gt4rents.com' WHERE id=40;
 UPDATE websites SET domain='pixlr.gt4rents.com' WHERE id=41;
 UPDATE websites SET domain='grammarly.gt4rents.com' WHERE id=42;
-UPDATE websites SET domain='flaticon.gt4rents.com' WHERE id=43;
 UPDATE ahrefs_websites SET domain='flaticon.gt4rents.com' WHERE id=43;
 UPDATE websites SET domain='answerthepublic.gt4rents.com' WHERE id=44;
 UPDATE websites SET domain='spyfu.gt4rents.com' WHERE id=45;

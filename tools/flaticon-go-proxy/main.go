@@ -3830,6 +3830,23 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logUpstream(bodyBytes)
 
+		// Freepik/Flaticon WAF "security filter" 403 on Hetzner — never passthrough
+		// (looks like a broken page after domain rewrite). Same as Magnific.
+		if isFlaticonSecurityFilterHTML(bodyBytes) ||
+			(upstreamResp.StatusCode == http.StatusForbidden && isFlaticonSecurityFilterHTML(bodyBytes)) {
+			hasProxy := strings.TrimSpace(activeAcc.Proxy) != ""
+			if hasProxy {
+				log.Printf("[WAF] Flaticon security filter path=%s proxy=set — showing retry page", path)
+			} else {
+				log.Printf("[WAF] Flaticon security filter path=%s — account has NO proxy; showing proxy-required page", path)
+			}
+			for k := range w.Header() {
+				w.Header().Del(k)
+			}
+			renderFlaticonWAFPage(w, cfg, hasProxy)
+			return
+		}
+
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
 
