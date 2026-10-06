@@ -40,18 +40,20 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		return fmt.Errorf("missing proof")
 	}
 	if fp == "missing" || proof == "missing" {
-		panelSess.Delete(sessionToken)
-		return fmt.Errorf("device mismatch")
+		// Do not kill the panel session here — page scripts can race during reload.
+		return fmt.Errorf("missing client proof")
 	}
 	if sess.proof == "" {
 		sess.fp = fp
 		sess.proof = proof
 		return nil
 	}
-	if sess.proof != proof || sess.fp != fp {
-		panelSess.Delete(sessionToken)
+	// Proof is the stable device secret. Canvas FP can change between reloads/tabs.
+	if sess.proof != proof {
+		// Reject this bind only. Killing the session races with Access + open tabs.
 		return fmt.Errorf("device mismatch")
 	}
+	sess.fp = fp
 	return nil
 }
 
@@ -93,6 +95,15 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	username := sess.username
 	sess.mu.Unlock()
 	if !bound {
+		return false
+	}
+	// Proof match is enough — canvas FP often changes between tabs/reloads.
+	if proof != "" && proof == storedProof {
+		if fp != "" && fp != storedFp {
+			sess.mu.Lock()
+			sess.fp = fp
+			sess.mu.Unlock()
+		}
 		return false
 	}
 	if fp == storedFp && proof == storedProof {
@@ -216,14 +227,9 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		log.Printf("[DEVICE] bind failed: %v", err)
-		if err.Error() == "device mismatch" {
-			recordCookieShare(cfg, r, token)
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
-			return
-		}
+		// Never wipe the live session from /api/device-bind races.
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
+		fmt.Fprintf(w, `{"error":"device_bind_failed","message":%q}`, err.Error())
 		return
 	}
 	log.Printf("[DEVICE] proof stored")
@@ -315,14 +321,12 @@ function tmWatch(fp, proof) {
   }).then(function (fp) {
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
+    // Skip SW — it races with Access/reloads and can kill sessions (same as Helium).
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
   }).catch(function () {});
 })();
 </script>`
@@ -353,31 +357,28 @@ func deviceBootScript(home string) string {
           method: "POST",
           credentials: "same-origin",
           headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
+        }).then(function (res) {
+          if (res.ok) return res;
+          // Retry once — sibling tabs can race the first bind after Access.
+          return new Promise(function (resolve) { setTimeout(resolve, 350); }).then(doBindOnce);
+        });
+      }
+      function doBindOnce() {
+        return fetch("/api/device-bind", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
         });
       }
       // Service workers require a secure context. On plain HTTP skip SW and bind directly.
+      // Also unregister stale SWs that race Access/reloads (same as Helium).
       if (!navigator.serviceWorker || !window.isSecureContext) {
         return doBind();
       }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1500);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+      return doBind();
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");
