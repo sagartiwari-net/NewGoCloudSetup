@@ -4317,21 +4317,39 @@ func warmStaticAssets(cfg Config, cookieHeader string) {
 	if len(body) > 0 {
 		re := regexp.MustCompile(`(?:src|href)=["'](/?(?:assets|static|dist|packs|webpack)[^"']+\.(?:js|css|gif|png|svg|woff2?)[^"']*)["']`)
 		re2 := regexp.MustCompile(`(?:src|href)=(/assets/[^>\s]+\.(?:js|css))`)
+		// Absolute CDN URLs → local /extra-cdn-N/… so disk cache fills before users hit them.
+		reCDN := regexp.MustCompile(`https://((?:static|assets|denali-static)\.grammarly\.com)(/[^"'>\s]+\.(?:js|css|woff2?|png|svg|webp))`)
 		seen := map[string]bool{}
+		add := func(p string) {
+			if p == "" || seen[p] {
+				return
+			}
+			seen[p] = true
+			assets = append(assets, p)
+		}
 		for _, reX := range []*regexp.Regexp{re, re2} {
 			for _, m := range reX.FindAllSubmatch(body, -1) {
 				p := string(m[1])
 				if !strings.HasPrefix(p, "/") {
 					p = "/" + p
 				}
-				if !seen[p] {
-					seen[p] = true
-					assets = append(assets, p)
+				add(p)
+			}
+		}
+		for _, m := range reCDN.FindAllSubmatch(body, -1) {
+			host := string(m[1])
+			rest := string(m[2])
+			for i, extra := range cfg.ExtraCDNDomains {
+				clean := strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
+				clean = strings.Split(clean, "/")[0]
+				if strings.EqualFold(clean, host) {
+					add(fmt.Sprintf("/extra-cdn-%d%s", i, rest))
+					break
 				}
 			}
 		}
 	}
-	sem := make(chan struct{}, 6)
+	sem := make(chan struct{}, 10)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	cached := 0
@@ -4344,23 +4362,30 @@ func warmStaticAssets(cfg Config, cookieHeader string) {
 		go func(path string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			req, err := http.NewRequest("GET", base+path, nil)
+			fetchURL := base + path
+			if strings.HasPrefix(path, "/extra-cdn-") {
+				if host, rest, ok := grammarlyExtraCDNHost(path); ok {
+					fetchURL = "https://" + host + rest
+				}
+			}
+			req, err := http.NewRequest("GET", fetchURL, nil)
 			if err != nil {
 				return
 			}
 			req.Header.Set("User-Agent", cfg.UserAgent)
 			req.Header.Set("Accept", "*/*")
-			if cookieHeader != "" {
+			req.Header.Set("Referer", base+"/")
+			if cookieHeader != "" && !strings.HasPrefix(path, "/extra-cdn-") {
 				req.Header.Set("Cookie", cookieHeader)
 			}
 			resp, err := httpClient.Do(req)
 			if err != nil {
 				return
 			}
-			body, _ := io.ReadAll(resp.Body)
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, cdnCacheMax+1))
 			resp.Body.Close()
-			if resp.StatusCode == 200 {
-				putStaticCached(http.MethodGet, path, 200, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Encoding"), body)
+			if resp.StatusCode == 200 && len(body) > 0 && len(body) <= cdnCacheMax {
+				putStaticCached(http.MethodGet, path, 200, resp.Header.Get("Content-Type"), "", body)
 				mu.Lock()
 				cached++
 				mu.Unlock()

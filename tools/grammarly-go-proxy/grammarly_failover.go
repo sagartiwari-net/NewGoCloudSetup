@@ -255,12 +255,50 @@ func grammarlyClientDiagHandler(w http.ResponseWriter, r *http.Request) {
 
 // grammarlyEarlyGatewayPatch runs FIRST in <head> so gateway.grammarly.com never
 // leaves this origin (CLIENT-DIAG showed experimentation/* CORS blanking the SPA).
+// Also hides the intermittent "Internet connection is unstable" banner (WS/API
+// blips behind the proxy) and keeps navigator.onLine stuck true.
 func grammarlyEarlyGatewayPatch() string {
-	return `<script data-tm-early-gw="1">
+	return `<style data-tm-stable="1">
+/* Grammarly yellow "connection is unstable" strip — proxy latency false positive */
+[class*="ConnectionUnstable"],[class*="connection-unstable"],
+[class*="UnstableConnection"],[data-name*="unstable"],
+div[role="alert"]:has(a[href*="troubleshoot"]),
+div[role="status"]:has(a[href*="troubleshoot"]){display:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;border:0!important}
+</style>
+<script data-tm-early-gw="1">
 (function(){
   if (window.__tmEarlyGW) return;
   window.__tmEarlyGW = true;
   var O = location.origin;
+  var WS_O = O.replace(/^http/, 'ws');
+  try {
+    Object.defineProperty(Navigator.prototype, 'onLine', { configurable: true, get: function(){ return true; } });
+  } catch (e1) {
+    try { Object.defineProperty(navigator, 'onLine', { configurable: true, get: function(){ return true; } }); } catch (e2) {}
+  }
+  window.addEventListener('offline', function(ev){ try { ev.stopImmediatePropagation(); } catch (e) {} }, true);
+  function hideUnstableBars(){
+    try {
+      var nodes = document.querySelectorAll('div,section,aside,header');
+      for (var i = 0; i < nodes.length && i < 400; i++) {
+        var el = nodes[i];
+        if (el.getAttribute && el.getAttribute('data-tm-stable-keep')) continue;
+        var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length > 220) continue;
+        if (/internet connection is unstable|connection is unstable/i.test(t) && /troubleshoot/i.test(t)) {
+          el.style.setProperty('display', 'none', 'important');
+        }
+      }
+    } catch (e) {}
+  }
+  if (document.documentElement) {
+    try {
+      new MutationObserver(hideUnstableBars).observe(document.documentElement, {childList:true, subtree:true});
+    } catch (e) {}
+  }
+  setInterval(hideUnstableBars, 1500);
+  setTimeout(hideUnstableBars, 0);
+  setTimeout(hideUnstableBars, 400);
   function forceGW(u){
     if (u == null) return u;
     if (typeof u !== 'string') {
@@ -270,11 +308,17 @@ func grammarlyEarlyGatewayPatch() string {
     u = u.replace(/https?:\/\/treatment\.grammarly\.com/gi, O + '/ext-host/treatment.grammarly.com');
     u = u.replace(/https?:\/\/gates\.grammarly\.com/gi, O + '/ext-host/gates.grammarly.com');
     u = u.replace(/https?:\/\/institution\.grammarly\.com/gi, O + '/ext-host/institution.grammarly.com');
+    u = u.replace(/https?:\/\/dox\.grammarly\.com/gi, O + '/ext-host/dox.grammarly.com');
+    u = u.replace(/wss?:\/\/dox\.grammarly\.com/gi, WS_O + '/ext-host/dox.grammarly.com');
     u = u.replace(/(^|[^:])\/\/gateway\.grammarly\.com/gi, '$1' + O + '/ext-host/gateway.grammarly.com');
     // Any other *.grammarly.com still absolute → ext-host (except this host)
     u = u.replace(/https?:\/\/((?:[a-z0-9-]+\.)+grammarly\.com)(?=\/|$)/gi, function(m, host){
       if (host === 'app.grammarly.com') return O;
       return O + '/ext-host/' + host;
+    });
+    u = u.replace(/wss?:\/\/((?:[a-z0-9-]+\.)+grammarly\.com)(?=\/|$)/gi, function(m, host){
+      if (host === 'app.grammarly.com') return WS_O;
+      return WS_O + '/ext-host/' + host;
     });
     return u;
   }
@@ -307,12 +351,23 @@ func grammarlyEarlyGatewayPatch() string {
     args[1] = u;
     return xo.apply(this, args);
   };
+  var OrigWS = window.WebSocket;
+  window.WebSocket = function(url, protocols) {
+    try { if (typeof url === 'string') url = forceGW(url); } catch (e) {}
+    if (protocols !== undefined) return new OrigWS(url, protocols);
+    return new OrigWS(url);
+  };
+  window.WebSocket.prototype = OrigWS.prototype;
+  window.WebSocket.CONNECTING = OrigWS.CONNECTING;
+  window.WebSocket.OPEN = OrigWS.OPEN;
+  window.WebSocket.CLOSING = OrigWS.CLOSING;
+  window.WebSocket.CLOSED = OrigWS.CLOSED;
 })();
 </script>`
 }
 
 func injectHeadStart(body []byte, script string) []byte {
-	if script == "" || bytes.Contains(body, []byte("data-tm-early-gw")) {
+	if script == "" || bytes.Contains(body, []byte(`data-tm-early-gw="1"`)) {
 		return body
 	}
 	inj := []byte(script)
