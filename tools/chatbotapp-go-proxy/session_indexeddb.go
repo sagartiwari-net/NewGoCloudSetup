@@ -86,6 +86,28 @@ func extractFirebaseAccessToken(raw string) string {
 	return ""
 }
 
+func extractFirebaseUID(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var root map[string]interface{}
+	if json.Unmarshal([]byte(raw), &root) != nil {
+		return ""
+	}
+	user, _ := findSTSTokenManager(root)
+	if user == nil {
+		return ""
+	}
+	if uid, ok := user["uid"].(string); ok && uid != "" {
+		return uid
+	}
+	if uid, ok := user["localId"].(string); ok && uid != "" {
+		return uid
+	}
+	return ""
+}
+
 func extractFirebaseExpirationMs(raw string) int64 {
 	var root map[string]interface{}
 	if json.Unmarshal([]byte(raw), &root) != nil {
@@ -437,10 +459,11 @@ func loadSessionFileRaw(path string) string {
 	return string(data)
 }
 
-// ensureChatbotappAPIAuth forces official Origin/Referer and a fresh Firebase
-// Bearer on api/payment hosts. Without this, https://chatbotapp.gt4rents.com
-// plus public_scheme=http leaves Origin on the proxy host → upstream 401 on
-// POST /api/v2/chat while Firestore history still loads.
+// ensureChatbotappAPIAuth forces official Origin/Referer and the Firebase
+// headers Chatbot App's Express API expects: x_token + x_user_id (+ platform).
+// Authorization Bearer alone is NOT enough — upstream returns
+// error_code 4002 "x_token header is required". Nginx may also drop
+// underscore headers from the browser, so we always inject from panel IndexedDB.
 func ensureChatbotappAPIAuth(upstreamReq *http.Request, cfg Config, activeAcc *ToolAccount) {
 	if upstreamReq == nil || !strings.Contains(strings.ToLower(cfg.TargetURL), "chatbotapp.ai") {
 		return
@@ -474,9 +497,36 @@ func ensureChatbotappAPIAuth(upstreamReq *http.Request, cfg Config, activeAcc *T
 	}
 	tok := extractFirebaseAccessToken(raw)
 	if tok == "" {
+		log.Printf("[CHATBOT] api auth: no Firebase accessToken for %s", upstreamReq.URL.Path)
 		return
 	}
+	uid := extractFirebaseUID(raw)
+	// Underscore header names — do not use Header.Set (canonicalizes poorly).
+	// Official client sends both x_token / X_Token and x_user_id / X_User_Id.
+	setUnderscoreHeader(upstreamReq, "x_token", tok)
+	setUnderscoreHeader(upstreamReq, "X_Token", tok)
+	if uid != "" {
+		setUnderscoreHeader(upstreamReq, "x_user_id", uid)
+		setUnderscoreHeader(upstreamReq, "X_User_Id", uid)
+	}
+	setUnderscoreHeader(upstreamReq, "x_platform", "web")
+	setUnderscoreHeader(upstreamReq, "X_Platform", "web")
+	upstreamReq.Header.Set("X-Token", tok)
+	upstreamReq.Header.Set("X-Platform", "web")
+	if uid != "" {
+		upstreamReq.Header.Set("X-User-Id", uid)
+	}
 	upstreamReq.Header.Set("Authorization", "Bearer "+tok)
+}
+
+func setUnderscoreHeader(req *http.Request, key, value string) {
+	if req == nil || key == "" || value == "" {
+		return
+	}
+	if req.Header == nil {
+		req.Header = make(http.Header)
+	}
+	req.Header[key] = []string{value}
 }
 
 func logIndexedDBSession(path string) {

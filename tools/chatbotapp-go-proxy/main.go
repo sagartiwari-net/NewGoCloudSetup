@@ -3623,7 +3623,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			Status:  http.StatusUnauthorized,
 			Detail:  authErr.Error(),
 			HasUID:  r.Header.Get("X-UID") != "",
-			HasAPI:  r.Header.Get("X-API-TOKEN") != "",
+			HasAPI:  r.Header.Get("X-API-TOKEN") != "" || r.Header.Get("X-Token") != "" || len(r.Header["x_token"]) > 0,
 			CookieN: countCookieNames(r.Header.Get("Cookie")),
 		})
 		acceptHeader := r.Header.Get("Accept")
@@ -4139,7 +4139,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			Account: activeAcc.Name,
 			Detail:  err.Error(),
 			HasUID:  r.Header.Get("X-UID") != "",
-			HasAPI:  r.Header.Get("X-API-TOKEN") != "",
+			HasAPI:  r.Header.Get("X-API-TOKEN") != "" || r.Header.Get("X-Token") != "" || len(r.Header["x_token"]) > 0,
 			CookieN: countCookieNames(accountCookieStr),
 		})
 		if dbConnected {
@@ -4222,7 +4222,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			Account: activeAcc.Name,
 			Detail:  snippetForLog(body, upstreamResp.Header.Get("Content-Type")),
 			HasUID:  r.Header.Get("X-UID") != "" || upstreamReq.Header.Get("X-UID") != "",
-			HasAPI:  r.Header.Get("X-API-TOKEN") != "" || upstreamReq.Header.Get("X-API-TOKEN") != "",
+			HasAPI:  r.Header.Get("X-API-TOKEN") != "" || upstreamReq.Header.Get("X-API-TOKEN") != "" ||
+				upstreamReq.Header.Get("X-Token") != "" || len(upstreamReq.Header["x_token"]) > 0,
 			CookieN: countCookieNames(accountCookieStr),
 		})
 	}
