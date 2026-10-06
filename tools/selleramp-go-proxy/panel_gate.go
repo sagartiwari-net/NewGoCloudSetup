@@ -151,11 +151,16 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 		return nil, err
 	}
 	var username, expires string
+	// Prefer domain match, but fall back to token-only — domain string drift
+	// (trim/case/old host) was leaving valid cookies unrestorable.
 	err = db.QueryRow(`SELECT s.username, s.expires_at FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
-		WHERE s.session_token = ? AND w.domain = ?`, token, cfg.PublicHost).Scan(&username, &expires)
+		WHERE s.session_token = ? AND lower(trim(w.domain)) = lower(trim(?))`, token, cfg.PublicHost).Scan(&username, &expires)
 	if err != nil {
-		return nil, err
+		err = db.QueryRow(`SELECT username, expires_at FROM live_sessions WHERE session_token = ?`, token).Scan(&username, &expires)
+		if err != nil {
+			return nil, err
+		}
 	}
 	exp, err := time.Parse(time.RFC3339, expires)
 	if err != nil || time.Now().After(exp) {
@@ -180,10 +185,13 @@ func panelLiveSessionExists(sessionToken string) bool {
 	var n int
 	err = db.QueryRow(`SELECT COUNT(*) FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
-		WHERE s.session_token = ? AND w.domain = ?`, sessionToken, cfg.PublicHost).Scan(&n)
-	if err != nil {
-		log.Printf("[PANEL] live session lookup failed: %v", err)
-		return false
+		WHERE s.session_token = ? AND lower(trim(w.domain)) = lower(trim(?))`, sessionToken, cfg.PublicHost).Scan(&n)
+	if err != nil || n == 0 {
+		err = db.QueryRow(`SELECT COUNT(*) FROM live_sessions WHERE session_token = ?`, sessionToken).Scan(&n)
+		if err != nil {
+			log.Printf("[PANEL] live session lookup failed: %v", err)
+			return false
+		}
 	}
 	return n > 0
 }
@@ -284,18 +292,37 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	if clientIP != "" && (seen == "" || seen == "127.0.0.1" || seen == "::1") {
 		seen = clientIP
 	}
-	recordPanelLogin(db, domain, username, sessionToken, seen, r.UserAgent(), sessionExpiry, accID)
+	recordPanelLogin(db, websiteID, username, sessionToken, seen, r.UserAgent(), sessionExpiry, accID)
+	// Bust any stale ct_session before issuing the new one (orphan cookies caused
+	// bind/home to look up a dead token while the fresh session sat unused).
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ct_session",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		Secure:   cookieSecure(r, cfg),
+		SameSite: http.SameSiteLaxMode,
+	})
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ct_session",
 		Value:    sessionToken,
 		Path:     "/",
 		Expires:  sessionExpiry,
+		MaxAge:   int(time.Until(sessionExpiry).Seconds()),
 		HttpOnly: true,
 		Secure:   cookieSecure(r, cfg),
 		SameSite: http.SameSiteLaxMode,
 	})
-	log.Printf("[PANEL] access granted user=%s product=%s", username, productID)
-	renderPanelLoadingPage(w, cfg)
+	home := cfg.HomePath
+	if home == "" {
+		home = "/"
+	}
+	log.Printf("[PANEL] access granted user=%s product=%s domain=%s wid=%d → %s", username, productID, domain, websiteID, home)
+	// 302 + Set-Cookie is more reliable than the Authenticating HTML boot page
+	// (device bind races / wrong cookie). Device proof attaches on the first HTML page.
+	http.Redirect(w, r, home, http.StatusFound)
 }
 
 const panelAccountSelect = `SELECT a.id, a.name, a.cookie,
@@ -383,10 +410,9 @@ func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 	return acc, nil
 }
 
-func recordPanelLogin(db *sql.DB, domain, username, sessionToken, clientIP, userAgent string, expires time.Time, accountID int) {
-	var websiteID int
-	if err := db.QueryRow(`SELECT id FROM websites WHERE domain=?`, domain).Scan(&websiteID); err != nil {
-		log.Printf("[PANEL] login not recorded: %v", err)
+func recordPanelLogin(db *sql.DB, websiteID int, username, sessionToken, clientIP, userAgent string, expires time.Time, accountID int) {
+	if websiteID <= 0 {
+		log.Printf("[PANEL] login not recorded: invalid website_id")
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -401,6 +427,8 @@ func recordPanelLogin(db *sql.DB, domain, username, sessionToken, clientIP, user
 		sess := raw.(*panelGateSession)
 		sess.mu.Lock()
 		sess.tracked = true
+		sess.liveOK = true
+		sess.liveChecked = time.Now()
 		sess.mu.Unlock()
 	}
 	if _, err = db.Exec(`INSERT INTO login_events (website_id, username, client_ip, user_agent, logged_in_at) VALUES (?,?,?,?,?)`,

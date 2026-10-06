@@ -2045,9 +2045,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
 	if authErr != nil && !isFavicon {
-		_, hasSess := r.Cookie("ct_session")
+		_, cookieErr := r.Cookie("ct_session")
+		hasCt := cookieErr == nil
 		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v",
-			path, r.Host, authErr, currentWebsiteID, hasSess == nil)
+			path, r.Host, authErr, currentWebsiteID, hasCt)
+		// Orphan ct_session (dead token) blocks a fresh /access Set-Cookie in some browsers.
+		if hasCt && (strings.Contains(authErr.Error(), "session not found") || strings.Contains(authErr.Error(), "session ended")) {
+			http.SetCookie(w, &http.Cookie{
+				Name: "ct_session", Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0),
+				HttpOnly: true, Secure: cookieSecure(r, cfg), SameSite: http.SameSiteLaxMode,
+			})
+		}
 		pushProxyLog(ProxyLogEntry{
 			Source:  "AUTH",
 			Level:   "error",
