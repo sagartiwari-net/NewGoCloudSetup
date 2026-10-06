@@ -111,7 +111,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
 - [ ] `cnva` — Canva (:4501) — **rebuild required** (token-only `/access`); Partial (429 / proxy)  
 - [x] `helium10` — Helium10 (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified  
-- [ ] `mgfc` — Magnific (:5121) — **rename** `magnific` → `mgfc.gt4rents.com` (Safe Browsing “Dangerous site” on brand host) — deploy + panel domain update  
+- [ ] `mgfc` — Magnific (:5121) — **rename** `magnific` → `mgfc.gt4rents.com` (Safe Browsing) + disk CDN cache (`e62a9ad`) — deploy + panel domain update  
 - [ ] `junglescout` — JungleScout (:5211) — **rebuild required** after token-only access; was HTTPS OK before  
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** + rebuild for token-only; blank `/home` still open  
 - [x] `grammarly` — Grammarly (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)  
