@@ -298,3 +298,119 @@ func branAuthWatchScript(cfg Config) string {
 })();
 </script>`
 }
+
+// branUnlockSearchScript — Auth0 user$ often never sets nickname behind the proxy, so
+// Angular binds disabled=!nickname on "Be Curious" and clicks do nothing (no Network).
+// Seed claims from @@auth0spajs@@ and keep the search buttons enabled.
+func branUnlockSearchScript() string {
+	return `<script data-tm-bran-search="1">
+(function(){
+  if (window.__tmBranSearchUnlock) return;
+  window.__tmBranSearchUnlock = true;
+  function claims(){
+    var out = {nickname:'', email:''};
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i) || '';
+        if (k.indexOf('@@auth0spajs@@') === -1 && k.toLowerCase().indexOf('auth0spajs') === -1) continue;
+        var o = JSON.parse(localStorage.getItem(k) || '{}');
+        var body = o.body || o;
+        var c = (body.decodedToken && body.decodedToken.claims) || {};
+        out.nickname = out.nickname || c.nickname || c.name || '';
+        out.email = out.email || c.email || '';
+        if ((!out.nickname || !out.email) && body.id_token) {
+          try {
+            var part = body.id_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+            while (part.length % 4) part += '=';
+            var p = JSON.parse(atob(part));
+            out.nickname = out.nickname || p.nickname || p.name || p.email || '';
+            out.email = out.email || p.email || '';
+          } catch (e1) {}
+        }
+      }
+    } catch (e) {}
+    if (!out.nickname) out.nickname = 'member';
+    if (!out.email) out.email = out.nickname.indexOf('@') >= 0 ? out.nickname : (out.nickname + '@branalyzer.local');
+    return out;
+  }
+  window.__tmBranClaims = claims;
+  function unlockBtns(){
+    try {
+      document.querySelectorAll('button').forEach(function(btn){
+        var t = (btn.textContent || '').replace(/\s+/g,' ').trim();
+        if (!/^(Be Curious|Demo Brands|Recent|Favorites|Compare|Leads|Chrome Extension)$/i.test(t)) return;
+        if (btn.disabled) {
+          btn.disabled = false;
+          btn.removeAttribute('disabled');
+        }
+      });
+    } catch (e) {}
+  }
+  try {
+    var desc = Object.getOwnPropertyDescriptor(HTMLButtonElement.prototype, 'disabled');
+    if (desc && desc.set) {
+      Object.defineProperty(HTMLButtonElement.prototype, 'disabled', {
+        configurable: true,
+        enumerable: desc.enumerable,
+        get: desc.get,
+        set: function(v){
+          try {
+            var t = (this.textContent || '').replace(/\s+/g,' ').trim();
+            if (/^(Be Curious|Demo Brands|Recent|Favorites|Compare|Leads|Chrome Extension)$/i.test(t)) v = false;
+          } catch (e) {}
+          return desc.set.call(this, v);
+        }
+      });
+    }
+  } catch (e) {}
+  try {
+    var sa = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, val){
+      if (String(name).toLowerCase() === 'disabled') {
+        try {
+          var t = (this.textContent || '').replace(/\s+/g,' ').trim();
+          if (/^(Be Curious|Demo Brands|Recent|Favorites|Compare|Leads|Chrome Extension)$/i.test(t)) return;
+        } catch (e) {}
+      }
+      return sa.apply(this, arguments);
+    };
+  } catch (e) {}
+  function fillEmail(u){
+    if (typeof u !== 'string' || !/GetAccountInfo/i.test(u)) return u;
+    var s = claims();
+    if (/[?&]Email=[^&]/.test(u)) return u;
+    if (/[?&]Email=(&|$)/.test(u)) return u.replace(/([?&]Email=)(&|$)/, '$1' + encodeURIComponent(s.email) + '$2');
+    return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'Email=' + encodeURIComponent(s.email);
+  }
+  try {
+    var xo = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(m, u){
+      try { u = fillEmail(u); } catch (e) {}
+      var args = Array.prototype.slice.call(arguments);
+      args[1] = u;
+      return xo.apply(this, args);
+    };
+  } catch (e) {}
+  try {
+    var of = window.fetch;
+    if (of) {
+      window.fetch = function(input, init){
+        try {
+          if (typeof input === 'string') input = fillEmail(input);
+          else if (input && typeof Request !== 'undefined' && input instanceof Request) {
+            var nu = fillEmail(input.url);
+            if (nu !== input.url) input = new Request(nu, input);
+          }
+        } catch (e) {}
+        return of.call(this, input, init);
+      };
+    }
+  } catch (e) {}
+  unlockBtns();
+  setInterval(unlockBtns, 400);
+  try {
+    new MutationObserver(unlockBtns).observe(document.documentElement, {childList:true, subtree:true, attributes:true, attributeFilter:['disabled']});
+  } catch (e) {}
+})();
+</script>`
+}

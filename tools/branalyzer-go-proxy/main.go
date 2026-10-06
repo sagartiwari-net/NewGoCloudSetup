@@ -858,6 +858,20 @@ func buildSyntxLocalStorageInject(lsJSON string) string {
 </script>`
 }
 
+// patchBranSearchJS — Angular home binds Be Curious disabled=!nickname; Auth0 user$
+// often leaves nickname empty on the proxy host, so the button never fires.
+func patchBranSearchJS(body []byte) []byte {
+	repls := []struct{ old, neu string }{
+		{`disabled",!i.nickname`, `disabled",!1`},
+		{`disabled",!n.nickname`, `disabled",!1`},
+		{`"disabled",!i.nickname`, `"disabled",!1`},
+	}
+	for _, r := range repls {
+		body = bytes.ReplaceAll(body, []byte(r.old), []byte(r.neu))
+	}
+	return body
+}
+
 func cookieEntriesToHeader(cookies []browserCookieEntry) string {
 	type scored struct {
 		value string
@@ -4416,6 +4430,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if usesPanelAccountMode(cfg) {
 			early += branAuthWatchScript(cfg)
 		}
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "branalyzer.com") {
+			early += branUnlockSearchScript()
+		}
 		if early != "" {
 			if loc := regexp.MustCompile(`(?i)<head[^>]*>`).FindIndex(bodyBytes); loc != nil {
 				out := make([]byte, 0, len(bodyBytes)+len(early)+8)
@@ -4469,6 +4486,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			bodyBytes = rewriteBody(bodyBytes, pairs)
 			bodyBytes = rewriteGrammarlyContentHosts(bodyBytes, publicBase)
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)
+			if isBranJS {
+				bodyBytes = patchBranSearchJS(bodyBytes)
+			}
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
 			} else if strings.Contains(contentType, "text/css") || isBranJS {
