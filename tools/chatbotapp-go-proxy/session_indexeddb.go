@@ -287,7 +287,9 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
 		return ""
 	}
 	token := extractFirebaseAccessToken(sessionRaw)
+	uid := extractFirebaseUID(sessionRaw)
 	tokenJS, _ := json.Marshal(token)
+	uidJS, _ := json.Marshal(uid)
 	tokenTag := ""
 	if len(token) > 16 {
 		tokenTag = token[len(token)-16:]
@@ -298,6 +300,7 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
 (function(){
   var IDB_DUMP = ` + idbJS + `;
   var ACCESS_TOKEN = ` + string(tokenJS) + `;
+  var USER_UID = ` + string(uidJS) + `;
   var TOKEN_TAG = ` + string(tokenTagJS) + `;
   function openStore(dbName, storeName, keyPath) {
     return new Promise(function(resolve, reject) {
@@ -340,10 +343,71 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
       tx.onerror = function(){ reject(tx.error); };
     });
   }
+  // Nginx drops underscore headers (x_token). Send hyphenated X-Cba-* so the
+  // Go proxy can map them onto x_token for api.chatbotapp.ai.
+  function attachCbaHeaders(headers) {
+    var tok = window.__TM_FIREBASE_ACCESS_TOKEN || ACCESS_TOKEN || '';
+    var uid = window.__TM_FIREBASE_UID || USER_UID || '';
+    if (!tok) return headers;
+    try {
+      if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+        if (!headers.has('X-Cba-Token')) headers.set('X-Cba-Token', tok);
+        if (uid && !headers.has('X-Cba-Uid')) headers.set('X-Cba-Uid', uid);
+        return headers;
+      }
+    } catch (e0) {}
+    headers = headers || {};
+    if (!headers['X-Cba-Token'] && !headers['x-cba-token']) headers['X-Cba-Token'] = tok;
+    if (uid && !headers['X-Cba-Uid'] && !headers['x-cba-uid']) headers['X-Cba-Uid'] = uid;
+    return headers;
+  }
+  try {
+    if (window.fetch && !window.fetch.__tmCba) {
+      var _f = window.fetch.bind(window);
+      window.fetch = function(input, init) {
+        init = init || {};
+        try {
+          var u = typeof input === 'string' ? input : (input && input.url) || '';
+          if (/extra-cdn-\d+|api\.chatbotapp\.ai/i.test(String(u))) {
+            init.headers = attachCbaHeaders(init.headers);
+          }
+        } catch (e1) {}
+        return _f(input, init);
+      };
+      window.fetch.__tmCba = true;
+    }
+    var xo = XMLHttpRequest.prototype.open;
+    var xs = XMLHttpRequest.prototype.setRequestHeader;
+    if (xo && !xo.__tmCba) {
+      XMLHttpRequest.prototype.open = function(method, url) {
+        this.__tmCbaURL = String(url || '');
+        return xo.apply(this, arguments);
+      };
+      XMLHttpRequest.prototype.open.__tmCba = true;
+      XMLHttpRequest.prototype.setRequestHeader = function(k, v) {
+        return xs.apply(this, arguments);
+      };
+      var xsend = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.send = function() {
+        try {
+          if (/extra-cdn-\d+|api\.chatbotapp\.ai/i.test(this.__tmCbaURL || '')) {
+            var tok = window.__TM_FIREBASE_ACCESS_TOKEN || ACCESS_TOKEN || '';
+            var uid = window.__TM_FIREBASE_UID || USER_UID || '';
+            if (tok) { try { xs.call(this, 'X-Cba-Token', tok); } catch (e2) {} }
+            if (uid) { try { xs.call(this, 'X-Cba-Uid', uid); } catch (e3) {} }
+          }
+        } catch (e4) {}
+        return xsend.apply(this, arguments);
+      };
+    }
+  } catch (ePatch) {}
   window.__TM_IDB_READY = (async function(){
     try {
       if (ACCESS_TOKEN) {
         try { window.__TM_FIREBASE_ACCESS_TOKEN = ACCESS_TOKEN; } catch (e) {}
+      }
+      if (USER_UID) {
+        try { window.__TM_FIREBASE_UID = USER_UID; } catch (e) {}
       }
       var dbs = IDB_DUMP || {};
       var jobs = [];
@@ -462,17 +526,29 @@ func loadSessionFileRaw(path string) string {
 // ensureChatbotappAPIAuth forces official Origin/Referer and the Firebase
 // headers Chatbot App's Express API expects: x_token + x_user_id (+ platform).
 // Authorization Bearer alone is NOT enough — upstream returns
-// error_code 4002 "x_token header is required". Nginx may also drop
-// underscore headers from the browser, so we always inject from panel IndexedDB.
-func ensureChatbotappAPIAuth(upstreamReq *http.Request, cfg Config, activeAcc *ToolAccount) {
+// error_code 4002 "x_token header is required".
+//
+// Auth source = GoAuto IndexedDB firebaseLocalStorage (stsTokenManager.accessToken).
+// Analytics cookies (_ga etc.) are NOT used for /api/v2/*. Nginx may drop
+// underscore headers from the browser, so we inject from panel IndexedDB and
+// also accept hyphenated X-Cba-Token (client patch) as a fallback.
+func ensureChatbotappAPIAuth(upstreamReq *http.Request, cfg Config, activeAcc *ToolAccount, upstreamHost string) {
 	if upstreamReq == nil || !strings.Contains(strings.ToLower(cfg.TargetURL), "chatbotapp.ai") {
 		return
 	}
-	h := strings.ToLower(upstreamReq.URL.Host)
+	h := strings.ToLower(strings.TrimSpace(upstreamHost))
+	if h == "" {
+		h = strings.ToLower(upstreamReq.URL.Host)
+	}
+	if h == "" {
+		h = strings.ToLower(upstreamReq.Host)
+	}
+	path := upstreamReq.URL.Path
 	isChatbotAPI := strings.Contains(h, "api.chatbotapp.ai") ||
 		strings.Contains(h, "payment-api.chatbotapp.ai") ||
 		strings.Contains(h, "data.chatbotapp.ai") ||
-		strings.Contains(h, "event.chatbotapp.ai")
+		strings.Contains(h, "event.chatbotapp.ai") ||
+		((strings.HasPrefix(path, "/api/v2/") || strings.HasPrefix(path, "/api/v1/")) && strings.Contains(h, "chatbotapp.ai"))
 	isFirebase := strings.Contains(h, "googleapis.com") ||
 		strings.Contains(h, "firebaseio.com") ||
 		strings.Contains(h, "firebaseapp.com") ||
@@ -482,11 +558,22 @@ func ensureChatbotappAPIAuth(upstreamReq *http.Request, cfg Config, activeAcc *T
 	}
 	upstreamReq.Header.Set("Origin", "https://chat.chatbotapp.ai")
 	upstreamReq.Header.Set("Referer", "https://chat.chatbotapp.ai/")
-	if !isChatbotAPI || activeAcc == nil {
+	if !isChatbotAPI {
+		return
+	}
+	if activeAcc == nil {
+		log.Printf("[CHATBOT] api auth SKIP path=%s host=%s reason=no_account", path, h)
 		return
 	}
 	raw := strings.TrimSpace(activeAcc.Cookie)
 	if !isIndexedDBSession(raw) {
+		log.Printf("[CHATBOT] api auth SKIP path=%s account=%s(%d) reason=no_indexeddb (paste GoAuto IndexedDB dump)", path, activeAcc.Name, activeAcc.ID)
+		// Still try browser-forwarded hyphen fallback
+		if tok := strings.TrimSpace(upstreamReq.Header.Get("X-Cba-Token")); tok != "" {
+			uid := strings.TrimSpace(upstreamReq.Header.Get("X-Cba-Uid"))
+			applyChatbotappTokenHeaders(upstreamReq, tok, uid)
+			log.Printf("[CHATBOT] api auth FALLBACK X-Cba-Token path=%s tok_len=%d", path, len(tok))
+		}
 		return
 	}
 	fresh := ensureFreshFirebaseSessionRaw(raw, "")
@@ -494,29 +581,40 @@ func ensureChatbotappAPIAuth(upstreamReq *http.Request, cfg Config, activeAcc *T
 		activeAcc.Cookie = fresh
 		persistPanelAccountCookie(cfg, activeAcc.ID, fresh)
 		raw = fresh
+		log.Printf("[CHATBOT] Firebase accessToken refreshed for account=%s(%d)", activeAcc.Name, activeAcc.ID)
 	}
 	tok := extractFirebaseAccessToken(raw)
+	uid := extractFirebaseUID(raw)
 	if tok == "" {
-		log.Printf("[CHATBOT] api auth: no Firebase accessToken for %s", upstreamReq.URL.Path)
+		tok = strings.TrimSpace(upstreamReq.Header.Get("X-Cba-Token"))
+	}
+	if uid == "" {
+		uid = strings.TrimSpace(upstreamReq.Header.Get("X-Cba-Uid"))
+	}
+	if tok == "" {
+		log.Printf("[CHATBOT] api auth SKIP path=%s account=%s(%d) reason=empty_accessToken", path, activeAcc.Name, activeAcc.ID)
 		return
 	}
-	uid := extractFirebaseUID(raw)
-	// Underscore header names — do not use Header.Set (canonicalizes poorly).
-	// Official client sends both x_token / X_Token and x_user_id / X_User_Id.
-	setUnderscoreHeader(upstreamReq, "x_token", tok)
-	setUnderscoreHeader(upstreamReq, "X_Token", tok)
-	if uid != "" {
-		setUnderscoreHeader(upstreamReq, "x_user_id", uid)
-		setUnderscoreHeader(upstreamReq, "X_User_Id", uid)
+	applyChatbotappTokenHeaders(upstreamReq, tok, uid)
+	log.Printf("[CHATBOT] api auth OK path=%s account=%s tok_len=%d uid=%s", path, activeAcc.Name, len(tok), uid)
+}
+
+func applyChatbotappTokenHeaders(req *http.Request, tok, uid string) {
+	if req == nil || tok == "" {
+		return
 	}
-	setUnderscoreHeader(upstreamReq, "x_platform", "web")
-	setUnderscoreHeader(upstreamReq, "X_Platform", "web")
-	upstreamReq.Header.Set("X-Token", tok)
-	upstreamReq.Header.Set("X-Platform", "web")
+	// Underscore names are what Express checks (x_token ≠ x-token).
+	setUnderscoreHeader(req, "x_token", tok)
+	setUnderscoreHeader(req, "X_Token", tok)
+	setUnderscoreHeader(req, "x_platform", "web")
+	setUnderscoreHeader(req, "X_Platform", "web")
 	if uid != "" {
-		upstreamReq.Header.Set("X-User-Id", uid)
+		setUnderscoreHeader(req, "x_user_id", uid)
+		setUnderscoreHeader(req, "X_User_Id", uid)
+		req.Header.Set("X-User-Id", uid)
 	}
-	upstreamReq.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("X-Platform", "web")
+	req.Header.Set("Authorization", "Bearer "+tok)
 }
 
 func setUnderscoreHeader(req *http.Request, key, value string) {

@@ -4108,7 +4108,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		upstreamReq.Header.Set("Referer", targetBase+"/")
 	}
-	ensureChatbotappAPIAuth(upstreamReq, cfg, &activeAcc)
+	ensureChatbotappAPIAuth(upstreamReq, cfg, &activeAcc, upstreamURL.Host)
 	if upstreamURL.Host == "coda.grammarly.com" {
 		upstreamReq.Header.Set("Origin", "https://coda.grammarly.com")
 		upstreamReq.Header.Set("Referer", "https://coda.grammarly.com/")
