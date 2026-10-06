@@ -1501,6 +1501,72 @@ var httpClient = buildChromeHTTPClient()
 
 // ── URL REWRITING HELPERS ─────────────────────────────────────────────────────
 
+// normalizeSellerAmpPath maps Next.js /r/sas/* onto Yii /sas/* so premium cookies work.
+// /r/sas/lookup without NextAuth 307s → sign-out → site/login → returnUrl → infinite loop.
+func normalizeSellerAmpPath(path string) string {
+	if path == "/r/sas" {
+		return "/sas"
+	}
+	if strings.HasPrefix(path, "/r/sas/") {
+		return "/sas/" + strings.TrimPrefix(path, "/r/sas/")
+	}
+	return path
+}
+
+func sellerAmpHomePath(cfg Config) string {
+	if strings.TrimSpace(cfg.HomePath) != "" {
+		return cfg.HomePath
+	}
+	return "/sas/lookup"
+}
+
+// breakSellerAmpAuthLocation stops NextAuth/Yii login bounce loops after domain rewrite.
+func breakSellerAmpAuthLocation(loc, publicScheme, publicHost string, cfg Config) string {
+	lower := strings.ToLower(loc)
+	if !strings.Contains(lower, "/r/api/auth/session/sign-out") &&
+		!strings.Contains(lower, "/site/login") &&
+		!strings.Contains(lower, "/site/logout") {
+		return loc
+	}
+	fallback := fmt.Sprintf("%s://%s%s", publicScheme, publicHost, sellerAmpHomePath(cfg))
+	u, err := url.Parse(loc)
+	if err != nil {
+		return fallback
+	}
+	target := u.Query().Get("redirectTo")
+	if target == "" {
+		target = u.Query().Get("returnUrl")
+	}
+	if target == "" {
+		return fallback
+	}
+	decoded, err := url.QueryUnescape(target)
+	if err != nil {
+		decoded = target
+	}
+	pathOnly, rawQuery := decoded, ""
+	if tu, err := url.Parse(decoded); err == nil && (tu.Scheme != "" || strings.HasPrefix(decoded, "/")) {
+		if tu.Path != "" {
+			pathOnly = tu.Path
+			rawQuery = tu.RawQuery
+		} else if i := strings.Index(decoded, "?"); i >= 0 {
+			pathOnly, rawQuery = decoded[:i], decoded[i+1:]
+		}
+	} else if i := strings.Index(decoded, "?"); i >= 0 {
+		pathOnly, rawQuery = decoded[:i], decoded[i+1:]
+	}
+	if !strings.HasPrefix(pathOnly, "/") {
+		return fallback
+	}
+	pathOnly = normalizeSellerAmpPath(pathOnly)
+	out := fmt.Sprintf("%s://%s%s", publicScheme, publicHost, pathOnly)
+	if rawQuery != "" {
+		out += "?" + rawQuery
+	}
+	log.Printf("[PROXY] broke auth redirect → %s", out)
+	return out
+}
+
 // buildDomainReplacements creates a list of old→new domain pairs for HTML rewriting.
 func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
@@ -1537,6 +1603,10 @@ func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]s
 		extra = strings.Split(extra, "/")[0]
 		pairs = append(pairs, [2]string{extra, fmt.Sprintf("%s/extra-cdn-%d", publicHost, i)})
 	}
+	// Prefer Yii /sas routes over Next.js /r/sas (avoids NextAuth bounce loops)
+	pairs = append(pairs, [2]string{"/r/sas/", "/sas/"})
+	pairs = append(pairs, [2]string{`"/r/sas/`, `"/sas/`})
+	pairs = append(pairs, [2]string{`'/r/sas/`, `'/sas/`})
 	return pairs
 }
 
@@ -1945,6 +2015,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := loadConfig()
 	path := r.URL.Path
 
+	// Canonicalize /r/sas/* → /sas/* in the browser (breaks NextAuth redirect loops)
+	if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+		(path == "/r/sas" || strings.HasPrefix(path, "/r/sas/")) {
+		dest := normalizeSellerAmpPath(path)
+		if r.URL.RawQuery != "" {
+			dest += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, dest, http.StatusFound)
+		return
+	}
+
 	// ── 0. Skip proxy for admin API routes ──────────────────────────────────────
 	if strings.HasPrefix(path, "/api/auth-handshake") ||
 		strings.HasPrefix(path, "/api/device-bind") ||
@@ -2101,6 +2182,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamURL := *r.URL
 	upstreamURL.Scheme = targetParsed.Scheme
 	upstreamURL.Host = targetParsed.Host
+	upstreamURL.Path = normalizeSellerAmpPath(path)
 
 	// Handle CDN proxy routes
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
@@ -2337,6 +2419,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				for _, pair := range locationPairs {
 					newLoc = strings.ReplaceAll(newLoc, pair[0], pair[1])
 				}
+				newLoc = breakSellerAmpAuthLocation(newLoc, publicScheme, publicHost, cfg)
 				w.Header().Add(k, newLoc)
 			}
 			continue

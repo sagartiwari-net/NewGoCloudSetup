@@ -11,5 +11,7 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
+  "blocked_paths": ["/r/account", "/r/settings", "/r/user-management", "/integrations/index", "/site/logout", "/site/login", "/r/api/auth/session/sign-out"],
+  "blocked_prefixes": ["/r/account", "/r/settings", "/r/user-management", "/r/api/auth/session"],
   "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
 }
