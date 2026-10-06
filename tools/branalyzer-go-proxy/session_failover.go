@@ -299,10 +299,9 @@ func branAuthWatchScript(cfg Config) string {
 </script>`
 }
 
-// branUnlockSearchScript — Auth0 user$ leaves nickname empty → Be Curious stays
-// disabled and Angular never fires GetAccountInfo. Avoid prototype hacks (they
-// fight Zone.js). Instead: unlock buttons lightly + capture click → set shared
-// state (window.__tmBranN from patched main.js) → go /summary.
+// branUnlockSearchScript — Auth0 nickname empty disables Be Curious; Angular
+// searchText can stay "" while the input shows a domain → ValidURL snack.
+// Capture-phase click: stop Angular, seed domain from DOM, go /summary.
 func branUnlockSearchScript() string {
 	return `<script data-tm-bran-search="1">
 (function(){
@@ -335,13 +334,20 @@ func branUnlockSearchScript() string {
     return out;
   }
   function searchInput(){
-    return document.querySelector('app-home-search input, form.search-form input, mat-form-field input[matinput], mat-form-field input');
+    var nodes = document.querySelectorAll('app-home-search input, form.search-form input, mat-form-field input');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (!el || el.type === 'hidden') continue;
+      if (String(el.value || '').trim()) return el;
+    }
+    return nodes[0] || null;
   }
   function normalizeDomain(v){
     v = String(v || '').trim();
     if (!v) return null;
     var url = v.toLowerCase().indexOf('http') === 0 ? v.toLowerCase() : ('https://' + v.toLowerCase());
     var name = url.replace(/^https?:\/\//,'').split('/')[0];
+    if (!name || name.indexOf('.') < 0) return null;
     return {url:url, name:name, raw:v};
   }
   function seedState(dom){
@@ -357,9 +363,7 @@ func branUnlockSearchScript() string {
         N.currentUser.allowed = true;
       }
     }
-    try {
-      sessionStorage.setItem('tm_bran_force_domain', JSON.stringify(dom));
-    } catch (e) {}
+    try { sessionStorage.setItem('tm_bran_force_domain', JSON.stringify(dom)); } catch (e) {}
   }
   function unlockBtns(){
     try {
@@ -375,7 +379,8 @@ func branUnlockSearchScript() string {
   }
   function forceSummary(dom){
     seedState(dom);
-    try { location.assign('/summary'); } catch (e) { location.href = '/summary'; }
+    var dest = '/summary?tm_url=' + encodeURIComponent(dom.name);
+    try { location.assign(dest); } catch (e) { location.href = dest; }
   }
   document.addEventListener('click', function(ev){
     try {
@@ -385,19 +390,17 @@ func branUnlockSearchScript() string {
       if (!/^Be Curious$/i.test(t)) return;
       var inp = searchInput();
       var dom = normalizeDomain(inp && inp.value);
+      // Stop Angular getBrandInfo("") → "Introduce any valid URL" snack.
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
       if (!dom) return;
-      // Let Angular try first; if still on /home, force.
-      seedState(dom);
-      setTimeout(function(){
-        if (/\/summary/i.test(location.pathname)) return;
-        forceSummary(dom);
-      }, 1200);
+      forceSummary(dom);
     } catch (e) {}
   }, true);
-  // Brand Summary sidebar click with empty state → use last typed domain
   document.addEventListener('click', function(ev){
     try {
-      var a = ev.target && ev.target.closest ? ev.target.closest('a[href*="summary"], a[routerlink="summary"]') : null;
+      var a = ev.target && ev.target.closest ? ev.target.closest('a[href*="summary"], [routerlink="summary"], a[href="/summary"]') : null;
       if (!a) return;
       var inp = searchInput();
       var dom = normalizeDomain(inp && inp.value);

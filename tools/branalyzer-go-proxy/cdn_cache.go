@@ -204,6 +204,14 @@ func storeCDNCache(r *http.Request, status int, contentType, encoding string, bo
 	if key == "" || status != http.StatusOK || len(body) == 0 || len(body) > cdnCacheMax {
 		return
 	}
+	// Never disk-cache main/home chunks — Be Curious patches must always apply.
+	lower := strings.ToLower(key)
+	if strings.Contains(lower, "main.") && strings.HasSuffix(lower, ".js") {
+		return
+	}
+	if strings.HasPrefix(strings.TrimPrefix(lower, "/"), "1054.") && strings.HasSuffix(lower, ".js") {
+		return
+	}
 	ct := strings.ToLower(contentType)
 	if strings.Contains(ct, "text/html") || strings.Contains(ct, "json") ||
 		strings.Contains(ct, "text/event-stream") {

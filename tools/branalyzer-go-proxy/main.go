@@ -865,10 +865,10 @@ func patchBranSearchJS(body []byte) []byte {
 		{`const n={production:!0,branalyzerAzureAccountFunctions:`, `const n=(window.__tmBranN={production:!0,branalyzerAzureAccountFunctions:`},
 		{`disabled",!i.nickname`, `disabled",!1`},
 		{`disabled",!n.nickname`, `disabled",!1`},
-		// canActivate: if domain.url empty, pull from home input / session before bounce.
+		// Replace ValidURL bounce: always hydrate domain.url from DOM/session first.
 		{
 			`canActivate(e,r){return""!==ge.N.domain.url||(this.router.navigateByUrl("/home"),this.utilsService.showMessageSnackBar(fi.ValidURL),!1)`,
-			`canActivate(e,r){try{if(""===ge.N.domain.url){var _i=document.querySelector("app-home-search input,form.search-form input,mat-form-field input"),_v=_i&&_i.value;if(!_v){try{var _s=sessionStorage.getItem("tm_bran_force_domain");if(_s){var _d=JSON.parse(_s);_v=_d&&(_d.raw||_d.name||_d.url);}}catch(_e){}}if(_v){var _u=_v.toLowerCase().indexOf("http")===0?_v.toLowerCase():("https://"+_v.toLowerCase());ge.N.domain.url=_u;ge.N.domain.name=_u.replace(/^https?:\/\//,"").split("/")[0];}}}catch(_x){}return""!==ge.N.domain.url||(this.router.navigateByUrl("/home"),this.utilsService.showMessageSnackBar(fi.ValidURL),!1)`,
+			`canActivate(e,r){try{if(!ge.N.domain.url){var _v="";try{_v=new URLSearchParams(location.search).get("tm_url")||""}catch(_q){}if(!_v){var _i=document.querySelector("app-home-search input,form.search-form input,mat-form-field input");_v=_i&&String(_i.value||"").trim()}if(!_v){try{var _j=JSON.parse(sessionStorage.getItem("tm_bran_force_domain")||"null");_v=_j&&String(_j.raw||_j.name||_j.url||"").trim()}catch(_e){}}if(_v){var _u=_v.toLowerCase().indexOf("http")===0?_v.toLowerCase():("https://"+_v.toLowerCase());ge.N.domain.url=_u;ge.N.domain.name=_u.replace(/^https?:\/\//,"").split("/")[0]}}if(ge.N.domain.url)return!0}catch(_x){}return""!==ge.N.domain.url||(this.router.navigateByUrl("/home"),this.utilsService.showMessageSnackBar(fi.ValidURL),!1)`,
 		},
 	}
 	for _, r := range repls {
