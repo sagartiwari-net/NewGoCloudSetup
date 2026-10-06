@@ -2948,6 +2948,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ── 0c. Disk CDN cache (static/js/css/cdn-proxy) — before auth for speed ─────
+	cdnKey := cdnCacheKey(r)
+	if serveCachedCDN(w, r) {
+		rl.status = http.StatusOK
+		return
+	}
+	if cdnKey != "" {
+		defer completeCDNFlight(cdnKey)
+	}
+
 	// ── 0. Skip proxy for admin API routes ──────────────────────────────────────
 	if strings.HasPrefix(path, "/api/auth-handshake") ||
 		strings.HasPrefix(path, "/api/device-bind") ||
@@ -3295,6 +3305,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if cfg.LocalTestMode && strings.HasPrefix(path, "/api/") {
 		forwardUpstreamSetCookies(w, r, upstreamResp, cfg)
 	}
+	// Browser cache for static assets (Semrush/Ahrefs style).
+	if upstreamResp.StatusCode == http.StatusOK && isErankCDNPath(path) {
+		setErankCDNBrowserCache(w, path)
+	} else if isErankCDNPath(path) {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	if loc := upstreamResp.Header.Get("Location"); loc != "" {
 		newLoc := rewriteLocationHeader(loc, rewritePairs)
 		w.Header().Set("Location", newLoc)
@@ -3404,6 +3420,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
 			bodyBytes = rewriteBody(bodyBytes, rewritePairs)
+			if isErankCDNPath(path) && upstreamResp.StatusCode == http.StatusOK {
+				storeCDNCache(r, upstreamResp.StatusCode, contentType, "", bodyBytes)
+				w.Header().Set("X-Proxy-Cache", "MISS")
+				w.Header().Set("X-Erank-Cache", "store")
+			}
+			w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
 			return
@@ -3418,10 +3440,25 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
+		if isErankCDNPath(path) && upstreamResp.StatusCode == http.StatusOK {
+			storeCDNCache(r, upstreamResp.StatusCode, contentType, "", bodyBytes)
+			w.Header().Set("X-Proxy-Cache", "MISS")
+		}
 		w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 		w.WriteHeader(upstreamResp.StatusCode)
 		w.Write(bodyBytes)
 		return
+	}
+	if isErankCDNPath(path) && upstreamResp.StatusCode == http.StatusOK {
+		bodyBytes, err := io.ReadAll(upstreamResp.Body)
+		if err == nil {
+			storeCDNCache(r, upstreamResp.StatusCode, contentType, "", bodyBytes)
+			w.Header().Set("X-Proxy-Cache", "MISS")
+			w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
+			w.WriteHeader(upstreamResp.StatusCode)
+			w.Write(bodyBytes)
+			return
+		}
 	}
 	w.WriteHeader(upstreamResp.StatusCode)
 	io.Copy(w, upstreamResp.Body)
@@ -3454,6 +3491,8 @@ func main() {
 	cfg := loadConfig()
 	log.Printf("🚀 Starting Generic Tool Proxy — Tool: %s | Target: %s | Port: %s", cfg.ToolName, cfg.TargetURL, cfg.Port)
 	log.Printf("[AUTOMATION] logout_detection=%v automation=%v", cfg.LogoutDetection.Enabled, cfg.Automation.Enabled)
+	initCDNCacheDir()
+	startCDNCacheSweep()
 	if cfg.LocalTestMode {
 		log.Printf("🧪 LOCAL TEST MODE — cookies from %s", cfg.CookieFile)
 		if cfg.BindLocalhost {

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	proxyBuildTag       = "erank-v6-no-browser-cookies"
+	proxyBuildTag       = "erank-v7-cdn-cache"
 	automationStateFile = "automation_state.json"
 )
 

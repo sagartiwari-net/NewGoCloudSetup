@@ -151,7 +151,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `digen` (:5271)  
 - [ ] `educative` (:4851)  
 - [ ] `epidemicsound` (:4641)  
-- [ ] `erank` (:5191) — rebuild/verify (2026-10-06): was Bad Gateway / Access Denied without session  
+- [x] `erank` (:5191) — **HTTPS OK** (2026-10-06): h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)  
 - [ ] `fishaudio` (:4991)  
 - [ ] `flaticon` (:4921) — **parked** (Freepik WAF 403 on Hetzner; needs Proxy Manager)  
 - [ ] `flexclip` (:4671)  
