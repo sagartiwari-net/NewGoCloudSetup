@@ -1,15 +1,3 @@
 {
-  "port": "5121",
-  "public_host": "magnific.gt4rents.com",
-  "public_scheme": "https",
-  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
-  "local_test_mode": false,
-  "bypass_auth": false,
-  "mysql_host": "127.0.0.1",
-  "mysql_port": "3306",
-  "mysql_user": "gt4rents",
-  "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
-  "mysql_db": "gt4rents",
-  "inject_css": "div.flex.flex-col:has(>[data-cy=\"popover-user-my-subscription\"]):has([data-cy=\"helpCenter\"]){display:none!important}div.flex.flex-col:has(>button[data-cy=\"logout-button\"]){display:none!important}div.flex.flex-col:has(>a[data-cy=\"upgrade\"]):has([data-cy=\"addMember\"]){display:none!important}p.max-w-56.truncate.text-surface-foreground-2{display:none!important}a[href*=\"/log-in\"],a[href*=\"/login\"],a[href*=\"/sign-up\"],a[href*=\"/signup\"],a[href*=\"/register\"],a[href*=\"/pricing\"],a[href*=\"/plans\"],a[href*=\"/Log-in\"],a[href*=\"/Sign-up\"],button[data-cy*=\"login\"],button[data-cy*=\"signup\"],button[data-cy*=\"sign-up\"]{display:none!important}",
-  "_note": "Magnific Security check bypass = Proxy Manager outbound + cookies captured on that same proxy IP (same as Claude/Envato). Auth needs GR_* cookies + localStorage session/user + user/wallet from a full /app GoAuto dump (panel Cookie JSON with cookies+storage). inject_css hides user-menu Plan/billing→Help, Log out, Upgrade/team, email line; JS replaces bold name with panel username."
+  "_note": "MOVED → use mgfc.config.overlay.json (subdomain mgfc.gt4rents.com). Do not build with subdomain magnific — Safe Browsing flagged the brand host."
 }

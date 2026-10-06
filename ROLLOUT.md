@@ -111,7 +111,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
 - [ ] `cnva` — Canva (:4501) — **rebuild required** (token-only `/access`); Partial (429 / proxy)  
 - [x] `helium10` — Helium10 (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified  
-- [ ] `magnific` — Magnific (:5121) — **rebuild required** after token-only access; Access Denied until redeploy  
+- [ ] `mgfc` — Magnific (:5121) — **rename** `magnific` → `mgfc.gt4rents.com` (Safe Browsing “Dangerous site” on brand host) — deploy + panel domain update  
 - [ ] `junglescout` — JungleScout (:5211) — **rebuild required** after token-only access; was HTTPS OK before  
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** + rebuild for token-only; blank `/home` still open  
 - [x] `grammarly` — Grammarly (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)  
@@ -171,7 +171,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `kalodata` (:4951)  
 - [ ] `leonardo` (:4601)  
 - [ ] `linkedinlearning` (:4571)  
-- [x] `magnific` (:5121) — see Priority  
+- [ ] `mgfc` (:5121) — Magnific — see Priority (was `magnific`)  
 - [ ] `merchinformer` (:4651)  
 - [ ] `minvo` (:4871)  
 - [ ] `mojo` (:4881)  
@@ -224,7 +224,7 @@ If fail: note in “Open issues”, fix, re-tick.
 | `branalyzer` | Server blank `/home` — Network shows no `GetAccountInfo` (local cookie mode OK) | **Parked.** Resume later: redeploy `a7551d9`+, hard-refresh access-link, confirm `extra-cdn-0` GetAccountInfo + Be Curious UI before ticking `[x]` |
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
-| `magnific` | `/photos` still WAF if someone bypasses redirect; full Photos landing needs residential Proxy Manager | `/photos` redirects to `/people-emotions`; optional Proxy Manager later for hard WAF paths |
+| `mgfc` (Magnific) | Brand host `magnific.gt4rents.com` flagged Dangerous; `/photos` WAF if bypass redirect | **Rename to `mgfc`** (like wrank); `/photos` → `/people-emotions` |
 | `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
 
 ### Chrome Safe Browsing (“Dangerous site”) — who got hit
@@ -234,10 +234,11 @@ Not a proxy crash — Google flags phishing-like pages. Seen / noted on gt4rents
 | Host / tool | Why it triggered | Status |
 |-------------|------------------|--------|
 | `woorank.gt4rents.com` → `wrank` | Brand-name subdomain + lookalike UI | **OK** — live on `wrank.gt4rents.com` |
+| `magnific.gt4rents.com` → `mgfc` | Brand-name subdomain + Magnific-like UI | **Renaming** — use `mgfc.gt4rents.com` |
 | `seositecheckup.gt4rents.com` | Access URL had `/access?user=…&token=…` (looks like credential phishing) | **Mitigated** — panel now opens `/access?token=` only; tool OK (`v17`) |
 | `grammarly.gt4rents.com` | Same class of risk (brand subdomain + tokenized access) during HTTPS verify | Tool OK; if warning returns → [report false positive](https://safebrowsing.google.com/safebrowsing/report_error/?hl=en) |
 
-**Platform fix (all tools):** access links no longer put `user=` in the URL (commit `fad80ac`+). Brand-heavy subs (`grammarly`, `woorank`, etc.) still higher SB risk than short slugs (`refs`, `smrs`, `cgpt`).
+**Platform fix (all tools):** access links no longer put `user=` in the URL (commit `fad80ac`+). Brand-heavy subs (`grammarly`, `magnific`, `woorank`, etc.) still higher SB risk than short slugs (`refs`, `smrs`, `cgpt`, `wrank`, `mgfc`).
 
 ---
 

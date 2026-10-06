@@ -441,9 +441,9 @@
     {
       "tool": "magnific",
       "folder": "magnific-go-proxy",
-      "subdomain": "magnific",
+      "subdomain": "mgfc",
       "port": 5121,
-      "fqdn": "magnific.gt4rents.com"
+      "fqdn": "mgfc.gt4rents.com"
     },
     {
       "tool": "seobuddy",

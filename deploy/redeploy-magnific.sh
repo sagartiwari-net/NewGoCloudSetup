@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Run on gt4rents server as root (already logged in as root@flayrpro)
+# Magnific now lives on short slug mgfc (Safe Browsing). Prefer redeploy-mgfc.sh.
 set -euo pipefail
-ROOT="${ROOT:-/www/wwwroot/gt4rents.com/_repo}"
-cd "$ROOT"
-git pull --ff-only
-./deploy/build-one.sh magnific
-./deploy/start-tool.sh magnific
-echo "magnific redeployed — paste magnific-cookie-clean.json in panel, hard-refresh stock page"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "${ROOT}/deploy/redeploy-mgfc.sh"
