@@ -1175,20 +1175,7 @@ func staticCacheKey(method, path string) string {
 }
 
 func isCacheableStaticPath(path string) bool {
-	p := path
-	if i := strings.Index(p, "?"); i >= 0 {
-		p = p[:i]
-	}
-	p = strings.ToLower(p)
-	if strings.HasPrefix(p, "/wp-content/") || strings.HasPrefix(p, "/wp-includes/") || strings.HasPrefix(p, "/dist/") || strings.HasPrefix(p, "/img/") {
-		return true
-	}
-	for _, ext := range []string{".js", ".css", ".woff2", ".woff", ".ttf", ".eot", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".map"} {
-		if strings.HasSuffix(p, ext) {
-			return true
-		}
-	}
-	return false
+	return isGrammarlyCDNPath(path)
 }
 
 func getStaticCached(method, path string) *staticCacheEntry {
@@ -1232,12 +1219,17 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	// Also persist to disk so restarts / multi-user loads stay fast.
+	r := &http.Request{Method: http.MethodGet, URL: &url.URL{Path: path}, RequestURI: path}
+	storeCDNCache(r, status, contentType, encoding, body)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Del("Pragma")
-	w.Header().Del("Expires")
+	path := ""
+	if r != nil && r.URL != nil {
+		path = r.URL.Path
+	}
+	setGrammarlyCDNBrowserCache(w, path)
 	if ent.contentType != "" {
 		w.Header().Set("Content-Type", ent.contentType)
 	}
@@ -1245,6 +1237,7 @@ func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheE
 		w.Header().Set("Content-Encoding", ent.encoding)
 	}
 	w.Header().Set("X-OCG-Cache", "HIT")
+	w.Header().Set("X-Grammarly-Cache", "memory")
 	w.Header().Set("Content-Length", strconv.Itoa(len(ent.body)))
 	w.WriteHeader(ent.status)
 	if r.Method != http.MethodHead {
@@ -1254,9 +1247,7 @@ func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheE
 
 func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	if isCacheableStaticPath(path) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
-		w.Header().Del("Pragma")
-		w.Header().Del("Expires")
+		setGrammarlyCDNBrowserCache(w, path)
 		return
 	}
 	// HTML / JSON / AJAX — never cache
@@ -3348,6 +3339,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return // These are handled by their own handlers
 	}
 
+	// ── 0b. Disk CDN cache BEFORE auth (static/cdn-proxy/extra-cdn static hosts) ─
+	cdnKey := cdnCacheKey(r)
+	if serveCachedCDN(w, r) {
+		return
+	}
+	if cdnKey != "" {
+		defer completeCDNFlight(cdnKey)
+	}
+	// Memory L1 (same process) — also before auth for speed
+	if ent := getStaticCached(r.Method, path); ent != nil {
+		serveStaticCached(w, r, ent)
+		return
+	}
+
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
@@ -3401,12 +3406,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			http.Redirect(w, r, "/", http.StatusFound)
 		}
-		return
-	}
-
-	// ── 2b. Serve cached static assets (skip upstream TLS) ───────────────────────
-	if ent := getStaticCached(r.Method, path); ent != nil {
-		serveStaticCached(w, r, ent)
 		return
 	}
 
@@ -3986,8 +3985,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Cache static assets in browser; keep HTML/API uncached
-	setProxyCacheHeaders(w, path, contentType)
+	// Cache static assets in browser; keep HTML/API uncached. Never cache errors.
+	if upstreamResp.StatusCode == http.StatusOK {
+		setProxyCacheHeaders(w, path, contentType)
+	} else if isGrammarlyCDNPath(path) {
+		w.Header().Set("Cache-Control", "no-store")
+	} else {
+		setProxyCacheHeaders(w, path, contentType)
+	}
 
 	// ── 8. Streaming / SSE passthrough (Canva /_stream hydration) ────────────────
 	if isSSEResponse(contentType) || isStreamingPath(path) || isStreamingContentType(contentType) {
@@ -4169,6 +4174,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, ce, bodyBytes)
 			w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 			w.Header().Set("X-OCG-Cache", "MISS")
+			w.Header().Set("X-Proxy-Cache", "MISS")
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
 			return
@@ -4369,6 +4375,8 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	cfg := loadConfig()
 	log.Printf("🚀 Starting Generic Tool Proxy — Tool: %s | Target: %s | Port: %s", cfg.ToolName, cfg.TargetURL, cfg.Port)
+	initCDNCacheDir()
+	startCDNCacheSweep()
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()

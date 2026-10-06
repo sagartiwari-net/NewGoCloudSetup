@@ -114,7 +114,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `magnific` — Magnific (:5121) — **rebuild required** after token-only access; Access Denied until redeploy  
 - [ ] `junglescout` — JungleScout (:5211) — **rebuild required** after token-only access; was HTTPS OK before  
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** + rebuild for token-only; blank `/home` still open  
-- [ ] `grammarly` — grammarly (:4911) — **rebuild required** after token-only access; was HTTPS OK before  
+- [x] `grammarly` — Grammarly (:4911) — **READY / HTTPS OK** (2026-10-06): panel access + disk CDN cache (static/cdn-proxy/extra-cdn) + browser max-age  
 - [ ] `placeit` — Placeit (:4611) — **rebuild required** after token-only access; was HTTPS OK before  
 - [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts — **redeploy if Access Denied**  
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
@@ -157,7 +157,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `flaticon` (:4921) — **parked** (Freepik WAF 403 on Hetzner; needs Proxy Manager)  
 - [ ] `flexclip` (:4671)  
 - [ ] `glorify` (:4681)  
-- [x] `grammarly` (:4911) — see Priority  
+- [x] `grammarly` (:4911) — **READY / HTTPS OK** (2026-10-06): see Priority  
 - [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide  
 - [ ] `grok` (:4831)  
 - [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06)  
