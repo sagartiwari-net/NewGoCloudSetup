@@ -333,22 +333,34 @@ func branUnlockSearchScript() string {
     if (!out.email) out.email = out.nickname.indexOf('@') >= 0 ? out.nickname : (out.nickname + '@branalyzer.local');
     return out;
   }
-  function searchInput(){
-    var nodes = document.querySelectorAll('app-home-search input, form.search-form input, mat-form-field input');
-    for (var i = 0; i < nodes.length; i++) {
-      var el = nodes[i];
-      if (!el || el.type === 'hidden') continue;
-      if (String(el.value || '').trim()) return el;
-    }
-    return nodes[0] || null;
-  }
   function normalizeDomain(v){
     v = String(v || '').trim();
     if (!v) return null;
     var url = v.toLowerCase().indexOf('http') === 0 ? v.toLowerCase() : ('https://' + v.toLowerCase());
     var name = url.replace(/^https?:\/\//,'').split('/')[0];
     if (!name || name.indexOf('.') < 0) return null;
+    // Reject country labels / plain words mistaken for the domain box.
+    if (/\s/.test(name)) return null;
     return {url:url, name:name, raw:v};
+  }
+  function searchInput(){
+    var nodes = document.querySelectorAll('app-home-search input, form.search-form input, mat-form-field input, input[placeholder*="url" i], input[placeholder*="domain" i]');
+    var fallback = null;
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (!el || el.type === 'hidden' || el.type === 'checkbox' || el.type === 'radio') continue;
+      if (el.closest && el.closest('mat-select-country, mat-select, .mat-select-country, mat-option')) continue;
+      if (!fallback) fallback = el;
+      var dom = normalizeDomain(el.value);
+      if (dom) return el;
+    }
+    for (var j = 0; j < nodes.length; j++) {
+      var el2 = nodes[j];
+      if (!el2 || el2.type === 'hidden') continue;
+      if (el2.closest && el2.closest('mat-select-country, mat-select, .mat-select-country')) continue;
+      if (String(el2.value || '').trim()) return el2;
+    }
+    return fallback || null;
   }
   function seedState(dom){
     var c = claims();

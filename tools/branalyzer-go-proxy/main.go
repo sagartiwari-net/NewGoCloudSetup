@@ -862,13 +862,16 @@ func buildSyntxLocalStorageInject(lsJSON string) string {
 func patchBranSearchJS(body []byte) []byte {
 	repls := []struct{ old, neu string }{
 		// Shared Angular env (module 2340) → window.__tmBranN for force-search.
+		// MUST close the grouping paren after the object — missing ")" SyntaxError's main.js
+		// and the whole SPA stays blank (Be Curious never mounts).
 		{`const n={production:!0,branalyzerAzureAccountFunctions:`, `const n=(window.__tmBranN={production:!0,branalyzerAzureAccountFunctions:`},
+		{`main:{email:"branalyzer@branalyzer.com",selected:""}}},1690:`, `main:{email:"branalyzer@branalyzer.com",selected:""}})},1690:`},
 		{`disabled",!i.nickname`, `disabled",!1`},
 		{`disabled",!n.nickname`, `disabled",!1`},
 		// Replace ValidURL bounce: always hydrate domain.url from DOM/session first.
 		{
 			`canActivate(e,r){return""!==ge.N.domain.url||(this.router.navigateByUrl("/home"),this.utilsService.showMessageSnackBar(fi.ValidURL),!1)`,
-			`canActivate(e,r){try{if(!ge.N.domain.url){var _v="";try{_v=new URLSearchParams(location.search).get("tm_url")||""}catch(_q){}if(!_v){var _i=document.querySelector("app-home-search input,form.search-form input,mat-form-field input");_v=_i&&String(_i.value||"").trim()}if(!_v){try{var _j=JSON.parse(sessionStorage.getItem("tm_bran_force_domain")||"null");_v=_j&&String(_j.raw||_j.name||_j.url||"").trim()}catch(_e){}}if(_v){var _u=_v.toLowerCase().indexOf("http")===0?_v.toLowerCase():("https://"+_v.toLowerCase());ge.N.domain.url=_u;ge.N.domain.name=_u.replace(/^https?:\/\//,"").split("/")[0]}}if(ge.N.domain.url)return!0}catch(_x){}return""!==ge.N.domain.url||(this.router.navigateByUrl("/home"),this.utilsService.showMessageSnackBar(fi.ValidURL),!1)`,
+			`canActivate(e,r){try{if(!ge.N.domain.url){var _v="";try{_v=new URLSearchParams(location.search).get("tm_url")||""}catch(_q){}if(!_v){try{var _j=JSON.parse(sessionStorage.getItem("tm_bran_force_domain")||"null");_v=_j&&String(_j.raw||_j.name||_j.url||"").trim()}catch(_e){}}if(!_v){var _ns=document.querySelectorAll("app-home-search input,form.search-form input,mat-form-field input");for(var _k=0;_k<_ns.length;_k++){var _el=_ns[_k];if(!_el||_el.type==="hidden")continue;if(_el.closest&&_el.closest("mat-select-country,mat-select"))continue;var _cand=String(_el.value||"").trim();if(_cand&&_cand.indexOf(".")>=0&&!/\s/.test(_cand)){_v=_cand;break}}}if(_v){var _u=_v.toLowerCase().indexOf("http")===0?_v.toLowerCase():("https://"+_v.toLowerCase());ge.N.domain.url=_u;ge.N.domain.name=_u.replace(/^https?:\/\//,"").split("/")[0]}}if(ge.N.domain.url)return!0}catch(_x){}return""!==ge.N.domain.url||(this.router.navigateByUrl("/home"),this.utilsService.showMessageSnackBar(fi.ValidURL),!1)`,
 		},
 	}
 	for _, r := range repls {
@@ -1449,6 +1452,10 @@ func getStaticCached(method, path string) *staticCacheEntry {
 	if method != http.MethodGet && method != http.MethodHead {
 		return nil
 	}
+	lower := strings.ToLower(path)
+	if strings.Contains(lower, "main.") && strings.HasSuffix(lower, ".js") {
+		return nil
+	}
 	if !isCacheableStaticPath(path) {
 		return nil
 	}
@@ -1472,6 +1479,11 @@ func getStaticCached(method, path string) *staticCacheEntry {
 
 func putStaticCached(method, path string, status int, contentType, encoding string, body []byte) {
 	if method != http.MethodGet || status != 200 || !isCacheableStaticPath(path) {
+		return
+	}
+	// Never memory-cache main.*.js — search patches must re-apply every request.
+	lower := strings.ToLower(path)
+	if strings.Contains(lower, "main.") && strings.HasSuffix(lower, ".js") {
 		return
 	}
 	if len(body) == 0 || len(body) > 8<<20 { // skip empty / >8MB
