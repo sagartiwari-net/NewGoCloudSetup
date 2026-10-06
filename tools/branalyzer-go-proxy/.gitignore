@@ -5,3 +5,4 @@ cookie.txt.bak
 config.local.json
 config.local.panel.json
 branalyzer-go-proxy
+cdn-cache/
