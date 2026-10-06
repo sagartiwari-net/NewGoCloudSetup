@@ -119,7 +119,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
 - [x] `erank` — eRank (:5191) — **READY / HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
-
+- [ ] `selleramp` — SellerAmp (:5161) — **next**: Bad Gateway on `selleramp.gt4rents.com` (proxy down / :5161) — rebuild+start; panel access-link only 
 > **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`).  
 > Binaries built **before** `fad80ac` → Access Denied.  
 > **Already OK (skip rebuild):** `refs` `smrs` `cgpt` `clud` `envt` `cnva`  
@@ -140,7 +140,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `answerthepublic` (:4931)  
 - [ ] `artistly` (:4821)  
 - [ ] `branalyzer` (:5081) — **parked** — home loads; Be Curious still snack “Introduce any valid URL” on server (`59905db` local OK) — resume later; see Open issues  
-- [x] `chatbotapp` (:5061) — up; **fixing**: inject `x_token`/`x_user_id` on `/api/v2/*` (4002) — redeploy  
+- [ ] `chatbotapp` (:5061) — **parked** — home/chats list OK; `/api/v2/chat` still 4002 `x_token` on server (`91f9ad8` inject) — resume later; see Open issues  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
 - [ ] `copywritely` (:4521)  
@@ -185,7 +185,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `screpy` (:4721)  
 - [ ] `scribd` (:4791)  
 - [ ] `searchatlas` (:4711)  
-- [ ] `selleramp` (:5161)  
+- [ ] `selleramp` (:5161) — see Priority (Bad Gateway / bring-up)  
 - [ ] `sellthetrend` (:4591)  
 - [ ] `seobility` (:4731)  
 - [ ] `seobuddy` (:5131)  
@@ -221,6 +221,8 @@ If fail: note in “Open issues”, fix, re-tick.
 | Tool | Issue | Action |
 |------|--------|--------|
 | `branalyzer` | Be Curious → snack “Introduce any valid URL or domain” on `branalyzer.gt4rents.com` (home OK; local `59905db` worked) | **Parked.** Resume later: compare server main.js patch + searchText/DOM vs local; wipe `cdn-cache`; hard-refresh |
+| `chatbotapp` | `/api/v2/chat` → 4002 `x_token header is required` (sidebar/history OK; `91f9ad8` inject) | **Parked.** Resume later: confirm panel GoAuto has IndexedDB `stsTokenManager`; check `[CHATBOT] api auth OK` in app.log |
+| `selleramp` | `selleramp.gt4rents.com` Bad Gateway (nginx → :5161 down) | **In progress.** Rebuild+start; then panel access-link verify |
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `mgfc` (Magnific) | `/photos` still WAF if someone bypasses redirect | **OK on `mgfc`**; `/photos` → `/people-emotions` |
