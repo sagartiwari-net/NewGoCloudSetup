@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	proxyBuildTag       = "erank-v4-revert-hide"
+	proxyBuildTag       = "erank-v5-h1-upstream"
 	automationStateFile = "automation_state.json"
 )
 
