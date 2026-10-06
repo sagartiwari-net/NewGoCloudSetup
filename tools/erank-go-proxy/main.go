@@ -1705,6 +1705,14 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
@@ -3060,6 +3068,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.EqualFold(k, "Host") || strings.EqualFold(k, "Cookie") {
 			continue
 		}
+		// Hop-by-hop — never forward (HTTP/2 rejects Connection: upgrade from nginx)
+		if strings.EqualFold(k, "Connection") || strings.EqualFold(k, "Upgrade") ||
+			strings.EqualFold(k, "Keep-Alive") || strings.EqualFold(k, "Proxy-Connection") ||
+			strings.EqualFold(k, "Transfer-Encoding") || strings.EqualFold(k, "TE") {
+			continue
+		}
 		if cfg.LocalTestMode && (strings.EqualFold(k, "X-XSRF-TOKEN") || strings.EqualFold(k, "X-CSRF-TOKEN")) {
 			continue
 		}
@@ -3097,7 +3111,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = targetParsed.Host
 	}
 
-	// Remove proxy headers
+	// Remove hop-by-hop + proxy headers. nginx "Connection: upgrade" must never
+	// reach HTTP/2 upstream (Go: invalid Connection request header).
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("Proxy-Connection")
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
 	upstreamReq.Header.Del("X-Forwarded-For")
