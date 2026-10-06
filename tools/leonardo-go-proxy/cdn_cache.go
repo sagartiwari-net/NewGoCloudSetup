@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -64,12 +65,23 @@ func leoURLHost(raw string) string {
 	return strings.ToLower(u.Host)
 }
 
-func leoExtraCDNHost(path string) (host string, rest string, ok bool) {
-	cfg := loadConfig()
-	if !strings.HasPrefix(path, "/extra-cdn-") {
-		return "", "", false
+// leoCDNRoutePrefix returns the public rewrite prefix (lcdn — not extra-cdn).
+// Cloudflare still has poisoned 400s cached under /extra-cdn-2/; new prefix busts that.
+func leoCDNRoutePrefix(i int) string {
+	return fmt.Sprintf("/lcdn-%d", i)
+}
+
+// parseLeonardoCDNRoute accepts /lcdn-N/... (current) and /extra-cdn-N/... (legacy).
+func parseLeonardoCDNRoute(path string) (idx int, rest string, ok bool) {
+	restAll := ""
+	switch {
+	case strings.HasPrefix(path, "/lcdn-"):
+		restAll = strings.TrimPrefix(path, "/lcdn-")
+	case strings.HasPrefix(path, "/extra-cdn-"):
+		restAll = strings.TrimPrefix(path, "/extra-cdn-")
+	default:
+		return 0, "", false
 	}
-	restAll := strings.TrimPrefix(path, "/extra-cdn-")
 	idxStr := ""
 	for i := 0; i < len(restAll); i++ {
 		if restAll[i] >= '0' && restAll[i] <= '9' {
@@ -78,17 +90,26 @@ func leoExtraCDNHost(path string) (host string, rest string, ok bool) {
 			break
 		}
 	}
-	idx, err := strconv.Atoi(idxStr)
-	if err != nil || idx < 0 || idx >= len(cfg.ExtraCDNDomains) {
+	n, err := strconv.Atoi(idxStr)
+	if err != nil || n < 0 {
+		return 0, "", false
+	}
+	rest = restAll[len(idxStr):]
+	if rest == "" {
+		rest = "/"
+	}
+	return n, rest, true
+}
+
+func leoExtraCDNHost(path string) (host string, rest string, ok bool) {
+	cfg := loadConfig()
+	idx, rest, ok := parseLeonardoCDNRoute(path)
+	if !ok || idx >= len(cfg.ExtraCDNDomains) {
 		return "", "", false
 	}
 	h := leoURLHost(cfg.ExtraCDNDomains[idx])
 	if h == "" {
 		return "", "", false
-	}
-	rest = restAll[len(idxStr):]
-	if rest == "" {
-		rest = "/"
 	}
 	return h, rest, true
 }
@@ -151,7 +172,7 @@ func tryServePublicLeonardoCDN(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	path := r.URL.Path
-	if !strings.HasPrefix(path, "/extra-cdn-") || !isLeonardoCDNPath(path) {
+	if (!strings.HasPrefix(path, "/lcdn-") && !strings.HasPrefix(path, "/extra-cdn-")) || !isLeonardoCDNPath(path) {
 		return false
 	}
 	host, rest, ok := leoExtraCDNHost(path)
@@ -253,7 +274,7 @@ func isLeonardoCDNPath(path string) bool {
 		return false
 	}
 
-	if strings.HasPrefix(lower, "/extra-cdn-") {
+	if strings.HasPrefix(lower, "/lcdn-") || strings.HasPrefix(lower, "/extra-cdn-") {
 		host, rest, ok := leoExtraCDNHost(path)
 		if !ok || leoHostDenied(host) || !leoExtraCDNAllowed(host, rest) {
 			return false

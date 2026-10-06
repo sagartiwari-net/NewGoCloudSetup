@@ -1070,17 +1070,39 @@ func sanitizeLeonardoCDNUpstream(req *http.Request, host string) {
 	log.Printf("[CDN] cookieless upstream host=%s path=%s", host, req.URL.Path)
 }
 
+// Only absorb short-lived CF edge cookies. Never absorb better-auth / Cognito
+// session tokens — those must come from panel.db Mapped Accounts. Overlaying
+// them kept users "logged in" after the panel cookie was replaced.
 var absorbCookieNames = map[string]bool{
 	"__cf_bm": true, "cf_clearance": true, "_cfuvid": true,
-	"CF_Access_Token": true,
-	"__Secure-better-auth.session_token": true,
-	"__Secure-better-auth.session_data.0": true,
-	"__Secure-better-auth.session_data.1": true,
-	"user-plan": true, "anonymous-id": true,
-	"ASI": true, "CID": true,
-	"CAE": true, "CAZ": true, "CB": true, "CUI": true, "CUL": true, "CAU": true,
-	"user_session": true, "remember_user_token": true, "_piktov3_final_session": true,
-	"_ilovepdf": true, "_csrf-ilovepdf": true, "_identity-ilovepdf": true, "_identity_ulc": true,
+}
+
+var (
+	panelCookieFPMu sync.Mutex
+	panelCookieFP   string
+)
+
+// syncPanelAccountCookie clears runtime overlay when Mapped Account cookie changes.
+func syncPanelAccountCookie(baseCookie string) string {
+	sum := sha256.Sum256([]byte(baseCookie))
+	fp := hex.EncodeToString(sum[:8])
+	panelCookieFPMu.Lock()
+	changed := fp != panelCookieFP
+	if changed {
+		panelCookieFP = fp
+	}
+	panelCookieFPMu.Unlock()
+	if changed {
+		localCookieMu.Lock()
+		localCookieOverlay = map[string]string{}
+		localCookieMu.Unlock()
+		leoAccessTokenMu.Lock()
+		leoAccessToken = ""
+		leoAccessTokenExp = 0
+		leoAccessTokenMu.Unlock()
+		log.Printf("[COOKIE] panel Mapped Account cookie changed — cleared overlay + accessToken")
+	}
+	return applyLocalCookieOverlay(baseCookie)
 }
 
 func cookieHeaderToMap(header string) map[string]string {
@@ -2030,8 +2052,8 @@ func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]s
 	for i, extra := range cfg.ExtraCDNDomains {
 		extra = strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		extra = strings.Split(extra, "/")[0]
-		proxyBase := fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)
-		wsProxy := fmt.Sprintf("%s://%s/extra-cdn-%d", wsScheme, publicHost, i)
+		proxyBase := fmt.Sprintf("%s%s", publicBase, leoCDNRoutePrefix(i))
+		wsProxy := fmt.Sprintf("%s://%s%s", wsScheme, publicHost, leoCDNRoutePrefix(i))
 		pairs = append(pairs, [2]string{"https://" + extra, proxyBase})
 		pairs = append(pairs, [2]string{"http://" + extra, proxyBase})
 		pairs = append(pairs, [2]string{"wss://" + extra, wsProxy})
@@ -2200,13 +2222,13 @@ func patcherScript(cfg Config) string {
 	}
 
 	// Build extra CDN domain replacements for XHR/fetch patching.
-	// Each extra CDN domain gets proxied through /extra-cdn-N/ on our server.
+	// Each extra CDN domain gets proxied through /lcdn-N/ on our server.
 	var extraCDNJS strings.Builder
 	extraCDNJS.WriteString("[")
 	for i, extra := range cfg.ExtraCDNDomains {
 		extraClean := strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		extraClean = strings.Split(extraClean, "/")[0]
-		proxyPath := fmt.Sprintf("/extra-cdn-%d", i)
+		proxyPath := leoCDNRoutePrefix(i)
 		extraCDNJS.WriteString(fmt.Sprintf(
 			`["https://%s",%q],["http://%s",%q],["wss://%s",%q],["ws://%s",%q],`,
 			extraClean, proxyPath, extraClean, proxyPath, extraClean, proxyPath, extraClean, proxyPath,
@@ -3127,23 +3149,23 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Handle Extra CDN routes (/extra-cdn-N and /extra-cdn-N/...)
+	// Handle Extra CDN routes (/lcdn-N/... current, /extra-cdn-N/... legacy)
 	isExtraCDN := false
 	isExtHost := false
 	extHostName := ""
-	for i, extra := range cfg.ExtraCDNDomains {
-		base := fmt.Sprintf("/extra-cdn-%d", i)
-		if path != base && !strings.HasPrefix(path, base+"/") {
-			continue
-		}
+	if idx, rest, routeOK := parseLeonardoCDNRoute(path); routeOK && idx < len(cfg.ExtraCDNDomains) {
+		extra := cfg.ExtraCDNDomains[idx]
 		extraClean := strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		upstreamURL.Scheme = "https"
 		if strings.HasPrefix(extra, "http://") {
 			upstreamURL.Scheme = "http"
 		}
 		upstreamURL.Host = strings.Split(extraClean, "/")[0]
-		rest := strings.TrimPrefix(path, base)
-		restEsc := strings.TrimPrefix(escapedPath, base)
+		// Reconstruct escape-aware rest from EscapedPath
+		_, restEsc, _ := parseLeonardoCDNRoute(escapedPath)
+		if restEsc == "" {
+			restEsc = rest
+		}
 		if rest == "" || rest == "/" {
 			upstreamURL.Path = "/"
 			upstreamURL.RawPath = ""
@@ -3156,7 +3178,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		isExtraCDN = true
-		break
 	}
 
 	// Dynamic sibling hosts: /ext-host/<host.woorank.com>/...
@@ -3264,7 +3285,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// on sas.selleramp.com nginx and broke CSRF/session → Unauthorized toasts.
 	// Leonardo CDN (cdn/assets) is S3 behind Cloudflare — never send Cognito cookies
 	// there or S3 returns 400 RequestHeaderSectionTooLarge and Featured images break.
-	accountCookieStr := applyLocalCookieOverlay(parseCookieFromDB(activeAcc.Cookie))
+	// Cookie source: panel.db Mapped Accounts (same DB as panel.gt4rents.com).
+	accountCookieStr := syncPanelAccountCookie(parseCookieFromDB(activeAcc.Cookie))
 	upstreamReq.Header.Del("Cookie")
 	hostWithoutPort := upstreamURL.Host
 	if h, _, err := net.SplitHostPort(upstreamURL.Host); err == nil {
@@ -3363,10 +3385,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		if origReferer != "" {
 			newReferer := strings.ReplaceAll(origReferer, publicBase, targetBase)
-			for i := 0; i < 10; i++ {
-				prefix := fmt.Sprintf("/extra-cdn-%d/", i)
-				if strings.Contains(newReferer, prefix) {
-					newReferer = strings.ReplaceAll(newReferer, prefix, "/")
+			for i := 0; i < 16; i++ {
+				for _, prefix := range []string{
+					fmt.Sprintf("/lcdn-%d/", i),
+					fmt.Sprintf("/extra-cdn-%d/", i),
+				} {
+					if strings.Contains(newReferer, prefix) {
+						newReferer = strings.ReplaceAll(newReferer, prefix, "/")
+					}
 				}
 			}
 			newReferer = regexp.MustCompile(`/ext-host/[^/]+`).ReplaceAllString(newReferer, "")
@@ -3473,7 +3499,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// (public max-age on errors poisoned Cloudflare for Featured images).
 	if upstreamResp.StatusCode == http.StatusOK {
 		setProxyCacheHeaders(w, path, contentType)
-	} else if isLeonardoCDNPath(path) || strings.HasPrefix(path, "/extra-cdn-") {
+	} else if isLeonardoCDNPath(path) || strings.HasPrefix(path, "/lcdn-") || strings.HasPrefix(path, "/extra-cdn-") {
 		setLeonardoCDNErrorNoStore(w)
 	} else {
 		setProxyCacheHeaders(w, path, contentType)
