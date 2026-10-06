@@ -1552,20 +1552,7 @@ func staticCacheKey(method, path string) string {
 }
 
 func isCacheableStaticPath(path string) bool {
-	p := path
-	if i := strings.Index(p, "?"); i >= 0 {
-		p = p[:i]
-	}
-	p = strings.ToLower(p)
-	if strings.HasPrefix(p, "/wp-content/") || strings.HasPrefix(p, "/wp-includes/") || strings.HasPrefix(p, "/dist/") || strings.HasPrefix(p, "/img/") {
-		return true
-	}
-	for _, ext := range []string{".js", ".css", ".woff2", ".woff", ".ttf", ".eot", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".map"} {
-		if strings.HasSuffix(p, ext) {
-			return true
-		}
-	}
-	return false
+	return isMagnificCDNPath(path)
 }
 
 func getStaticCached(method, path string) *staticCacheEntry {
@@ -1609,12 +1596,17 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	// Persist to disk so restarts / multi-user loads stay fast.
+	r := &http.Request{Method: http.MethodGet, URL: &url.URL{Path: path}, RequestURI: path}
+	storeCDNCache(r, status, contentType, encoding, body)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Del("Pragma")
-	w.Header().Del("Expires")
+	path := ""
+	if r != nil && r.URL != nil {
+		path = r.URL.Path
+	}
+	setMagnificCDNBrowserCache(w, path)
 	if ent.contentType != "" {
 		w.Header().Set("Content-Type", ent.contentType)
 	}
@@ -1622,6 +1614,7 @@ func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheE
 		w.Header().Set("Content-Encoding", ent.encoding)
 	}
 	w.Header().Set("X-OCG-Cache", "HIT")
+	w.Header().Set("X-Magnific-Cache", "memory")
 	w.Header().Set("Content-Length", strconv.Itoa(len(ent.body)))
 	w.WriteHeader(ent.status)
 	if r.Method != http.MethodHead {
@@ -1631,9 +1624,7 @@ func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheE
 
 func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	if isCacheableStaticPath(path) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
-		w.Header().Del("Pragma")
-		w.Header().Del("Expires")
+		setMagnificCDNBrowserCache(w, path)
 		return
 	}
 	// HTML / JSON / AJAX — never cache
@@ -3946,6 +3937,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return // These are handled by their own handlers
 	}
 
+	// ── 0b. Disk + memory CDN cache BEFORE auth (JS/CSS/fonts/images) ────────────
+	cdnKey := cdnCacheKey(r)
+	if serveCachedCDN(w, r) {
+		return
+	}
+	if cdnKey != "" {
+		defer completeCDNFlight(cdnKey)
+	}
+	if ent := getStaticCached(r.Method, path); ent != nil &&
+		!(strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") && strings.HasSuffix(strings.ToLower(path), "/app.js")) {
+		serveStaticCached(w, r, ent)
+		return
+	}
+
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
@@ -4009,15 +4014,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			http.Redirect(w, r, "/", http.StatusFound)
 		}
-		return
-	}
-
-	// ── 2b. Serve cached static assets (skip upstream TLS) ───────────────────────
-	// SYNTX app.js is patched after download. The warm-up cache is the raw bundle
-	// and would skip that patch, so the auth guard never loads the user.
-	if ent := getStaticCached(r.Method, path); ent != nil &&
-		!(strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") && strings.HasSuffix(strings.ToLower(path), "/app.js")) {
-		serveStaticCached(w, r, ent)
 		return
 	}
 
@@ -5111,6 +5107,8 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	cfg := loadConfig()
 	log.Printf("🚀 Starting Generic Tool Proxy — Tool: %s | Target: %s | Port: %s", cfg.ToolName, cfg.TargetURL, cfg.Port)
+	initCDNCacheDir()
+	startCDNCacheSweep()
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
