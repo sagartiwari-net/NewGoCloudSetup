@@ -2945,6 +2945,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		defer completeCDNFlight(cdnKey)
 	}
 
+	// ── 0c. Public CDN (cdn/assets) — cookieless fetch BEFORE auth ───────────────
+	// Featured images were stuck on Cloudflare-cached S3 400s; fresh public fetch
+	// returns 200 without Cognito cookies and warms disk cache for all users.
+	if tryServePublicLeonardoCDN(w, r) {
+		return
+	}
+
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
@@ -3462,13 +3469,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	applyResponseCORS(w, r, cfg)
 
-	// Cache static assets in browser only on success — never cache S3 400 XML.
+	// Cache static assets in browser only on success — never cache S3 400 XML
+	// (public max-age on errors poisoned Cloudflare for Featured images).
 	if upstreamResp.StatusCode == http.StatusOK {
 		setProxyCacheHeaders(w, path, contentType)
-	} else if isLeonardoCDNPath(path) {
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Del("Pragma")
-		w.Header().Del("Expires")
+	} else if isLeonardoCDNPath(path) || strings.HasPrefix(path, "/extra-cdn-") {
+		setLeonardoCDNErrorNoStore(w)
 	} else {
 		setProxyCacheHeaders(w, path, contentType)
 	}

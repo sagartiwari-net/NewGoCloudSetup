@@ -121,13 +121,120 @@ func leoExtraCDNAllowed(host, rest string) bool {
 	}
 	switch host {
 	case "cdn.leonardo.ai":
-		// UI/static assets only — never user-generated media.
-		return strings.Contains(restLower, "/static/") && leoSafeExt(rest)
+		// UI/static + blueprint thumbs/videos — never user-generated media.
+		if !leoSafeExt(rest) {
+			return false
+		}
+		return strings.Contains(restLower, "/static/") ||
+			strings.Contains(restLower, "/blueprint_assets/")
 	case "assets.leonardo.ai":
 		return leoSafeExt(rest)
 	default:
 		return false
 	}
+}
+
+func setLeonardoCDNErrorNoStore(w http.ResponseWriter) {
+	w.Header().Del("Cache-Control")
+	w.Header().Del("Pragma")
+	w.Header().Del("Expires")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("CDN-Cache-Control", "no-store")
+	w.Header().Set("Cloudflare-CDN-Cache-Control", "no-store")
+}
+
+// tryServePublicLeonardoCDN fetches cookieless CDN/static assets before auth.
+// Avoids 401 on <img>/<video> edge cases and lets us warm disk cache without a session.
+// Only hosts that do NOT need Cognito cookies (cdn/assets/stripe…); never app/api/cloud.
+func tryServePublicLeonardoCDN(w http.ResponseWriter, r *http.Request) bool {
+	if r == nil || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
+		return false
+	}
+	path := r.URL.Path
+	if !strings.HasPrefix(path, "/extra-cdn-") || !isLeonardoCDNPath(path) {
+		return false
+	}
+	host, rest, ok := leoExtraCDNHost(path)
+	if !ok || leonardoUpstreamNeedsCookie(host) {
+		return false
+	}
+
+	upURL := "https://" + host + rest
+	// Forward only signed query strings; strip cache-busters so S3 keys stay clean.
+	if rawQ := r.URL.RawQuery; rawQ != "" {
+		lq := strings.ToLower(rawQ)
+		if strings.Contains(lq, "x-amz-") || strings.Contains(lq, "signature=") {
+			upURL += "?" + rawQ
+		}
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upURL, nil)
+	if err != nil {
+		return false
+	}
+	req.Host = host
+	sanitizeLeonardoCDNUpstream(req, host)
+	if ua := r.Header.Get("User-Agent"); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	if accept := r.Header.Get("Accept"); accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	if rng := r.Header.Get("Range"); rng != "" {
+		req.Header.Set("Range", rng)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Printf("[CDN] public fetch failed host=%s path=%s err=%v", host, rest, err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	const publicCDNMax = 80 << 20 // 80MB — featured webm/mp4
+	body, err := io.ReadAll(io.LimitReader(resp.Body, publicCDNMax+1))
+	if err != nil {
+		return false
+	}
+	if len(body) > publicCDNMax {
+		log.Printf("[CDN] public asset too large host=%s path=%s", host, rest)
+		return false
+	}
+	ct := resp.Header.Get("Content-Type")
+	ce := resp.Header.Get("Content-Encoding")
+
+	applyResponseCORS(w, r, loadConfig())
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		setLeonardoCDNErrorNoStore(w)
+		if ct != "" {
+			w.Header().Set("Content-Type", ct)
+		}
+		w.WriteHeader(resp.StatusCode)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write(body)
+		}
+		log.Printf("[CDN] public upstream %d host=%s path=%s", resp.StatusCode, host, rest)
+		return true
+	}
+
+	if len(body) <= cdnCacheMax && resp.StatusCode == http.StatusOK {
+		storeCDNCache(r, http.StatusOK, ct, ce, body)
+	}
+	if ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	if ce != "" {
+		w.Header().Set("Content-Encoding", ce)
+	}
+	setProxyCacheHeaders(w, path, ct)
+	w.Header().Set("X-Proxy-Cache", "MISS")
+	w.Header().Set("X-Leonardo-Cache", "public-fetch")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(resp.StatusCode)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(body)
+	}
+	log.Printf("[CDN] public OK host=%s path=%s (%d bytes)", host, rest, len(body))
+	return true
 }
 
 func isLeonardoCDNPath(path string) bool {
@@ -196,7 +303,8 @@ func cdnCacheKey(r *http.Request) string {
 	if !isLeonardoCDNPath(path) {
 		return ""
 	}
-	return cdnRequestKey(r)
+	// Path-only key — ignore ?cb= / tracking so disk HIT is stable.
+	return path
 }
 
 func cdnFilePath(key string) (bodyPath, metaPath string) {
