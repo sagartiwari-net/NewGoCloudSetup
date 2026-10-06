@@ -140,7 +140,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `answerthepublic` (:4931)  
 - [ ] `artistly` (:4821)  
 - [ ] `branalyzer` (:5081) — **parked** — home loads; Be Curious still snack “Introduce any valid URL” on server (`59905db` local OK) — resume later; see Open issues  
-- [x] `chatbotapp` (:5061) — up; smpanel keeps `:5001`  
+- [x] `chatbotapp` (:5061) — up; **fixing chat 401** (`59905db+`): force Origin + Firebase Bearer on `/extra-cdn-0/api/v2/chat` — redeploy  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
 - [ ] `copywritely` (:4521)  

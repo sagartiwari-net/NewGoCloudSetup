@@ -704,6 +704,11 @@ func captureAPICredentials(body []byte) {
 }
 
 func ensureAPIAuthHeaders(req *http.Request) {
+	// SellerAmp-style headers only. Chatbot App /api/v2 uses Firebase Bearer.
+	host := strings.ToLower(req.URL.Host)
+	if strings.Contains(host, "chatbotapp.ai") || strings.Contains(host, "chatbot.app") {
+		return
+	}
 	if !strings.HasPrefix(req.URL.Path, "/api/v2/") && !strings.HasPrefix(req.URL.Path, "/api/v1/") {
 		return
 	}
@@ -4068,7 +4073,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	origReferer := r.Header.Get("Referer")
 
 	if origOrigin != "" {
-		newOrigin := strings.ReplaceAll(origOrigin, publicBase, targetBase)
+		// Replace both http+https public bases — overlay may still say http while
+		// users hit https://… (scheme mismatch left Origin on the proxy host).
+		newOrigin := origOrigin
+		for _, sch := range []string{publicScheme, "https", "http"} {
+			if sch == "" {
+				continue
+			}
+			newOrigin = strings.ReplaceAll(newOrigin, fmt.Sprintf("%s://%s", sch, publicHost), targetBase)
+		}
 		u, err := url.Parse(newOrigin)
 		if err == nil {
 			newOrigin = u.Scheme + "://" + u.Host
@@ -4077,7 +4090,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if origReferer != "" {
-		newReferer := strings.ReplaceAll(origReferer, publicBase, targetBase)
+		newReferer := origReferer
+		for _, sch := range []string{publicScheme, "https", "http"} {
+			if sch == "" {
+				continue
+			}
+			newReferer = strings.ReplaceAll(newReferer, fmt.Sprintf("%s://%s", sch, publicHost), targetBase)
+		}
 		for i := 0; i < 10; i++ {
 			prefix := fmt.Sprintf("/extra-cdn-%d/", i)
 			if strings.Contains(newReferer, prefix) {
@@ -4089,13 +4108,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		upstreamReq.Header.Set("Referer", targetBase+"/")
 	}
-	if strings.Contains(strings.ToLower(cfg.TargetURL), "chatbotapp.ai") {
-		h := strings.ToLower(upstreamReq.URL.Host)
-		if strings.Contains(h, "googleapis.com") || strings.Contains(h, "firebaseio.com") || strings.Contains(h, "firebaseapp.com") {
-			upstreamReq.Header.Set("Origin", "https://chat.chatbotapp.ai")
-			upstreamReq.Header.Set("Referer", "https://chat.chatbotapp.ai/")
-		}
-	}
+	ensureChatbotappAPIAuth(upstreamReq, cfg, &activeAcc)
 	if upstreamURL.Host == "coda.grammarly.com" {
 		upstreamReq.Header.Set("Origin", "https://coda.grammarly.com")
 		upstreamReq.Header.Set("Referer", "https://coda.grammarly.com/")

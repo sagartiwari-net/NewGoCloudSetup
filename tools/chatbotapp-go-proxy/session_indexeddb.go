@@ -437,6 +437,48 @@ func loadSessionFileRaw(path string) string {
 	return string(data)
 }
 
+// ensureChatbotappAPIAuth forces official Origin/Referer and a fresh Firebase
+// Bearer on api/payment hosts. Without this, https://chatbotapp.gt4rents.com
+// plus public_scheme=http leaves Origin on the proxy host → upstream 401 on
+// POST /api/v2/chat while Firestore history still loads.
+func ensureChatbotappAPIAuth(upstreamReq *http.Request, cfg Config, activeAcc *ToolAccount) {
+	if upstreamReq == nil || !strings.Contains(strings.ToLower(cfg.TargetURL), "chatbotapp.ai") {
+		return
+	}
+	h := strings.ToLower(upstreamReq.URL.Host)
+	isChatbotAPI := strings.Contains(h, "api.chatbotapp.ai") ||
+		strings.Contains(h, "payment-api.chatbotapp.ai") ||
+		strings.Contains(h, "data.chatbotapp.ai") ||
+		strings.Contains(h, "event.chatbotapp.ai")
+	isFirebase := strings.Contains(h, "googleapis.com") ||
+		strings.Contains(h, "firebaseio.com") ||
+		strings.Contains(h, "firebaseapp.com") ||
+		strings.Contains(h, "firestore.googleapis.com")
+	if !isChatbotAPI && !isFirebase && !strings.Contains(h, "chatbotapp.ai") && !strings.Contains(h, "chatbot.app") {
+		return
+	}
+	upstreamReq.Header.Set("Origin", "https://chat.chatbotapp.ai")
+	upstreamReq.Header.Set("Referer", "https://chat.chatbotapp.ai/")
+	if !isChatbotAPI || activeAcc == nil {
+		return
+	}
+	raw := strings.TrimSpace(activeAcc.Cookie)
+	if !isIndexedDBSession(raw) {
+		return
+	}
+	fresh := ensureFreshFirebaseSessionRaw(raw, "")
+	if fresh != "" && fresh != raw {
+		activeAcc.Cookie = fresh
+		persistPanelAccountCookie(cfg, activeAcc.ID, fresh)
+		raw = fresh
+	}
+	tok := extractFirebaseAccessToken(raw)
+	if tok == "" {
+		return
+	}
+	upstreamReq.Header.Set("Authorization", "Bearer "+tok)
+}
+
 func logIndexedDBSession(path string) {
 	raw := ensureFreshFirebaseSession(path)
 	if !isIndexedDBSession(raw) {
