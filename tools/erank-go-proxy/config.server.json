@@ -1,17 +1,33 @@
 {
-  "port": "8786",
+  "port": "5191",
+  "bypass_auth": false,
+  "local_test_mode": false,
+  "bind_localhost": false,
+  "use_database": false,
   "target_url": "https://members.erank.com",
   "cdn_url": "https://assets.erank.com",
-  "public_host": "erank.1clkaccess.store",
+  "public_host": "erank.gt4rents.com",
   "public_scheme": "https",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "cookie_domain_suffix": "erank.com",
   "tool_name": "eRank",
   "credit_label": "Searches",
   "home_path": "/",
-  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
   "counted_paths": [],
   "counted_prefixes": [],
-  "blocked_paths": ["/plans", "/subscription-thanks", "/account/billing", "/settings"],
-  "blocked_prefixes": ["/account/billing", "/subscription", "/settings"],
+  "blocked_paths": [
+    "/logout",
+    "/plans",
+    "/subscription-thanks",
+    "/account/billing",
+    "/settings"
+  ],
+  "blocked_prefixes": [
+    "/account/billing",
+    "/subscription",
+    "/settings"
+  ],
   "sensitive_cookies": [
     "sid_er",
     "XSRF-TOKEN",
@@ -19,20 +35,13 @@
   ],
   "watchdog_triggers": [],
   "extra_cdn_domains": [
-    "public.erank.com",
-    "hc.erank.com"
+    "https://public.erank.com",
+    "https://hc.erank.com"
   ],
   "disable_export_tracking": true,
+  "disable_limits": true,
   "cookie_file": "cookie.txt",
-  "local_test_mode": true,
-  "debug_logging": true,
-  "bind_localhost": true,
-  "mysql_host": "",
-  "mysql_port": "",
-  "mysql_user": "",
-  "mysql_password": "",
-  "mysql_db": "",
-  "secret_key": "change-this-secret-in-production",
+  "debug_logging": false,
   "session_duration_minutes": 120,
-  "member_area_url": "https://1clkaccess.store/"
+  "member_area_url": "https://panel.gt4rents.com/"
 }

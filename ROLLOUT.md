@@ -110,7 +110,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer  
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
 - [ ] `cnva` — Canva (:4501) — **rebuild required** (token-only `/access`); Partial (429 / proxy)  
-- [ ] `helium10` — Helium10 (:5201) — **rebuild required** after token-only access (`fad80ac`+); was HTTPS OK before  
+- [x] `helium10` — Helium10 (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified  
 - [ ] `magnific` — Magnific (:5121) — **rebuild required** after token-only access; Access Denied until redeploy  
 - [ ] `junglescout` — JungleScout (:5211) — **rebuild required** after token-only access; was HTTPS OK before  
 - [ ] `branalyzer` — Branalyzer (:5081) — **parked** + rebuild for token-only; blank `/home` still open  
@@ -151,7 +151,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `digen` (:5271)  
 - [ ] `educative` (:4851)  
 - [ ] `epidemicsound` (:4641)  
-- [ ] `erank` (:5191)  
+- [ ] `erank` (:5191) — rebuild/verify (2026-10-06): was Bad Gateway / Access Denied without session  
 - [ ] `fishaudio` (:4991)  
 - [ ] `flaticon` (:4921) — **parked** (Freepik WAF 403 on Hetzner; needs Proxy Manager)  
 - [ ] `flexclip` (:4671)  
@@ -159,7 +159,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `grammarly` (:4911) — see Priority  
 - [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide  
 - [ ] `grok` (:4831)  
-- [x] `helium10` (:5201) — see Priority  
+- [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06)  
 - [ ] `heliumlearning` (:5221)  
 - [ ] `ilovepdf` (:4531)  
 - [ ] `imgupscaler` (:5091)  
