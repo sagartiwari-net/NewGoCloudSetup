@@ -1443,6 +1443,14 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
@@ -2196,11 +2204,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
 	}
 
-	// Remove proxy headers
+	// Remove proxy / hop-by-hop headers (HTTP/2 rejects Connection: upgrade from nginx)
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
 	upstreamReq.Header.Del("X-Forwarded-For")
 	upstreamReq.Header.Del("X-Real-IP")
+	upstreamReq.Header.Del("Connection")
+	upstreamReq.Header.Del("Upgrade")
+	upstreamReq.Header.Del("Proxy-Connection")
+	upstreamReq.Header.Del("Keep-Alive")
+	upstreamReq.Header.Del("TE")
+	upstreamReq.Header.Del("Trailer")
+	upstreamReq.Header.Del("Transfer-Encoding")
 
 	// Rewrite Origin and Referer — prefer config.json values (most reliable).
 	// Falls back to request headers when config is blank (local dev mode).

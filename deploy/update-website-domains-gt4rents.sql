@@ -69,6 +69,7 @@ UPDATE websites SET domain='seobuddy.gt4rents.com' WHERE id=63;
 UPDATE websites SET domain='smrs.gt4rents.com' WHERE id=64;
 UPDATE websites SET domain='cgpt.gt4rents.com' WHERE id=65;
 UPDATE websites SET domain='selleramp.gt4rents.com' WHERE id=66;
+UPDATE ahrefs_websites SET domain='selleramp.gt4rents.com' WHERE id=131;
 UPDATE websites SET domain='clud.gt4rents.com' WHERE id=67;
 UPDATE websites SET domain='airbrush.gt4rents.com' WHERE id=68;
 UPDATE websites SET domain='erank.gt4rents.com' WHERE id=69;
