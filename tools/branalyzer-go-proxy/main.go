@@ -2913,64 +2913,76 @@ func patcherScript(cfg Config) string {
     }
 
     // ── XHR + fetch patches (re-applied — Angular Zone / device-lock can wrap prototypes) ──
+    // CRITICAL: never set fo=window.fetch on reinstall — that nests our own wrapper and
+    // causes fetch→doFetch→fetch → Maximum call stack size exceeded (Be Curious dead).
     var xo = XMLHttpRequest.prototype.open;
     var xs = XMLHttpRequest.prototype.send;
-    var fo = window.fetch;
+    if (!window.__tmNativeFetch && typeof window.fetch === 'function') {
+        try { window.__tmNativeFetch = window.fetch.bind(window); } catch (e) { window.__tmNativeFetch = window.fetch; }
+    }
+    var fo = window.__tmNativeFetch || window.fetch;
     window.__tmPatchURL = patchURL;
     function installNetworkPatches(force) {
-        if (!force && XMLHttpRequest.prototype.open && XMLHttpRequest.prototype.open.__tmBran) return;
-        xo = XMLHttpRequest.prototype.open;
-        xs = XMLHttpRequest.prototype.send;
-        XMLHttpRequest.prototype.open = function(m, u) {
-            var patched = patchURL(u);
-            this.__canvaNoise = isNoiseURL(patched);
-            this.__canvaURL = String(patched || '');
-            this.__canvaMethod = m;
-            return xo.apply(this, [m, patched].concat(Array.prototype.slice.call(arguments, 2)));
-        };
-        XMLHttpRequest.prototype.open.__tmBran = true;
-        XMLHttpRequest.prototype.send = function() {
-            if (this.__canvaNoise) {
-                Object.defineProperty(this, 'status', {get: function(){ return 204; }});
-                Object.defineProperty(this, 'readyState', {get: function(){ return 4; }});
-                var self = this;
-                setTimeout(function() {
-                    if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
-                    if (typeof self.onload === 'function') self.onload();
-                }, 0);
-                return;
-            }
-            var args = arguments;
-            var xhr = this;
-            if (!shouldRetry429(xhr.__canvaURL)) {
+        var needXHR = force || !XMLHttpRequest.prototype.open || !XMLHttpRequest.prototype.open.__tmBran;
+        if (needXHR && (!XMLHttpRequest.prototype.open || !XMLHttpRequest.prototype.open.__tmBran)) {
+            xo = XMLHttpRequest.prototype.open;
+            xs = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.open = function(m, u) {
+                var patched = patchURL(u);
+                this.__canvaNoise = isNoiseURL(patched);
+                this.__canvaURL = String(patched || '');
+                this.__canvaMethod = m;
+                return xo.apply(this, [m, patched].concat(Array.prototype.slice.call(arguments, 2)));
+            };
+            XMLHttpRequest.prototype.open.__tmBran = true;
+            XMLHttpRequest.prototype.send = function() {
+                if (this.__canvaNoise) {
+                    Object.defineProperty(this, 'status', {get: function(){ return 204; }});
+                    Object.defineProperty(this, 'readyState', {get: function(){ return 4; }});
+                    var self = this;
+                    setTimeout(function() {
+                        if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+                        if (typeof self.onload === 'function') self.onload();
+                    }, 0);
+                    return;
+                }
+                var args = arguments;
+                var xhr = this;
+                if (!shouldRetry429(xhr.__canvaURL)) {
+                    return xs.apply(xhr, args);
+                }
+                var attempt = 0;
+                var origOnReady = xhr.onreadystatechange;
+                var origOnLoad = xhr.onload;
+                var origOnError = xhr.onerror;
+                function armHandlers() {
+                    xhr.onreadystatechange = function() {
+                        if (xhr.readyState === 4 && xhr.status === 429 && attempt < 2) {
+                            attempt++;
+                            setTimeout(function() {
+                                try {
+                                    xo.call(xhr, xhr.__canvaMethod || 'GET', patchURL(xhr.__canvaURL));
+                                    armHandlers();
+                                    xs.apply(xhr, args);
+                                } catch (e) {}
+                            }, 700 * attempt * attempt);
+                            return;
+                        }
+                        if (typeof origOnReady === 'function') return origOnReady.apply(xhr, arguments);
+                    };
+                    xhr.onload = origOnLoad;
+                    xhr.onerror = origOnError;
+                }
+                armHandlers();
                 return xs.apply(xhr, args);
-            }
-            var attempt = 0;
-            var origOnReady = xhr.onreadystatechange;
-            var origOnLoad = xhr.onload;
-            var origOnError = xhr.onerror;
-            function armHandlers() {
-                xhr.onreadystatechange = function() {
-                    if (xhr.readyState === 4 && xhr.status === 429 && attempt < 2) {
-                        attempt++;
-                        setTimeout(function() {
-                            try {
-                                xo.call(xhr, xhr.__canvaMethod || 'GET', patchURL(xhr.__canvaURL));
-                                armHandlers();
-                                xs.apply(xhr, args);
-                            } catch (e) {}
-                        }, 700 * attempt * attempt);
-                        return;
-                    }
-                    if (typeof origOnReady === 'function') return origOnReady.apply(xhr, arguments);
-                };
-                xhr.onload = origOnLoad;
-                xhr.onerror = origOnError;
-            }
-            armHandlers();
-            return xs.apply(xhr, args);
-        };
-        fo = window.fetch;
+            };
+        }
+        // Fetch: install once only. Reinstall nesting = stack overflow.
+        if (window.fetch && window.fetch.__tmBran) return;
+        var prevFetch = window.fetch;
+        try { prevFetch = window.fetch.bind(window); } catch (e) {}
+        if (!window.__tmNativeFetch) window.__tmNativeFetch = prevFetch;
+        var baseFetch = window.__tmNativeFetch;
         window.fetch = function(inp, init) {
             var urlStr = '';
             try {
@@ -2986,7 +2998,7 @@ func patcherScript(cfg Config) string {
             else if (typeof Request !== 'undefined' && inp instanceof Request) inp = new Request(patched, inp);
             else inp = patched;
             var finalURL = patched;
-            var doFetch = function() { return fo.call(window, inp, init); };
+            var doFetch = function() { return baseFetch.call(window, inp, init); };
             var runner = shouldRetry429(finalURL) ? function() { return ajaxSlot(doFetch); } : doFetch;
             return runner().then(function(res) {
                 if (res && res.status === 429 && shouldRetry429(finalURL)) {
@@ -3002,12 +3014,15 @@ func patcherScript(cfg Config) string {
         };
         window.fetch.__tmBran = true;
     }
-    window.__tmReinstallBranPatches = function() { try { installNetworkPatches(true); } catch (e) {} };
+    window.__tmReinstallBranPatches = function() {
+        // Never force-nest fetch. Only restore URL rewrite if Zone stole XHR.open.
+        try { installNetworkPatches(false); } catch (e) {}
+    };
     installNetworkPatches(true);
     setInterval(function() {
         try {
-            if (!XMLHttpRequest.prototype.open || !XMLHttpRequest.prototype.open.__tmBran) installNetworkPatches(true);
-            else if (!window.fetch || !window.fetch.__tmBran) installNetworkPatches(true);
+            if (!XMLHttpRequest.prototype.open || !XMLHttpRequest.prototype.open.__tmBran) installNetworkPatches(false);
+            else if (!window.fetch || !window.fetch.__tmBran) installNetworkPatches(false);
         } catch (e) {}
     }, 500);
 
