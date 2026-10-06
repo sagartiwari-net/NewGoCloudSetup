@@ -1660,6 +1660,16 @@ type contextKey string
 const proxyContextKey contextKey = "account_proxy"
 
 func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
+	return dialChromeALPN(ctx, addr, nil)
+}
+
+// dialChromeH1 forces ALPN http/1.1 so net/http Transport never speaks h2
+// (nginx Connection: upgrade breaks Go's HTTP/2 client).
+func dialChromeH1(ctx context.Context, addr string) (*uTLSConn, error) {
+	return dialChromeALPN(ctx, addr, []string{"http/1.1"})
+}
+
+func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTLSConn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -1691,7 +1701,28 @@ func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 			return nil, fmt.Errorf("TCP dial: %w", err)
 		}
 	}
-	uConn := utls.UClient(tcpConn, &utls.Config{ServerName: host, InsecureSkipVerify: false}, utls.HelloChrome_120)
+	tlsCfg := &utls.Config{ServerName: host, InsecureSkipVerify: false}
+	var uConn *utls.UConn
+	if len(nextProtos) > 0 {
+		spec, specErr := utls.UTLSIdToSpec(utls.HelloChrome_120)
+		if specErr != nil {
+			tcpConn.Close()
+			return nil, fmt.Errorf("uTLS spec: %w", specErr)
+		}
+		for _, ext := range spec.Extensions {
+			if alpn, ok := ext.(*utls.ALPNExtension); ok {
+				alpn.AlpnProtocols = append([]string(nil), nextProtos...)
+			}
+		}
+		tlsCfg.NextProtos = append([]string(nil), nextProtos...)
+		uConn = utls.UClient(tcpConn, tlsCfg, utls.HelloCustom)
+		if err := uConn.ApplyPreset(&spec); err != nil {
+			tcpConn.Close()
+			return nil, fmt.Errorf("uTLS preset: %w", err)
+		}
+	} else {
+		uConn = utls.UClient(tcpConn, tlsCfg, utls.HelloChrome_120)
+	}
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		tcpConn.Close()
 		return nil, fmt.Errorf("uTLS handshake: %w", err)
@@ -1705,7 +1736,9 @@ type roundTripper struct {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade.
+	// HTTP/2 forbids Connection/Upgrade; nginx often attaches Connection: upgrade
+	// → "http2: invalid Connection request header". Strip + prefer HTTP/1.1 for
+	// members.erank.com (Laravel) — h2 is unnecessary and brittle behind nginx.
 	req.Header.Del("Connection")
 	req.Header.Del("Upgrade")
 	req.Header.Del("Proxy-Connection")
@@ -1713,6 +1746,7 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Del("TE")
 	req.Header.Del("Trailer")
 	req.Header.Del("Transfer-Encoding")
+	req.Close = false
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
@@ -1720,6 +1754,14 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if rt.h2 != nil {
 			rt.h2.CloseIdleConnections()
 		}
+	}
+	host := ""
+	if req.URL != nil {
+		host = strings.ToLower(req.URL.Hostname())
+	}
+	// Force HTTP/1.1 for eRank origins — avoids h2 Connection header rejection.
+	if strings.HasSuffix(host, "erank.com") && rt.h1 != nil {
+		return rt.h1.RoundTrip(req)
 	}
 	addr := req.URL.Host
 	if !strings.Contains(addr, ":") {
@@ -1734,16 +1776,17 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	proto := conn.ConnectionState().NegotiatedProtocol
-	if proto == "h2" {
+	if proto == "h2" && rt.h2 != nil {
 		return rt.h2.RoundTripOpt(req, http2.RoundTripOpt{})
 	}
 	return rt.h1.RoundTrip(req)
 }
 
 func buildChromeHTTPClient() *http.Client {
-	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) { return dialChrome(ctx, addr) }
+	// h1 dialer: ALPN http/1.1 only — used for *.erank.com to avoid h2 Connection errors.
+	dialH1 := func(ctx context.Context, network, addr string) (net.Conn, error) { return dialChromeH1(ctx, addr) }
 	h1 := &http.Transport{
-		DialTLSContext: dialTLS, MaxIdleConns: 100, MaxIdleConnsPerHost: 10,
+		DialTLSContext: dialH1, MaxIdleConns: 100, MaxIdleConnsPerHost: 10,
 		IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: 20 * time.Second,
 		DisableCompression: false, ForceAttemptHTTP2: false,
 	}
