@@ -39,6 +39,7 @@ func leoSafeExt(path string) bool {
 	for _, ext := range []string{
 		".js", ".css", ".mjs", ".woff", ".woff2", ".ttf", ".eot", ".otf",
 		".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".avif",
+		".mp4", ".webm", ".mov",
 		".wasm", ".map",
 	} {
 		if strings.HasSuffix(lower, ext) {

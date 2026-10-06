@@ -1035,6 +1035,41 @@ func leonardoUpstreamNeedsCookie(host string) bool {
 	}
 }
 
+// S3/CloudFront CDN rejects header blocks > 8KB. Drop everything except the
+// few fields needed for static GETs (browser Sec-*/Cookie/Authorization alone
+// often exceed the limit when Cognito JWTs are present).
+func sanitizeLeonardoCDNUpstream(req *http.Request, host string) {
+	if req == nil || leonardoUpstreamNeedsCookie(host) {
+		return
+	}
+	ua := req.Header.Get("User-Agent")
+	accept := req.Header.Get("Accept")
+	rangeH := req.Header.Get("Range")
+	ifNone := req.Header.Get("If-None-Match")
+	ifMod := req.Header.Get("If-Modified-Since")
+	req.Header = make(http.Header)
+	if ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	} else {
+		req.Header.Set("Accept", "*/*")
+	}
+	if rangeH != "" {
+		req.Header.Set("Range", rangeH)
+	}
+	if ifNone != "" {
+		req.Header.Set("If-None-Match", ifNone)
+	}
+	if ifMod != "" {
+		req.Header.Set("If-Modified-Since", ifMod)
+	}
+	req.Header.Set("Referer", "https://app.leonardo.ai/")
+	req.Header.Set("Accept-Encoding", "identity")
+	log.Printf("[CDN] cookieless upstream host=%s path=%s", host, req.URL.Path)
+}
+
 var absorbCookieNames = map[string]bool{
 	"__cf_bm": true, "cf_clearance": true, "_cfuvid": true,
 	"CF_Access_Token": true,
@@ -3244,11 +3279,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	needsCookie := leonardoUpstreamNeedsCookie(hostWithoutPort)
-	if !needsCookie {
-		upstreamReq.Header.Del("Authorization")
-		upstreamReq.Header.Del("Cookie")
-	} else if accountCookieStr != "" && cookieSuffix != "" && strings.HasSuffix(hostWithoutPort, cookieSuffix) {
+	if needsCookie && accountCookieStr != "" && cookieSuffix != "" && strings.HasSuffix(hostWithoutPort, cookieSuffix) {
 		upstreamReq.Header.Set("Cookie", accountCookieStr)
+	} else if !needsCookie {
+		sanitizeLeonardoCDNUpstream(upstreamReq, hostWithoutPort)
 	}
 
 	// ── WebSocket upgrade: hijack and bidirectionally pipe ───────────────────────
@@ -3287,6 +3321,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Rewrite Origin and Referer — prefer config.json values (most reliable).
 	// Falls back to request headers when config is blank (local dev mode).
+	// Skip for cookieless CDN (sanitizeLeonardoCDNUpstream already set a clean Referer).
 	publicScheme := cfg.PublicScheme
 	if publicScheme == "" {
 		// Fallback: detect from reverse-proxy headers
@@ -3309,27 +3344,29 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	origOrigin := r.Header.Get("Origin")
 	origReferer := r.Header.Get("Referer")
 
-	if origOrigin != "" {
-		newOrigin := strings.ReplaceAll(origOrigin, publicBase, targetBase)
-		u, err := url.Parse(newOrigin)
-		if err == nil {
-			newOrigin = u.Scheme + "://" + u.Host
-		}
-		upstreamReq.Header.Set("Origin", newOrigin)
-	}
-
-	if origReferer != "" {
-		newReferer := strings.ReplaceAll(origReferer, publicBase, targetBase)
-		for i := 0; i < 10; i++ {
-			prefix := fmt.Sprintf("/extra-cdn-%d/", i)
-			if strings.Contains(newReferer, prefix) {
-				newReferer = strings.ReplaceAll(newReferer, prefix, "/")
+	if needsCookie {
+		if origOrigin != "" {
+			newOrigin := strings.ReplaceAll(origOrigin, publicBase, targetBase)
+			u, err := url.Parse(newOrigin)
+			if err == nil {
+				newOrigin = u.Scheme + "://" + u.Host
 			}
+			upstreamReq.Header.Set("Origin", newOrigin)
 		}
-		newReferer = regexp.MustCompile(`/ext-host/[^/]+`).ReplaceAllString(newReferer, "")
-		upstreamReq.Header.Set("Referer", newReferer)
-	} else {
-		upstreamReq.Header.Set("Referer", targetBase+"/")
+
+		if origReferer != "" {
+			newReferer := strings.ReplaceAll(origReferer, publicBase, targetBase)
+			for i := 0; i < 10; i++ {
+				prefix := fmt.Sprintf("/extra-cdn-%d/", i)
+				if strings.Contains(newReferer, prefix) {
+					newReferer = strings.ReplaceAll(newReferer, prefix, "/")
+				}
+			}
+			newReferer = regexp.MustCompile(`/ext-host/[^/]+`).ReplaceAllString(newReferer, "")
+			upstreamReq.Header.Set("Referer", newReferer)
+		} else {
+			upstreamReq.Header.Set("Referer", targetBase+"/")
+		}
 	}
 
 	upstreamResp, err := doUpstreamWith429Retry(upstreamReq, accountCookieStr)
@@ -3425,8 +3462,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	applyResponseCORS(w, r, cfg)
 
-	// Cache static assets in browser; keep HTML/API uncached
-	setProxyCacheHeaders(w, path, contentType)
+	// Cache static assets in browser only on success — never cache S3 400 XML.
+	if upstreamResp.StatusCode == http.StatusOK {
+		setProxyCacheHeaders(w, path, contentType)
+	} else if isLeonardoCDNPath(path) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Del("Pragma")
+		w.Header().Del("Expires")
+	} else {
+		setProxyCacheHeaders(w, path, contentType)
+	}
 
 	// ── 8. Streaming / SSE passthrough (Canva /_stream hydration) ────────────────
 	if isSSEResponse(contentType) || isStreamingPath(path) || isStreamingContentType(contentType) {
