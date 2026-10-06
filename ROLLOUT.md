@@ -119,6 +119,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts — **redeploy if Access Denied**  
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
+- [x] `erank` — eRank (:5191) — **READY / HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
 
 > **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`).  
 > Binaries built **before** `fad80ac` → Access Denied.  
@@ -151,7 +152,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `digen` (:5271)  
 - [ ] `educative` (:4851)  
 - [ ] `epidemicsound` (:4641)  
-- [x] `erank` (:5191) — **HTTPS OK** (2026-10-06): h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)  
+- [x] `erank` (:5191) — **READY / HTTPS OK** (2026-10-06): see Priority  
 - [ ] `fishaudio` (:4991)  
 - [ ] `flaticon` (:4921) — **parked** (Freepik WAF 403 on Hetzner; needs Proxy Manager)  
 - [ ] `flexclip` (:4671)  
