@@ -2045,16 +2045,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
 	if authErr != nil && !isFavicon {
-		_, cookieErr := r.Cookie("ct_session")
-		hasCt := cookieErr == nil
-		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v",
-			path, r.Host, authErr, currentWebsiteID, hasCt)
-		// Orphan ct_session (dead token) blocks a fresh /access Set-Cookie in some browsers.
-		if hasCt && (strings.Contains(authErr.Error(), "session not found") || strings.Contains(authErr.Error(), "session ended")) {
-			http.SetCookie(w, &http.Cookie{
-				Name: "ct_session", Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0),
-				HttpOnly: true, Secure: cookieSecure(r, cfg), SameSite: http.SameSiteLaxMode,
-			})
+		cands := ctSessionCandidates(r)
+		hasCt := len(cands) > 0
+		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v ct_candidates=%d",
+			path, r.Host, authErr, currentWebsiteID, hasCt, len(cands))
+		// Orphan / parent-domain ct_session blocks a fresh /access Set-Cookie.
+		if hasCt && (strings.Contains(authErr.Error(), "session not found") || strings.Contains(authErr.Error(), "session ended") || strings.Contains(authErr.Error(), "missing session")) {
+			clearStaleCtSessionCookies(w, r, cfg)
 		}
 		pushProxyLog(ProxyLogEntry{
 			Source:  "AUTH",
@@ -2101,16 +2098,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 3. Get active account for this session ────────────────────────────────────
 	sessionToken := ""
-	if c, err := r.Cookie("ct_session"); err == nil {
-		sessionToken = c.Value
+	if tok, _, ok := resolveCtSession(r); ok {
+		sessionToken = tok
 	}
 	var activeAcc ToolAccount
 	if usesPanelAccountMode(cfg) {
-		if sessionToken == "" {
-			if c, cErr := r.Cookie("ct_session"); cErr == nil {
-				sessionToken = c.Value
-			}
-		}
 		name, sessionErr := panelSessionUsername(r)
 		if sessionErr != nil {
 			if strings.Contains(strings.ToLower(path), "favicon") {
@@ -2119,9 +2111,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderAccessDeniedPage(w, cfg)
 				return
 			}
-		} else if rejectPanelDevice(w, r, cfg) {
-			return
 		} else {
+			// Device lock is enforced at /access boot only (Helium pattern).
 			currentUser = name
 			var panelErr error
 			activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
@@ -2489,9 +2480,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("Content-Security-Policy")
 		w.Header().Del("Content-Security-Policy-Report-Only")
 		w.Header().Del("X-Frame-Options")
-		if usesPanelAccountMode(cfg) {
-			bodyBytes = injectDeviceHTML(bodyBytes)
-		}
+		// Skip devicePageScript on SellerAmp HTML (same as Helium): Access-link boot
+		// already binds the device. Injecting visibility:hidden + deny races caused
+		// false Access Denied right after a successful panel open.
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg)

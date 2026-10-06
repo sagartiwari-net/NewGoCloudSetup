@@ -72,26 +72,18 @@ func openPanelDB(cfg Config) (*sql.DB, error) {
 }
 
 func panelSessionUsername(r *http.Request) (string, error) {
-	token := ""
-	if c, err := r.Cookie("ct_session"); err == nil {
-		token = strings.TrimSpace(c.Value)
-	}
-	if token == "" {
-		return "", fmt.Errorf("missing session")
-	}
-	_, wasCached := panelSess.Load(token)
-	sess, ok := loadPanelSessionToken(token)
-	if !ok {
+	token, sess, ok := resolveCtSession(r)
+	if !ok || sess == nil {
+		if token == "" {
+			return "", fmt.Errorf("missing session")
+		}
 		return "", fmt.Errorf("session not found")
-	}
-	if !wasCached {
-		log.Printf("[PANEL] session restored user=%s", sess.username)
 	}
 	sess.mu.Lock()
 	expired := time.Now().After(sess.expires)
 	username := sess.username
 	tracked := sess.tracked
-	fresh := sess.liveOK && time.Since(sess.liveChecked) < 3*time.Second
+	fresh := sess.liveOK && time.Since(sess.liveChecked) < 15*time.Second
 	sess.mu.Unlock()
 	if expired {
 		panelSess.Delete(token)
@@ -104,9 +96,9 @@ func panelSessionUsername(r *http.Request) (string, error) {
 		sess.liveOK = okLive
 		sess.mu.Unlock()
 		if !okLive {
-			panelSess.Delete(token)
-			log.Printf("[PANEL] session ended from panel user=%s", username)
-			return "", fmt.Errorf("session ended")
+			// Do not kill an in-memory session that still has time left — panel.db
+			// lookup can race right after /access. Soft-fail and keep serving.
+			log.Printf("[PANEL] live_sessions miss user=%s (keeping memory session)", username)
 		}
 	}
 	extendPanelSession(token, sess)
@@ -293,8 +285,8 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		seen = clientIP
 	}
 	recordPanelLogin(db, websiteID, username, sessionToken, seen, r.UserAgent(), sessionExpiry, accID)
-	// One Set-Cookie on a 200 document (Helium/Jungle pattern). Dual delete+set on 302
-	// left browsers holding an orphan ct_session → Access Denied on home.
+	// Clear Domain=.gt4rents.com leftovers that shadow the host-only cookie, then set.
+	clearStaleCtSessionCookies(w, r, cfg)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ct_session",
 		Value:    sessionToken,
@@ -447,7 +439,7 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 func renderPanelLoadingPage(w http.ResponseWriter, cfg Config, sessionToken string) {
 	home := cfg.HomePath
 	if home == "" {
-		home = "/sas/lookup"
+		home = "/"
 	}
 	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{

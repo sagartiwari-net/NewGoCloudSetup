@@ -29,21 +29,65 @@ func loadPanelSessionToken(token string) (*panelGateSession, bool) {
 	return restored, true
 }
 
-func sessionFromRequest(r *http.Request) (string, *panelGateSession, bool) {
-	// Access boot page may send X-Ct-Session when the jar still has an orphan cookie.
-	if hdr := strings.TrimSpace(r.Header.Get("X-Ct-Session")); hdr != "" {
-		if sess, ok := loadPanelSessionToken(hdr); ok {
-			return hdr, sess, true
+// ctSessionCandidates returns every ct_session value on the request.
+// Browsers can send BOTH a host cookie and a Domain=.gt4rents.com cookie; Go's
+// r.Cookie("ct_session") only returns one (often the dead orphan).
+func ctSessionCandidates(r *http.Request) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(v string) {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			return
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	add(r.Header.Get("X-Ct-Session"))
+	for _, c := range r.Cookies() {
+		if c != nil && c.Name == "ct_session" {
+			add(c.Value)
 		}
 	}
-	cookie, err := r.Cookie("ct_session")
-	if err != nil || cookie.Value == "" {
-		return "", nil, false
+	return out
+}
+
+// resolveCtSession picks the first candidate that is a live panel session.
+func resolveCtSession(r *http.Request) (string, *panelGateSession, bool) {
+	var last string
+	for _, tok := range ctSessionCandidates(r) {
+		last = tok
+		if sess, ok := loadPanelSessionToken(tok); ok {
+			return tok, sess, true
+		}
 	}
-	if sess, ok := loadPanelSessionToken(cookie.Value); ok {
-		return cookie.Value, sess, true
+	return last, nil, false
+}
+
+func sessionFromRequest(r *http.Request) (string, *panelGateSession, bool) {
+	return resolveCtSession(r)
+}
+
+// clearStaleCtSessionCookies drops parent-domain ct_session leftovers that shadow
+// the host-only session cookie set by /access.
+func clearStaleCtSessionCookies(w http.ResponseWriter, r *http.Request, cfg Config) {
+	secure := cookieSecure(r, cfg)
+	for _, domain := range []string{"", "gt4rents.com", ".gt4rents.com"} {
+		c := &http.Cookie{
+			Name:     "ct_session",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			Expires:  time.Unix(0, 0),
+			HttpOnly: true,
+			Secure:   secure,
+			SameSite: http.SameSiteLaxMode,
+		}
+		if domain != "" {
+			c.Domain = domain
+		}
+		http.SetCookie(w, c)
 	}
-	return cookie.Value, nil, false
 }
 
 func bindPanelDevice(sessionToken, fp, proof string) error {
