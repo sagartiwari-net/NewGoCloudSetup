@@ -72,21 +72,21 @@ func openPanelDB(cfg Config) (*sql.DB, error) {
 }
 
 func panelSessionUsername(r *http.Request) (string, error) {
-	cookie, err := r.Cookie("ct_session")
-	if err != nil || cookie.Value == "" {
+	token := ""
+	if c, err := r.Cookie("ct_session"); err == nil {
+		token = strings.TrimSpace(c.Value)
+	}
+	if token == "" {
 		return "", fmt.Errorf("missing session")
 	}
-	raw, ok := panelSess.Load(cookie.Value)
+	_, wasCached := panelSess.Load(token)
+	sess, ok := loadPanelSessionToken(token)
 	if !ok {
-		restored, restoreErr := restorePanelSession(cookie.Value)
-		if restoreErr != nil {
-			return "", fmt.Errorf("session not found")
-		}
-		panelSess.Store(cookie.Value, restored)
-		log.Printf("[PANEL] session restored user=%s", restored.username)
-		raw = restored
+		return "", fmt.Errorf("session not found")
 	}
-	sess := raw.(*panelGateSession)
+	if !wasCached {
+		log.Printf("[PANEL] session restored user=%s", sess.username)
+	}
 	sess.mu.Lock()
 	expired := time.Now().After(sess.expires)
 	username := sess.username
@@ -94,22 +94,22 @@ func panelSessionUsername(r *http.Request) (string, error) {
 	fresh := sess.liveOK && time.Since(sess.liveChecked) < 3*time.Second
 	sess.mu.Unlock()
 	if expired {
-		panelSess.Delete(cookie.Value)
+		panelSess.Delete(token)
 		return "", fmt.Errorf("session expired")
 	}
 	if tracked && !fresh {
-		okLive := panelLiveSessionExists(cookie.Value)
+		okLive := panelLiveSessionExists(token)
 		sess.mu.Lock()
 		sess.liveChecked = time.Now()
 		sess.liveOK = okLive
 		sess.mu.Unlock()
 		if !okLive {
-			panelSess.Delete(cookie.Value)
+			panelSess.Delete(token)
 			log.Printf("[PANEL] session ended from panel user=%s", username)
 			return "", fmt.Errorf("session ended")
 		}
 	}
-	extendPanelSession(cookie.Value, sess)
+	extendPanelSession(token, sess)
 	return username, nil
 }
 
@@ -293,36 +293,19 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		seen = clientIP
 	}
 	recordPanelLogin(db, websiteID, username, sessionToken, seen, r.UserAgent(), sessionExpiry, accID)
-	// Bust any stale ct_session before issuing the new one (orphan cookies caused
-	// bind/home to look up a dead token while the fresh session sat unused).
-	http.SetCookie(w, &http.Cookie{
-		Name:     "ct_session",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		Expires:  time.Unix(0, 0),
-		HttpOnly: true,
-		Secure:   cookieSecure(r, cfg),
-		SameSite: http.SameSiteLaxMode,
-	})
+	// One Set-Cookie on a 200 document (Helium/Jungle pattern). Dual delete+set on 302
+	// left browsers holding an orphan ct_session → Access Denied on home.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ct_session",
 		Value:    sessionToken,
 		Path:     "/",
 		Expires:  sessionExpiry,
-		MaxAge:   int(time.Until(sessionExpiry).Seconds()),
 		HttpOnly: true,
 		Secure:   cookieSecure(r, cfg),
 		SameSite: http.SameSiteLaxMode,
 	})
-	home := cfg.HomePath
-	if home == "" {
-		home = "/"
-	}
-	log.Printf("[PANEL] access granted user=%s product=%s domain=%s wid=%d → %s", username, productID, domain, websiteID, home)
-	// 302 + Set-Cookie is more reliable than the Authenticating HTML boot page
-	// (device bind races / wrong cookie). Device proof attaches on the first HTML page.
-	http.Redirect(w, r, home, http.StatusFound)
+	log.Printf("[PANEL] access granted user=%s product=%s domain=%s wid=%d", username, productID, domain, websiteID)
+	renderPanelLoadingPage(w, cfg, sessionToken)
 }
 
 const panelAccountSelect = `SELECT a.id, a.name, a.cookie,
@@ -461,10 +444,10 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"error":"proxy_unavailable","message":"Contact to Admin/Provider to fix it ASAP"}`)
 }
 
-func renderPanelLoadingPage(w http.ResponseWriter, cfg Config) {
+func renderPanelLoadingPage(w http.ResponseWriter, cfg Config, sessionToken string) {
 	home := cfg.HomePath
 	if home == "" {
-		home = "/"
+		home = "/sas/lookup"
 	}
 	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{
@@ -474,7 +457,7 @@ func renderPanelLoadingPage(w http.ResponseWriter, cfg Config) {
 		Badge:       "Verifying your request...",
 		Footer:      "Secure session initialization in progress",
 		Spin:        true,
-		ExtraScript: deviceBootScript(home),
+		ExtraScript: deviceBootScript(home, sessionToken),
 	})
 }
 

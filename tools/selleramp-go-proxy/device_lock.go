@@ -12,22 +12,38 @@ import (
 
 const deviceProofKey = "tm_device_proof"
 
+func loadPanelSessionToken(token string) (*panelGateSession, bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, false
+	}
+	raw, ok := panelSess.Load(token)
+	if ok {
+		return raw.(*panelGateSession), true
+	}
+	restored, restoreErr := restorePanelSession(token)
+	if restoreErr != nil {
+		return nil, false
+	}
+	panelSess.Store(token, restored)
+	return restored, true
+}
+
 func sessionFromRequest(r *http.Request) (string, *panelGateSession, bool) {
+	// Access boot page may send X-Ct-Session when the jar still has an orphan cookie.
+	if hdr := strings.TrimSpace(r.Header.Get("X-Ct-Session")); hdr != "" {
+		if sess, ok := loadPanelSessionToken(hdr); ok {
+			return hdr, sess, true
+		}
+	}
 	cookie, err := r.Cookie("ct_session")
 	if err != nil || cookie.Value == "" {
 		return "", nil, false
 	}
-	raw, ok := panelSess.Load(cookie.Value)
-	if !ok {
-		// After process restart (or dropPanelSessionsFor race), restore from panel.db.
-		restored, restoreErr := restorePanelSession(cookie.Value)
-		if restoreErr != nil {
-			return cookie.Value, nil, false
-		}
-		panelSess.Store(cookie.Value, restored)
-		return cookie.Value, restored, true
+	if sess, ok := loadPanelSessionToken(cookie.Value); ok {
+		return cookie.Value, sess, true
 	}
-	return cookie.Value, raw.(*panelGateSession), true
+	return cookie.Value, nil, false
 }
 
 func bindPanelDevice(sessionToken, fp, proof string) error {
@@ -231,7 +247,7 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	token, _, ok := sessionFromRequest(r)
 	if !ok {
-		log.Printf("[DEVICE] bind: no session cookie/memory (has_ct=%v)", token != "")
+		log.Printf("[DEVICE] bind: no session cookie/memory (has_ct=%v hdr=%v)", token != "", r.Header.Get("X-Ct-Session") != "")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, `{"error":"no_session","message":"Open this tool again from your access link."}`)
@@ -245,6 +261,22 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprintf(w, `{"error":"device_bind_failed","message":%q}`, err.Error())
 		return
+	}
+	// Re-assert cookie so an orphan jar entry is overwritten before goHome.
+	if raw, ok := panelSess.Load(token); ok {
+		sess := raw.(*panelGateSession)
+		sess.mu.Lock()
+		exp := sess.expires
+		sess.mu.Unlock()
+		http.SetCookie(w, &http.Cookie{
+			Name:     "ct_session",
+			Value:    token,
+			Path:     "/",
+			Expires:  exp,
+			HttpOnly: true,
+			Secure:   cookieSecure(r, cfg),
+			SameSite: http.SameSiteLaxMode,
+		})
 	}
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
@@ -283,6 +315,7 @@ function tmReveal() {
   var lock = document.querySelector("style[data-tm-device]");
   if (lock) lock.remove();
 }
+setTimeout(function () { try { tmReveal(); } catch (e) {} }, 2500);
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
   window.__tmWatch = setInterval(function () {
@@ -302,12 +335,31 @@ function tmWatch(fp, proof) {
   var fp = "";
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   try { fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || ""; } catch (e) {}
+  function afterBind(fp, proof) {
+    tmReveal();
+    tmPatchRequests(fp, proof);
+    tmWatch(fp, proof);
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
+  }
+  // First visit: mint proof (never bind "missing" — that was instant Access Denied).
   if (!proof) {
-    fetch("/api/device-bind", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Device-Fp": "missing", "X-Device-Proof": "missing" }
-    }).finally(tmDeny);
+    tmEnsureProof().then(function (next) {
+      proof = next;
+      return tmFingerprint().then(function (fp) {
+        try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+        return tmStore(fp, proof).catch(function () { return null; }).then(function () {
+          return fetch("/api/device-bind", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+          }).then(function () { afterBind(fp, proof); });
+        });
+      });
+    }).catch(function () { tmReveal(); });
     return;
   }
   tmReveal();
@@ -326,7 +378,7 @@ function tmWatch(fp, proof) {
   }
   tmFingerprint().then(function (fp) {
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
-    return tmStore(fp, proof).then(function () {
+    return tmStore(fp, proof).catch(function () { return null; }).then(function () {
       return fetch("/api/device-bind", {
         method: "POST",
         credentials: "same-origin",
@@ -334,30 +386,22 @@ function tmWatch(fp, proof) {
       }).then(function () { return fp; });
     });
   }).then(function (fp) {
-    tmPatchRequests(fp, proof);
-    tmWatch(fp, proof);
-    // Skip SW — it races with Access/reloads and can kill sessions (same as Helium).
-    if (navigator.serviceWorker) {
-      navigator.serviceWorker.getRegistrations().then(function (regs) {
-        regs.forEach(function (r) { r.unregister(); });
-      }).catch(function () {});
-    }
-  }).catch(function () {});
+    afterBind(fp, proof);
+  }).catch(function () { tmReveal(); });
 })();
 </script>`
 }
 
-func deviceBootScript(home string) string {
+func deviceBootScript(home, sessionToken string) string {
 	return `<script>` + deviceSharedJS() + `
 (function () {
   var home = ` + fmt.Sprintf("%q", home) + `;
+  var sess = ` + fmt.Sprintf("%q", sessionToken) + `;
   var started = Date.now();
   function goHome() {
-    var wait = 400 - (Date.now() - started);
+    var wait = 500 - (Date.now() - started);
     setTimeout(function () { window.location.replace(home); }, wait > 0 ? wait : 0);
   }
-  // Access already issued ct_session. Device bind is best-effort — never block entry
-  // with Access Denied (IndexedDB/SW/tab races used to strand users on this page).
   function tryBind() {
     return tmEnsureProof().then(function (proof) {
       return tmFingerprint().then(function (fp) {
@@ -366,10 +410,12 @@ func deviceBootScript(home string) string {
       });
     }).then(function (dev) {
       return tmStore(dev.fp, dev.proof).catch(function () { return null; }).then(function () {
+        var headers = { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof };
+        if (sess) headers["X-Ct-Session"] = sess;
         return fetch("/api/device-bind", {
           method: "POST",
           credentials: "same-origin",
-          headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
+          headers: headers
         });
       });
     });
@@ -379,6 +425,7 @@ func deviceBootScript(home string) string {
       regs.forEach(function (r) { r.unregister(); });
     }).catch(function () {});
   }
+  // Bind (rewrites cookie if jar was stale), then enter tool. Never show Access Denied here.
   tryBind().catch(function () {}).finally(goHome);
 })();
 </script>`
