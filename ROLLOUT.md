@@ -167,7 +167,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `indexification` (:5231)  
 - [ ] `jasper` (:4511)  
 - [ ] `joggai` (:5031)  
-- [x] `junglescout` (:5211) — see Priority  
+- [x] `junglescout` (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `kalodata` (:4951)  
 - [ ] `leonardo` (:4601)  
 - [ ] `linkedinlearning` (:4571)  
