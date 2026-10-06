@@ -299,9 +299,10 @@ func branAuthWatchScript(cfg Config) string {
 </script>`
 }
 
-// branUnlockSearchScript — Auth0 user$ often never sets nickname behind the proxy, so
-// Angular binds disabled=!nickname on "Be Curious" and clicks do nothing (no Network).
-// Seed claims from @@auth0spajs@@ and keep the search buttons enabled.
+// branUnlockSearchScript — Auth0 user$ leaves nickname empty → Be Curious stays
+// disabled and Angular never fires GetAccountInfo. Avoid prototype hacks (they
+// fight Zone.js). Instead: unlock buttons lightly + capture click → set shared
+// state (window.__tmBranN from patched main.js) → go /summary.
 func branUnlockSearchScript() string {
 	return `<script data-tm-bran-search="1">
 (function(){
@@ -312,7 +313,7 @@ func branUnlockSearchScript() string {
     try {
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i) || '';
-        if (k.indexOf('@@auth0spajs@@') === -1 && k.toLowerCase().indexOf('auth0spajs') === -1) continue;
+        if (k.indexOf('auth0spajs') === -1) continue;
         var o = JSON.parse(localStorage.getItem(k) || '{}');
         var body = o.body || o;
         var c = (body.decodedToken && body.decodedToken.claims) || {};
@@ -333,84 +334,78 @@ func branUnlockSearchScript() string {
     if (!out.email) out.email = out.nickname.indexOf('@') >= 0 ? out.nickname : (out.nickname + '@branalyzer.local');
     return out;
   }
-  window.__tmBranClaims = claims;
+  function searchInput(){
+    return document.querySelector('app-home-search input, form.search-form input, mat-form-field input[matinput], mat-form-field input');
+  }
+  function normalizeDomain(v){
+    v = String(v || '').trim();
+    if (!v) return null;
+    var url = v.toLowerCase().indexOf('http') === 0 ? v.toLowerCase() : ('https://' + v.toLowerCase());
+    var name = url.replace(/^https?:\/\//,'').split('/')[0];
+    return {url:url, name:name, raw:v};
+  }
+  function seedState(dom){
+    var c = claims();
+    var N = window.__tmBranN;
+    if (N && N.domain) {
+      N.domain.url = dom.url;
+      N.domain.name = dom.name;
+      if (N.currentUser) {
+        if (!N.currentUser.nickname) N.currentUser.nickname = c.nickname;
+        if (!N.currentUser.email) N.currentUser.email = c.email;
+        if (!N.currentUser.userStatus) N.currentUser.userStatus = 'Logged';
+        N.currentUser.allowed = true;
+      }
+    }
+    try {
+      sessionStorage.setItem('tm_bran_force_domain', JSON.stringify(dom));
+    } catch (e) {}
+  }
   function unlockBtns(){
     try {
       document.querySelectorAll('button').forEach(function(btn){
         var t = (btn.textContent || '').replace(/\s+/g,' ').trim();
-        if (!/^(Be Curious|Demo Brands|Recent|Favorites|Compare|Leads|Chrome Extension)$/i.test(t)) return;
-        if (btn.disabled) {
-          btn.disabled = false;
-          btn.removeAttribute('disabled');
-        }
+        if (!/^Be Curious$/i.test(t)) return;
+        btn.disabled = false;
+        btn.removeAttribute('disabled');
+        btn.style.pointerEvents = 'auto';
+        btn.style.opacity = '1';
       });
     } catch (e) {}
   }
-  try {
-    var desc = Object.getOwnPropertyDescriptor(HTMLButtonElement.prototype, 'disabled');
-    if (desc && desc.set) {
-      Object.defineProperty(HTMLButtonElement.prototype, 'disabled', {
-        configurable: true,
-        enumerable: desc.enumerable,
-        get: desc.get,
-        set: function(v){
-          try {
-            var t = (this.textContent || '').replace(/\s+/g,' ').trim();
-            if (/^(Be Curious|Demo Brands|Recent|Favorites|Compare|Leads|Chrome Extension)$/i.test(t)) v = false;
-          } catch (e) {}
-          return desc.set.call(this, v);
-        }
-      });
-    }
-  } catch (e) {}
-  try {
-    var sa = Element.prototype.setAttribute;
-    Element.prototype.setAttribute = function(name, val){
-      if (String(name).toLowerCase() === 'disabled') {
-        try {
-          var t = (this.textContent || '').replace(/\s+/g,' ').trim();
-          if (/^(Be Curious|Demo Brands|Recent|Favorites|Compare|Leads|Chrome Extension)$/i.test(t)) return;
-        } catch (e) {}
-      }
-      return sa.apply(this, arguments);
-    };
-  } catch (e) {}
-  function fillEmail(u){
-    if (typeof u !== 'string' || !/GetAccountInfo/i.test(u)) return u;
-    var s = claims();
-    if (/[?&]Email=[^&]/.test(u)) return u;
-    if (/[?&]Email=(&|$)/.test(u)) return u.replace(/([?&]Email=)(&|$)/, '$1' + encodeURIComponent(s.email) + '$2');
-    return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'Email=' + encodeURIComponent(s.email);
+  function forceSummary(dom){
+    seedState(dom);
+    try { location.assign('/summary'); } catch (e) { location.href = '/summary'; }
   }
-  try {
-    var xo = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(m, u){
-      try { u = fillEmail(u); } catch (e) {}
-      var args = Array.prototype.slice.call(arguments);
-      args[1] = u;
-      return xo.apply(this, args);
-    };
-  } catch (e) {}
-  try {
-    var of = window.fetch;
-    if (of) {
-      window.fetch = function(input, init){
-        try {
-          if (typeof input === 'string') input = fillEmail(input);
-          else if (input && typeof Request !== 'undefined' && input instanceof Request) {
-            var nu = fillEmail(input.url);
-            if (nu !== input.url) input = new Request(nu, input);
-          }
-        } catch (e) {}
-        return of.call(this, input, init);
-      };
-    }
-  } catch (e) {}
+  document.addEventListener('click', function(ev){
+    try {
+      var btn = ev.target && ev.target.closest ? ev.target.closest('button') : null;
+      if (!btn) return;
+      var t = (btn.textContent || '').replace(/\s+/g,' ').trim();
+      if (!/^Be Curious$/i.test(t)) return;
+      var inp = searchInput();
+      var dom = normalizeDomain(inp && inp.value);
+      if (!dom) return;
+      // Let Angular try first; if still on /home, force.
+      seedState(dom);
+      setTimeout(function(){
+        if (/\/summary/i.test(location.pathname)) return;
+        forceSummary(dom);
+      }, 1200);
+    } catch (e) {}
+  }, true);
+  // Brand Summary sidebar click with empty state → use last typed domain
+  document.addEventListener('click', function(ev){
+    try {
+      var a = ev.target && ev.target.closest ? ev.target.closest('a[href*="summary"], a[routerlink="summary"]') : null;
+      if (!a) return;
+      var inp = searchInput();
+      var dom = normalizeDomain(inp && inp.value);
+      if (dom) seedState(dom);
+    } catch (e) {}
+  }, true);
   unlockBtns();
-  setInterval(unlockBtns, 400);
-  try {
-    new MutationObserver(unlockBtns).observe(document.documentElement, {childList:true, subtree:true, attributes:true, attributeFilter:['disabled']});
-  } catch (e) {}
+  setInterval(unlockBtns, 800);
 })();
 </script>`
 }

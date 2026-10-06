@@ -858,13 +858,18 @@ func buildSyntxLocalStorageInject(lsJSON string) string {
 </script>`
 }
 
-// patchBranSearchJS — Angular home binds Be Curious disabled=!nickname; Auth0 user$
-// often leaves nickname empty on the proxy host, so the button never fires.
+// patchBranSearchJS — expose env store, unlock Be Curious, soften /summary guard.
 func patchBranSearchJS(body []byte) []byte {
 	repls := []struct{ old, neu string }{
+		// Shared Angular env (module 2340) → window.__tmBranN for force-search.
+		{`const n={production:!0,branalyzerAzureAccountFunctions:`, `const n=(window.__tmBranN={production:!0,branalyzerAzureAccountFunctions:`},
 		{`disabled",!i.nickname`, `disabled",!1`},
 		{`disabled",!n.nickname`, `disabled",!1`},
-		{`"disabled",!i.nickname`, `"disabled",!1`},
+		// canActivate: if domain.url empty, pull from home input / session before bounce.
+		{
+			`canActivate(e,r){return""!==ge.N.domain.url||(this.router.navigateByUrl("/home"),this.utilsService.showMessageSnackBar(fi.ValidURL),!1)`,
+			`canActivate(e,r){try{if(""===ge.N.domain.url){var _i=document.querySelector("app-home-search input,form.search-form input,mat-form-field input"),_v=_i&&_i.value;if(!_v){try{var _s=sessionStorage.getItem("tm_bran_force_domain");if(_s){var _d=JSON.parse(_s);_v=_d&&(_d.raw||_d.name||_d.url);}}catch(_e){}}if(_v){var _u=_v.toLowerCase().indexOf("http")===0?_v.toLowerCase():("https://"+_v.toLowerCase());ge.N.domain.url=_u;ge.N.domain.name=_u.replace(/^https?:\/\//,"").split("/")[0];}}}catch(_x){}return""!==ge.N.domain.url||(this.router.navigateByUrl("/home"),this.utilsService.showMessageSnackBar(fi.ValidURL),!1)`,
+		},
 	}
 	for _, r := range repls {
 		body = bytes.ReplaceAll(body, []byte(r.old), []byte(r.neu))
