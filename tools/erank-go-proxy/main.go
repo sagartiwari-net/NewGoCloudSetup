@@ -693,7 +693,10 @@ func forwardUpstreamSetCookies(w http.ResponseWriter, r *http.Request, upstreamR
 }
 
 func setProxyBrowserAuthCookies(w http.ResponseWriter, r *http.Request, cfg Config, activeAcc ToolAccount) {
-	if usesCookieFileMode(cfg) || activeAcc.ID == 0 {
+	// Panel mode: NEVER put Mapped Account cookies on the browser.
+	// That bloated Cookie headers → nginx "400 Request Header Or Cookie Too Large".
+	// Upstream auth uses buildUpstreamCookies() from panel.db only.
+	if usesPanelAccountMode(cfg) || usesCookieFileMode(cfg) || activeAcc.ID == 0 {
 		return
 	}
 	cookieStr := parseCookieFromDB(activeAcc.Cookie)
@@ -711,6 +714,41 @@ func setProxyBrowserAuthCookies(w http.ResponseWriter, r *http.Request, cfg Conf
 			Value:    value,
 			Path:     "/",
 			MaxAge:   86400,
+			Secure:   secure,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+}
+
+// expireProxyHostJunkCookies clears upstream/session cookies previously leaked onto
+// erank.gt4rents.com so nginx stops rejecting oversized Cookie headers.
+func expireProxyHostJunkCookies(w http.ResponseWriter, r *http.Request, cfg Config) {
+	if !usesPanelAccountMode(cfg) || r == nil {
+		return
+	}
+	keep := map[string]bool{
+		"ct_session": true,
+	}
+	ss := normalizeSessionSecurity(cfg)
+	if ss.DeviceCookie.Enabled {
+		name := ss.DeviceCookie.CookieName
+		if name == "" {
+			name = "tm_device"
+		}
+		keep[name] = true
+	}
+	secure := cookieSecure(r, cfg)
+	for name := range parseCookieMap(r.Header.Get("Cookie")) {
+		if keep[name] || strings.HasPrefix(name, "tm_device") {
+			continue
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			Expires:  time.Unix(0, 0),
+			HttpOnly: true,
 			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
 		})
@@ -825,13 +863,8 @@ func cookieMapToString(m map[string]string) string {
 
 func buildUpstreamCookies(r *http.Request, cfg Config, activeAcc ToolAccount) string {
 	if usesPanelAccountMode(cfg) && strings.TrimSpace(activeAcc.Cookie) != "" {
-		accountMap := parseCookieMap(parseCookieFromDB(activeAcc.Cookie))
-		clientCookies := stripSensitiveCookies(r.Header.Get("Cookie"), cfg)
-		merged := parseCookieMap(clientCookies)
-		for k, v := range accountMap {
-			merged[k] = v
-		}
-		return cookieMapToString(merged)
+		// Panel: use Mapped Account cookie ONLY — never merge bloated browser cookies.
+		return parseCookieFromDB(activeAcc.Cookie)
 	}
 	if cfg.LocalTestMode {
 		return cookieMapToString(getLocalUpstreamCookieMap(cfg, false))
@@ -2081,6 +2114,11 @@ func forwardDatadomeHeaders(w http.ResponseWriter, upstreamResp *http.Response, 
 			w.Header().Set(name, v)
 		}
 	}
+	// Panel / production proxy: never write datadome onto the public host — values
+	// are huge and trip nginx "Request Header Or Cookie Too Large".
+	if usesPanelAccountMode(cfg) || !usesCookieFileMode(cfg) {
+		return
+	}
 	secure := strings.EqualFold(cfg.PublicScheme, "https")
 	for _, sc := range upstreamResp.Header.Values("Set-Cookie") {
 		if !strings.Contains(strings.ToLower(sc), "datadome=") {
@@ -2091,18 +2129,14 @@ func forwardDatadomeHeaders(w http.ResponseWriter, upstreamResp *http.Response, 
 			if maxAge == 0 {
 				maxAge = 31536000
 			}
-			ck := &http.Cookie{
+			http.SetCookie(w, &http.Cookie{
 				Name:     "datadome",
 				Value:    c.Value,
 				Path:     "/",
 				MaxAge:   maxAge,
 				Secure:   secure,
 				SameSite: http.SameSiteLaxMode,
-			}
-			if !usesCookieFileMode(cfg) {
-				ck.Domain = ".erank.com"
-			}
-			http.SetCookie(w, ck)
+			})
 		}
 	}
 }
@@ -3325,10 +3359,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("X-Frame-Options")
 		if usesPanelAccountMode(cfg) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
+			expireProxyHostJunkCookies(w, r, cfg)
 		}
 		if cfg.LocalTestMode {
 			setLocalBrowserAuthCookies(w, r, cfg)
-		} else {
+		} else if !usesPanelAccountMode(cfg) {
 			setProxyBrowserAuthCookies(w, r, cfg, activeAcc)
 		}
 

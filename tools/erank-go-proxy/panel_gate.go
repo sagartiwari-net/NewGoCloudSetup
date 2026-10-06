@@ -294,6 +294,8 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		Secure:   cookieSecure(r, cfg),
 		SameSite: http.SameSiteLaxMode,
 	})
+	// Drop sid_er / datadome / etc. leaked onto this host (nginx 400 cookie-too-large).
+	expireProxyHostJunkCookies(w, r, cfg)
 	log.Printf("[PANEL] access granted user=%s product=%s", username, productID)
 	renderPanelLoadingPage(w, cfg)
 }
