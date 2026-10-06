@@ -113,7 +113,6 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `helium10` — Helium10 (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified  
 - [x] `mgfc` — Magnific (:5121) — **DONE / HTTPS OK** (2026-10-06): verified OK — `mgfc.gt4rents.com` (Safe Browsing rename from `magnific`) + disk CDN cache (`e62a9ad`)  
 - [x] `junglescout` — JungleScout (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — panel access working  
-- [ ] `branalyzer` — Branalyzer (:5081) — **pushing**: Be Curious local OK (`__tmBranN` paren + skip country) — redeploy + wipe `tools/branalyzer-go-proxy/cdn-cache` + hard-refresh  
 - [x] `grammarly` — Grammarly (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)  
 - [ ] `placeit` — Placeit (:4611) — **rebuild required** after token-only access; was HTTPS OK before  
 - [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts — **redeploy if Access Denied**  
@@ -140,7 +139,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `airbrush` (:5181)  
 - [ ] `answerthepublic` (:4931)  
 - [ ] `artistly` (:4821)  
-- [ ] `branalyzer` (:5081) — parked; see Priority / Open issues  
+- [ ] `branalyzer` (:5081) — **parked** — home loads; Be Curious still snack “Introduce any valid URL” on server (`59905db` local OK) — resume later; see Open issues  
 - [x] `chatbotapp` (:5061) — up; smpanel keeps `:5001`  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
@@ -221,7 +220,7 @@ If fail: note in “Open issues”, fix, re-tick.
 
 | Tool | Issue | Action |
 |------|--------|--------|
-| `branalyzer` | Server blank `/home` — Network shows no `GetAccountInfo` (local cookie mode OK) | **Parked.** Resume later: redeploy `a7551d9`+, hard-refresh access-link, confirm `extra-cdn-0` GetAccountInfo + Be Curious UI before ticking `[x]` |
+| `branalyzer` | Be Curious → snack “Introduce any valid URL or domain” on `branalyzer.gt4rents.com` (home OK; local `59905db` worked) | **Parked.** Resume later: compare server main.js patch + searchText/DOM vs local; wipe `cdn-cache`; hard-refresh |
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `mgfc` (Magnific) | `/photos` still WAF if someone bypasses redirect | **OK on `mgfc`**; `/photos` → `/people-emotions` |
