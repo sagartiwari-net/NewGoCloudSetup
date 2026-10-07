@@ -91,8 +91,12 @@ func TestSessionEnterSetsCookieAndRedirects(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `location.replace("/")`) {
-		t.Fatalf("missing JS redirect, body=%s", rec.Body.String())
+	body := rec.Body.String()
+	if !strings.Contains(body, `location.replace("/")`) {
+		t.Fatalf("missing JS redirect, body=%s", body)
+	}
+	if !strings.Contains(body, `setTimeout`) {
+		t.Fatalf("expected delayed redirect, body=%s", body)
 	}
 	cookies := rec.Result().Cookies()
 	found := false
@@ -103,5 +107,40 @@ func TestSessionEnterSetsCookieAndRedirects(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("missing ct_session Set-Cookie, got %#v", cookies)
+	}
+}
+
+func TestDeviceBootScriptEntersAfterBind(t *testing.T) {
+	script := deviceBootScript("/", "sess-token", "nonce123")
+	for _, want := range []string{
+		`/__tm_enter?n=`,
+		`nonce123`,
+		`X-Ct-Session`,
+		`sess-token`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("boot script missing %q", want)
+		}
+	}
+}
+
+func TestClearParentDomainDoesNotExpireHost(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	cfg := Config{PublicScheme: "https"}
+	clearParentDomainCtSessionCookies(rec, req, cfg)
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "ct_session" && c.Domain == "" && c.MaxAge < 0 {
+			t.Fatal("parent clear must not emit host-only Max-Age=0 (wipes live Set-Cookie)")
+		}
+	}
+	foundParent := false
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "ct_session" && strings.Contains(c.Domain, "gt4rents.com") {
+			foundParent = true
+		}
+	}
+	if !foundParent {
+		t.Fatal("expected Domain=gt4rents.com clear")
 	}
 }

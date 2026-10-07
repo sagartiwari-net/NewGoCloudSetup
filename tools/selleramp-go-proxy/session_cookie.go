@@ -52,20 +52,24 @@ func consumeEnterTicket(nonce string) (string, bool) {
 }
 
 func setCtSessionCookie(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken string, expiry time.Time) {
+	maxAge := int(time.Until(expiry).Seconds())
+	if maxAge < 1 {
+		maxAge = 60
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     ctSessionCookie,
 		Value:    sessionToken,
 		Path:     "/",
 		Expires:  expiry,
+		MaxAge:   maxAge,
 		HttpOnly: true,
 		Secure:   cookieSecure(r, cfg),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-// sessionEnterHandler finishes panel login on a same-site navigation.
-// Panel → /access is cross-site; browsers often drop Set-Cookie there while still
-// allowing the follow-up same-site /__tm_enter hop to store ct_session.
+// sessionEnterHandler is a first-party cookie commit hop (erank-style boot can
+// skip this; kept as fallback when boot navigates here with ?n=).
 func sessionEnterHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := loadConfig()
 	nonce := strings.TrimSpace(r.URL.Query().Get("n"))
@@ -85,24 +89,24 @@ func sessionEnterHandler(w http.ResponseWriter, r *http.Request) {
 	exp := sess.expires
 	user := sess.username
 	sess.mu.Unlock()
-	// Drop any stale ct_session first, then set the live one on a 200 document.
-	// Set-Cookie on 302 redirects is frequently ignored by browsers/CDNs — that
-	// left ct_candidates=1 with a dead orphan token and "session not found" on /.
-	clearStaleCtSessionCookies(w, r, cfg)
+	// Parent-domain clear only — never host Max-Age=0 alongside the live set.
+	clearParentDomainCtSessionCookies(w, r, cfg)
+	expireProxyHostJunkCookies(w, r, cfg)
 	setCtSessionCookie(w, r, cfg, sessionToken, exp)
 	home := cfg.HomePath
 	if home == "" {
 		home = "/"
 	}
-	log.Printf("[PANEL] enter ok user=%s → %s (cookie via 200)", user, home)
+	log.Printf("[PANEL] enter ok user=%s → %s (cookie via 200, delayed)", user, home)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	esc := html.EscapeString(home)
 	fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="refresh" content="0;url=%s">
 <title>Signing in…</title></head><body>
-<script>location.replace(%q)</script>
+<script>
+setTimeout(function () { location.replace(%q); }, 300);
+</script>
 <p>Signing in… <a href="%s">continue</a></p>
-</body></html>`, esc, home, esc)
+</body></html>`, home, esc)
 }

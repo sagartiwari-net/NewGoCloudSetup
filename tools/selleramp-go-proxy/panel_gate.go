@@ -290,12 +290,14 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	// Best-effort cookie on the cross-site /access response (often dropped by browsers).
+	// Erank pattern: end cross-site nav on 200, set host ct_session, expire junk
+	// cookies so the jar has room, then boot→bind→home. Do NOT clear host-only
+	// ct_session in this same response (Max-Age=0 can wipe the live Set-Cookie).
+	clearParentDomainCtSessionCookies(w, r, cfg)
+	expireProxyHostJunkCookies(w, r, cfg)
 	setCtSessionCookie(w, r, cfg, sessionToken, sessionExpiry)
-	log.Printf("[PANEL] access granted user=%s product=%s domain=%s wid=%d → enter", username, productID, domain, websiteID)
-	// Same-site hop: panel.gt4rents.com → selleramp /access (cross-site) → /__tm_enter (same-site).
-	// Cookie is set on /__tm_enter where browsers actually keep it, then redirect home.
-	http.Redirect(w, r, "/__tm_enter?n="+nonce, http.StatusFound)
+	log.Printf("[PANEL] access granted user=%s product=%s domain=%s wid=%d → boot", username, productID, domain, websiteID)
+	renderPanelLoadingPage(w, cfg, sessionToken, nonce)
 }
 
 const panelAccountSelect = `SELECT a.id, a.name, a.cookie,
@@ -434,7 +436,7 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"error":"proxy_unavailable","message":"Contact to Admin/Provider to fix it ASAP"}`)
 }
 
-func renderPanelLoadingPage(w http.ResponseWriter, cfg Config, sessionToken string) {
+func renderPanelLoadingPage(w http.ResponseWriter, cfg Config, sessionToken, enterNonce string) {
 	home := cfg.HomePath
 	if home == "" {
 		home = "/"
@@ -447,7 +449,7 @@ func renderPanelLoadingPage(w http.ResponseWriter, cfg Config, sessionToken stri
 		Badge:       "Verifying your request...",
 		Footer:      "Secure session initialization in progress",
 		Spin:        true,
-		ExtraScript: deviceBootScript(home, sessionToken),
+		ExtraScript: deviceBootScript(home, sessionToken, enterNonce),
 	})
 }
 

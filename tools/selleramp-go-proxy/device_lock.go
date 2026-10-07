@@ -68,13 +68,58 @@ func sessionFromRequest(r *http.Request) (string, *panelGateSession, bool) {
 	return resolveCtSession(r)
 }
 
-// clearStaleCtSessionCookies drops parent-domain ct_session leftovers that shadow
-// the host-only session cookie set by /access.
+// clearParentDomainCtSessionCookies drops Domain=.gt4rents.com leftovers that
+// shadow the host-only session cookie. Never clears the host-only cookie in the
+// same response as a new Set-Cookie — browsers may process Max-Age=0 after the
+// live value and wipe it (enter ok → session not found with orphan tok=…).
+func clearParentDomainCtSessionCookies(w http.ResponseWriter, r *http.Request, cfg Config) {
+	secure := cookieSecure(r, cfg)
+	for _, domain := range []string{"gt4rents.com", ".gt4rents.com"} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "ct_session",
+			Value:    "",
+			Path:     "/",
+			Domain:   domain,
+			MaxAge:   -1,
+			Expires:  time.Unix(0, 0),
+			HttpOnly: true,
+			Secure:   secure,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+}
+
+// clearStaleCtSessionCookies expires every ct_session scope (host + parent).
+// Use only on Access Denied when the cookie is known-dead — not alongside a set.
 func clearStaleCtSessionCookies(w http.ResponseWriter, r *http.Request, cfg Config) {
 	secure := cookieSecure(r, cfg)
-	for _, domain := range []string{"", "gt4rents.com", ".gt4rents.com"} {
-		c := &http.Cookie{
-			Name:     "ct_session",
+	http.SetCookie(w, &http.Cookie{
+		Name: "ct_session", Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0),
+		HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
+	})
+	clearParentDomainCtSessionCookies(w, r, cfg)
+}
+
+// expireProxyHostJunkCookies clears non-session cookies the browser already sent
+// for this host (SellerAmp SPA pollution). Same approach as erank — frees jar
+// space so ct_session Set-Cookie is not silently dropped (cookies≈55).
+func expireProxyHostJunkCookies(w http.ResponseWriter, r *http.Request, cfg Config) {
+	if r == nil {
+		return
+	}
+	secure := cookieSecure(r, cfg)
+	seen := map[string]bool{}
+	for _, c := range r.Cookies() {
+		if c == nil {
+			continue
+		}
+		name := strings.TrimSpace(c.Name)
+		if name == "" || name == "ct_session" || strings.HasPrefix(name, "tm_device") || seen[name] {
+			continue
+		}
+		seen[name] = true
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
 			Value:    "",
 			Path:     "/",
 			MaxAge:   -1,
@@ -82,11 +127,7 @@ func clearStaleCtSessionCookies(w http.ResponseWriter, r *http.Request, cfg Conf
 			HttpOnly: true,
 			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
-		}
-		if domain != "" {
-			c.Domain = domain
-		}
-		http.SetCookie(w, c)
+		})
 	}
 }
 
@@ -312,15 +353,8 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		sess.mu.Lock()
 		exp := sess.expires
 		sess.mu.Unlock()
-		http.SetCookie(w, &http.Cookie{
-			Name:     "ct_session",
-			Value:    token,
-			Path:     "/",
-			Expires:  exp,
-			HttpOnly: true,
-			Secure:   cookieSecure(r, cfg),
-			SameSite: http.SameSiteLaxMode,
-		})
+		clearParentDomainCtSessionCookies(w, r, cfg)
+		setCtSessionCookie(w, r, cfg, token, exp)
 	}
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
@@ -436,15 +470,18 @@ function tmWatch(fp, proof) {
 </script>`
 }
 
-func deviceBootScript(home, sessionToken string) string {
+func deviceBootScript(home, sessionToken, enterNonce string) string {
 	return `<script>` + deviceSharedJS() + `
 (function () {
   var home = ` + fmt.Sprintf("%q", home) + `;
   var sess = ` + fmt.Sprintf("%q", sessionToken) + `;
+  var nonce = ` + fmt.Sprintf("%q", enterNonce) + `;
   var started = Date.now();
-  function goHome() {
+  function goNext() {
     var wait = 500 - (Date.now() - started);
-    setTimeout(function () { window.location.replace(home); }, wait > 0 ? wait : 0);
+    // Prefer first-party /__tm_enter to re-assert ct_session after bind; else home.
+    var next = nonce ? ("/__tm_enter?n=" + encodeURIComponent(nonce)) : home;
+    setTimeout(function () { window.location.replace(next); }, wait > 0 ? wait : 0);
   }
   function tryBind() {
     return tmEnsureProof().then(function (proof) {
@@ -469,8 +506,8 @@ func deviceBootScript(home, sessionToken string) string {
       regs.forEach(function (r) { r.unregister(); });
     }).catch(function () {});
   }
-  // Bind (rewrites cookie if jar was stale), then enter tool. Never show Access Denied here.
-  tryBind().catch(function () {}).finally(goHome);
+  // Erank-style: bind re-sets ct_session on same-origin response, then enter/home.
+  tryBind().catch(function () {}).finally(goNext);
 })();
 </script>`
 }
