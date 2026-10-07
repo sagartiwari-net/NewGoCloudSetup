@@ -333,29 +333,65 @@ func buildInjectScript(cfg Config, session string) string {
     return init;
   }
 
-  var __fetch = window.fetch;
-  window.fetch = function(input, init) {
-    if (typeof input === "string") input = proxyUrl(input);
-    else if (input && input.url) {
-      var proxied = proxyUrl(input.url);
-      if (proxied !== input.url) input = new Request(proxied, input);
-    }
-    init = stampDeviceHeaders(init, input);
-    return __fetch.call(this, input, init);
-  };
+  // Keep re-asserting XHR/$http patches so device-lock wrappers cannot drop rewrites.
+  // Absolute my.zonguru.com calls CORS-fail from this host — must stay same-origin.
+  var __nativeFetch = window.fetch.bind(window);
+  var __nativeXhrOpen = XMLHttpRequest.prototype.open;
+  var _cfFakeToken = "0." + Math.random().toString(36).slice(2) + Date.now();
 
-  var __xhrOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    var args = Array.prototype.slice.call(arguments);
-    if (typeof url === "string") args[1] = proxyUrl(url);
-    else if (url && typeof url.toString === "function") args[1] = proxyUrl(url.toString());
-    return __xhrOpen.apply(this, args);
-  };
-  // Angular hardcodes baseUrl https://my.zonguru.com — if a bundle skips rewrite,
-  // absolute calls must still stay on this proxy (CORS to upstream fails otherwise).
-  try {
-    console.log("[ZonGuru Proxy] API base forced to", REAL_PROXY_ORIGIN);
-  } catch (eBase) {}
+  function installNetworkHooks() {
+    window.fetch = function(input, init) {
+      var url = typeof input === "string" ? input : (input && input.url ? input.url : "");
+      if (url && url.indexOf("challenges.cloudflare.com") !== -1) {
+        return Promise.resolve(new Response(JSON.stringify({success:true,token:_cfFakeToken}), {
+          status: 200,
+          headers: {"Content-Type": "application/json"}
+        }));
+      }
+      if (typeof input === "string") input = proxyUrl(input);
+      else if (input && input.url) {
+        var proxied = proxyUrl(input.url);
+        if (proxied !== input.url) input = new Request(proxied, input);
+      }
+      init = stampDeviceHeaders(init, input);
+      return __nativeFetch(input, init);
+    };
+    XMLHttpRequest.prototype.open = function(method, url) {
+      var args = Array.prototype.slice.call(arguments);
+      if (typeof url === "string") args[1] = proxyUrl(url);
+      else if (url && typeof url.toString === "function") args[1] = proxyUrl(url.toString());
+      return __nativeXhrOpen.apply(this, args);
+    };
+  }
+  installNetworkHooks();
+  var __hookTicks = 0;
+  var __hookTimer = setInterval(function() {
+    installNetworkHooks();
+    hookAngularHttp();
+    if (++__hookTicks > 200) clearInterval(__hookTimer);
+  }, 50);
+
+  function hookAngularHttp() {
+    if (window.__zgHttpHooked || !window.angular) return;
+    try {
+      var root = document.querySelector("[ng-app],.ng-scope") || document.body;
+      var inj = window.angular.element(root).injector();
+      if (!inj) return;
+      var $http = inj.get("$http");
+      if (!$http) return;
+      window.__zgHttpHooked = true;
+      ["get", "post", "put", "delete", "patch", "head", "jsonp"].forEach(function(m) {
+        if (typeof $http[m] !== "function") return;
+        var orig = $http[m].bind($http);
+        $http[m] = function(url, a, b) {
+          if (typeof url === "string") url = proxyUrl(url);
+          else if (url && typeof url === "object" && url.url) url.url = proxyUrl(url.url);
+          return orig(url, a, b);
+        };
+      });
+      try { console.log("[ZonGuru Proxy] Angular $http hooked →", REAL_PROXY_ORIGIN); } catch (e0) {}
+    } catch (e1) {}
+  }
 
   var __beacon = navigator.sendBeacon && navigator.sendBeacon.bind(navigator);
   if (__beacon) {
@@ -366,22 +402,16 @@ func buildInjectScript(cfg Config, session string) string {
   }
 
   // ─── Cloudflare Turnstile bypass ─────────────────────────────────────────
-  // push.my.zonguru.com WebSocket requires a valid Cloudflare Turnstile token.
-  // We mock the turnstile API so ZonGuru JS thinks verification passed.
-  var _cfFakeToken = "0." + Math.random().toString(36).slice(2) + Date.now();
   if (!window.turnstile) {
     window.turnstile = {
       render: function(el, opts) {
-        // Immediately call the success callback with our fake token
         setTimeout(function() {
           _cfFakeToken = "0." + Math.random().toString(36).slice(2) + Date.now();
           if (opts && typeof opts.callback === "function") opts.callback(_cfFakeToken);
-          // Also hide the container element so no UI shows
           try {
             var node = typeof el === "string" ? document.querySelector(el) : el;
             if (node) node.style.display = "none";
           } catch(e) {}
-          // Close any visible anti-bot check dialog
           try {
             var dialogs = document.querySelectorAll('[class*="modal"], [class*="dialog"], [class*="overlay"]');
             for (var d = 0; d < dialogs.length; d++) {
@@ -400,25 +430,6 @@ func buildInjectScript(cfg Config, session string) string {
     };
     console.log("[ZonGuru Proxy] Cloudflare Turnstile bypassed");
   }
-
-  // Intercept fetch calls to challenges.cloudflare.com — return fake success
-  var __fetch = window.fetch;
-  window.fetch = function(input, init) {
-    var url = typeof input === "string" ? input : (input && input.url ? input.url : "");
-    if (url && url.indexOf("challenges.cloudflare.com") !== -1) {
-      console.log("[ZonGuru Proxy] Blocked CF challenge fetch:", url);
-      return Promise.resolve(new Response(JSON.stringify({success:true,token:_cfFakeToken}), {
-        status: 200,
-        headers: {"Content-Type": "application/json"}
-      }));
-    }
-    if (typeof input === "string") input = proxyUrl(input);
-    else if (input && input.url) {
-      var proxied = proxyUrl(input.url);
-      if (proxied !== input.url) input = new Request(proxied, input);
-    }
-    return __fetch.call(this, input, init);
-  };
 
   var __WS = window.WebSocket;
   window.WebSocket = function(url, protocols) {
@@ -904,14 +915,20 @@ func main() {
 			}
 		}
 
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/signalr") {
+			log.Printf("[REQ] inbound %s %s", r.Method, r.URL.Path)
+		}
+
 		acc, nextReq, handled := preparePanelRequest(w, r, cfg)
 		if handled {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				log.Printf("[REQ] handled-early %s %s (panel/device short-circuit)", r.Method, r.URL.Path)
+			}
 			return
 		}
 		if usesPanelAccountMode(cfg) {
 			r = stampPanelAccount(nextReq, acc)
 		}
-
 
 		path := strings.ToLower(r.URL.Path)
 		for _, blocked := range cfg.BlockedPaths {

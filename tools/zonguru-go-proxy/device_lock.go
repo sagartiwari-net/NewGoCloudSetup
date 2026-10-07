@@ -84,6 +84,13 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !usesPanelAccountMode(cfg) {
 		return false
 	}
+	// ZonGuru dashboard tiles POST /api/dashboard/* via Angular $http. Blocking
+	// those on missing device headers produced widget errors with zero [DASH]
+	// logs (request never reached the reverse proxy). Session cookie is enough
+	// for API; device proof still gates document navigations.
+	if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/signalr") {
+		return false
+	}
 	token, sess, ok := sessionFromRequest(r)
 	if !ok || sess == nil {
 		return false
@@ -614,7 +621,6 @@ function stampDevice(request, target) {
     return fetch(target, init);
   })();
 }
-self.addEventListener("fetch", function (event) {
-  if (event.request.mode === "navigate") return;
-});
+// Do not intercept fetch — a fetch listener without respondWith can still
+// disturb opaque cross-origin / early API calls in some Chrome versions.
 `

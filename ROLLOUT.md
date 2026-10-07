@@ -226,7 +226,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `writecream` (:5051)  
 - [ ] `zebracat` (:5111)  
 - [ ] `zikaanalytics` (:5251)  
-- [ ] `zonguru` (:4691) — **FIX PUSHED** (2026-10-07): local repro — stop DigitaVision rewrite on JSON/emails; force Angular `baseUrl`→proxy; device soft-allow; dashboard API returns 200 zeros like official — redeploy + fresh access-link
+- [ ] `zonguru` (:4691) — **FIX PUSHED** (2026-10-07): skip device-gate on `/api/*` (widgets never hit proxy); force `$http`/XHR rewrite; `[REQ]`/`[DASH]` logs — redeploy + fresh access-link
 
 ---
 
