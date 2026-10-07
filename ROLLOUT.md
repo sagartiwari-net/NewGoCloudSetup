@@ -189,11 +189,13 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `selleramp` (:5161) — **DONE / HTTPS OK** (2026-10-07): see Priority  
 
 - [x] `sellthetrend` (:4591) — **HTTPS OK** (2026-10-07): verified OK — `www.sellthetrend.com`, profile dropdowns hidden (left+top), panel username/initials on avatar bar  
-- [x] `seobility` (:4731) — **HTTPS OK** (2026-10-07): verified OK — `app.seobility.net`, account Profile/Subscription/Billing/Members/MCP block hidden, panel username in dropdown; logout→`/user/login` wall → switch / panel `logged_out` + contact-admin  
+- [x] `seobility` (:4731) — **HTTPS OK** (2026-10-07): verified OK — `app.seobility.net`, account Profile/Subscription/Billing/Members/MCP block hidden, panel username in dropdown; logout→`/user/login` wall → switch / panel `logged_out` + contact-admin (**failover verified**)  
+
 
 - [ ] `seobuddy` (:5131)  
 - [x] `seositecheckup` (:4661) — see Priority  
-- [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): verified OK — cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`; dead cookie / no-subscription banner → switch / panel `logged_out` + contact-admin  
+- [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): verified OK — cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`; no-subscription / dead cookie → soft-revive then switch / panel `logged_out` + contact-admin (**failover verified**)  
+
 
 - [ ] `shortform` (:4771)  
 - [ ] `similarweb` (:5071)  
