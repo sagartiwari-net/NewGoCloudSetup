@@ -130,7 +130,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [ready, session, pathname, router])
 
   if (!ready || !session) {
-    return <div className="min-h-svh bg-background" />
+    // Never leave a total blank white screen if client navigation stalls.
+    return (
+      <div className="flex min-h-svh flex-col items-center justify-center gap-3 bg-background p-6 text-center">
+        <p className="text-sm text-muted-foreground">Redirecting to sign in…</p>
+        <Link href="/login" className="text-sm font-medium text-primary underline underline-offset-4">
+          Open sign in
+        </Link>
+      </div>
+    )
   }
 
   return (

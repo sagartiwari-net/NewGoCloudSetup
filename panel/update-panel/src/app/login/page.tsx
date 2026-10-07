@@ -48,13 +48,18 @@ export default function LoginPage() {
 
   useGSAP(
     () => {
-      if (prefersReducedMotion()) return
-      gsap.from("[data-login-card]", {
-        autoAlpha: 0,
-        y: 16,
-        duration: 0.45,
-        ease: "power2.out",
-      })
+      const card = scope.current?.querySelector("[data-login-card]")
+      if (!(card instanceof HTMLElement)) return
+      // Always end visible — a failed/interrupted from(autoAlpha:0) left the page blank.
+      if (prefersReducedMotion()) {
+        gsap.set(card, { autoAlpha: 1, y: 0 })
+        return
+      }
+      gsap.fromTo(
+        card,
+        { autoAlpha: 0, y: 16 },
+        { autoAlpha: 1, y: 0, duration: 0.45, ease: "power2.out", overwrite: true }
+      )
     },
     { scope }
   )
