@@ -2048,9 +2048,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Set account cookie and user-agent using hybrid parser
+	// Set account cookie and user-agent using hybrid parser.
+	// Prefer mapped account SessionToken — browser may keep a stale/empty one from /login.
 	accountCookieStr, _ := parseCookiesAndStorage(activeAcc.Cookie)
 	clientCookies := stripSensitiveCookies(r.Header.Get("Cookie"), cfg)
+	clientCookies = stripNamedCookies(clientCookies, "SessionToken", "access_token", "refresh_token", "ct_session")
 	if accountCookieStr != "" {
 		if clientCookies != "" {
 			clientCookies += "; "
@@ -2069,8 +2071,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Always prefer the mapped account access JWT. Browser localStorage can keep a stale token
 	// that Zik rejects with 401 and then the SPA bounces to /login.
-	if bearer := zikAuthBearerFromAccount(activeAcc.Cookie); bearer != "" {
+	bearer := zikAuthBearerFromAccount(activeAcc.Cookie)
+	if bearer != "" {
 		upstreamReq.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	if path == cfg.HomePath || path == "/dashboard" || path == "/" {
+		bOK, sOK, exp := zikAuthDiag(activeAcc.Cookie)
+		log.Printf("[ZIK_AUTH] upstream %s account=%s bearer=%v sessionCookie=%v jwtExpired=%v",
+			path, activeAcc.Name, bOK, sOK, exp)
 	}
 
 	// Set upstream host header
@@ -2180,6 +2188,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				v = reSecure.ReplaceAllString(v, "")
 				v = reSameNone.ReplaceAllString(v, "SameSite=Lax;")
 				w.Header().Add("Set-Cookie", v)
+			}
+			continue
+		}
+		if kLower == "location" {
+			for _, v := range vv {
+				nv := v
+				pairs := buildDomainReplacements(cfg)
+				for _, p := range pairs {
+					nv = strings.ReplaceAll(nv, p[0], p[1])
+				}
+				nv = zikRewriteLoginLocation(nv, cfg)
+				w.Header().Add("Location", nv)
 			}
 			continue
 		}

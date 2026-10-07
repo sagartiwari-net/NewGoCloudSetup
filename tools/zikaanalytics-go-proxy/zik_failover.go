@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -74,7 +75,7 @@ func zikAPILooksLoggedOut(path string, status int, body []byte) bool {
 
 var (
 	zikSwitchCooldownMu sync.Mutex
-	zikSwitchLast   = map[string]time.Time{}
+	zikSwitchLast       = map[string]time.Time{}
 )
 
 func zikSwitchCooldownOK(sessionToken string) bool {
@@ -85,6 +86,61 @@ func zikSwitchCooldownOK(sessionToken string) bool {
 	}
 	zikSwitchLast[sessionToken] = time.Now()
 	return true
+}
+
+func zikJWTExpired(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	payload := parts[1]
+	switch len(payload) % 4 {
+	case 2:
+		payload += "=="
+	case 3:
+		payload += "="
+	}
+	raw, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		raw, err = base64.RawURLEncoding.DecodeString(parts[1])
+		if err != nil {
+			return false
+		}
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if json.Unmarshal(raw, &claims) != nil || claims.Exp == 0 {
+		return false
+	}
+	return time.Now().Unix() >= claims.Exp
+}
+
+func zikAccountHasSessionCookie(cookieRaw string) bool {
+	cookieStr, _ := parseCookiesAndStorage(cookieRaw)
+	lower := strings.ToLower(cookieStr)
+	return strings.Contains(lower, "sessiontoken=")
+}
+
+func zikAuthDiag(cookieRaw string) (bearerOK bool, sessionOK bool, expired bool) {
+	bearer := zikAuthBearerFromAccount(cookieRaw)
+	sessionOK = zikAccountHasSessionCookie(cookieRaw)
+	if bearer == "" {
+		return false, sessionOK, false
+	}
+	return true, sessionOK, zikJWTExpired(bearer)
+}
+
+func serveZikCookieExpired(w http.ResponseWriter, cfg Config, currentUser, accountName, reason string) {
+	log.Printf("[FAILOVER] STOP login-loop user=%s account=%s reason=%s — update hybrid cookie (cookies+localStorage.access)", currentUser, accountName, reason)
+	writeLightCard(w, http.StatusOK, lightCard{
+		Title:   "Session expired",
+		Heading: "Zik cookie expired",
+		Message: "Update <b>Zik Analytics 1</b> in the panel with a fresh export that includes <b>cookies + localStorage</b> (the <code>access</code> JWT). Then open a <b>new</b> access link.",
+		Badge:   "No auto-refresh — fix cookie in panel",
+		Footer:  "Do not keep reloading this page",
+		Spin:    false,
+	})
 }
 
 func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken, currentUser string, activeAcc ToolAccount, reason string) {
@@ -101,30 +157,52 @@ func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	if qReason := strings.TrimSpace(r.URL.Query().Get("reason")); qReason != "" {
 		reason = qReason
 	}
+
+	bearerOK, sessionOK, expired := zikAuthDiag(activeAcc.Cookie)
+	log.Printf("[ZIK_AUTH] user=%s account=%s bearer=%v sessionCookie=%v jwtExpired=%v reason=%s",
+		currentUser, activeAcc.Name, bearerOK, sessionOK, expired, reason)
+
+	// Soft bounce: SPA navigated to /login without an explicit failover reason.
+	// Don't rotate — send them home so HTML+localStorage inject can run.
+	if reason == "" || reason == "zik_login_path" {
+		log.Printf("[FAILOVER] soft-redirect /login → %s user=%s (no rotate)", home, currentUser)
+		http.Redirect(w, r, home, http.StatusFound)
+		return
+	}
+
 	heading := "Switching account"
 	message := "This account signed out. Trying the next available account."
-	if zikSwitchCooldownOK(sessionToken) {
-		next, err := panelSwitchAccount(cfg, sessionToken, activeAcc.ID, activeAcc.Name, currentUser, reason)
-		if err != nil {
-			heading = "Waiting for an account"
-			message = "No other account is ready yet. Checking again."
-			log.Printf("[FAILOVER] login wall user=%s account=%s reason=%s no other account: %v", currentUser, activeAcc.Name, reason, err)
-		} else {
-			log.Printf("[FAILOVER] login wall user=%s %s (ID:%d) -> %s (ID:%d) reason=%s", currentUser, activeAcc.Name, activeAcc.ID, next.Name, next.ID, reason)
+	redirect := home
+	badge := "Checking the next account"
+	spin := true
+
+	if !zikSwitchCooldownOK(sessionToken) {
+		// Cooldown: do NOT keep spinning forever — stop if cookie looks dead.
+		if !bearerOK || expired || !sessionOK {
+			serveZikCookieExpired(w, cfg, currentUser, activeAcc.Name, reason+":cooldown")
+			return
 		}
-	} else {
 		heading = "Refreshing session"
 		message = "Restoring your Zik session. Please wait."
 		log.Printf("[FAILOVER] cooldown user=%s account=%s reason=%s", currentUser, activeAcc.Name, reason)
+	} else {
+		next, err := panelSwitchAccount(cfg, sessionToken, activeAcc.ID, activeAcc.Name, currentUser, reason)
+		if err != nil {
+			// Only one account (or none left) — stop the loop; cookie needs refresh.
+			serveZikCookieExpired(w, cfg, currentUser, activeAcc.Name, reason)
+			return
+		}
+		log.Printf("[FAILOVER] login wall user=%s %s (ID:%d) -> %s (ID:%d) reason=%s", currentUser, activeAcc.Name, activeAcc.ID, next.Name, next.ID, reason)
 	}
+
 	writeLightCard(w, http.StatusOK, lightCard{
 		Title:    heading,
 		Heading:  heading,
 		Message:  html.EscapeString(message),
-		Badge:    "Checking the next account",
+		Badge:    badge,
 		Footer:   "This page refreshes automatically",
-		Spin:     true,
-		Redirect: home,
+		Spin:     spin,
+		Redirect: redirect,
 	})
 }
 
@@ -159,12 +237,24 @@ func zikLoginWatchScript(cfg Config) string {
     switching = true;
     location.replace("/login?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "zik_login_wall"));
   }
+  // Force mapped Authorization on every API call (browser may keep a stale token).
+  function authHeader(init){
+    var token = "";
+    try { token = localStorage.getItem("access") || ""; } catch (e) {}
+    if (!token) return init;
+    init = init ? Object.assign({}, init) : {};
+    var headers = init.headers ? new Headers(init.headers) : new Headers();
+    if (!headers.has("Authorization")) headers.set("Authorization", "Bearer " + token);
+    init.headers = headers;
+    return init;
+  }
   setInterval(function(){
     if (wallPath() || wallText()) switchAccount("zik_login_text");
-  }, 1500);
+  }, 2500);
   var fo = window.fetch;
   if (typeof fo === "function") {
     window.fetch = function(input, init){
+      try { init = authHeader(init); } catch (e) {}
       return fo(input, init).then(function(res){
         try {
           var url = "";
@@ -176,7 +266,6 @@ func zikLoginWatchScript(cfg Config) string {
             path.indexOf("/session") !== -1 || path.indexOf("/subscriber") !== -1;
           if ((res.status === 401 || res.status === 403) && authPath) {
             apiFail += 1;
-            // Only rotate after repeated auth failures AND the login wall is visible.
             if (apiFail >= 3 && wallText()) switchAccount("zik_api_" + res.status);
           } else if (res.ok && authPath) {
             apiFail = 0;
@@ -186,6 +275,18 @@ func zikLoginWatchScript(cfg Config) string {
       });
     };
   }
+  try {
+    var xo = XMLHttpRequest.prototype.open;
+    var xs = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(m, u){ this.__zikURL = u; return xo.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function(body){
+      try {
+        var token = localStorage.getItem("access") || "";
+        if (token) this.setRequestHeader("Authorization", "Bearer " + token);
+      } catch (e) {}
+      return xs.apply(this, arguments);
+    };
+  } catch (e) {}
 })();
 </script>`, home)
 }
@@ -209,4 +310,55 @@ func zikAuthBearerFromAccount(cookieRaw string) string {
 		}
 	}
 	return ""
+}
+
+// stripNamedCookies removes specific cookie names from a Cookie header (case-insensitive).
+func stripNamedCookies(cookieHeader string, names ...string) string {
+	if cookieHeader == "" || len(names) == 0 {
+		return cookieHeader
+	}
+	drop := make(map[string]bool, len(names))
+	for _, n := range names {
+		drop[strings.ToLower(strings.TrimSpace(n))] = true
+	}
+	parts := strings.Split(cookieHeader, ";")
+	var kept []string
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		name := trimmed
+		if eq := strings.Index(trimmed, "="); eq >= 0 {
+			name = strings.TrimSpace(trimmed[:eq])
+		}
+		if drop[strings.ToLower(name)] {
+			continue
+		}
+		kept = append(kept, trimmed)
+	}
+	return strings.Join(kept, "; ")
+}
+
+func zikRewriteLoginLocation(loc string, cfg Config) string {
+	home := cfg.HomePath
+	if home == "" {
+		home = "/dashboard"
+	}
+	u := strings.TrimSpace(loc)
+	if u == "" {
+		return loc
+	}
+	// Absolute upstream login → stay on proxy home
+	lower := strings.ToLower(u)
+	if strings.Contains(lower, "zikanalytics.com") && (strings.Contains(lower, "/login") || strings.Contains(lower, "/signin")) {
+		return home
+	}
+	if strings.HasPrefix(u, "/") {
+		pathOnly := strings.Split(u, "?")[0]
+		if zikIsLoginPath(pathOnly) {
+			return home
+		}
+	}
+	return loc
 }
