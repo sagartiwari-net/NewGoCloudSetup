@@ -1242,12 +1242,17 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	// Also persist to disk so restarts / multi-user loads stay fast (Grammarly/eRank pattern).
+	r := &http.Request{Method: http.MethodGet, URL: &url.URL{Path: path}, RequestURI: path}
+	storeCDNCache(r, status, contentType, encoding, body)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Del("Pragma")
-	w.Header().Del("Expires")
+	path := ""
+	if r != nil && r.URL != nil {
+		path = r.URL.Path
+	}
+	setATPCDNBrowserCache(w, path)
 	if ent.contentType != "" {
 		w.Header().Set("Content-Type", ent.contentType)
 	}
@@ -3398,6 +3403,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return // These are handled by their own handlers
 	}
 
+	// ── 0b. Disk CDN cache BEFORE auth (static /cdn-proxy /extra-cdn static hosts) ─
+	cdnKey := cdnCacheKey(r)
+	if serveCachedCDN(w, r) {
+		return
+	}
+	if cdnKey != "" {
+		defer completeCDNFlight(cdnKey)
+	}
+	// Memory L1 (same process) — also before auth for speed
+	if ent := getStaticCached(r.Method, path); ent != nil {
+		serveStaticCached(w, r, ent)
+		return
+	}
+
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon") ||
 		path == "/manifest.json" || strings.HasSuffix(path, "/manifest.json")
@@ -3452,12 +3471,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			http.Redirect(w, r, "/", http.StatusFound)
 		}
-		return
-	}
-
-	// ── 2b. Serve cached static assets (skip upstream TLS) ───────────────────────
-	if ent := getStaticCached(r.Method, path); ent != nil {
-		serveStaticCached(w, r, ent)
 		return
 	}
 
@@ -4430,6 +4443,8 @@ func main() {
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
+	initCDNCacheDir()
+	startCDNCacheSweep()
 	warmCFCookies(cfg)
 
 	mux := http.NewServeMux()
