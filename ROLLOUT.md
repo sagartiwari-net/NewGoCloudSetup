@@ -190,7 +190,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `rivalflow` (:4811)  
 - [ ] `scite` (:4761)  
 - [ ] `screpy` (:4721)  
-- [ ] `scribd` (:4791)  
+- [x] `scribd` (:4791) — **HTTPS OK** (2026-10-07): verified OK — live working on `scribd.gt4rents.com`  
+
 - [ ] `searchatlas` (:4711)  
 - [x] `selleramp` (:5161) — **DONE / HTTPS OK** (2026-10-07): see Priority  
 
