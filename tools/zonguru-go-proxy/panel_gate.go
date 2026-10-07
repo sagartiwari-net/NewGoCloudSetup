@@ -647,6 +647,23 @@ func panelCookieEntries(raw string) []panelCookieEntry {
 	return out
 }
 
+func panelPublicPath(path string) bool {
+	p := strings.ToLower(path)
+	switch {
+	case strings.Contains(p, "favicon"):
+		return true
+	case strings.HasSuffix(p, ".webmanifest"), strings.HasSuffix(p, "manifest.json"):
+		return true
+	case strings.HasPrefix(p, "/static/"):
+		return true
+	case p == "/tm-device-sw.js", p == "/__tm_access_denied", p == "/cf-turnstile-bypass.js":
+		return true
+	case strings.HasPrefix(p, "/cdn-cgi/"):
+		return true
+	}
+	return false
+}
+
 // preparePanelRequest enforces the panel gate. handled means the response is already written.
 func preparePanelRequest(w http.ResponseWriter, r *http.Request, cfg Config) (ToolAccount, *http.Request, bool) {
 	if !usesPanelAccountMode(cfg) {
@@ -662,9 +679,12 @@ func preparePanelRequest(w http.ResponseWriter, r *http.Request, cfg Config) (To
 	case "/tm-device-sw.js":
 		serveDeviceSW(w, r)
 		return ToolAccount{}, r, true
+	case "/__tm_access_denied":
+		panelAccessDenied(w, cfg)
+		return ToolAccount{}, r, true
 	}
 	if _, err := panelSessionUsername(r); err != nil {
-		if strings.Contains(strings.ToLower(r.URL.Path), "favicon") {
+		if panelPublicPath(r.URL.Path) {
 			return ToolAccount{}, r, false
 		}
 		log.Printf("[PANEL] access denied path=%s err=%v", r.URL.Path, err)
