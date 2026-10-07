@@ -1846,11 +1846,23 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := loadConfig()
 	path := r.URL.Path
 	log.Printf("[PROXY] Request: %s %s", r.Method, path)
+	if isDocumentNavigation(r) {
+		log.Printf("[NAV] %s %s accept=%s dest=%s mode=%s", r.Method, path,
+			truncateForLog(r.Header.Get("Accept"), 60),
+			r.Header.Get("Sec-Fetch-Dest"), r.Header.Get("Sec-Fetch-Mode"))
+		pushProxyLog(ProxyLogEntry{
+			Source: "NAV", Level: "info", Method: r.Method, Path: path, Status: 0,
+			Detail: "document navigation",
+		})
+	}
 
 	// ── 0. Skip proxy for admin API routes ──────────────────────────────────────
 	if strings.HasPrefix(path, "/api/auth-handshake") ||
 		strings.HasPrefix(path, "/api/device-bind") ||
+		strings.HasPrefix(path, "/api/client-diag") ||
 		path == "/tm-device-sw.js" ||
+		path == "/__logs" ||
+		path == "/__logs.json" ||
 		strings.HasPrefix(path, "/api/user-limits") ||
 		strings.HasPrefix(path, "/api/rotate-session") ||
 		strings.HasPrefix(path, "/access") ||
@@ -2194,8 +2206,32 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[PROXY] Upstream response: %d for %s", upstreamResp.StatusCode, path)
 	defer upstreamResp.Body.Close()
-	// Do NOT rewrite BestSellers 401 → fake [] — that blanks the Zik React dashboard.
-	// Login/failover is handled like the working proxy: wall text + repeated auth fails.
+
+	// BestSellers often 401s on valid sessions (plan/feature gate). Passing that 401
+	// through makes Zik SPA treat auth as dead → /login → dashboard remount storm.
+	// Soft 200 + null (not []) keeps the widget empty without blanking React.
+	if upstreamResp.StatusCode == http.StatusUnauthorized && zikNoisyWidget401(path) {
+		bodyPeek, _ := io.ReadAll(io.LimitReader(upstreamResp.Body, 512))
+		log.Printf("[ZIK] soft 401→200 noisy widget %s body=%s", path, truncateForLog(string(bodyPeek), 200))
+		pushProxyLog(ProxyLogEntry{
+			Source: "NET", Level: "warn", Method: r.Method, Path: path, Status: 401,
+			User: currentUser, Account: activeAcc.Name,
+			Detail: "soft→200 null | upstream: " + truncateForLog(string(bodyPeek), 200),
+		})
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("null"))
+		return
+	}
+	if zikShouldDiagUpstream(upstreamResp.StatusCode, path) {
+		// Peek is deferred — full body logged later for JSON paths when rewritten.
+		pushProxyLog(ProxyLogEntry{
+			Source: "NET", Level: "warn", Method: r.Method, Path: path, Status: upstreamResp.StatusCode,
+			User: currentUser, Account: activeAcc.Name,
+			Detail: fmt.Sprintf("upstream host=%s bearer=%v", upstreamReq.Host, bearer != ""),
+		})
+	}
 
 	// ── 7. Handle Set-Cookie from upstream ───────────────────────────────────────
 	reDomain := regexp.MustCompile(`(?i)domain=[^;]+;?\s*`)
@@ -2332,7 +2368,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// "Upgrade to Pro" / "sign in" and the overlay blanked the whole SPA.
 		patchCfg := cfg
 		patchCfg.WatchdogTriggers = nil
-		earlyInject += zikLoginWatchScript(cfg) + patcherScript(patchCfg) + zikUsernameLabelScript(currentUser)
+		// Soft-401 + NAV diag first, then login watch / URL patcher.
+		earlyInject += zikSoftNoisy401Script() + zikClientNetDiagScript() +
+			zikLoginWatchScript(cfg) + patcherScript(patchCfg) + zikUsernameLabelScript(currentUser)
 		// Body-dependent widgets go before </body>, never in <head> (document.body is null there).
 		bodyTail := limitWidgetScript(cfg) + limitOverlayScript() +
 			`<script>(function(){try{var i,s=document.querySelectorAll("style[data-tm-device]");for(i=0;i<s.length;i++)s[i].remove();if(document.documentElement)document.documentElement.style.removeProperty("visibility");if(document.body)document.body.style.removeProperty("visibility");if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(function(r){for(i=0;i<(r||[]).length;i++)r[i].unregister();}).catch(function(){});}}catch(e){}})();</script>`
@@ -2403,6 +2441,9 @@ func main() {
 	mux.HandleFunc("/api/auth-handshake", withCORS(authHandshakeHandler))
 	mux.HandleFunc("/api/user-limits", withCORS(userLimitsAPIHandler))
 	mux.HandleFunc("/api/rotate-session", withCORS(rotateSessionHandler))
+	mux.HandleFunc("/api/client-diag", withCORS(zikClientDiagHandler))
+	mux.HandleFunc("/__logs", liveLogsPageHandler)
+	mux.HandleFunc("/__logs.json", liveLogsJSONHandler)
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)

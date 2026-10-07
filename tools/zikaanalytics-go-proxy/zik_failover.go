@@ -286,11 +286,13 @@ func zikLoginWatchScript(cfg Config) string {
           if (typeof input === "string") url = input;
           else if (input && input.url) url = input.url;
           var path = (url || "").split("?")[0].toLowerCase();
-          // BestSellers 401 is normal noise — never count it as logout.
-          if (path.indexOf("bestsellers") !== -1) return res;
-          var authPath = path.indexOf("/user/") !== -1 || path.indexOf("/dashboard/") !== -1 ||
+          // BestSellers / weekly widget 401 is normal noise — never count as logout.
+          if (path.indexOf("bestsellers") !== -1 || path.indexOf("weeklybestsellers") !== -1) return res;
+          // Only real auth endpoints — not every /Dashboard/* widget.
+          var authPath = path.indexOf("/user/") !== -1 || path.indexOf("/user?") !== -1 ||
             path.indexOf("/account") !== -1 || path.indexOf("/auth") !== -1 ||
-            path.indexOf("/session") !== -1 || path.indexOf("/subscriber") !== -1;
+            path.indexOf("/session") !== -1 || path.indexOf("/subscriber") !== -1 ||
+            path.indexOf("/getstore") !== -1;
           if ((res.status === 401 || res.status === 403) && authPath) {
             apiFail += 1;
             if (apiFail >= 3 && wallText()) switchAccount("zik_api_" + res.status);
