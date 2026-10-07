@@ -138,7 +138,7 @@ If fail: note in “Open issues”, fix, re-tick.
 ### Rest (alphabetical)
 
 - [ ] `airbrush` (:5181)  
-- [ ] `answerthepublic` (:4931)  
+- [x] `answerthepublic` (:4931) — **HTTPS OK** (2026-10-07): verified OK — panel access + disk CDN cache (`60c3335`)  
 - [ ] `artistly` (:4821)  
 - [ ] `branalyzer` (:5081) — **parked** — home loads; Be Curious still snack “Introduce any valid URL” on server (`59905db` local OK) — resume later; see Open issues  
 - [ ] `chatbotapp` (:5061) — **parked** — home/chats list OK; `/api/v2/chat` still 4002 `x_token` on server (`91f9ad8` inject) — resume later; see Open issues  
@@ -169,7 +169,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `joggai` (:5031)  
 - [x] `junglescout` (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `kalodata` (:4951)  
-- [ ] `leonardo` (:4601)  
+- [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): verified OK — panel access working  
 - [ ] `linkedinlearning` (:4571)  
 - [x] `mgfc` (:5121) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `merchinformer` (:4651)  
@@ -248,5 +248,5 @@ Not a proxy crash — Google flags phishing-like pages. Seen / noted on gt4rents
 - [ ] All tools built + started (or consciously skipped)  
 - [ ] Wildcard SSL + auto-renew verified  
 - `TOOL_PUBLIC_SCHEME=https` live  
-- [x] Priority tools green on **https://** access-links (incl. `cnva` `placeit` `selleramp` 2026-10-07)  
+- [x] Priority tools green on **https://** access-links (incl. `cnva` `placeit` `selleramp` `answerthepublic` `leonardo` 2026-10-07)  
 - [ ] Open issues closed or accepted
