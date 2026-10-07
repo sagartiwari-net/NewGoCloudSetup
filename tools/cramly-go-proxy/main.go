@@ -2452,7 +2452,40 @@ func isStreamingContentType(contentType string) bool {
 		strings.Contains(ct, "application/octet-stream")
 }
 
+// slimIncomingCookies keeps only our session cookie when the jar is oversized.
+// Leftover ChatGPT/OpenAI cookies on cramly.gt4rents.com blow past Cloudflare's
+// ~16–32KB header budget → Error 520 (empty/malformed origin view).
+func slimIncomingCookies(r *http.Request) {
+	raw := r.Header.Get("Cookie")
+	if raw == "" || len(raw) < 6144 {
+		return
+	}
+	var kept []string
+	for _, part := range strings.Split(raw, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name := part
+		if eq := strings.Index(part, "="); eq >= 0 {
+			name = strings.TrimSpace(part[:eq])
+		}
+		nl := strings.ToLower(name)
+		if nl == "ct_session" || strings.HasPrefix(nl, "tm_") {
+			kept = append(kept, part)
+		}
+	}
+	slim := strings.Join(kept, "; ")
+	log.Printf("[COOKIE] slimmed oversized Cookie %d → %d bytes (path=%s)", len(raw), len(slim), r.URL.Path)
+	if slim == "" {
+		r.Header.Del("Cookie")
+		return
+	}
+	r.Header.Set("Cookie", slim)
+}
+
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
+	slimIncomingCookies(r)
 	cfg := loadConfig()
 	path := r.URL.Path
 
@@ -2943,6 +2976,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if kLower == "transfer-encoding" {
 			continue
 		}
+		// Hop-by-hop + upstream-CF noise — forwarding these can make Cloudflare
+		// treat the origin response as malformed (520).
+		if kLower == "connection" || kLower == "keep-alive" || kLower == "proxy-connection" ||
+			kLower == "upgrade" || kLower == "te" || kLower == "trailer" ||
+			kLower == "alt-svc" || kLower == "alternate-protocol" ||
+			kLower == "cf-ray" || kLower == "cf-cache-status" || kLower == "cf-request-id" ||
+			kLower == "nel" || kLower == "report-to" || kLower == "reporting-endpoints" ||
+			kLower == "via" || kLower == "server" {
+			continue
+		}
 		if kLower == "strict-transport-security" {
 			continue
 		} // Strip HSTS to prevent HTTPS upgrades
@@ -2966,6 +3009,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(k, v)
 		}
 	}
+	w.Header().Set("Alt-Svc", "clear")
 
 	// Cache fingerprinted SPA assets; keep HTML/API uncached
 	isStaticAsset := strings.HasPrefix(path, "/assets/") ||
@@ -3148,6 +3192,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 func withCORS(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		slimIncomingCookies(r)
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Cookie, Authorization")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
