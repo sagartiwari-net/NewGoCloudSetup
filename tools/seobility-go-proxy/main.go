@@ -153,11 +153,11 @@ var (
 	apiCredMu        sync.RWMutex
 	defaultConfig    = Config{
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-		Port:                   "7860",
+		Port:                   "4731",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
-		PublicHost:             "gpt.yourdomain.com",
+		TargetURL:              "https://app.seobility.net",
+		CDNURL:                 "https://app.seobility.net",
+		PublicHost:             "seobility.gt4rents.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
 		MySQLPort:              "3306",
@@ -167,10 +167,10 @@ var (
 		SecretKey:              "your_secret_key_here",
 		SessionDurationMinutes: 120,
 		MemberAreaURL:          "https://members.yourdomain.com/",
-		ToolName:               "Tool",
+		ToolName:               "Seobility",
 		CreditLabel:            "Credits",
 		ExportLabel:            "Exports",
-		HomePath:               "/",
+		HomePath:               "/dashboard",
 		CountedPaths:           []string{},
 		CountedPrefixes:        []string{},
 		BlockedPaths:           []string{},
@@ -2134,6 +2134,91 @@ func stripSubresourceIntegrity(body []byte) []byte {
 	return body
 }
 
+// seobilityProfileChromeScript hides ONLY the account dropdown block that
+// contains Profile/Subscription/Billing/Members/MCP, and shows the panel
+// access-link username instead of the shared Seobility account display name.
+func seobilityProfileChromeScript(panelUsername string) string {
+	user := strings.TrimSpace(panelUsername)
+	if user == "" || user == "guest_favicon" || user == "local_dev" {
+		user = ""
+	}
+	userJS, _ := json.Marshal(user)
+	return fmt.Sprintf(`<script>
+(function(){
+  if (window.__tmSeobilityProfile) return;
+  window.__tmSeobilityProfile = true;
+  var TM_USER = %s;
+  function hideAccountSettingsBlock(){
+    var markers = [
+      'a[href*="settings?tab=profile"]',
+      'a[href*="settings?tab=subscription"]',
+      'a[href*="settings?tab=billing"]',
+      'a[href*="settings?tab=members"]',
+      'a[href*="settings?tab=mcp"]'
+    ];
+    var first = document.querySelector(markers[0]);
+    if (!first) return;
+    var node = first.parentElement;
+    while (node && node !== document.body) {
+      if (node.dataset && node.dataset.tmHideAcct === "1") return;
+      var hasSub = node.querySelector(markers[1]);
+      var hasBill = node.querySelector(markers[2]);
+      if (hasSub && hasBill) {
+        // Prefer the tight flex-col wrapper around these links only.
+        var target = node;
+        if (node.classList && node.classList.contains("flex") && node.classList.contains("flex-col")) {
+          target = node;
+        } else {
+          var inner = node.querySelector("div.flex.flex-col");
+          if (inner && inner.querySelector(markers[1]) && inner.querySelector(markers[2])) {
+            target = inner;
+          }
+        }
+        target.style.setProperty("display", "none", "important");
+        target.style.setProperty("visibility", "hidden", "important");
+        target.setAttribute("aria-hidden", "true");
+        if (target.dataset) target.dataset.tmHideAcct = "1";
+        return;
+      }
+      node = node.parentElement;
+    }
+  }
+  function setPanelUser(){
+    if (!TM_USER) return;
+    var spans = document.querySelectorAll("span.block.text-base.font-medium");
+    for (var i = 0; i < spans.length; i++) {
+      var span = spans[i];
+      if (span.dataset && span.dataset.tmUser === TM_USER) continue;
+      var text = (span.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length > 48) continue;
+      if (/^(Profile|Subscription|Billing|Members|MCP|Settings|Logout|Log out)$/i.test(text)) continue;
+      var scope = span;
+      var nearSettings = false;
+      for (var d = 0; d < 8 && scope; d++) {
+        if (scope.querySelector && scope.querySelector('a[href*="settings?tab=profile"]')) {
+          nearSettings = true;
+          break;
+        }
+        scope = scope.parentElement;
+      }
+      if (!nearSettings) continue;
+      span.textContent = TM_USER;
+      if (span.dataset) span.dataset.tmUser = TM_USER;
+    }
+  }
+  function run(){
+    try { hideAccountSettingsBlock(); setPanelUser(); } catch (e) {}
+  }
+  run();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
+  try {
+    new MutationObserver(function(){ run(); }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+  setInterval(run, 1500);
+})();
+</script>`, string(userJS))
+}
+
 // ── CLIENT-SIDE PATCHER SCRIPT ────────────────────────────────────────────────
 
 func patcherScript(cfg Config) string {
@@ -3489,7 +3574,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr := patcherScript(cfg) + seobilityProfileChromeScript(currentUser) + buildTextReplaceInjectHTML(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders

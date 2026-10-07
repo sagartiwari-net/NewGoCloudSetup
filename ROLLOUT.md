@@ -192,7 +192,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `seobility` (:4731)  
 - [ ] `seobuddy` (:5131)  
 - [x] `seositecheckup` (:4661) — see Priority  
-- [ ] `seotesteronline` (:4801)  
+- [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): verified OK — cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`  
 - [ ] `shortform` (:4771)  
 - [ ] `similarweb` (:5071)  
 - [ ] `sketchgenius` (:4781)  
