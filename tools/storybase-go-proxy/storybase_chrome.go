@@ -6,16 +6,17 @@ import (
 	"strings"
 )
 
-// storybaseChromeScript hides #profile-widget-navigation (Settings /
-// Billing / Log out) and replaces only the name inside #sidebar-profile
-// (not the avatar) with the panel access-link username.
+// storybaseChromeScript hides #profile-widget (avatar + name + Settings /
+// Billing / Log out) and, if that shell is ever visible, replaces only the
+// name inside #sidebar-profile with the panel access-link username.
 func storybaseChromeScript(panelUsername string) string {
 	user := strings.TrimSpace(panelUsername)
 	if user == "" || user == "guest_favicon" || user == "local_dev" {
 		user = ""
 	}
 	userJS, _ := json.Marshal(user)
-	return fmt.Sprintf(`<style id="tm-sb-hide-profile-nav">
+	return fmt.Sprintf(`<style id="tm-sb-hide-profile-widget">
+#profile-widget,
 #profile-widget-navigation{
   display:none!important;
   visibility:hidden!important;
@@ -30,15 +31,22 @@ func storybaseChromeScript(panelUsername string) string {
   if (window.__tmSbChrome) return;
   window.__tmSbChrome = true;
   var TM_USER = %s;
-  function hideProfileNav(root){
+  function hideEl(el){
+    if (!el || !el.style) return;
+    el.style.setProperty("display", "none", "important");
+    el.style.setProperty("visibility", "hidden", "important");
+    el.style.setProperty("pointer-events", "none", "important");
+    el.setAttribute("aria-hidden", "true");
+  }
+  function hideProfileWidget(root){
     var scope = root || document;
-    var nav = scope.querySelector ? scope.querySelector("#profile-widget-navigation") : null;
-    if (!nav && scope.id === "profile-widget-navigation") nav = scope;
-    if (!nav) return;
-    nav.style.setProperty("display", "none", "important");
-    nav.style.setProperty("visibility", "hidden", "important");
-    nav.style.setProperty("pointer-events", "none", "important");
-    nav.setAttribute("aria-hidden", "true");
+    var ids = ["profile-widget", "profile-widget-navigation"];
+    for (var i = 0; i < ids.length; i++) {
+      var el = null;
+      if (scope.id === ids[i]) el = scope;
+      else if (scope.querySelector) el = scope.querySelector("#" + ids[i]);
+      hideEl(el);
+    }
   }
   function setSidebarName(){
     if (!TM_USER) return;
@@ -57,7 +65,7 @@ func storybaseChromeScript(panelUsername string) string {
   }
   function run(){
     try {
-      hideProfileNav();
+      hideProfileWidget();
       setSidebarName();
     } catch (e) {}
   }
@@ -70,7 +78,7 @@ func storybaseChromeScript(panelUsername string) string {
         if (m.type === "childList") {
           for (var j = 0; j < m.addedNodes.length; j++) {
             var n = m.addedNodes[j];
-            if (n && n.nodeType === 1) hideProfileNav(n);
+            if (n && n.nodeType === 1) hideProfileWidget(n);
           }
         }
       }

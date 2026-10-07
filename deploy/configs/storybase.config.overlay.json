@@ -7,7 +7,7 @@
   "tool_name": "StoryBase",
   "home_path": "/app/overview/",
   "cookie_domain_suffix": "storybase.com",
-  "inject_css": "#profile-widget-navigation{display:none!important;visibility:hidden!important;pointer-events:none!important;opacity:0!important;height:0!important;overflow:hidden!important}",
+  "inject_css": "#profile-widget,#profile-widget-navigation{display:none!important;visibility:hidden!important;pointer-events:none!important;opacity:0!important;height:0!important;overflow:hidden!important}",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,

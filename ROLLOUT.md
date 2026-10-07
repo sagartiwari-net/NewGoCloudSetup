@@ -211,7 +211,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `slidebean` (:5021)  
 - [ ] `speechify` (:5011)  
 - [ ] `spyfu` (:4941)  
-- [ ] `storybase` (:4551) — **ALPN fix** (2026-10-07): was 502 → `chatgpt.com` + HTTP/2 SETTINGS; force `www.storybase.com` + HTTP/1.1 dial. **Chrome:** hide `#profile-widget-navigation` only; `#sidebar-profile` name → panel username. Rebuild/start + fresh access-link.  
+- [ ] `storybase` (:4551) — **ALPN fix** (2026-10-07): was 502 → `chatgpt.com` + HTTP/2 SETTINGS; force `www.storybase.com` + HTTP/1.1 dial. **Chrome:** hide `#profile-widget` (+ nav); `#sidebar-profile` name → panel username if visible. Rebuild/start + fresh access-link.  
 
 - [ ] `storyblocks` (:4971)  
 - [ ] `syntx` (:4981)  
