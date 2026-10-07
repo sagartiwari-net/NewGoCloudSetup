@@ -353,6 +353,14 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 		if accErr == nil {
 			return acc, nil
 		}
+		// Admin pasted a new cookie but left status logged_out — revive assigned account.
+		acc, accErr = scanPanelAccount(db.QueryRow(panelAccountSelect+`
+			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('logged_out','inactive')`, assigned, cfg.PublicHost))
+		if accErr == nil {
+			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=?`, acc.ID)
+			log.Printf("[PANEL] revived assigned account id=%d name=%q for session", acc.ID, acc.Name)
+			return acc, nil
+		}
 	}
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
