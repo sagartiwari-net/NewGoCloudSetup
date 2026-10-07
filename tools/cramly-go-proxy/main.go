@@ -3272,10 +3272,16 @@ func main() {
 	mux.HandleFunc("/api/rotate-session", withCORS(rotateSessionHandler))
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
-	mux.HandleFunc("/api/device-bind", deviceBindHandler)
+	mux.HandleFunc("/api/device-bind", func(w http.ResponseWriter, r *http.Request) {
+		slimIncomingCookies(r)
+		deviceBindHandler(w, r)
+	})
 	mux.HandleFunc("/__tm_access_denied", serveAccessDeniedHTML)
 	mux.HandleFunc("/tm-device-sw.js", serveDeviceSW)
-	mux.HandleFunc("/access", accessHandler)
+	mux.HandleFunc("/access", func(w http.ResponseWriter, r *http.Request) {
+		slimIncomingCookies(r)
+		accessHandler(w, r)
+	})
 
 	// ── Extension install (multi-tenant ZIP bound to this host) ───────────────────
 	mux.HandleFunc("/ext-install", extensionInstallPageHandler)
