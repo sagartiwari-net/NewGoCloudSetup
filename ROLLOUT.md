@@ -186,7 +186,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `pixlr` (:4901)  
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
 - [ ] `ppspy` (:4961)  
-- [ ] `prezi` (:4751) — **IN PROGRESS** (2026-10-07): panel username on `Name-sc-*`; block click + hide only `UserDropdown` popup (settings/invite/admin/logout)  
+- [ ] `prezi` (:4751) — **IN PROGRESS** (2026-10-07): stronger chrome — `Name-sc-*` → panel user; document-capture block avatar/name click; remove only `UserDropdown` popup from DOM  
+
 
 - [ ] `rivalflow` (:4811)  
 - [ ] `scite` (:4761)  
