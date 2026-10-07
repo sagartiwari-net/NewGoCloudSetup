@@ -2145,21 +2145,33 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if ua != "" {
 		upstreamReq.Header.Set("User-Agent", ua)
 	}
-	// Always prefer the mapped account access JWT. Browser localStorage can keep a stale token
-	// that Zik rejects with 401 and then the SPA bounces to /login.
+	// Auth: SessionToken cookie is source of truth for many Zik APIs.
+	// A mismatched/stale Bearer JWT makes research endpoints 401 while basic
+	// Dashboard GETs still return 200 — so never send an expired JWT, and on
+	// 401 we retry cookie-only (below).
 	browserAuth := strings.TrimSpace(upstreamReq.Header.Get("Authorization"))
 	bearer := zikAuthBearerFromAccount(activeAcc.Cookie)
-	if bearer != "" {
+	sentBearer := false
+	switch {
+	case bearer != "" && !zikJWTExpired(bearer):
 		upstreamReq.Header.Set("Authorization", "Bearer "+bearer)
-	} else if browserAuth != "" {
-		// Panel dump missing localStorage.access — keep browser Authorization as last resort.
+		sentBearer = true
+	case bearer != "" && zikJWTExpired(bearer):
+		upstreamReq.Header.Del("Authorization")
+		log.Printf("[ZIK_AUTH] skip expired account JWT for %s (SessionToken only)", path)
+	case browserAuth != "":
 		log.Printf("[ZIK_AUTH] no account bearer; using browser Authorization for %s", path)
+		sentBearer = true
+	default:
+		upstreamReq.Header.Del("Authorization")
 	}
-	if path == cfg.HomePath || path == "/dashboard" || path == "/" {
+	if path == cfg.HomePath || path == "/dashboard" || path == "/" || strings.Contains(strings.ToLower(path), "competitior") ||
+		strings.Contains(strings.ToLower(path), "watchlist") || strings.Contains(strings.ToLower(path), "itemmanagement") ||
+		strings.Contains(strings.ToLower(path), "productexplorer") || strings.Contains(strings.ToLower(path), "trendingproducts") {
 		bOK, sOK, exp := zikAuthDiag(activeAcc.Cookie)
 		cookieLen := len(strings.TrimSpace(activeAcc.Cookie))
-		log.Printf("[ZIK_AUTH] upstream %s account=%s id=%d cookieBytes=%d bearer=%v sessionCookie=%v jwtExpired=%v",
-			path, activeAcc.Name, activeAcc.ID, cookieLen, bOK, sOK, exp)
+		log.Printf("[ZIK_AUTH] upstream %s account=%s id=%d cookieBytes=%d bearer=%v sentBearer=%v sessionCookie=%v jwtExpired=%v",
+			path, activeAcc.Name, activeAcc.ID, cookieLen, bOK, sentBearer, sOK, exp)
 	}
 
 	// Set upstream host header
@@ -2242,6 +2254,42 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("[PROXY] Upstream response: %d for %s", upstreamResp.StatusCode, path)
+
+	// Stale Bearer + valid SessionToken → selective 401 (research/watchlist/folders).
+	// Retry once with cookies only.
+	if upstreamResp.StatusCode == http.StatusUnauthorized && sentBearer &&
+		!zikNoisyWidget401(path) &&
+		strings.Contains(strings.ToLower(upstreamReq.Header.Get("Cookie")), "sessiontoken=") {
+		_, _ = io.Copy(io.Discard, upstreamResp.Body)
+		_ = upstreamResp.Body.Close()
+		upstreamReq.Header.Del("Authorization")
+		if upstreamReq.GetBody != nil {
+			if b, gerr := upstreamReq.GetBody(); gerr == nil {
+				upstreamReq.Body = b
+			}
+		} else if reqBodyBytes != nil {
+			upstreamReq.Body = io.NopCloser(bytes.NewReader(reqBodyBytes))
+			upstreamReq.ContentLength = int64(len(reqBodyBytes))
+		}
+		retryResp, retryErr := httpClient.Do(upstreamReq)
+		if retryErr == nil {
+			log.Printf("[ZIK_AUTH] cookie-only retry %s → %d (was 401 with Bearer)", path, retryResp.StatusCode)
+			pushProxyLog(ProxyLogEntry{
+				Source: "NET", Level: "info", Method: r.Method, Path: path, Status: retryResp.StatusCode,
+				User: currentUser, Account: activeAcc.Name,
+				Detail: fmt.Sprintf("cookie-only retry (was 401 bearer) → %d", retryResp.StatusCode),
+			})
+			upstreamResp = retryResp
+		} else {
+			log.Printf("[ZIK_AUTH] cookie-only retry failed %s: %v", path, retryErr)
+			upstreamResp = &http.Response{
+				StatusCode: http.StatusUnauthorized,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(bytes.NewReader([]byte(`{"message":"You must be authenticated to perform this action."}`))),
+			}
+			upstreamResp.Header.Set("Content-Type", "application/json")
+		}
+	}
 	defer upstreamResp.Body.Close()
 
 	// BestSellers often 401s on valid sessions (plan/feature gate). Passing that 401
