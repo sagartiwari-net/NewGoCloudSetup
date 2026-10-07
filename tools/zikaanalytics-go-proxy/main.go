@@ -2011,6 +2011,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// ── 4a. Soft-dead session gate (document navigations only) ────────────────────
+	// Old ct_session can still open /dashboard after cookies died. Block the shell
+	// when research probe fails so users see "cookies need refresh" immediately.
+	if usesPanelAccountMode(cfg) && currentUser != "" && activeAcc.ID > 0 &&
+		isDocumentNavigation(r) && (path == "/dashboard" || path == cfg.HomePath || path == "/") {
+		if ok, detail := zikAccountResearchHealthyCached(activeAcc); !ok {
+			log.Printf("[ZIK_PROBE] block dashboard account=%s %s", activeAcc.Name, detail)
+			serveZikCookieExpired(w, cfg, currentUser, activeAcc.Name, "zik_probe_dashboard")
+			return
+		}
+	}
+
 	// ── 4b. Login wall ────────────────────────────────────────────────────────────
 	// Explicit failover reason (from our JS) → account switch / cookie-expired page.
 	// Bare /login from SPA → rewrite to dashboard in-place (NO 302 — 302 caused reload loop).

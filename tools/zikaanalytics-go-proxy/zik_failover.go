@@ -173,6 +173,26 @@ func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	log.Printf("[ZIK_AUTH] user=%s account=%s bearer=%v sessionCookie=%v jwtExpired=%v reason=%s",
 		currentUser, activeAcc.Name, bearerOK, sessionOK, expired, reason)
 
+	// Research APIs already said "Please log in again" — try one other account, then stop.
+	if reason == "zik_session_dead" || strings.HasPrefix(reason, "zik_session_dead") {
+		if zikSwitchCooldownOK(sessionToken) {
+			if next, err := panelSwitchAccount(cfg, sessionToken, activeAcc.ID, activeAcc.Name, currentUser, reason); err == nil {
+				_, researchOK, detail := zikProbeAccount(next)
+				log.Printf("[ZIK_PROBE] after switch account=%s research=%v %s", next.Name, researchOK, detail)
+				if researchOK {
+					writeLightCard(w, http.StatusOK, lightCard{
+						Title: "Switching account", Heading: "Switching account",
+						Message: "Found a working Zik session. Loading…", Badge: next.Name,
+						Footer: "This page refreshes automatically", Spin: true, Redirect: home,
+					})
+					return
+				}
+			}
+		}
+		serveZikCookieExpired(w, cfg, currentUser, activeAcc.Name, reason)
+		return
+	}
+
 	heading := "Switching account"
 	message := "This account signed out. Trying the next available account."
 	redirect := home

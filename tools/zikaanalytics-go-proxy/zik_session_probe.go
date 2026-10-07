@@ -9,8 +9,48 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
+
+// Cache research-health probes so dashboard HTML loads don't hammer Zik.
+var (
+	zikResearchHealthMu sync.Mutex
+	zikResearchHealth   = map[int]struct {
+		ok   bool
+		at   time.Time
+		detail string
+	}{}
+)
+
+func zikAccountResearchHealthyCached(acc ToolAccount) (ok bool, detail string) {
+	zikResearchHealthMu.Lock()
+	if ent, hit := zikResearchHealth[acc.ID]; hit && time.Since(ent.at) < 90*time.Second {
+		zikResearchHealthMu.Unlock()
+		return ent.ok, ent.detail
+	}
+	zikResearchHealthMu.Unlock()
+
+	_, researchOK, detail := zikProbeAccount(acc)
+	// Network blips → fail-open (don't lock the whole tool). Auth 401 → fail-closed.
+	if strings.Contains(detail, "_err=") {
+		return true, "probe_network_skip: " + detail
+	}
+	zikResearchHealthMu.Lock()
+	zikResearchHealth[acc.ID] = struct {
+		ok     bool
+		at     time.Time
+		detail string
+	}{ok: researchOK, at: time.Now(), detail: detail}
+	zikResearchHealthMu.Unlock()
+	return researchOK, detail
+}
+
+func zikInvalidateResearchHealth(accountID int) {
+	zikResearchHealthMu.Lock()
+	delete(zikResearchHealth, accountID)
+	zikResearchHealthMu.Unlock()
+}
 
 // zikLooksLoggedOutBody — Zik research APIs when the panel cookie is dead.
 func zikLooksLoggedOutBody(body []byte) bool {
