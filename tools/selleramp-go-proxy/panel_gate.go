@@ -285,19 +285,17 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		seen = clientIP
 	}
 	recordPanelLogin(db, websiteID, username, sessionToken, seen, r.UserAgent(), sessionExpiry, accID)
-	// Clear Domain=.gt4rents.com leftovers that shadow the host-only cookie, then set.
-	clearStaleCtSessionCookies(w, r, cfg)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "ct_session",
-		Value:    sessionToken,
-		Path:     "/",
-		Expires:  sessionExpiry,
-		HttpOnly: true,
-		Secure:   cookieSecure(r, cfg),
-		SameSite: http.SameSiteLaxMode,
-	})
-	log.Printf("[PANEL] access granted user=%s product=%s domain=%s wid=%d", username, productID, domain, websiteID)
-	renderPanelLoadingPage(w, cfg, sessionToken)
+	nonce, err := issueEnterTicket(sessionToken)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	// Best-effort cookie on the cross-site /access response (often dropped by browsers).
+	setCtSessionCookie(w, r, cfg, sessionToken, sessionExpiry)
+	log.Printf("[PANEL] access granted user=%s product=%s domain=%s wid=%d → enter", username, productID, domain, websiteID)
+	// Same-site hop: panel.gt4rents.com → selleramp /access (cross-site) → /__tm_enter (same-site).
+	// Cookie is set on /__tm_enter where browsers actually keep it, then redirect home.
+	http.Redirect(w, r, "/__tm_enter?n="+nonce, http.StatusFound)
 }
 
 const panelAccountSelect = `SELECT a.id, a.name, a.cookie,

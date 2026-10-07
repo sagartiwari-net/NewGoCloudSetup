@@ -119,7 +119,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
 - [x] `erank` — eRank (:5191) — **READY / HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
-- [ ] `selleramp` — SellerAmp (:5161) — **fix pending redeploy**: H2 strip + `/r/sas`→`/sas` + access cookie (Helium-style boot + X-Ct-Session); clear site cookies once; panel access-link only
+- [ ] `selleramp` — SellerAmp (:5161) — **fix pending redeploy**: `/access`→`/__tm_enter` same-site cookie hop (cross-site Set-Cookie was dropped); H2 strip + `/r/sas`→`/sas`; panel access-link only
 > **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`).  
 > Binaries built **before** `fad80ac` → Access Denied.  
 > **Already OK (skip rebuild):** `refs` `smrs` `cgpt` `clud` `envt` `cnva`  

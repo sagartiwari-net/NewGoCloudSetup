@@ -2037,6 +2037,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		path == "/extension.zip" ||
 		path == "/__logs" ||
 		path == "/__logs.json" ||
+		path == "/__tm_enter" ||
 		path == "/user/logout" {
 		return // These are handled by their own handlers
 	}
@@ -2562,6 +2563,7 @@ func main() {
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
 	mux.HandleFunc("/__tm_access_denied", serveAccessDeniedHTML)
+	mux.HandleFunc("/__tm_enter", sessionEnterHandler)
 	mux.HandleFunc("/tm-device-sw.js", serveDeviceSW)
 	mux.HandleFunc("/access", accessHandler)
 
