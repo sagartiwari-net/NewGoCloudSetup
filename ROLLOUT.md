@@ -186,7 +186,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `pixlr` (:4901)  
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
 - [ ] `ppspy` (:4961)  
-- [ ] `prezi` (:4751) — **IN PROGRESS** (2026-10-08): chrome username/dropdown; **device soft-allow** for `/extra-cdn-*` + same-origin XHR (was intermittent `device_required` 401 → Craft stuck on “Laying out the canvas”)  
+- [x] `prezi` (:4751) — **HTTPS OK** (2026-10-08): verified OK — panel username + UserDropdown blocked; Craft CDN/API device soft-allow (was stuck on “Laying out the canvas”)  
 
 
 - [ ] `rivalflow` (:4811)  
@@ -206,7 +206,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): verified OK — cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`; no-subscription / dead cookie → soft-revive then switch / panel `logged_out` + contact-admin (**failover verified**)  
 
 
-- [ ] `shortform` (:4771)  
+- [ ] `shortform` (:4771) — **IN PROGRESS** (2026-10-08): access token OK then device page “could not verify” because oversized Cookie header was deleted (wiped `ct_session`). Slim keeps session. URL is token-only (no `user=`).  
+
 - [x] `similarweb` (:5071) — **HTTPS OK** (2026-10-07): verified OK — live working; CDN disk cache already present (`cdn_cache.go` → `cdn-cache/`, 72h TTL)  
 
 - [x] `sketchgenius` (:4781) — **HTTPS OK** (2026-10-07): verified OK — panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin (**failover verified**)  

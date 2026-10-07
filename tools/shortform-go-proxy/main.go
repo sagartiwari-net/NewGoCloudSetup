@@ -23,6 +23,38 @@ import (
 
 const configFile = "config.json"
 
+// slimOversizedCookies keeps ct_session / tm_* when the browser jar is huge.
+// Leftover cookies from other tools on this host were ~12KB; deleting the
+// entire Cookie header wiped the new panel session so device-bind failed.
+func slimOversizedCookies(r *http.Request) {
+	raw := r.Header.Get("Cookie")
+	if raw == "" || len(raw) <= 8192 {
+		return
+	}
+	var kept []string
+	for _, part := range strings.Split(raw, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name := part
+		if eq := strings.Index(part, "="); eq >= 0 {
+			name = strings.TrimSpace(part[:eq])
+		}
+		nl := strings.ToLower(name)
+		if nl == "ct_session" || strings.HasPrefix(nl, "tm_") {
+			kept = append(kept, part)
+		}
+	}
+	slim := strings.Join(kept, "; ")
+	log.Printf("[COOKIE] slimmed oversized Cookie %d → %d bytes (path=%s)", len(raw), len(slim), r.URL.Path)
+	if slim == "" {
+		r.Header.Del("Cookie")
+		return
+	}
+	r.Header.Set("Cookie", slim)
+}
+
 type Config struct {
 	Port          string   `json:"port"`
 	TargetURL     string   `json:"target_url"`
@@ -923,13 +955,10 @@ func main() {
 	log.Printf("║  Auth:   localStorage via cookie.txt         ║")
 	log.Printf("╚══════════════════════════════════════════════╝")
 
-	// Wrap: strip huge Cookie headers before they hit MaxHeaderBytes / upstream.
-	// localhost cookies are shared across ALL ports — other proxies can fill them.
+	// Wrap: slim huge Cookie jars but keep ct_session. Deleting the whole
+	// header wiped the panel session and /api/device-bind returned Access Denied.
 	safe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if c := r.Header.Get("Cookie"); len(c) > 8192 {
-			log.Printf("[WARN] dropping oversized Cookie header (%d bytes) — clear localhost cookies if issues persist", len(c))
-			r.Header.Del("Cookie")
-		}
+		slimOversizedCookies(r)
 		handler.ServeHTTP(w, r)
 	})
 
