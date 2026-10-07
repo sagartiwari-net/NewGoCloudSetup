@@ -152,10 +152,93 @@ func commitPanelSessionCookie(w http.ResponseWriter, r *http.Request, cfg Config
 	sess.mu.Lock()
 	exp := sess.expires
 	sess.mu.Unlock()
+	// Expire host orphans for BOTH Secure flags, then parent Domain, then junk.
+	// Live Set-Cookie must be last so it wins if the browser processes in order.
+	for _, sec := range []bool{false, true} {
+		http.SetCookie(w, &http.Cookie{
+			Name: ctSessionCookie, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0),
+			HttpOnly: true, Secure: sec, SameSite: http.SameSiteLaxMode,
+		})
+	}
 	clearParentDomainCtSessionCookies(w, r, cfg)
-	// Free as many jar slots as practical before writing ct_session last.
 	expireProxyHostJunkCookiesN(w, r, cfg, 80)
 	setCtSessionCookie(w, r, cfg, sessionToken, exp)
+}
+
+// sessionKeepaliveScript is injected into SellerAmp HTML (not the heavy device gate).
+// Full-page searches like GET /sas/lookup only send cookies — when the jar keeps a
+// dead ct_session, we re-attach the live token from sessionStorage on every nav/fetch.
+func sessionKeepaliveScript() string {
+	return `<script data-tm-sess>(function(){
+var KEY=` + fmt.Sprintf("%q", tmSessionStorageKey) + `;
+function tok(){try{return sessionStorage.getItem(KEY)||"";}catch(e){return "";}}
+function save(t){if(!t)return;try{sessionStorage.setItem(KEY,t);sessionStorage.removeItem("tm_ct_retry");}catch(e){}}
+try{
+  var u=new URL(location.href);
+  var boot=u.searchParams.get("__tm_s");
+  if(boot){
+    save(boot);
+    u.searchParams.delete("__tm_s");
+    if(history.replaceState) history.replaceState({},"",u.pathname+u.search+u.hash);
+  }
+}catch(e){}
+function withS(href){
+  var t=tok(); if(!t) return href;
+  try{
+    var u=new URL(href,location.href);
+    if(u.origin!==location.origin) return href;
+    u.searchParams.set("__tm_s",t);
+    return u.pathname+u.search+u.hash;
+  }catch(e){return href;}
+}
+document.addEventListener("submit",function(ev){
+  var f=ev.target; if(!f||!f.tagName||f.tagName.toLowerCase()!=="form") return;
+  var t=tok(); if(!t) return;
+  var method=(f.getAttribute("method")||"get").toLowerCase();
+  if(method==="get"){
+    var inp=f.querySelector('input[name="__tm_s"]');
+    if(!inp){inp=document.createElement("input");inp.type="hidden";inp.name="__tm_s";f.appendChild(inp);}
+    inp.value=t;
+  } else {
+    try{ f.action=withS(f.getAttribute("action")||location.href); }catch(e){}
+  }
+},true);
+document.addEventListener("click",function(ev){
+  var a=ev.target&&ev.target.closest?ev.target.closest("a[href]"):null;
+  if(!a) return;
+  var href=a.getAttribute("href");
+  if(!href||href.charAt(0)==="#"||href.indexOf("javascript:")===0) return;
+  var next=withS(href);
+  if(next!==href) a.setAttribute("href",next);
+},true);
+var of=window.fetch;
+if(of){
+  window.fetch=function(input,init){
+    var url=typeof input==="string"?input:(input&&input.url)||"";
+    var same=false;
+    try{same=new URL(url,location.href).origin===location.origin;}catch(e){}
+    if(same){
+      init=init||{};
+      var headers=new Headers(init.headers||(input&&input.headers)||undefined);
+      var t=tok();
+      if(t&&!headers.get("X-Ct-Session")) headers.set("X-Ct-Session",t);
+      init.headers=headers;
+      if(typeof input!=="string") return of.call(this,new Request(input,init));
+    }
+    return of.call(this,input,init);
+  };
+}
+var xo=XMLHttpRequest.prototype.open, xs=XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.open=function(m,url){this.__tmURL=url;return xo.apply(this,arguments);};
+XMLHttpRequest.prototype.send=function(){
+  try{
+    if(new URL(this.__tmURL,location.href).origin===location.origin){
+      var t=tok(); if(t) this.setRequestHeader("X-Ct-Session",t);
+    }
+  }catch(e){}
+  return xs.apply(this,arguments);
+};
+})();</script>`
 }
 
 // isStaticAssetPath is CSS/JS/images/fonts — browser requests these without

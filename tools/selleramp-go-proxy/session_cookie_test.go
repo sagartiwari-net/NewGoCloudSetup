@@ -133,6 +133,22 @@ func TestCtSessionCandidatesPrefersBootstrapQuery(t *testing.T) {
 	}
 }
 
+func TestSessionKeepaliveScriptPatchesNav(t *testing.T) {
+	s := sessionKeepaliveScript()
+	for _, want := range []string{
+		`data-tm-sess`,
+		`__tm_s`,
+		`tm_ct_session`,
+		`X-Ct-Session`,
+		`addEventListener("submit"`,
+		`addEventListener("click"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("keepalive missing %q", want)
+		}
+	}
+}
+
 func TestIsStaticAssetPath(t *testing.T) {
 	for _, p := range []string{
 		"/assets/5d8cc971b-cc3951233e.css",

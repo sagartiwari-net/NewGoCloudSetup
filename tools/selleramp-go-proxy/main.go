@@ -1199,8 +1199,9 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 		Heading: "Access Denied",
 		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it again from your access link.",
 		Footer:  "Your session ended or this browser is not authorized",
-		// Cookie jar often keeps a dead ct_session; retry once via sessionStorage bootstrap.
-		ExtraScript: `<script>(function(){try{var t=sessionStorage.getItem("` + tmSessionStorageKey + `")||"";if(t&&!sessionStorage.getItem("tm_ct_retry")){sessionStorage.setItem("tm_ct_retry","1");location.replace("/?__tm_s="+encodeURIComponent(t));}}catch(e){}})();</script>`,
+		// Retry the SAME URL with ?__tm_s= from sessionStorage (do not send users home —
+		// that dropped /sas/lookup searches after a dead orphan ct_session).
+		ExtraScript: `<script>(function(){try{var t=sessionStorage.getItem("` + tmSessionStorageKey + `")||"";if(!t||sessionStorage.getItem("tm_ct_retry"))return;sessionStorage.setItem("tm_ct_retry","1");var u=new URL(location.href);u.searchParams.set("__tm_s",t);location.replace(u.pathname+u.search+u.hash);}catch(e){}})();</script>`,
 	})
 }
 
@@ -2507,12 +2508,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("Content-Security-Policy")
 		w.Header().Del("Content-Security-Policy-Report-Only")
 		w.Header().Del("X-Frame-Options")
-		// Skip devicePageScript on SellerAmp HTML (same as Helium): Access-link boot
-		// already binds the device. Injecting visibility:hidden + deny races caused
-		// false Access Denied right after a successful panel open.
+		// Skip full devicePageScript (visibility:hidden + deny races). Inject a light
+		// session keepalive instead: cookie jar often keeps a dead ct_session, so every
+		// same-origin navigation/fetch must carry ?__tm_s= / X-Ct-Session from sessionStorage.
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg)
+		injectStr := sessionKeepaliveScript() + patcherScript(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
