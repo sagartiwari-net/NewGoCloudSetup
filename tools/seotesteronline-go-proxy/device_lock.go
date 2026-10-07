@@ -249,7 +249,8 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func devicePageScript() string {
-	return `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>` + deviceSharedJS() + `
+	// Do NOT inject html{visibility:hidden} — it stuck blank on several tools (wrank/zik).
+	return `<script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
@@ -259,9 +260,12 @@ function tmDeny() {
   location.replace("/__tm_access_denied");
 }
 function tmReveal() {
-  document.documentElement.style.visibility = "visible";
-  var lock = document.querySelector("style[data-tm-device]");
-  if (lock) lock.remove();
+  try {
+    var s = document.querySelectorAll("style[data-tm-device]");
+    for (var i = 0; i < s.length; i++) s[i].remove();
+    if (document.documentElement) document.documentElement.style.removeProperty("visibility");
+    if (document.body) document.body.style.removeProperty("visibility");
+  } catch (e) {}
 }
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
@@ -315,15 +319,13 @@ function tmWatch(fp, proof) {
   }).then(function (fp) {
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
-  }).catch(function () {});
+    // Skip device SW — registration races with access/reload and false Access Denied.
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        for (var i = 0; i < (regs || []).length; i++) regs[i].unregister();
+      }).catch(function () {});
+    }
+  }).catch(function () { tmReveal(); });
 })();
 </script>`
 }
@@ -341,43 +343,39 @@ func deviceBootScript(home string) string {
     if (msg) msg.textContent = "This browser could not verify the device. Open the tool again from your access link.";
     if (pill) pill.remove();
   }
+  // Drop stale SW — old workers intercept /api/device-bind and cause false Access Denied.
+  try {
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        for (var i = 0; i < (regs || []).length; i++) regs[i].unregister();
+      }).catch(function () {});
+    }
+  } catch (e) {}
+  function doBind(dev) {
+    return fetch("/api/device-bind", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
+    });
+  }
+  function bindWithRetry(dev, left) {
+    return doBind(dev).then(function (res) {
+      if (res && res.ok) return res;
+      if (left <= 0) throw new Error("bind");
+      return new Promise(function (resolve) { setTimeout(resolve, 250); }).then(function () {
+        return bindWithRetry(dev, left - 1);
+      });
+    });
+  }
   tmEnsureProof().then(function (proof) {
     return tmFingerprint().then(function (fp) {
       try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
       return { fp: fp, proof: proof };
     });
   }).then(function (dev) {
-    return tmStore(dev.fp, dev.proof).then(function () {
-      function doBind() {
-        return fetch("/api/device-bind", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
-        });
-      }
-      // Service workers require a secure context. On plain HTTP skip SW and bind directly.
-      if (!navigator.serviceWorker || !window.isSecureContext) {
-        return doBind();
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1500);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+    // IndexedDB can fail (private mode) — still bind; proof lives in localStorage.
+    return tmStore(dev.fp, dev.proof).catch(function () {}).then(function () {
+      return bindWithRetry(dev, 2);
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");

@@ -188,7 +188,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `searchatlas` (:4711)  
 - [x] `selleramp` (:5161) — **DONE / HTTPS OK** (2026-10-07): see Priority  
 
-- [ ] `sellthetrend` (:4591)  
+- [x] `sellthetrend` (:4591) — **HTTPS OK** (2026-10-07): verified OK — `www.sellthetrend.com`, profile dropdowns hidden (left+top), panel username/initials on avatar bar  
 - [ ] `seobility` (:4731)  
 - [ ] `seobuddy` (:5131)  
 - [x] `seositecheckup` (:4661) — see Priority  
