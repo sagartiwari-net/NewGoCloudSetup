@@ -2100,6 +2100,96 @@ func stripSubresourceIntegrity(body []byte) []byte {
 	return body
 }
 
+// sellthetrendProfileChromeScript hides ONLY the profile dropdown panel, blocks
+// opening it from the bottom bar click, and shows the panel access-link username
+// (not the shared Sell The Trend account name).
+func sellthetrendProfileChromeScript(panelUsername string) string {
+	user := strings.TrimSpace(panelUsername)
+	if user == "" || user == "guest_favicon" || user == "local_dev" {
+		user = ""
+	}
+	userJS, _ := json.Marshal(user)
+	return fmt.Sprintf(`<style id="tm-stt-hide-profile-menu">
+#leftSidebarProfileMenuContainer.left-sidebar__bottom-dropdown_container,
+#leftSidebarProfileMenuContainer,
+.left-sidebar__bottom-dropdown_container.show,
+.left-sidebar__bottom-dropdown_container{
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+  opacity:0!important;
+  height:0!important;
+  overflow:hidden!important;
+}
+</style>
+<script>
+(function(){
+  if (window.__tmSttProfileChrome) return;
+  window.__tmSttProfileChrome = true;
+  var TM_USER = %s;
+  function hideDropdown(){
+    var el = document.getElementById("leftSidebarProfileMenuContainer");
+    if (el) {
+      el.classList.remove("show");
+      el.style.setProperty("display", "none", "important");
+      el.style.setProperty("visibility", "hidden", "important");
+      el.setAttribute("aria-hidden", "true");
+    }
+  }
+  function blockOpen(e){
+    hideDropdown();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }
+    return false;
+  }
+  function wireTrigger(){
+    var trigger = document.getElementById("leftSidebarProfileMenu");
+    if (!trigger || trigger.dataset.tmSttBound === "1") return;
+    trigger.dataset.tmSttBound = "1";
+    ["click","mousedown","mouseup","pointerdown","touchstart"].forEach(function(ev){
+      trigger.addEventListener(ev, blockOpen, true);
+    });
+  }
+  function initials(name){
+    var s = String(name || "").replace(/[^a-zA-Z0-9]/g, "");
+    if (!s) return "";
+    return s.slice(0, 2).toUpperCase();
+  }
+  function setPanelUser(){
+    if (!TM_USER) return;
+    var spans = document.querySelectorAll("#leftSidebarProfileMenu .ellipsis-title, .left-sidebar__bottom__username .ellipsis-title");
+    for (var i = 0; i < spans.length; i++) {
+      var span = spans[i];
+      if (span.dataset.tmUser === TM_USER) continue;
+      span.textContent = TM_USER;
+      span.dataset.tmUser = TM_USER;
+    }
+    var ini = initials(TM_USER);
+    if (!ini) return;
+    var avatars = document.querySelectorAll("#leftSidebarProfileMenu .left-sidebar__bottom_avatar p");
+    for (var j = 0; j < avatars.length; j++) {
+      var p = avatars[j];
+      if (p.dataset.tmUser === TM_USER) continue;
+      p.textContent = ini;
+      p.dataset.tmUser = TM_USER;
+    }
+  }
+  function run(){
+    try { hideDropdown(); wireTrigger(); setPanelUser(); } catch (e) {}
+  }
+  run();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
+  try {
+    new MutationObserver(function(){ run(); }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+  setInterval(run, 1500);
+})();
+</script>`, string(userJS))
+}
+
 // ── CLIENT-SIDE PATCHER SCRIPT ────────────────────────────────────────────────
 
 func patcherScript(cfg Config) string {
@@ -3414,7 +3504,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr := patcherScript(cfg) + sellthetrendProfileChromeScript(currentUser) + buildTextReplaceInjectHTML(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders

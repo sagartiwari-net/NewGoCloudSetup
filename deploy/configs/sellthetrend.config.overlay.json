@@ -7,6 +7,7 @@
   "tool_name": "Sell The Trend",
   "cookie_domain_suffix": "sellthetrend.com",
   "home_path": "/dashboard/desk",
+  "inject_css": "#leftSidebarProfileMenuContainer,.left-sidebar__bottom-dropdown_container{display:none!important;visibility:hidden!important;pointer-events:none!important;}",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
