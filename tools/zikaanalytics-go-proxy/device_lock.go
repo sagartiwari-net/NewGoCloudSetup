@@ -262,14 +262,12 @@ function tmDeny() {
   location.replace("/__tm_access_denied");
 }
 function tmReveal() {
+  // Never force visibility CSS — only strip leftover hide styles from older builds.
   try {
-    document.querySelectorAll("style[data-tm-device]").forEach(function (n) { n.remove(); });
-    document.documentElement.style.removeProperty("visibility");
-    document.documentElement.style.setProperty("visibility", "visible", "important");
-    if (document.body) {
-      document.body.style.removeProperty("visibility");
-      document.body.style.setProperty("visibility", "visible", "important");
-    }
+    var s = document.querySelectorAll("style[data-tm-device]");
+    for (var i = 0; i < s.length; i++) s[i].remove();
+    if (document.documentElement) document.documentElement.style.removeProperty("visibility");
+    if (document.body) document.body.style.removeProperty("visibility");
   } catch (e) {}
 }
 tmReveal();
@@ -277,12 +275,12 @@ function tmClearSW() {
   try {
     if (navigator.serviceWorker) {
       navigator.serviceWorker.getRegistrations().then(function (regs) {
-        regs.forEach(function (r) { r.unregister(); });
+        for (var i = 0; i < (regs || []).length; i++) regs[i].unregister();
       }).catch(function () {});
     }
     if (window.caches && caches.keys) {
       caches.keys().then(function (keys) {
-        keys.forEach(function (k) { caches.delete(k); });
+        for (var j = 0; j < (keys || []).length; j++) caches.delete(keys[j]);
       }).catch(function () {});
     }
   } catch (e) {}

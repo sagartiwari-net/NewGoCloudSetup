@@ -30,21 +30,6 @@ func TestZikJWTExpired(t *testing.T) {
 	}
 }
 
-func TestZikSoftenAPIUnauthorized(t *testing.T) {
-	if !zikSoftenAPIUnauthorized("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers", 401) {
-		t.Fatal("expected soften bestsellers")
-	}
-	if zikSoftenAPIUnauthorized("/extra-cdn-0/User/GetStore", 401) {
-		t.Fatal("should not soften GetStore")
-	}
-	if zikSoftenAPIUnauthorized("/dashboard", 401) {
-		t.Fatal("should not soften app HTML")
-	}
-	if got := zikSoftenEmptyBody("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers"); got != "[]" {
-		t.Fatalf("expected [] got %s", got)
-	}
-}
-
 func TestZikPublicAssetPath(t *testing.T) {
 	for _, p := range []string{"/manifest.json", "/static/js/main.js", "/favicon.ico", "/static/css/a.css"} {
 		if !zikPublicAssetPath(p) {

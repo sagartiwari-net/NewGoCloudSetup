@@ -1759,7 +1759,7 @@ func limitOverlayScript() string {
 	return `<script>
 (function() {
     function showLimitPopup(msg) {
-        if (document.getElementById('tm-limit-popup')) return;
+        if (!document.body || document.getElementById('tm-limit-popup')) return;
         var overlay = document.createElement('div');
         overlay.id = 'tm-limit-popup';
         overlay.style.cssText = 'position:fixed;inset:0;background:#eef3f8;z-index:99999999;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;';
@@ -1784,25 +1784,34 @@ func limitWidgetScript(cfg Config) string {
 	if creditLabel == "" {
 		creditLabel = "Credits"
 	}
+	// MUST wait for <body> — this script is injected in <head>; appendChild(null) blanked Zik.
 	return fmt.Sprintf(`<script>
 (function() {
-    var CREDIT_LABEL = '%s';
+    var CREDIT_LABEL = %q;
     var DISABLE_EXPORT = %v;
-    var badge = document.createElement('div');
-    badge.id = 'tm-limit-badge';
-    badge.style.cssText = 'position:fixed;bottom:20px;right:20px;background:rgba(15,23,42,0.9);color:#e2e8f0;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:10px 16px;font-family:sans-serif;font-size:13px;z-index:999999;backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:180px;';
-    badge.innerHTML = '<div style="font-weight:700;font-size:11px;color:#64748b;letter-spacing:0.5px;margin-bottom:4px;">ToolsMandi</div><div id="tm-credit-text">Loading...</div>';
-    document.body.appendChild(badge);
-    function updateBadge() {
+    function boot() {
+      if (!document.body) return;
+      if (document.getElementById('tm-limit-badge')) return;
+      var badge = document.createElement('div');
+      badge.id = 'tm-limit-badge';
+      badge.style.cssText = 'position:fixed;bottom:20px;right:20px;background:rgba(15,23,42,0.9);color:#e2e8f0;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:10px 16px;font-family:sans-serif;font-size:13px;z-index:999999;backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:180px;';
+      badge.innerHTML = '<div style="font-weight:700;font-size:11px;color:#64748b;letter-spacing:0.5px;margin-bottom:4px;">Usage</div><div id="tm-credit-text">Loading...</div>';
+      document.body.appendChild(badge);
+      function updateBadge() {
         fetch('/api/user-limits').then(function(r){ return r.json(); }).then(function(d) {
-            if (!d.show_limit) { badge.style.display='none'; return; }
-            var remaining = Math.max(0, d.credit_limit - d.credit_used);
-            var color = remaining > 10 ? '#4ade80' : (remaining > 3 ? '#fb923c' : '#f87171');
-            badge.querySelector('#tm-credit-text').innerHTML = '<span style="color:'+color+';font-weight:700;font-size:16px;">'+remaining+'</span> <span style="color:#64748b;">/ '+d.credit_limit+' '+CREDIT_LABEL+' left</span>';
+          if (!d || !d.show_limit) { badge.style.display='none'; return; }
+          var remaining = Math.max(0, (d.credit_limit||0) - (d.credit_used||0));
+          var color = remaining > 10 ? '#4ade80' : (remaining > 3 ? '#fb923c' : '#f87171');
+          var el = badge.querySelector('#tm-credit-text');
+          if (!el) return;
+          el.innerHTML = '<span style="color:'+color+';font-weight:700;font-size:16px;">'+remaining+'</span> <span style="color:#64748b;">/ '+d.credit_limit+' '+CREDIT_LABEL+' left</span>';
         }).catch(function(){});
+      }
+      updateBadge();
+      setInterval(updateBadge, 30000);
     }
-    updateBadge();
-    setInterval(updateBadge, 30000);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
 })();
 </script>`, creditLabel, cfg.DisableExportTracking)
 }
@@ -2179,19 +2188,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[PROXY] Upstream response: %d for %s", upstreamResp.StatusCode, path)
 	defer upstreamResp.Body.Close()
 
-	// Soften non-critical API 401/403 so SPA axios interceptors don't bounce to /login.
-	// Return [] not {} — Zik list endpoints call .map and crash on {} → blank white page.
-	if isExtraCDN && zikSoftenAPIUnauthorized(path, upstreamResp.StatusCode) {
-		bodyBytes, _ := io.ReadAll(upstreamResp.Body)
-		empty := zikSoftenEmptyBody(path)
-		log.Printf("[ZIK_AUTH] soften %d → 200 %s for %s (upstream %d bytes)", upstreamResp.StatusCode, empty, path, len(bodyBytes))
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(empty))
-		return
-	}
+	// Do NOT soften API 401 bodies — fake []/{} crashes Zik React (undefined .map / props).
 
 	// ── 7. Handle Set-Cookie from upstream ───────────────────────────────────────
 	reDomain := regexp.MustCompile(`(?i)domain=[^;]+;?\s*`)
@@ -2329,16 +2326,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		patchCfg := cfg
 		patchCfg.WatchdogTriggers = nil
 		earlyInject += zikLoginWatchScript(cfg) + patcherScript(patchCfg) + zikUsernameLabelScript(currentUser)
-		// Failsafe: strip any leftover device hide styles (old SW/HTML) and force visible.
-		lateInject := `<script data-tm-reveal>(function(){function show(){try{document.querySelectorAll("style[data-tm-device]").forEach(function(n){n.remove();});document.documentElement.style.setProperty("visibility","visible","important");if(document.body)document.body.style.setProperty("visibility","visible","important");if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.unregister();});}).catch(function(){});}}catch(e){}}show();setTimeout(show,300);setTimeout(show,1500);})();</script>` +
-			limitWidgetScript(cfg) + limitOverlayScript()
+		// Body-dependent widgets go before </body>, never in <head> (document.body is null there).
+		bodyTail := limitWidgetScript(cfg) + limitOverlayScript() +
+			`<script>(function(){try{var i,s=document.querySelectorAll("style[data-tm-device]");for(i=0;i<s.length;i++)s[i].remove();if(document.documentElement)document.documentElement.style.removeProperty("visibility");if(document.body)document.body.style.removeProperty("visibility");if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(function(r){for(i=0;i<(r||[]).length;i++)r[i].unregister();}).catch(function(){});}}catch(e){}})();</script>`
 		bodyBytes = regexp.MustCompile(`(?i)<head[^>]*>`).ReplaceAllFunc(bodyBytes, func(m []byte) []byte {
 			out := make([]byte, 0, len(m)+len(earlyInject))
 			out = append(out, m...)
 			out = append(out, []byte(earlyInject)...)
 			return out
 		})
-		bodyBytes = regexp.MustCompile(`(?i)</head>`).ReplaceAll(bodyBytes, []byte(lateInject+"</head>"))
+		if bytes.Contains(bytes.ToLower(bodyBytes), []byte("</body>")) {
+			bodyBytes = regexp.MustCompile(`(?i)</body>`).ReplaceAll(bodyBytes, []byte(bodyTail+"</body>"))
+		} else {
+			bodyBytes = append(bodyBytes, []byte(bodyTail)...)
+		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(upstreamResp.StatusCode)
