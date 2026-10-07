@@ -2091,8 +2091,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == cfg.HomePath || path == "/dashboard" || path == "/" {
 		bOK, sOK, exp := zikAuthDiag(activeAcc.Cookie)
-		log.Printf("[ZIK_AUTH] upstream %s account=%s bearer=%v sessionCookie=%v jwtExpired=%v",
-			path, activeAcc.Name, bOK, sOK, exp)
+		cookieLen := len(strings.TrimSpace(activeAcc.Cookie))
+		log.Printf("[ZIK_AUTH] upstream %s account=%s id=%d cookieBytes=%d bearer=%v sessionCookie=%v jwtExpired=%v",
+			path, activeAcc.Name, activeAcc.ID, cookieLen, bOK, sOK, exp)
 	}
 
 	// Set upstream host header

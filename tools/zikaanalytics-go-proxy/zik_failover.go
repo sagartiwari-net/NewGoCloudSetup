@@ -292,14 +292,18 @@ func zikLoginWatchScript(cfg Config) string {
     switching = true;
     location.replace("/login?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "zik_login_wall"));
   }
-  // Force mapped Authorization on every API call (browser may keep a stale token).
+  // Force mapped Authorization + device headers early (before tmPatchRequests).
   function authHeader(init){
-    var token = "";
-    try { token = localStorage.getItem("access") || ""; } catch (e) {}
-    if (!token) return init;
     init = init ? Object.assign({}, init) : {};
     var headers = init.headers ? new Headers(init.headers) : new Headers();
-    headers.set("Authorization", "Bearer " + token);
+    try {
+      var token = localStorage.getItem("access") || "";
+      if (token) headers.set("Authorization", "Bearer " + token);
+      var proof = localStorage.getItem("tm_device_proof") || "";
+      var fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
+      if (proof) headers.set("X-Device-Proof", proof);
+      if (fp) headers.set("X-Device-Fp", fp);
+    } catch (e) {}
     init.headers = headers;
     return init;
   }
@@ -339,6 +343,10 @@ func zikLoginWatchScript(cfg Config) string {
       try {
         var token = localStorage.getItem("access") || "";
         if (token) this.setRequestHeader("Authorization", "Bearer " + token);
+        var proof = localStorage.getItem("tm_device_proof") || "";
+        var fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
+        if (proof) this.setRequestHeader("X-Device-Proof", proof);
+        if (fp) this.setRequestHeader("X-Device-Fp", fp);
       } catch (e) {}
       return xs.apply(this, arguments);
     };

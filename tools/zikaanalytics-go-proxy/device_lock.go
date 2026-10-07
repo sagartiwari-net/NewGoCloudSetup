@@ -75,8 +75,10 @@ func isDocumentNavigation(r *http.Request) bool {
 	return mode == "" && dest == "" && strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 
-// rejectPanelDevice blocks a copied cookie jar. A document request with a missing
-// or different proof deletes the session for every profile that holds it.
+// rejectPanelDevice blocks a copied cookie jar.
+// Missing device headers on early SPA/API fetches are allowed (race before
+// tmPatchRequests). Only a *wrong* proof means cookie theft → kill session.
+// Returning 401 device_required here made Zik SPA think auth died → reload storm.
 func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool {
 	if !usesPanelAccountMode(cfg) {
 		return false
@@ -95,28 +97,29 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !bound {
 		return false
 	}
-	if fp == storedFp && proof == storedProof {
+	// Proof match is enough — canvas FP can drift between tabs/reloads.
+	if proof != "" && proof != "missing" && proof == storedProof {
+		if fp != "" && fp != "missing" && fp != storedFp {
+			sess.mu.Lock()
+			sess.fp = fp
+			sess.mu.Unlock()
+		}
 		return false
 	}
 	if browserSubresource(r) {
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
-			return false
-		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
+		// Document loads + early SPA fetches cannot send device headers until
+		// tmPatchRequests runs. Missing headers ≠ cookie theft.
+		return false
+	}
+	if proof == "missing" || fp == "missing" {
+		return false
 	}
 	panelSess.Delete(token)
 	recordCookieShare(cfg, r, token)
-	log.Printf("[DEVICE] session killed user=%s missing=%v", username, proof == "")
+	log.Printf("[DEVICE] session killed user=%s path=%s", username, r.URL.Path)
 	if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
 		renderAccessDeniedPage(w, cfg)
 	} else {
