@@ -226,7 +226,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `writecream` (:5051)  
 - [ ] `zebracat` (:5111)  
 - [ ] `zikaanalytics` (:5251)  
-- [ ] `zonguru` (:4691) — **FIX PUSHED** (2026-10-07): dashboard 403 was device-lock killing session on canvas FP drift + early XHR race — proof-only bind + soft-allow — redeploy + verify
+- [ ] `zonguru` (:4691) — **FIX PUSHED** (2026-10-07): local repro — stop DigitaVision rewrite on JSON/emails; force Angular `baseUrl`→proxy; device soft-allow; dashboard API returns 200 zeros like official — redeploy + fresh access-link
 
 ---
 

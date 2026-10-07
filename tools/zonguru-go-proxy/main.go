@@ -346,11 +346,16 @@ func buildInjectScript(cfg Config, session string) string {
 
   var __xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
-    var args = arguments;
+    var args = Array.prototype.slice.call(arguments);
     if (typeof url === "string") args[1] = proxyUrl(url);
     else if (url && typeof url.toString === "function") args[1] = proxyUrl(url.toString());
     return __xhrOpen.apply(this, args);
   };
+  // Angular hardcodes baseUrl https://my.zonguru.com — if a bundle skips rewrite,
+  // absolute calls must still stay on this proxy (CORS to upstream fails otherwise).
+  try {
+    console.log("[ZonGuru Proxy] API base forced to", REAL_PROXY_ORIGIN);
+  } catch (eBase) {}
 
   var __beacon = navigator.sendBeacon && navigator.sendBeacon.bind(navigator);
   if (__beacon) {
@@ -639,41 +644,57 @@ func proxyHostPort(cfg Config) string {
 	return host
 }
 
-func rewriteBody(body []byte, cfg Config) []byte {
+func rewriteBody(body []byte, cfg Config, contentType string) []byte {
 	s := string(body)
 	origin := proxyOrigin(cfg)
 	hostPort := proxyHostPort(cfg)
 	tHost := targetHost(cfg)
 	wsOrigin := strings.Replace(origin, "http", "ws", 1)
+	ct := strings.ToLower(contentType)
 
-	replacements := [][2]string{
-		{"https://" + tHost, origin},
-		{"http://" + tHost, origin},
-		{"//" + tHost, "//" + hostPort},
-		{"wss://" + tHost, wsOrigin},
-		{"ws://" + tHost, wsOrigin},
-		{"https://www.zonguru.com", origin},
-		{"http://www.zonguru.com", origin},
+	// JSON APIs must stay byte-stable — DigitaVision/email rewrites corrupted
+	// /api/user/me (digitavision…@ → ToolsMandi…@) and broke dashboard tiles.
+	isJSON := strings.Contains(ct, "json")
+	isJS := strings.Contains(ct, "javascript") || strings.Contains(ct, "ecmascript")
+	isHTMLDoc := isHTML(ct)
+
+	if !isJSON {
+		replacements := [][2]string{
+			{"https://" + tHost, origin},
+			{"http://" + tHost, origin},
+			{"//" + tHost, "//" + hostPort},
+			{"wss://" + tHost, wsOrigin},
+			{"ws://" + tHost, wsOrigin},
+			{"https://www.zonguru.com", origin},
+			{"http://www.zonguru.com", origin},
+			// Angular config hardcodes these — must become the proxy origin.
+			{`baseUrl:"https://` + tHost + `"`, `baseUrl:"` + origin + `"`},
+			{`baseUrl:"http://` + tHost + `"`, `baseUrl:"` + origin + `"`},
+			{`cookieDomain:".zonguru.com"`, `cookieDomain:"` + cfg.PublicHost + `"`},
+		}
+		for _, d := range cfg.ExtraDomains {
+			replacements = addSubdomainRewrites(replacements, cfg, d)
+		}
+		for _, pair := range replacements {
+			s = strings.ReplaceAll(s, pair[0], pair[1])
+		}
 	}
-	for _, d := range cfg.ExtraDomains {
-		replacements = addSubdomainRewrites(replacements, cfg, d)
+
+	// Brand rename only in HTML chrome — never lowercase (emails are digitavision…).
+	if isHTMLDoc {
+		for _, pair := range [][2]string{
+			{"DigitaVision", "ToolsMandi"},
+			{"Digitavision", "ToolsMandi"},
+		} {
+			s = strings.ReplaceAll(s, pair[0], pair[1])
+		}
+		s = integrityRegex.ReplaceAllString(s, "")
+		s = regexp.MustCompile(`(?i)<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]*>`).ReplaceAllString(s, "")
 	}
-	for _, pair := range replacements {
-		s = strings.ReplaceAll(s, pair[0], pair[1])
-	}
-	for _, pair := range [][2]string{
-		{"DigitaVision", "ToolsMandi"},
-		{"Digitavision", "ToolsMandi"},
-		{"digitavision", "ToolsMandi"},
-	} {
-		s = strings.ReplaceAll(s, pair[0], pair[1])
-	}
-	s = integrityRegex.ReplaceAllString(s, "")
-	// Inline CSP meta blocks http://cdn.my.zonguru.com — same-origin /cdn-proxy is allowed via 'self'
-	s = regexp.MustCompile(`(?i)<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]*>`).ReplaceAllString(s, "")
-	if cfg.PublicScheme == "http" {
-		hostPort := proxyHostPort(cfg)
-		s = strings.ReplaceAll(s, "wss://"+hostPort, "ws://"+hostPort)
+	if isJS || isHTMLDoc {
+		if cfg.PublicScheme == "http" {
+			s = strings.ReplaceAll(s, "wss://"+hostPort, "ws://"+hostPort)
+		}
 	}
 	return []byte(s)
 }
@@ -799,7 +820,7 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 			plain = body
 		}
 		if isRewritable(ct) {
-			plain = rewriteBody(plain, cfg)
+			plain = rewriteBody(plain, cfg, ct)
 			if cfg.CloudflareBypass {
 				plain = stripCloudflareChallengeHTML(plain, cfg)
 			}
@@ -822,6 +843,9 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 					}
 				}
 			}
+		}
+		if resp.Request != nil && strings.HasPrefix(strings.ToLower(resp.Request.URL.Path), "/api/dashboard/") {
+			log.Printf("[DASH] %s %s -> %d bytes=%d", resp.Request.Method, resp.Request.URL.Path, resp.StatusCode, len(plain))
 		}
 		relaxResponseHeaders(resp, cfg)
 		resp.Header.Del("Content-Encoding")

@@ -98,12 +98,15 @@ func localStorageJSONForBrowser(sessionRaw string) []byte {
 	if len(ls) == 0 {
 		return []byte("{}")
 	}
-	// DigitaVision → ToolsMandi inside stored JSON strings (e.g. me.email)
+	// Keep token/me untouched — lowercase "digitavision" lives inside the real
+	// account email and must not become "ToolsMandi" or auth/profile drift.
 	out := make(map[string]string, len(ls))
 	for k, v := range ls {
-		v = strings.ReplaceAll(v, "DigitaVision", "ToolsMandi")
-		v = strings.ReplaceAll(v, "Digitavision", "ToolsMandi")
-		v = strings.ReplaceAll(v, "digitavision", "ToolsMandi")
+		lk := strings.ToLower(strings.TrimSpace(k))
+		if lk != "token" && lk != "me" {
+			v = strings.ReplaceAll(v, "DigitaVision", "ToolsMandi")
+			v = strings.ReplaceAll(v, "Digitavision", "ToolsMandi")
+		}
 		out[k] = v
 	}
 	b, err := json.Marshal(out)
