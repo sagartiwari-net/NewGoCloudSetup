@@ -110,17 +110,26 @@ func TestSessionEnterSetsCookieAndRedirects(t *testing.T) {
 	}
 }
 
-func TestDeviceBootScriptEntersAfterBind(t *testing.T) {
+func TestDeviceBootScriptBootstrapsQuery(t *testing.T) {
 	script := deviceBootScript("/", "sess-token", "nonce123")
 	for _, want := range []string{
-		`/__tm_enter?n=`,
-		`nonce123`,
+		`__tm_s=`,
+		`tm_ct_session`,
 		`X-Ct-Session`,
 		`sess-token`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("boot script missing %q", want)
 		}
+	}
+}
+
+func TestCtSessionCandidatesPrefersBootstrapQuery(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/?__tm_s=live-bootstrap", nil)
+	r.AddCookie(&http.Cookie{Name: "ct_session", Value: "dead-orphan"})
+	cands := ctSessionCandidates(r)
+	if len(cands) < 2 || cands[0] != "live-bootstrap" {
+		t.Fatalf("want bootstrap first, got %v", cands)
 	}
 }
 

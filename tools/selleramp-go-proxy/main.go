@@ -1199,6 +1199,8 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 		Heading: "Access Denied",
 		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it again from your access link.",
 		Footer:  "Your session ended or this browser is not authorized",
+		// Cookie jar often keeps a dead ct_session; retry once via sessionStorage bootstrap.
+		ExtraScript: `<script>(function(){try{var t=sessionStorage.getItem("` + tmSessionStorageKey + `")||"";if(t&&!sessionStorage.getItem("tm_ct_retry")){sessionStorage.setItem("tm_ct_retry","1");location.replace("/?__tm_s="+encodeURIComponent(t));}}catch(e){}})();</script>`,
 	})
 }
 
@@ -2042,9 +2044,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return // These are handled by their own handlers
 	}
 
-	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
+	// ── 1. Authenticate user (require ct_session cookie / ?__tm_s= / header) ─────
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
+	bootTok := strings.TrimSpace(r.URL.Query().Get("__tm_s"))
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
+	if authErr == nil && bootTok != "" {
+		// Live bootstrap from /access boot — commit cookie even if jar previously blocked it.
+		commitPanelSessionCookie(w, r, cfg, bootTok)
+		log.Printf("[PANEL] bootstrap ok user=%s via __tm_s", currentUser)
+	}
 	if authErr != nil && !isFavicon {
 		cands := ctSessionCandidates(r)
 		hasCt := len(cands) > 0
@@ -2189,6 +2197,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamURL.Scheme = targetParsed.Scheme
 	upstreamURL.Host = targetParsed.Host
 	upstreamURL.Path = normalizeSellerAmpPath(path)
+	// Never leak panel bootstrap token to SellerAmp.
+	if q := upstreamURL.Query(); q.Has("__tm_s") {
+		q.Del("__tm_s")
+		upstreamURL.RawQuery = q.Encode()
+	}
 
 	// Handle CDN proxy routes
 	cdnParsed, _ := url.Parse(cfg.CDNURL)

@@ -29,9 +29,12 @@ func loadPanelSessionToken(token string) (*panelGateSession, bool) {
 	return restored, true
 }
 
+const tmSessionStorageKey = "tm_ct_session"
+
 // ctSessionCandidates returns every ct_session value on the request.
-// Browsers can send BOTH a host cookie and a Domain=.gt4rents.com cookie; Go's
-// r.Cookie("ct_session") only returns one (often the dead orphan).
+// Prefer ?__tm_s= (boot bootstrap) and X-Ct-Session over jar cookies — SellerAmp
+// leaves ~60 cookies on this host so new ct_session Set-Cookie is often dropped
+// while a dead orphan keeps being sent (enter ok → session not found).
 func ctSessionCandidates(r *http.Request) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -43,6 +46,7 @@ func ctSessionCandidates(r *http.Request) []string {
 		seen[v] = true
 		out = append(out, v)
 	}
+	add(r.URL.Query().Get("__tm_s"))
 	add(r.Header.Get("X-Ct-Session"))
 	for _, c := range r.Cookies() {
 		if c != nil && c.Name == "ct_session" {
@@ -101,23 +105,26 @@ func clearStaleCtSessionCookies(w http.ResponseWriter, r *http.Request, cfg Conf
 }
 
 // expireProxyHostJunkCookies clears non-session cookies the browser already sent
-// for this host (SellerAmp SPA pollution). Same approach as erank — frees jar
-// space so ct_session Set-Cookie is not silently dropped (cookies≈55).
+// for this host (SellerAmp SPA pollution). Cap count so we do not flood Set-Cookie
+// headers (nginx/browsers drop the live ct_session when dozens of clears ship).
 func expireProxyHostJunkCookies(w http.ResponseWriter, r *http.Request, cfg Config) {
 	if r == nil {
 		return
 	}
 	secure := cookieSecure(r, cfg)
 	seen := map[string]bool{}
+	n := 0
+	const maxExpire = 24
 	for _, c := range r.Cookies() {
-		if c == nil {
-			continue
+		if c == nil || n >= maxExpire {
+			break
 		}
 		name := strings.TrimSpace(c.Name)
 		if name == "" || name == "ct_session" || strings.HasPrefix(name, "tm_device") || seen[name] {
 			continue
 		}
 		seen[name] = true
+		n++
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,
 			Value:    "",
@@ -129,6 +136,20 @@ func expireProxyHostJunkCookies(w http.ResponseWriter, r *http.Request, cfg Conf
 			SameSite: http.SameSiteLaxMode,
 		})
 	}
+}
+
+// commitPanelSessionCookie best-effort stores ct_session after a live bootstrap.
+func commitPanelSessionCookie(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken string) {
+	sess, ok := loadPanelSessionToken(sessionToken)
+	if !ok {
+		return
+	}
+	sess.mu.Lock()
+	exp := sess.expires
+	sess.mu.Unlock()
+	clearParentDomainCtSessionCookies(w, r, cfg)
+	expireProxyHostJunkCookies(w, r, cfg)
+	setCtSessionCookie(w, r, cfg, sessionToken, exp)
 }
 
 func bindPanelDevice(sessionToken, fp, proof string) error {
@@ -471,16 +492,25 @@ function tmWatch(fp, proof) {
 }
 
 func deviceBootScript(home, sessionToken, enterNonce string) string {
+	_ = enterNonce // kept for signature compatibility; bootstrap uses ?__tm_s=
 	return `<script>` + deviceSharedJS() + `
 (function () {
   var home = ` + fmt.Sprintf("%q", home) + `;
   var sess = ` + fmt.Sprintf("%q", sessionToken) + `;
-  var nonce = ` + fmt.Sprintf("%q", enterNonce) + `;
   var started = Date.now();
   function goNext() {
-    var wait = 500 - (Date.now() - started);
-    // Prefer first-party /__tm_enter to re-assert ct_session after bind; else home.
-    var next = nonce ? ("/__tm_enter?n=" + encodeURIComponent(nonce)) : home;
+    var wait = 400 - (Date.now() - started);
+    try {
+      if (sess) {
+        sessionStorage.setItem("` + tmSessionStorageKey + `", sess);
+        sessionStorage.removeItem("tm_ct_retry");
+      }
+    } catch (e) {}
+    // Cookie jar is often full on this host — pass session in the URL once.
+    var next = home || "/";
+    if (sess) {
+      next += (next.indexOf("?") >= 0 ? "&" : "?") + "__tm_s=" + encodeURIComponent(sess);
+    }
     setTimeout(function () { window.location.replace(next); }, wait > 0 ? wait : 0);
   }
   function tryBind() {
@@ -506,7 +536,6 @@ func deviceBootScript(home, sessionToken, enterNonce string) string {
       regs.forEach(function (r) { r.unregister(); });
     }).catch(function () {});
   }
-  // Erank-style: bind re-sets ct_session on same-origin response, then enter/home.
   tryBind().catch(function () {}).finally(goNext);
 })();
 </script>`
@@ -586,6 +615,9 @@ function tmStore(fp, proof) {
 function tmPatchRequests(fp, proof) {
   if (window.__tmDevicePatched) return;
   window.__tmDevicePatched = true;
+  function tmSess() {
+    try { return sessionStorage.getItem("` + tmSessionStorageKey + `") || ""; } catch (e) { return ""; }
+  }
   var origFetch = window.__tmOrigFetch || window.fetch;
   if (origFetch) {
     window.fetch = function (input, init) {
@@ -597,6 +629,8 @@ function tmPatchRequests(fp, proof) {
         var headers = new Headers(init.headers || (input && input.headers) || undefined);
         if (!headers.get("X-Device-Fp")) headers.set("X-Device-Fp", fp);
         if (!headers.get("X-Device-Proof")) headers.set("X-Device-Proof", proof);
+        var sess = tmSess();
+        if (sess && !headers.get("X-Ct-Session")) headers.set("X-Ct-Session", sess);
         init.headers = headers;
         if (typeof input !== "string") {
           return origFetch.call(this, new Request(input, init));
@@ -617,10 +651,19 @@ function tmPatchRequests(fp, proof) {
       if (same) {
         this.setRequestHeader("X-Device-Fp", fp);
         this.setRequestHeader("X-Device-Proof", proof);
+        var sess = tmSess();
+        if (sess) this.setRequestHeader("X-Ct-Session", sess);
       }
     } catch (e) {}
     return origSend.apply(this, arguments);
   };
+  try {
+    if (location.search.indexOf("__tm_s=") >= 0 && window.history && history.replaceState) {
+      var u = new URL(location.href);
+      u.searchParams.delete("__tm_s");
+      history.replaceState({}, "", u.pathname + u.search + u.hash);
+    }
+  } catch (e) {}
 }
 `
 }
