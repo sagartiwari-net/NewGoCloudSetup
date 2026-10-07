@@ -211,7 +211,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `slidebean` (:5021)  
 - [ ] `speechify` (:5011)  
 - [ ] `spyfu` (:4941)  
-- [ ] `storybase` (:4551)  
+- [ ] `storybase` (:4551) — **START NEEDED**: seedha URL Bad Gateway = process down; overlay `https` + `www.storybase.com`; after `build-one`/`start-tool` expect Access Denied on seedha URL, app via panel access-link  
+
 - [ ] `storyblocks` (:4971)  
 - [ ] `syntx` (:4981)  
 - [ ] `ubersuggest` (:5281)  

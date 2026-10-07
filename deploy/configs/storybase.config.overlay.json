@@ -1,7 +1,12 @@
 {
   "port": "4551",
   "public_host": "storybase.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://www.storybase.com",
+  "cdn_url": "https://www.storybase.com",
+  "tool_name": "StoryBase",
+  "home_path": "/app/overview/",
+  "cookie_domain_suffix": "storybase.com",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -10,5 +15,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "Bad Gateway on seedha URL = :4551 not listening — build-one + start-tool"
 }
