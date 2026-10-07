@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,12 +94,17 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	// Persist to disk so restarts / cold loads stay fast.
+	r := &http.Request{Method: http.MethodGet, URL: &url.URL{Path: path}, RequestURI: path}
+	storeCDNCache(r, status, contentType, encoding, body)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Del("Pragma")
-	w.Header().Del("Expires")
+	path := ""
+	if r != nil && r.URL != nil {
+		path = r.URL.Path
+	}
+	setSSCCDNBrowserCache(w, path)
 	if ent.contentType != "" {
 		w.Header().Set("Content-Type", ent.contentType)
 	}

@@ -3269,9 +3269,23 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		strings.HasPrefix(path, "/api/trigger-automation") ||
 		strings.HasPrefix(path, "/api/automation-ingest") ||
 		strings.HasPrefix(path, "/api/security-ping") ||
+		strings.HasPrefix(path, "/api/ssc-failover") ||
 		strings.HasPrefix(path, "/access") ||
 		path == "/user/logout" {
 		return // These are handled by their own handlers
+	}
+
+	// ── 0b. Disk CDN cache BEFORE auth (JS/CSS/fonts/images) ─────────────────────
+	cdnKey := cdnCacheKey(r)
+	if serveCachedCDN(w, r) {
+		return
+	}
+	if cdnKey != "" {
+		defer completeCDNFlight(cdnKey)
+	}
+	if ent := getStaticCached(r.Method, path); ent != nil {
+		serveStaticCached(w, r, ent)
+		return
 	}
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
@@ -3410,12 +3424,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if iam := loadIamTokens(cfg); iam.AccessToken == "" {
 			log.Printf("[IAM] ⚠️ Account '%s' (ID:%d) has no valid ssc.iam — re-export cookies from app.seositecheckup.com while logged in", activeAcc.Name, activeAcc.ID)
 		}
-	}
-
-	// Panel logout wall handled later for documents; static assets can hit memory cache first.
-	if ent := getStaticCached(r.Method, path); ent != nil {
-		serveStaticCached(w, r, ent)
-		return
 	}
 
 	// Document login wall only → switch / contact-admin (never on XHR/API).
@@ -3858,6 +3866,8 @@ func main() {
 	startBlockedIPRefreshLoop()
 	startBackgroundIamRefresh(cfg)
 	ensureFreshIamTokens(cfg, "") // warm cache + refresh if expired on startup
+	initCDNCacheDir()
+	startCDNCacheSweep()
 
 	mux := http.NewServeMux()
 
