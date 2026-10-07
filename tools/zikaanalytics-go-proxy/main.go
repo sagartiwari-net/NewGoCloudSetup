@@ -2172,14 +2172,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	defer upstreamResp.Body.Close()
 
 	// Soften non-critical API 401/403 so SPA axios interceptors don't bounce to /login.
+	// Return [] not {} — Zik list endpoints call .map and crash on {} → blank white page.
 	if isExtraCDN && zikSoftenAPIUnauthorized(path, upstreamResp.StatusCode) {
 		bodyBytes, _ := io.ReadAll(upstreamResp.Body)
-		log.Printf("[ZIK_AUTH] soften %d → 200 empty for %s (body %d bytes)", upstreamResp.StatusCode, path, len(bodyBytes))
+		empty := zikSoftenEmptyBody(path)
+		log.Printf("[ZIK_AUTH] soften %d → 200 %s for %s (upstream %d bytes)", upstreamResp.StatusCode, empty, path, len(bodyBytes))
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{}`))
+		w.Write([]byte(empty))
 		return
 	}
 
@@ -2293,11 +2295,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if len(localStorageData) > 0 {
 			lsBytes, err := json.Marshal(localStorageData)
 			if err == nil {
+				// Escape so </script> / <!-- inside cookie JSON cannot break the HTML page.
+				safe := bytes.ReplaceAll(lsBytes, []byte("<"), []byte(`\u003c`))
+				safe = bytes.ReplaceAll(safe, []byte(">"), []byte(`\u003e`))
+				safe = bytes.ReplaceAll(safe, []byte("&"), []byte(`\u0026`))
 				earlyInject += fmt.Sprintf(`<script>
 (function() {
     var storageData = %s;
     try {
-      // Drop stale auth keys before writing the mapped account session.
       localStorage.removeItem("access");
       localStorage.removeItem("accessToken");
       localStorage.removeItem("token");
@@ -2307,11 +2312,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
         localStorage.setItem(k, val);
     }
 })();
-</script>`, string(lsBytes))
+</script>`, string(safe))
 			}
 		}
 		earlyInject += zikLoginWatchScript(cfg) + patcherScript(cfg) + zikUsernameLabelScript(currentUser)
-		lateInject := limitWidgetScript(cfg) + limitOverlayScript()
+		// Failsafe AFTER device lock style/script in head — force visible so blank page cannot stick.
+		lateInject := `<script data-tm-reveal>try{var s=document.querySelector("style[data-tm-device]");if(s)s.remove();document.documentElement.style.setProperty("visibility","visible","important");if(document.body)document.body.style.setProperty("visibility","visible","important");}catch(e){}setTimeout(function(){try{var s=document.querySelector("style[data-tm-device]");if(s)s.remove();document.documentElement.style.setProperty("visibility","visible","important");}catch(e){}},500);</script>` +
+			limitWidgetScript(cfg) + limitOverlayScript()
 		bodyBytes = regexp.MustCompile(`(?i)<head[^>]*>`).ReplaceAllFunc(bodyBytes, func(m []byte) []byte {
 			out := make([]byte, 0, len(m)+len(earlyInject))
 			out = append(out, m...)

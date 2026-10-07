@@ -213,6 +213,22 @@ func zikSoftenAPIUnauthorized(path string, status int) bool {
 	return true
 }
 
+// zikSoftenEmptyBody picks a JSON empty value that won't crash Zik's SPA.
+// List-like GETs expect arrays; returning {} caused blank white React crashes.
+func zikSoftenEmptyBody(path string) string {
+	p := strings.ToLower(path)
+	if strings.Contains(p, "bestseller") ||
+		strings.Contains(p, "trends") ||
+		strings.Contains(p, "competitors") ||
+		strings.Contains(p, "announcements") ||
+		strings.Contains(p, "getstores") ||
+		strings.Contains(p, "insights") ||
+		strings.HasPrefix(strings.TrimPrefix(p, "/extra-cdn-0"), "/dashboard") {
+		return "[]"
+	}
+	return "null"
+}
+
 func zikLoginWatchScript(cfg Config) string {
 	home := cfg.HomePath
 	if home == "" {
@@ -271,20 +287,10 @@ func zikLoginWatchScript(cfg Config) string {
       return _rs(state, title, url);
     };
   } catch (e) {}
-  try {
-    var _la = Location.prototype.assign;
-    var _lr = Location.prototype.replace;
-    Location.prototype.assign = function(u){
-      if (hasAccess() && isLoginURL(u)) u = HOME;
-      return _la.call(this, u);
-    };
-    Location.prototype.replace = function(u){
-      if (hasAccess() && isLoginURL(u)) u = HOME;
-      return _lr.call(this, u);
-    };
-  } catch (e) {}
+  // Do NOT patch Location.prototype.assign/replace — that blanks React Router apps.
   guardLoginNav();
-  setInterval(guardLoginNav, 800);
+  setTimeout(guardLoginNav, 0);
+  setTimeout(guardLoginNav, 1000);
   function switchAccount(reason){
     if (switching) return;
     // Only rotate on a real login wall, never on a transient /login route flicker.

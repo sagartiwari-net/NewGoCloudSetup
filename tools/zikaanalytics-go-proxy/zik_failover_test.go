@@ -40,6 +40,9 @@ func TestZikSoftenAPIUnauthorized(t *testing.T) {
 	if zikSoftenAPIUnauthorized("/extra-cdn-0/auth/login", 401) {
 		t.Fatal("should not soften login")
 	}
+	if got := zikSoftenEmptyBody("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers"); got != "[]" {
+		t.Fatalf("expected [] got %s", got)
+	}
 }
 
 func TestZikRewriteLoginLocation(t *testing.T) {
