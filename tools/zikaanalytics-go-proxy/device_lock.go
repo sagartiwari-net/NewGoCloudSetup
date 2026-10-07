@@ -259,10 +259,16 @@ function tmDeny() {
   location.replace("/__tm_access_denied");
 }
 function tmReveal() {
-  document.documentElement.style.visibility = "visible";
+  // Remove !important lock first — inline visibility without !important cannot win.
   var lock = document.querySelector("style[data-tm-device]");
   if (lock) lock.remove();
+  try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+  try { if (document.body) document.body.style.setProperty("visibility", "visible", "important"); } catch (e) {}
 }
+// Never leave users on a permanent blank page if bind/fingerprint hangs.
+tmReveal();
+setTimeout(function () { try { tmReveal(); } catch (e) {} }, 800);
+setTimeout(function () { try { tmReveal(); } catch (e) {} }, 2500);
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
   window.__tmWatch = setInterval(function () {
@@ -271,7 +277,8 @@ function tmWatch(fp, proof) {
       credentials: "same-origin",
       headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
     }).then(function (res) {
-      if (!res.ok) tmDeny();
+      // 401 = session gone. Transient bind races must not blank a live page.
+      if (res.status === 401) tmDeny();
     }).catch(function () {});
   }, 2000);
 }
@@ -281,12 +288,35 @@ function tmWatch(fp, proof) {
   var fp = "";
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   try { fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || ""; } catch (e) {}
+  function afterBind(fp, proof) {
+    tmReveal();
+    tmPatchRequests(fp, proof);
+    tmWatch(fp, proof);
+    // Zik SPA: skip device SW — it races with reloads and can keep the page blank.
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
+  }
+  // First visit: mint proof (never bind "missing" — that was instant Access Denied / blank).
   if (!proof) {
-    fetch("/api/device-bind", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Device-Fp": "missing", "X-Device-Proof": "missing" }
-    }).finally(tmDeny);
+    tmEnsureProof().then(function (next) {
+      proof = next;
+      return tmFingerprint().then(function (fp) {
+        try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+        return tmStore(fp, proof).catch(function () { return null; }).then(function () {
+          return fetch("/api/device-bind", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+          }).then(function (res) {
+            if (!res.ok) { tmReveal(); return; }
+            afterBind(fp, proof);
+          });
+        });
+      });
+    }).catch(function () { tmReveal(); });
     return;
   }
   tmReveal();
@@ -305,7 +335,7 @@ function tmWatch(fp, proof) {
   }
   tmFingerprint().then(function (fp) {
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
-    return tmStore(fp, proof).then(function () {
+    return tmStore(fp, proof).catch(function () { return null; }).then(function () {
       return fetch("/api/device-bind", {
         method: "POST",
         credentials: "same-origin",
@@ -313,17 +343,8 @@ function tmWatch(fp, proof) {
       }).then(function () { return fp; });
     });
   }).then(function (fp) {
-    tmPatchRequests(fp, proof);
-    tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
-  }).catch(function () {});
+    afterBind(fp, proof);
+  }).catch(function () { tmReveal(); });
 })();
 </script>`
 }
