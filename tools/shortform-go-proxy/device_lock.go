@@ -81,6 +81,11 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !usesPanelAccountMode(cfg) {
 		return false
 	}
+	// Discover XHR (/api/home/docs) often has no X-Device-* yet. A 401 here
+	// looks like a Shortform auth failure and the page stays on "can not load".
+	if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ext-proxy/") {
+		return false
+	}
 	token, sess, ok := sessionFromRequest(r)
 	if !ok || sess == nil {
 		return false

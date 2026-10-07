@@ -327,6 +327,12 @@ func buildInjectScript(cfg Config, session string) string {
   function proxyUrl(url) {
     if (typeof url !== "string") return url;
     var u = url.trim();
+    // Bundle may still say http://this-host/... after an old http rewrite.
+    // Keep API calls on the page origin so Secure cookies and auth stay intact.
+    var httpSelf = "http://" + REAL_PROXY_HOST;
+    var httpsSelf = "https://" + REAL_PROXY_HOST;
+    if (u.indexOf(httpSelf) === 0) return REAL_PROXY_ORIGIN + u.slice(httpSelf.length);
+    if (u.indexOf(httpsSelf) === 0) return REAL_PROXY_ORIGIN + u.slice(httpsSelf.length);
     var pairs = [
       ["https://" + TARGET_HOST, REAL_PROXY_ORIGIN],
       ["http://" + TARGET_HOST, REAL_PROXY_ORIGIN],
@@ -737,22 +743,28 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 			req.Header.Set("Sec-Fetch-Site", "same-origin")
 		}
 		// Shortform API: axios uses HTTP Basic (username=auth_token, password="").
-		// Always set from cookie.txt so discover works even if browser auth races / breaks.
-		if tok := sessionToken(session); tok != "" && strings.HasPrefix(req.URL.Path, "/api/") {
-			req.Header.Set("Authorization", "Basic "+basicAuthToken(tok))
+		// Always set from the panel account so discover works even if the browser token races.
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			tok := sessionToken(session)
+			if tok == "" {
+				log.Printf("[API] no auth_token in panel account path=%s — refresh Shortform GoAuto localStorage", req.URL.Path)
+			} else {
+				req.Header.Set("Authorization", "Basic "+basicAuthToken(tok))
+			}
 			if req.Header.Get("X-Sf-Client") == "" {
 				req.Header.Set("X-Sf-Client", "11.8.0")
 			}
 			if req.Header.Get("Accept") == "" || strings.Contains(req.Header.Get("Accept"), "text/html") {
 				req.Header.Set("Accept", "application/json, text/plain, */*")
 			}
-		}
-		// Shortform auth is Authorization Basic from localStorage — not browser cookies.
-		// NEVER merge the browser Cookie header: localhost cookies are shared across ALL
-		// ports, so other proxies bloat the jar → nginx "400 Request Header Or Cookie Too Large".
-		req.Header.Del("Cookie")
-		if cookieHdr, _ := parseSessionStorage(session); cookieHdr != "" {
-			req.Header.Set("Cookie", cookieHdr)
+			// API auth is the Basic token. Account cookies on /api make CloudFront 401.
+			req.Header.Del("Cookie")
+		} else {
+			// NEVER merge the browser Cookie header: leftover jars bloat past nginx limits.
+			req.Header.Del("Cookie")
+			if cookieHdr, _ := parseSessionStorage(session); cookieHdr != "" {
+				req.Header.Set("Cookie", cookieHdr)
+			}
 		}
 		zgOrigin := upstreamOrigin(cfg)
 		if ref := req.Header.Get("Referer"); ref != "" {
@@ -875,6 +887,9 @@ func main() {
 			}
 		}
 
+		if r.TLS != nil || strings.Contains(strings.ToLower(r.Header.Get("X-Forwarded-Proto")), "https") {
+			cfg.PublicScheme = "https"
+		}
 		acc, nextReq, handled := preparePanelRequest(w, r, cfg)
 		if handled {
 			return

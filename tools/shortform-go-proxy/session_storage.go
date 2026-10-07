@@ -40,12 +40,61 @@ func parseSessionStorage(raw string) (cookieHeader string, localStorage map[stri
 		}
 	}
 
+	// GoAuto sometimes stores localStorage values as objects. The strict
+	// map[string]string decode then drops the whole blob, including auth_token.
+	if ls := flexibleLocalStorage(raw); len(ls) > 0 {
+		return "", ls
+	}
+
 	var bundle sessionBundleV2
 	if json.Unmarshal([]byte(raw), &bundle) == nil && len(bundle.LocalStorage) > 0 {
 		return cookiesFromRaw(bundle.Cookies), cloneStringMap(bundle.LocalStorage)
 	}
 
 	return "", nil
+}
+
+func flexibleLocalStorage(raw string) map[string]string {
+	var root map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &root) != nil {
+		return nil
+	}
+	var bag json.RawMessage
+	if st, ok := root["storage"]; ok {
+		var storage map[string]json.RawMessage
+		if json.Unmarshal(st, &storage) == nil {
+			bag = storage["localStorage"]
+		}
+	}
+	if len(bag) == 0 {
+		bag = root["local_storage"]
+	}
+	if len(bag) == 0 {
+		bag = root["localStorage"]
+	}
+	if len(bag) == 0 {
+		return nil
+	}
+	var loose map[string]json.RawMessage
+	if json.Unmarshal(bag, &loose) != nil {
+		return nil
+	}
+	out := make(map[string]string, len(loose))
+	for k, v := range loose {
+		s := strings.TrimSpace(string(v))
+		if s == "" || s == "null" {
+			continue
+		}
+		if len(s) >= 2 && s[0] == '"' {
+			var str string
+			if json.Unmarshal(v, &str) == nil {
+				out[k] = str
+				continue
+			}
+		}
+		out[k] = s
+	}
+	return out
 }
 
 func cookiesFromRaw(raw json.RawMessage) string {
@@ -120,8 +169,26 @@ func localStorageJSONForBrowser(sessionRaw string) []byte {
 
 func sessionToken(sessionRaw string) string {
 	_, ls := parseSessionStorage(sessionRaw)
-	if ls == nil {
+	if tok := strings.TrimSpace(ls["auth_token"]); tok != "" {
+		return tok
+	}
+	// Last resort if the blob is truncated or not strict JSON.
+	const key = `"auth_token"`
+	i := strings.Index(sessionRaw, key)
+	if i < 0 {
 		return ""
 	}
-	return strings.TrimSpace(ls["auth_token"])
+	rest := strings.TrimSpace(sessionRaw[i+len(key):])
+	if !strings.HasPrefix(rest, ":") {
+		return ""
+	}
+	rest = strings.TrimSpace(rest[1:])
+	if !strings.HasPrefix(rest, `"`) {
+		return ""
+	}
+	var tok string
+	if err := json.Unmarshal([]byte(rest), &tok); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(tok)
 }
