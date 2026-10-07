@@ -1,7 +1,13 @@
 {
   "port": "4751",
   "public_host": "prezi.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://prezi.com",
+  "cdn_url": "https://prezi.com",
+  "tool_name": "Prezi",
+  "home_path": "/dashboard/next/",
+  "cookie_domain_suffix": "prezi.com",
+  "inject_css": "[class*=\"UserDropdown__UserDropdownList\"],[class*=\"Popup__Container\"]:has([class*=\"UserDropdown__UserDropdownList\"]){display:none!important;visibility:hidden!important;pointer-events:none!important;opacity:0!important}",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -10,5 +16,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "Panel username on Name-sc labels; hide only UserDropdown popup; block click open"
 }

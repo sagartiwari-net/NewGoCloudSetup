@@ -186,7 +186,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `pixlr` (:4901)  
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
 - [ ] `ppspy` (:4961)  
-- [ ] `prezi` (:4751)  
+- [ ] `prezi` (:4751) — **IN PROGRESS** (2026-10-07): panel username on `Name-sc-*`; block click + hide only `UserDropdown` popup (settings/invite/admin/logout)  
+
 - [ ] `rivalflow` (:4811)  
 - [ ] `scite` (:4761)  
 - [ ] `screpy` (:4721)  
