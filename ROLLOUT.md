@@ -156,7 +156,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `epidemicsound` (:4641)  
 - [x] `erank` (:5191) — **READY / HTTPS OK** (2026-10-06): see Priority  
 - [ ] `fishaudio` (:4991)  
-- [ ] `flaticon` (:4921) — **needs Proxy Manager** (2026-10-07): Freepik WAF 403 on Hetzner; blank/refresh fixed → clear “Proxy required” card when account has no proxy; assign residential proxy then retest  
+- [ ] `flaticon` (:4921) — **PARKED** (2026-10-07): Freepik WAF; blank/refresh fixed; still blocked even with proxy — retry later with fresh cookies on same residential proxy IP (or another proxy)  
+
 
 - [ ] `flexclip` (:4671)  
 - [ ] `glorify` (:4681)  
