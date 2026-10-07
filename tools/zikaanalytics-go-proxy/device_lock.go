@@ -252,26 +252,41 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func devicePageScript() string {
-	return `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>` + deviceSharedJS() + `
+	// IMPORTANT: Do NOT inject html{visibility:hidden}. On Zik that stuck blank even
+	// after reveal (SPA + SW races). Device bind still runs; page stays visible.
+	return `<script data-tm-device>` + deviceSharedJS() + `
 function tmDeny() {
   if (window.__tmDenied) return;
   window.__tmDenied = true;
   if (window.__tmWatch) clearInterval(window.__tmWatch);
-  // Never put raw end-style/end-head/end-script sequences in this inline script
-  // (comments included) — HTML parsers can treat them as real closers.
   location.replace("/__tm_access_denied");
 }
 function tmReveal() {
-  // Remove !important lock first — inline visibility without !important cannot win.
-  var lock = document.querySelector("style[data-tm-device]");
-  if (lock) lock.remove();
-  try { document.documentElement.style.setProperty("visibility", "visible", "important"); } catch (e) {}
-  try { if (document.body) document.body.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+  try {
+    document.querySelectorAll("style[data-tm-device]").forEach(function (n) { n.remove(); });
+    document.documentElement.style.removeProperty("visibility");
+    document.documentElement.style.setProperty("visibility", "visible", "important");
+    if (document.body) {
+      document.body.style.removeProperty("visibility");
+      document.body.style.setProperty("visibility", "visible", "important");
+    }
+  } catch (e) {}
 }
-// Never leave users on a permanent blank page if bind/fingerprint hangs.
 tmReveal();
-setTimeout(function () { try { tmReveal(); } catch (e) {} }, 800);
-setTimeout(function () { try { tmReveal(); } catch (e) {} }, 2500);
+function tmClearSW() {
+  try {
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (keys) {
+        keys.forEach(function (k) { caches.delete(k); });
+      }).catch(function () {});
+    }
+  } catch (e) {}
+}
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
   window.__tmWatch = setInterval(function () {
@@ -280,12 +295,13 @@ function tmWatch(fp, proof) {
       credentials: "same-origin",
       headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
     }).then(function (res) {
-      // 401 = session gone. Transient bind races must not blank a live page.
       if (res.status === 401) tmDeny();
     }).catch(function () {});
-  }, 2000);
+  }, 5000);
 }
 (function () {
+  tmClearSW();
+  tmReveal();
   try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}
   var proof = "";
   var fp = "";
@@ -295,58 +311,27 @@ function tmWatch(fp, proof) {
     tmReveal();
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    // Zik SPA: skip device SW — it races with reloads and can keep the page blank.
-    if (navigator.serviceWorker) {
-      navigator.serviceWorker.getRegistrations().then(function (regs) {
-        regs.forEach(function (r) { r.unregister(); });
-      }).catch(function () {});
-    }
+    tmClearSW();
   }
-  // First visit: mint proof (never bind "missing" — that was instant Access Denied / blank).
-  if (!proof) {
-    tmEnsureProof().then(function (next) {
-      proof = next;
-      return tmFingerprint().then(function (fp) {
-        try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
-        return tmStore(fp, proof).catch(function () { return null; }).then(function () {
-          return fetch("/api/device-bind", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
-          }).then(function (res) {
-            if (!res.ok) { tmReveal(); return; }
-            afterBind(fp, proof);
-          });
-        });
+  function bindNow(fp, proof) {
+    return fetch("/api/device-bind", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+    }).then(function () { afterBind(fp, proof); }).catch(function () { tmReveal(); });
+  }
+  var ready = proof
+    ? Promise.resolve(proof)
+    : tmEnsureProof();
+  ready.then(function (next) {
+    proof = next;
+    return tmFingerprint().then(function (got) {
+      fp = got;
+      try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+      return tmStore(fp, proof).catch(function () { return null; }).then(function () {
+        return bindNow(fp, proof);
       });
-    }).catch(function () { tmReveal(); });
-    return;
-  }
-  tmReveal();
-  if (fp && proof) { tmPatchRequests(fp, proof); tmWatch(fp, proof); }
-  else if (window.fetch) {
-    window.__tmOrigFetch = window.fetch;
-    window.fetch = function () {
-      var self = this;
-      var args = arguments;
-      return tmFingerprint().then(function (next) {
-        try { sessionStorage.setItem("tm_device_fp", next); localStorage.setItem("tm_device_fp", next); } catch (e) {}
-        tmPatchRequests(next, proof);
-        return window.fetch.apply(self, args);
-      });
-    };
-  }
-  tmFingerprint().then(function (fp) {
-    try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
-    return tmStore(fp, proof).catch(function () { return null; }).then(function () {
-      return fetch("/api/device-bind", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
-      }).then(function () { return fp; });
     });
-  }).then(function (fp) {
-    afterBind(fp, proof);
   }).catch(function () { tmReveal(); });
 })();
 </script>`

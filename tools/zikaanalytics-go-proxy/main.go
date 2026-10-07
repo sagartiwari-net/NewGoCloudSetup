@@ -2316,8 +2316,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		earlyInject += zikLoginWatchScript(cfg) + patcherScript(cfg) + zikUsernameLabelScript(currentUser)
-		// Failsafe AFTER device lock style/script in head — force visible so blank page cannot stick.
-		lateInject := `<script data-tm-reveal>try{var s=document.querySelector("style[data-tm-device]");if(s)s.remove();document.documentElement.style.setProperty("visibility","visible","important");if(document.body)document.body.style.setProperty("visibility","visible","important");}catch(e){}setTimeout(function(){try{var s=document.querySelector("style[data-tm-device]");if(s)s.remove();document.documentElement.style.setProperty("visibility","visible","important");}catch(e){}},500);</script>` +
+		// Failsafe: strip any leftover device hide styles (old SW/HTML) and force visible.
+		lateInject := `<script data-tm-reveal>(function(){function show(){try{document.querySelectorAll("style[data-tm-device]").forEach(function(n){n.remove();});document.documentElement.style.setProperty("visibility","visible","important");if(document.body)document.body.style.setProperty("visibility","visible","important");if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.unregister();});}).catch(function(){});}}catch(e){}}show();setTimeout(show,300);setTimeout(show,1500);})();</script>` +
 			limitWidgetScript(cfg) + limitOverlayScript()
 		bodyBytes = regexp.MustCompile(`(?i)<head[^>]*>`).ReplaceAllFunc(bodyBytes, func(m []byte) []byte {
 			out := make([]byte, 0, len(m)+len(earlyInject))
