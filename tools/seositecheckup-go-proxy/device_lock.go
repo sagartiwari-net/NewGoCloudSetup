@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -206,7 +207,9 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	err := bindPanelDevice(token, strings.TrimSpace(r.Header.Get("X-Device-Fp")), strings.TrimSpace(r.Header.Get("X-Device-Proof")))
+	fp := strings.TrimSpace(r.Header.Get("X-Device-Fp"))
+	proof := strings.TrimSpace(r.Header.Get("X-Device-Proof"))
+	err := bindPanelDevice(token, fp, proof)
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		log.Printf("[DEVICE] bind failed: %v", err)
@@ -220,8 +223,27 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
 		return
 	}
-	log.Printf("[DEVICE] proof stored")
+	// Heartbeat hits every ~30s — only log first bind / fingerprint change.
+	if deviceBindShouldLog(token, fp) {
+		log.Printf("[DEVICE] proof stored")
+	}
 	fmt.Fprintf(w, `{"status":"ok"}`)
+}
+
+var (
+	deviceBindLogMu sync.Mutex
+	deviceBindLogAt = map[string]string{} // token → last fp
+)
+
+func deviceBindShouldLog(token, fp string) bool {
+	deviceBindLogMu.Lock()
+	defer deviceBindLogMu.Unlock()
+	prev, ok := deviceBindLogAt[token]
+	if ok && prev == fp {
+		return false
+	}
+	deviceBindLogAt[token] = fp
+	return true
 }
 
 
@@ -302,7 +324,7 @@ function tmWatch(fp, proof) {
     }).then(function (res) {
       if (!res.ok) tmDeny();
     }).catch(function () {});
-  }, 2000);
+  }, 30000);
 }
 (function () {
   try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}
