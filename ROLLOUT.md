@@ -211,7 +211,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `slidebean` (:5021)  
 - [ ] `speechify` (:5011)  
 - [ ] `spyfu` (:4941)  
-- [ ] `storybase` (:4551) — **ALPN fix** (2026-10-07): was 502 proxying `chatgpt.com` + HTTP/2 SETTINGS “malformed HTTP response”; force `www.storybase.com` + HTTP/1.1-only dial (ilovepdf pattern). Rebuild/start then panel access-link. Note: MySQL domain `storybase.gt4rents.com` missing → website_id stayed 1 (register in panel/ahrefs_websites).  
+- [ ] `storybase` (:4551) — **ALPN fix** (2026-10-07): was 502 → `chatgpt.com` + HTTP/2 SETTINGS; force `www.storybase.com` + HTTP/1.1 dial. **Chrome:** hide `#profile-widget-navigation` only; `#sidebar-profile` name → panel username. Rebuild/start + fresh access-link.  
 
 - [ ] `storyblocks` (:4971)  
 - [ ] `syntx` (:4981)  

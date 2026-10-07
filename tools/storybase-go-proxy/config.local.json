@@ -10,7 +10,7 @@
   "credit_label": "Searches",
   "home_path": "/app/overview/",
   "cookie_domain_suffix": "storybase.com",
-  "inject_css": "#profile-widget-navigation,.profile-widget-nav{display:none!important;visibility:hidden!important;pointer-events:none!important}",
+  "inject_css": "#profile-widget-navigation{display:none!important;visibility:hidden!important;pointer-events:none!important;opacity:0!important;height:0!important;overflow:hidden!important}",
   "counted_paths": [],
   "counted_prefixes": [],
   "blocked_paths": [
