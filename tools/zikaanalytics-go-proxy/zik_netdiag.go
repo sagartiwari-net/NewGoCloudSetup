@@ -142,10 +142,11 @@ th{color:#93a4bd;font-weight:600}
 .detail{color:#cbd5e1;word-break:break-word;max-width:520px}
 </style></head><body><div class="wrap">
 <h1>Zik Analytics — live logs</h1>
-<p>CLIENT-DIAG (browser nav / 401 / soft-401) + NET (upstream). Copy rows or use JSON. Server: <code>tail -f app.log | grep -E 'CLIENT-DIAG|NET|NAV|FAILOVER|ZIK|PROXY'</code></p>
+<p>Prefer the full desk: <a class="btn" href="/__debug">Open /__debug</a> (probe + copy dump). Also: <code>tail -f app.log | grep -E 'CLIENT-DIAG|NET|NAV|FAILOVER|ZIK_PROBE|PROXY'</code></p>
 <div class="bar">
   <button onclick="loadLogs()">Refresh</button>
   <a class="btn secondary" href="/__logs.json" target="_blank">JSON</a>
+  <a class="btn secondary" href="/__debug">Debug desk</a>
   <span class="meta" id="meta">loading…</span>
 </div>
 <table><thead><tr>

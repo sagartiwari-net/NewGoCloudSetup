@@ -1863,6 +1863,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		path == "/tm-device-sw.js" ||
 		path == "/__logs" ||
 		path == "/__logs.json" ||
+		path == "/__debug" ||
+		path == "/__debug.json" ||
 		strings.HasPrefix(path, "/api/user-limits") ||
 		strings.HasPrefix(path, "/api/rotate-session") ||
 		strings.HasPrefix(path, "/access") ||
@@ -2463,7 +2465,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		earlyInject += zikSoftNoisy401Script() + zikClientNetDiagScript() +
 			zikLoginWatchScript(cfg) + patcherScript(patchCfg) + zikUsernameLabelScript(currentUser)
 		// Body-dependent widgets go before </body>, never in <head> (document.body is null there).
-		bodyTail := limitWidgetScript(cfg) + limitOverlayScript() +
+		bodyTail := limitWidgetScript(cfg) + limitOverlayScript() + zikDebugButtonScript() +
 			`<script>(function(){try{var i,s=document.querySelectorAll("style[data-tm-device]");for(i=0;i<s.length;i++)s[i].remove();if(document.documentElement)document.documentElement.style.removeProperty("visibility");if(document.body)document.body.style.removeProperty("visibility");if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(function(r){for(i=0;i<(r||[]).length;i++)r[i].unregister();}).catch(function(){});}}catch(e){}})();</script>`
 		bodyBytes = regexp.MustCompile(`(?i)<head[^>]*>`).ReplaceAllFunc(bodyBytes, func(m []byte) []byte {
 			out := make([]byte, 0, len(m)+len(earlyInject))
@@ -2535,6 +2537,8 @@ func main() {
 	mux.HandleFunc("/api/client-diag", withCORS(zikClientDiagHandler))
 	mux.HandleFunc("/__logs", liveLogsPageHandler)
 	mux.HandleFunc("/__logs.json", liveLogsJSONHandler)
+	mux.HandleFunc("/__debug", zikDebugPageHandler)
+	mux.HandleFunc("/__debug.json", zikDebugJSONHandler)
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
