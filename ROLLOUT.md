@@ -166,7 +166,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `grok` (:4831)  
 - [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06)  
 - [ ] `heliumlearning` (:5221)  
-- [ ] `ilovepdf` (:4531)  
+- [ ] `ilovepdf` (:4531) — **FIX PUSHED** (2026-10-07): Bad Gateway = app not on :4531; overlay forces `www.ilovepdf.com` — build+start then verify  
+
 - [ ] `imgupscaler` (:5091)  
 - [ ] `indexification` (:5231)  
 - [ ] `jasper` (:4511)  
