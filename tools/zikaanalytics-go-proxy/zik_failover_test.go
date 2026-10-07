@@ -69,29 +69,11 @@ func TestZikRewriteLoginLocation(t *testing.T) {
 	}
 }
 
-func TestZikSoftenBestSellersOnly(t *testing.T) {
-	if !zikSoftenAPIUnauthorized("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers", 401) {
-		t.Fatal("BestSellers 401 must soften")
+func TestZikNoisyWidget401(t *testing.T) {
+	if !zikNoisyWidget401("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers") {
+		t.Fatal("BestSellers is noisy")
 	}
-	if zikSoftenAPIUnauthorized("/extra-cdn-0/User/GetStore", 401) {
-		t.Fatal("GetStore must not soften")
-	}
-	if zikSoftenAPIUnauthorized("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers", 200) {
-		t.Fatal("200 must not soften")
-	}
-	if zikSoftenEmptyBody("/x") != "[]" {
-		t.Fatal("empty body must be []")
-	}
-}
-
-func TestZikCoreAuthUnauthorized(t *testing.T) {
-	if !zikCoreAuthUnauthorized("/extra-cdn-0/User/GetStore", 401) {
-		t.Fatal("GetStore 401 is core")
-	}
-	if !zikCoreAuthUnauthorized("/extra-cdn-0/QuickSettings/GetSettings", 403) {
-		t.Fatal("GetSettings 403 is core")
-	}
-	if zikCoreAuthUnauthorized("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers", 401) {
-		t.Fatal("BestSellers is not core auth")
+	if zikNoisyWidget401("/extra-cdn-0/User/GetStore") {
+		t.Fatal("GetStore is not a noisy widget")
 	}
 }

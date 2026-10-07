@@ -2194,27 +2194,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[PROXY] Upstream response: %d for %s", upstreamResp.StatusCode, path)
 	defer upstreamResp.Body.Close()
-
-	// BestSellers often 401 even when the rest of the session is valid — SPA treats any
-	// 401 as logout and refetch-loops. Soften ONLY that widget to a safe empty list.
-	if isExtraCDN && zikSoftenAPIUnauthorized(path, upstreamResp.StatusCode) {
-		_, _ = io.ReadAll(upstreamResp.Body)
-		empty := zikSoftenEmptyBody(path)
-		log.Printf("[ZIK_AUTH] soften widget 401 → 200 for %s", path)
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(empty))
-		return
-	}
-
-	// Core auth 401 is real logout — pass status through; injected script sends user to
-	// /login → account switch or Contact Admin card (never HTML body on JSON APIs).
-	if usesPanelAccountMode(cfg) && currentUser != "" &&
-		zikCoreAuthUnauthorized(path, upstreamResp.StatusCode) {
-		log.Printf("[ZIK_AUTH] core API unauthorized path=%s account=%s (client → /login failover)", path, activeAcc.Name)
-	}
+	// Do NOT rewrite BestSellers 401 → fake [] — that blanks the Zik React dashboard.
+	// Login/failover is handled like the working proxy: wall text + repeated auth fails.
 
 	// ── 7. Handle Set-Cookie from upstream ───────────────────────────────────────
 	reDomain := regexp.MustCompile(`(?i)domain=[^;]+;?\s*`)
@@ -2322,8 +2303,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject localStorage + patches at the start of <head> so the SPA sees the access JWT.
 		earlyInject := ""
+		// Full storage like working zikaanalytics-go-proxy (essential-only strip blanked SPA boot).
 		_, localStorageData := parseCookiesAndStorage(activeAcc.Cookie)
-		localStorageData = zikEssentialStorage(localStorageData)
 		if len(localStorageData) > 0 {
 			lsBytes, err := json.Marshal(localStorageData)
 			if err == nil {

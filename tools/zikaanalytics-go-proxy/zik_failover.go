@@ -200,30 +200,10 @@ func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	})
 }
 
-func zikSoftenAPIUnauthorized(path string, status int) bool {
-	if status != http.StatusUnauthorized && status != http.StatusForbidden {
-		return false
-	}
+// zikNoisyWidget401 — widget endpoints that 401 even on a good session (ignore for failover).
+func zikNoisyWidget401(path string) bool {
 	p := strings.ToLower(path)
-	// Only this noisy dashboard widget — not GetStore / GetSettings (those = real logout).
 	return strings.Contains(p, "getebayweeklybestsellers") || strings.Contains(p, "weeklybestsellers")
-}
-
-func zikSoftenEmptyBody(path string) string {
-	_ = path
-	// Array root: Zik list widgets typically do response.map / for...of.
-	return "[]"
-}
-
-func zikCoreAuthUnauthorized(path string, status int) bool {
-	if status != http.StatusUnauthorized && status != http.StatusForbidden {
-		return false
-	}
-	p := strings.ToLower(path)
-	return strings.Contains(p, "/user/getstore") ||
-		strings.Contains(p, "/quicksettings/getsettings") ||
-		strings.Contains(p, "/user/me") ||
-		strings.HasSuffix(p, "/account/me")
 }
 
 // zikPublicAssetPath — no ct_session required (SPA still needs these after hard refresh).
@@ -261,8 +241,8 @@ func zikEssentialStorage(all map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// zikLoginWatchScript — lightweight. Same-origin auth headers only.
-// No history/Location monkeypatches (those blanked React). No watchdog overlay.
+// zikLoginWatchScript — match working zikaanalytics-go-proxy (no fake JSON bodies).
+// Failover only when the login wall is visible (or repeated real auth fails + wall).
 func zikLoginWatchScript(cfg Config) string {
 	home := cfg.HomePath
 	if home == "" {
@@ -274,9 +254,7 @@ func zikLoginWatchScript(cfg Config) string {
   window.__zikLogoutWatch = true;
   var HOME = %q;
   var switching = false;
-  function sameOrigin(url){
-    try { return new URL(url, location.href).origin === location.origin; } catch (e) { return false; }
-  }
+  var apiFail = 0;
   function wallText(){
     var text = "";
     try { text = (document.body && (document.body.innerText || document.body.textContent)) || ""; } catch (e) {}
@@ -286,88 +264,44 @@ func zikLoginWatchScript(cfg Config) string {
     if (text.indexOf("Welcome!") !== -1 && text.indexOf("Sign in with Google") !== -1) return true;
     return false;
   }
-  function goFailover(reason){
-    if (switching) return;
+  function wallPath(){
+    var path = (location.pathname || "/").replace(/\/$/, "") || "/";
+    return path === "/login" || path === "/signin" || path === "/sign-in" ||
+      path.indexOf("/login/") === 0 || path.indexOf("/signin/") === 0;
+  }
+  function switchAccount(reason){
+    if (switching || wallPath()) return;
     switching = true;
     location.replace("/login?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "zik_login_wall"));
   }
-  function switchAccount(reason){
-    if (!wallText()) return;
-    goFailover(reason || "zik_login_text");
-  }
-  function patchInit(url, init){
-    if (!sameOrigin(url)) return init;
-    init = init ? Object.assign({}, init) : {};
-    var headers = init.headers ? new Headers(init.headers) : new Headers();
-    try {
-      var token = localStorage.getItem("access") || "";
-      if (token) headers.set("Authorization", "Bearer " + token);
-      var proof = localStorage.getItem("tm_device_proof") || "";
-      var fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
-      if (proof) headers.set("X-Device-Proof", proof);
-      if (fp) headers.set("X-Device-Fp", fp);
-    } catch (e) {}
-    init.headers = headers;
-    return init;
-  }
-  function isBestSellers(path){
-    return /weeklybestsellers|getebayweeklybestsellers/i.test(path || "");
-  }
-  function isCoreAuth(path){
-    return /\/User\/GetStore\b|\/QuickSettings\/GetSettings\b|\/user\/me\b/i.test(path || "");
-  }
-  setInterval(function(){ if (wallText()) switchAccount("zik_login_text"); }, 5000);
+  setInterval(function(){
+    if (wallPath() || wallText()) switchAccount("zik_login_text");
+  }, 1500);
   var fo = window.fetch;
   if (typeof fo === "function") {
     window.fetch = function(input, init){
-      var url = typeof input === "string" ? input : (input && input.url) || "";
-      try { init = patchInit(url, init); } catch (e) {}
       return fo(input, init).then(function(res){
         try {
-          var path = (url || "").split("?")[0];
-          // Widget 401 must not look like logout (stops refetch storms).
-          if (sameOrigin(url) && isBestSellers(path) && (res.status === 401 || res.status === 403)) {
-            return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
-          }
-          // Real session death → stable contact-admin / switch page (not infinite reload).
-          if (sameOrigin(url) && isCoreAuth(path) && (res.status === 401 || res.status === 403)) {
-            goFailover("zik_core_auth_" + res.status);
+          var url = "";
+          if (typeof input === "string") url = input;
+          else if (input && input.url) url = input.url;
+          var path = (url || "").split("?")[0].toLowerCase();
+          // BestSellers 401 is normal noise — never count it as logout.
+          if (path.indexOf("bestsellers") !== -1) return res;
+          var authPath = path.indexOf("/user/") !== -1 || path.indexOf("/dashboard/") !== -1 ||
+            path.indexOf("/account") !== -1 || path.indexOf("/auth") !== -1 ||
+            path.indexOf("/session") !== -1 || path.indexOf("/subscriber") !== -1;
+          if ((res.status === 401 || res.status === 403) && authPath) {
+            apiFail += 1;
+            if (apiFail >= 3 && wallText()) switchAccount("zik_api_" + res.status);
+          } else if (res.ok && authPath) {
+            apiFail = 0;
           }
         } catch (e) {}
         return res;
       });
     };
   }
-  try {
-    var xo = XMLHttpRequest.prototype.open;
-    var xs = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.open = function(m, u){ this.__zikURL = u; return xo.apply(this, arguments); };
-    XMLHttpRequest.prototype.send = function(body){
-      var xhr = this;
-      var url = this.__zikURL || "";
-      try {
-        if (sameOrigin(url)) {
-          var token = localStorage.getItem("access") || "";
-          if (token) this.setRequestHeader("Authorization", "Bearer " + token);
-          var proof = localStorage.getItem("tm_device_proof") || "";
-          var fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
-          if (proof) this.setRequestHeader("X-Device-Proof", proof);
-          if (fp) this.setRequestHeader("X-Device-Fp", fp);
-        }
-      } catch (e) {}
-      try {
-        xhr.addEventListener("load", function(){
-          try {
-            var path = (url || "").split("?")[0];
-            if (sameOrigin(url) && isCoreAuth(path) && (xhr.status === 401 || xhr.status === 403)) {
-              goFailover("zik_core_auth_xhr_" + xhr.status);
-            }
-          } catch (e) {}
-        });
-      } catch (e) {}
-      return xs.apply(this, arguments);
-    };
-  } catch (e) {}
 })();
 </script>`, home)
 }
