@@ -132,13 +132,17 @@ func zikAuthDiag(cookieRaw string) (bearerOK bool, sessionOK bool, expired bool)
 }
 
 func serveZikCookieExpired(w http.ResponseWriter, cfg Config, currentUser, accountName, reason string) {
-	log.Printf("[FAILOVER] STOP login-loop user=%s account=%s reason=%s — update hybrid cookie (cookies+localStorage.access)", currentUser, accountName, reason)
+	log.Printf("[FAILOVER] STOP login-loop user=%s account=%s reason=%s — contact admin / refresh cookie", currentUser, accountName, reason)
+	acc := html.EscapeString(strings.TrimSpace(accountName))
+	if acc == "" {
+		acc = "mapped account"
+	}
 	writeLightCard(w, http.StatusOK, lightCard{
-		Title:   "Session expired",
-		Heading: "Zik cookie expired",
-		Message: "Update <b>Zik Analytics 1</b> in the panel with a fresh export that includes <b>cookies + localStorage</b> (the <code>access</code> JWT). Then open a <b>new</b> access link.",
-		Badge:   "No auto-refresh — fix cookie in panel",
-		Footer:  "Do not keep reloading this page",
+		Title:   "Contact Admin",
+		Heading: "Session unavailable",
+		Message: "The Zik account (<b>" + acc + "</b>) is logged out or the cookie expired. <b>Contact your admin</b> to refresh the cookie in the panel, then open a new access link.",
+		Badge:   "No other account available",
+		Footer:  "This page will not auto-refresh",
 		Spin:    false,
 	})
 }
@@ -201,19 +205,25 @@ func zikSoftenAPIUnauthorized(path string, status int) bool {
 		return false
 	}
 	p := strings.ToLower(path)
-	if !strings.HasPrefix(p, "/extra-cdn-") {
-		return false
-	}
-	if strings.Contains(p, "/login") || strings.Contains(p, "/signin") || strings.Contains(p, "/token") {
-		return false
-	}
-	// Only soften known non-critical dashboard widgets (not every API).
-	return strings.Contains(p, "bestseller")
+	// Only this noisy dashboard widget — not GetStore / GetSettings (those = real logout).
+	return strings.Contains(p, "getebayweeklybestsellers") || strings.Contains(p, "weeklybestsellers")
 }
 
 func zikSoftenEmptyBody(path string) string {
 	_ = path
+	// Array root: Zik list widgets typically do response.map / for...of.
 	return "[]"
+}
+
+func zikCoreAuthUnauthorized(path string, status int) bool {
+	if status != http.StatusUnauthorized && status != http.StatusForbidden {
+		return false
+	}
+	p := strings.ToLower(path)
+	return strings.Contains(p, "/user/getstore") ||
+		strings.Contains(p, "/quicksettings/getsettings") ||
+		strings.Contains(p, "/user/me") ||
+		strings.HasSuffix(p, "/account/me")
 }
 
 // zikPublicAssetPath — no ct_session required (SPA still needs these after hard refresh).
@@ -276,10 +286,14 @@ func zikLoginWatchScript(cfg Config) string {
     if (text.indexOf("Welcome!") !== -1 && text.indexOf("Sign in with Google") !== -1) return true;
     return false;
   }
-  function switchAccount(reason){
-    if (switching || !wallText()) return;
+  function goFailover(reason){
+    if (switching) return;
     switching = true;
     location.replace("/login?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "zik_login_wall"));
+  }
+  function switchAccount(reason){
+    if (!wallText()) return;
+    goFailover(reason || "zik_login_text");
   }
   function patchInit(url, init){
     if (!sameOrigin(url)) return init;
@@ -296,13 +310,32 @@ func zikLoginWatchScript(cfg Config) string {
     init.headers = headers;
     return init;
   }
+  function isBestSellers(path){
+    return /weeklybestsellers|getebayweeklybestsellers/i.test(path || "");
+  }
+  function isCoreAuth(path){
+    return /\/User\/GetStore\b|\/QuickSettings\/GetSettings\b|\/user\/me\b/i.test(path || "");
+  }
   setInterval(function(){ if (wallText()) switchAccount("zik_login_text"); }, 5000);
   var fo = window.fetch;
   if (typeof fo === "function") {
     window.fetch = function(input, init){
       var url = typeof input === "string" ? input : (input && input.url) || "";
       try { init = patchInit(url, init); } catch (e) {}
-      return fo(input, init);
+      return fo(input, init).then(function(res){
+        try {
+          var path = (url || "").split("?")[0];
+          // Widget 401 must not look like logout (stops refetch storms).
+          if (sameOrigin(url) && isBestSellers(path) && (res.status === 401 || res.status === 403)) {
+            return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+          }
+          // Real session death → stable contact-admin / switch page (not infinite reload).
+          if (sameOrigin(url) && isCoreAuth(path) && (res.status === 401 || res.status === 403)) {
+            goFailover("zik_core_auth_" + res.status);
+          }
+        } catch (e) {}
+        return res;
+      });
     };
   }
   try {
@@ -310,8 +343,10 @@ func zikLoginWatchScript(cfg Config) string {
     var xs = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(m, u){ this.__zikURL = u; return xo.apply(this, arguments); };
     XMLHttpRequest.prototype.send = function(body){
+      var xhr = this;
+      var url = this.__zikURL || "";
       try {
-        if (sameOrigin(this.__zikURL || "")) {
+        if (sameOrigin(url)) {
           var token = localStorage.getItem("access") || "";
           if (token) this.setRequestHeader("Authorization", "Bearer " + token);
           var proof = localStorage.getItem("tm_device_proof") || "";
@@ -319,6 +354,16 @@ func zikLoginWatchScript(cfg Config) string {
           if (proof) this.setRequestHeader("X-Device-Proof", proof);
           if (fp) this.setRequestHeader("X-Device-Fp", fp);
         }
+      } catch (e) {}
+      try {
+        xhr.addEventListener("load", function(){
+          try {
+            var path = (url || "").split("?")[0];
+            if (sameOrigin(url) && isCoreAuth(path) && (xhr.status === 401 || xhr.status === 403)) {
+              goFailover("zik_core_auth_xhr_" + xhr.status);
+            }
+          } catch (e) {}
+        });
       } catch (e) {}
       return xs.apply(this, arguments);
     };

@@ -2175,12 +2175,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			renderProxyProblem(w, r)
 			return
 		}
-		if usesPanelAccountMode(cfg) && sessionToken != "" {
-			if next, swErr := panelSwitchAccount(cfg, sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error"); swErr == nil {
-				activeAcc = next
+		errLow := strings.ToLower(err.Error())
+		// Browser navigation cancel / IPv6 abort must NOT rotate accounts (causes refresh storms).
+		transient := strings.Contains(errLow, "cancel") ||
+			strings.Contains(errLow, "timeout") ||
+			strings.Contains(errLow, "reset by peer")
+		if !transient {
+			if usesPanelAccountMode(cfg) && sessionToken != "" {
+				if next, swErr := panelSwitchAccount(cfg, sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error"); swErr == nil {
+					activeAcc = next
+				}
+			} else if dbConnected && db != nil {
+				activeAcc, _ = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error")
 			}
-		} else if dbConnected && db != nil {
-			activeAcc, _ = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error")
 		}
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
@@ -2188,7 +2195,26 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[PROXY] Upstream response: %d for %s", upstreamResp.StatusCode, path)
 	defer upstreamResp.Body.Close()
 
-	// Do NOT soften API 401 bodies — fake []/{} crashes Zik React (undefined .map / props).
+	// BestSellers often 401 even when the rest of the session is valid — SPA treats any
+	// 401 as logout and refetch-loops. Soften ONLY that widget to a safe empty list.
+	if isExtraCDN && zikSoftenAPIUnauthorized(path, upstreamResp.StatusCode) {
+		_, _ = io.ReadAll(upstreamResp.Body)
+		empty := zikSoftenEmptyBody(path)
+		log.Printf("[ZIK_AUTH] soften widget 401 → 200 for %s", path)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(empty))
+		return
+	}
+
+	// Core auth 401 is real logout — pass status through; injected script sends user to
+	// /login → account switch or Contact Admin card (never HTML body on JSON APIs).
+	if usesPanelAccountMode(cfg) && currentUser != "" &&
+		zikCoreAuthUnauthorized(path, upstreamResp.StatusCode) {
+		log.Printf("[ZIK_AUTH] core API unauthorized path=%s account=%s (client → /login failover)", path, activeAcc.Name)
+	}
 
 	// ── 7. Handle Set-Cookie from upstream ───────────────────────────────────────
 	reDomain := regexp.MustCompile(`(?i)domain=[^;]+;?\s*`)
