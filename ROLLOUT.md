@@ -226,7 +226,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `writecream` (:5051)  
 - [ ] `zebracat` (:5111)  
 - [ ] `zikaanalytics` (:5251)  
-- [ ] `zonguru` (:4691) — **FIX PUSHED** (2026-10-07): stop clobbering API Accept/Sec-Fetch (dashboard data); inject FbaToken; fix :4691 host rewrite — redeploy + verify
+- [ ] `zonguru` (:4691) — **FIX PUSHED** (2026-10-07): dashboard 403 was device-lock killing session on canvas FP drift + early XHR race — proof-only bind + soft-allow — redeploy + verify
 
 ---
 

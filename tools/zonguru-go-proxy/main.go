@@ -319,6 +319,20 @@ func buildInjectScript(cfg Config, session string) string {
     console.warn("[ZonGuru Proxy] localStorage restore failed", e);
   }
 
+  function stampDeviceHeaders(init, input) {
+    try {
+      var fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
+      var proof = localStorage.getItem("tm_device_proof") || "";
+      if (!fp && !proof) return init;
+      init = init || {};
+      var headers = new Headers(init.headers || (input && input.headers) || undefined);
+      if (fp && !headers.get("X-Device-Fp")) headers.set("X-Device-Fp", fp);
+      if (proof && !headers.get("X-Device-Proof")) headers.set("X-Device-Proof", proof);
+      init.headers = headers;
+    } catch (e) {}
+    return init;
+  }
+
   var __fetch = window.fetch;
   window.fetch = function(input, init) {
     if (typeof input === "string") input = proxyUrl(input);
@@ -326,6 +340,7 @@ func buildInjectScript(cfg Config, session string) string {
       var proxied = proxyUrl(input.url);
       if (proxied !== input.url) input = new Request(proxied, input);
     }
+    init = stampDeviceHeaders(init, input);
     return __fetch.call(this, input, init);
   };
 
@@ -766,8 +781,11 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 			return nil
 		}
 		session := panelSessionFor(resp.Request, getSession)
-		if resp.Request != nil && zgIsAPIPath(resp.Request.URL.Path) && resp.StatusCode >= 400 {
-			log.Printf("[API] %s %s -> %d (FbaToken=%v)", resp.Request.Method, resp.Request.URL.Path, resp.StatusCode, resp.Request.Header.Get("FbaToken") != "")
+		if resp.Request != nil && resp.StatusCode >= 400 {
+			p := resp.Request.URL.Path
+			if zgIsAPIPath(p) || resp.StatusCode == 401 || resp.StatusCode == 403 {
+				log.Printf("[UPSTREAM] %s %s -> %d (FbaToken=%v Accept=%q)", resp.Request.Method, p, resp.StatusCode, resp.Request.Header.Get("FbaToken") != "", resp.Request.Header.Get("Accept"))
+			}
 		}
 		ct := resp.Header.Get("Content-Type")
 		enc := resp.Header.Get("Content-Encoding")

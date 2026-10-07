@@ -667,6 +667,7 @@ func preparePanelRequest(w http.ResponseWriter, r *http.Request, cfg Config) (To
 		if strings.Contains(strings.ToLower(r.URL.Path), "favicon") {
 			return ToolAccount{}, r, false
 		}
+		log.Printf("[PANEL] access denied path=%s err=%v", r.URL.Path, err)
 		panelAccessDenied(w, cfg)
 		return ToolAccount{}, r, true
 	}

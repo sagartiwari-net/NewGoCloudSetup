@@ -48,16 +48,19 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		sess.proof = proof
 		return nil
 	}
-	if sess.proof != proof || sess.fp != fp {
+	// Proof is the real device secret. Canvas/UA fingerprint drifts across reloads
+	// and must NOT kill the session (that caused dashboard API 403 Access Denied).
+	if sess.proof != proof {
 		panelSess.Delete(sessionToken)
 		return fmt.Errorf("device mismatch")
 	}
+	sess.fp = fp
 	return nil
 }
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "manifest", "audio", "video", "object", "track":
 		return true
 	}
 	return false
@@ -95,6 +98,15 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !bound {
 		return false
 	}
+	// Matching proof is enough — fingerprint noise must not trip this gate.
+	if proof != "" && proof == storedProof {
+		if fp != "" && fp != storedFp {
+			sess.mu.Lock()
+			sess.fp = fp
+			sess.mu.Unlock()
+		}
+		return false
+	}
 	if fp == storedFp && proof == storedProof {
 		return false
 	}
@@ -102,10 +114,17 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
+		// Document / static loads cannot send custom headers.
 		if isDocumentNavigation(r) {
+			return false
+		}
+		// Angular boots and fires dashboard XHR before tmPatchRequests runs.
+		// Blocking those with 401 made widgets show "error loading your data"
+		// while official my.zonguru.com (no device gate) worked fine.
+		site := strings.ToLower(r.Header.Get("Sec-Fetch-Site"))
+		dest := strings.ToLower(r.Header.Get("Sec-Fetch-Dest"))
+		if site == "same-origin" || site == "same-site" || site == "" || dest == "empty" {
+			log.Printf("[DEVICE] soft-allow path=%s dest=%s site=%s", r.URL.Path, dest, site)
 			return false
 		}
 		log.Printf("[DEVICE] required path=%s", r.URL.Path)
@@ -290,20 +309,28 @@ function tmWatch(fp, proof) {
     return;
   }
   tmReveal();
-  if (fp && proof) { tmPatchRequests(fp, proof); tmWatch(fp, proof); }
+  // Prefer stable stored fingerprint — recalculating canvas every load killed sessions.
+  function useFp(next) {
+    fp = next || fp;
+    try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+    tmPatchRequests(fp, proof);
+    tmWatch(fp, proof);
+  }
+  if (fp && proof) { useFp(fp); }
   else if (window.fetch) {
     window.__tmOrigFetch = window.fetch;
     window.fetch = function () {
       var self = this;
       var args = arguments;
       return tmFingerprint().then(function (next) {
-        try { sessionStorage.setItem("tm_device_fp", next); localStorage.setItem("tm_device_fp", next); } catch (e) {}
-        tmPatchRequests(next, proof);
+        useFp(next);
         return window.fetch.apply(self, args);
       });
     };
   }
-  tmFingerprint().then(function (fp) {
+  var fpReady = fp ? Promise.resolve(fp) : tmFingerprint();
+  fpReady.then(function (next) {
+    fp = next || fp;
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
     return tmStore(fp, proof).then(function () {
       return fetch("/api/device-bind", {
@@ -312,9 +339,8 @@ function tmWatch(fp, proof) {
         headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
       }).then(function () { return fp; });
     });
-  }).then(function (fp) {
-    tmPatchRequests(fp, proof);
-    tmWatch(fp, proof);
+  }).then(function (next) {
+    useFp(next);
     if (!navigator.serviceWorker) return;
     navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
       return navigator.serviceWorker.ready;
