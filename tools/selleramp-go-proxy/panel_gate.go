@@ -335,6 +335,18 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 	return acc, nil
 }
 
+// loadActivePanelAccount returns one active mapped account without touching last_used_at.
+// Used for CSS/JS/image requests when the browser jar failed to keep ct_session.
+func loadActivePanelAccount(cfg Config) (ToolAccount, error) {
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	return scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+}
+
 // loadPanelSessionAccount uses the account pinned on the live session.
 // assigned_account_id 0 means auto: claim the least recently used account and pin it.
 func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, error) {

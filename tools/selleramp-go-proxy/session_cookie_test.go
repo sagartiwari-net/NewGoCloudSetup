@@ -133,6 +133,24 @@ func TestCtSessionCandidatesPrefersBootstrapQuery(t *testing.T) {
 	}
 }
 
+func TestIsStaticAssetPath(t *testing.T) {
+	for _, p := range []string{
+		"/assets/5d8cc971b-cc3951233e.css",
+		"/images/sas-logo-color-228x30.png",
+		"/js/app.js",
+		"/favicon.ico",
+	} {
+		if !isStaticAssetPath(p) {
+			t.Fatalf("expected static: %s", p)
+		}
+	}
+	for _, p := range []string{"/", "/r/sas/lookup", "/api/device-bind"} {
+		if isStaticAssetPath(p) {
+			t.Fatalf("expected non-static: %s", p)
+		}
+	}
+}
+
 func TestClearParentDomainDoesNotExpireHost(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

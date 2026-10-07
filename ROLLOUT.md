@@ -119,7 +119,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
 - [x] `erank` — eRank (:5191) — **READY / HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
-- [ ] `selleramp` — SellerAmp (:5161) — **fix pending redeploy**: `?__tm_s=` bootstrap + sessionStorage (cookie jar full ~60); H2 strip + `/r/sas`→`/sas`
+- [ ] `selleramp` — SellerAmp (:5161) — **fix pending redeploy**: `?__tm_s=` bootstrap + static `/assets|/images` auth bypass (jar drops `ct_session`); H2 strip + `/r/sas`→`/sas`
 > **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`).  
 > Binaries built **before** `fad80ac` → Access Denied.  
 > **Already OK (skip rebuild):** `refs` `smrs` `cgpt` `clud` `envt` `cnva`  
@@ -222,7 +222,7 @@ If fail: note in “Open issues”, fix, re-tick.
 |------|--------|--------|
 | `branalyzer` | Be Curious → snack “Introduce any valid URL or domain” on `branalyzer.gt4rents.com` (home OK; local `59905db` worked) | **Parked.** Resume later: compare server main.js patch + searchText/DOM vs local; wipe `cdn-cache`; hard-refresh |
 | `chatbotapp` | `/api/v2/chat` → 4002 `x_token header is required` (sidebar/history OK; `91f9ad8` inject) | **Parked.** Resume later: confirm panel GoAuto has IndexedDB `stsTokenManager`; check `[CHATBOT] api auth OK` in app.log |
-| `selleramp` | Panel Active Login OK; tool `session not found` with orphan cookie (jar ~60) | **Fix ready (push+redeploy).** Boot → `/?__tm_s=` + sessionStorage retry |
+| `selleramp` | HTML boots via `__tm_s` but CSS/JS 401 (unstyled) — jar drops cookie on assets | **Fix ready (push+redeploy).** Static path auth bypass + jar clear on bootstrap |
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `mgfc` (Magnific) | `/photos` still WAF if someone bypasses redirect | **OK on `mgfc`**; `/photos` → `/people-emotions` |

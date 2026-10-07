@@ -2045,7 +2045,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 1. Authenticate user (require ct_session cookie / ?__tm_s= / header) ─────
-	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
+	isStatic := isStaticAssetPath(path)
 	bootTok := strings.TrimSpace(r.URL.Query().Get("__tm_s"))
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
 	if authErr == nil && bootTok != "" {
@@ -2053,7 +2053,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		commitPanelSessionCookie(w, r, cfg, bootTok)
 		log.Printf("[PANEL] bootstrap ok user=%s via __tm_s", currentUser)
 	}
-	if authErr != nil && !isFavicon {
+	if authErr != nil && !isStatic {
 		cands := ctSessionCandidates(r)
 		hasCt := len(cands) > 0
 		tokPrefix := ""
@@ -2090,8 +2090,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if isFavicon && authErr != nil {
-		currentUser = "guest_favicon"
+	if isStatic && authErr != nil {
+		// CSS/JS/images arrive without ?__tm_s=; cookie jar often dropped ct_session.
+		currentUser = "guest_static"
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
@@ -2120,8 +2121,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if usesPanelAccountMode(cfg) {
 		name, sessionErr := panelSessionUsername(r)
 		if sessionErr != nil {
-			if strings.Contains(strings.ToLower(path), "favicon") {
-				activeAcc = ToolAccount{}
+			if isStatic {
+				var peekErr error
+				activeAcc, peekErr = loadActivePanelAccount(cfg)
+				if peekErr != nil {
+					log.Printf("[PANEL] static asset account unavailable path=%s: %v", path, peekErr)
+					http.Error(w, "Not Found", http.StatusNotFound)
+					return
+				}
 			} else {
 				renderAccessDeniedPage(w, cfg)
 				return

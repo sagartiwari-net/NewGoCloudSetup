@@ -105,16 +105,21 @@ func clearStaleCtSessionCookies(w http.ResponseWriter, r *http.Request, cfg Conf
 }
 
 // expireProxyHostJunkCookies clears non-session cookies the browser already sent
-// for this host (SellerAmp SPA pollution). Cap count so we do not flood Set-Cookie
-// headers (nginx/browsers drop the live ct_session when dozens of clears ship).
+// for this host (SellerAmp SPA pollution).
 func expireProxyHostJunkCookies(w http.ResponseWriter, r *http.Request, cfg Config) {
+	expireProxyHostJunkCookiesN(w, r, cfg, 24)
+}
+
+func expireProxyHostJunkCookiesN(w http.ResponseWriter, r *http.Request, cfg Config, maxExpire int) {
 	if r == nil {
 		return
+	}
+	if maxExpire <= 0 {
+		maxExpire = 24
 	}
 	secure := cookieSecure(r, cfg)
 	seen := map[string]bool{}
 	n := 0
-	const maxExpire = 24
 	for _, c := range r.Cookies() {
 		if c == nil || n >= maxExpire {
 			break
@@ -148,8 +153,34 @@ func commitPanelSessionCookie(w http.ResponseWriter, r *http.Request, cfg Config
 	exp := sess.expires
 	sess.mu.Unlock()
 	clearParentDomainCtSessionCookies(w, r, cfg)
-	expireProxyHostJunkCookies(w, r, cfg)
+	// Free as many jar slots as practical before writing ct_session last.
+	expireProxyHostJunkCookiesN(w, r, cfg, 80)
 	setCtSessionCookie(w, r, cfg, sessionToken, exp)
+}
+
+// isStaticAssetPath is CSS/JS/images/fonts — browser requests these without
+// ?__tm_s= or X-Ct-Session, and a full cookie jar often drops ct_session.
+func isStaticAssetPath(path string) bool {
+	p := strings.ToLower(strings.TrimSpace(path))
+	if p == "" {
+		return false
+	}
+	if strings.Contains(p, "favicon") {
+		return true
+	}
+	prefixes := []string{"/assets/", "/images/", "/img/", "/fonts/", "/static/", "/css/", "/js/", "/media/", "/build/"}
+	for _, pre := range prefixes {
+		if strings.HasPrefix(p, pre) {
+			return true
+		}
+	}
+	exts := []string{".css", ".js", ".mjs", ".map", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".otf"}
+	for _, ext := range exts {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func bindPanelDevice(sessionToken, fp, proof string) error {
