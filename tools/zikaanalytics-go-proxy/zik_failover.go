@@ -137,11 +137,18 @@ func serveZikCookieExpired(w http.ResponseWriter, cfg Config, currentUser, accou
 	if acc == "" {
 		acc = "mapped account"
 	}
+	msg := "The Zik account"
+	if acc != "mapped account" {
+		msg += " (<b>" + acc + "</b>)"
+	}
+	msg += " session is dead for research tools (Unauthorized — please log in again). " +
+		"<b>Admin:</b> open Zik in a real browser, export fresh GoAuto cookies (cookies + localStorage), " +
+		"paste into the panel account, then open a <b>new</b> access link."
 	writeLightCard(w, http.StatusOK, lightCard{
 		Title:   "Contact Admin",
-		Heading: "Session unavailable",
-		Message: "The Zik account (<b>" + acc + "</b>) is logged out or the cookie expired. <b>Contact your admin</b> to refresh the cookie in the panel, then open a new access link.",
-		Badge:   "No other account available",
+		Heading: "Zik cookies need refresh",
+		Message: msg,
+		Badge:   "Dashboard may look OK — research APIs rejected",
 		Footer:  "This page will not auto-refresh",
 		Spin:    false,
 	})
@@ -277,6 +284,11 @@ func zikLoginWatchScript(cfg Config) string {
   setInterval(function(){
     if (wallPath() || wallText()) switchAccount("zik_login_text");
   }, 1500);
+  function researchPath(path){
+    return path.indexOf("competitior") !== -1 || path.indexOf("productresearch") !== -1 ||
+      path.indexOf("watchlist") !== -1 || path.indexOf("itemmanagement") !== -1 ||
+      path.indexOf("productexplorer") !== -1 || path.indexOf("trendingproducts") !== -1;
+  }
   var fo = window.fetch;
   if (typeof fo === "function") {
     window.fetch = function(input, init){
@@ -288,6 +300,14 @@ func zikLoginWatchScript(cfg Config) string {
           var path = (url || "").split("?")[0].toLowerCase();
           // BestSellers / weekly widget 401 is normal noise — never count as logout.
           if (path.indexOf("bestsellers") !== -1 || path.indexOf("weeklybestsellers") !== -1) return res;
+          if ((res.status === 401 || res.status === 403) && researchPath(path)) {
+            res.clone().text().then(function(t){
+              t = (t || "").toLowerCase();
+              if (t.indexOf("please log in again") !== -1 || t.indexOf("must be authenticated") !== -1) {
+                switchAccount("zik_session_dead");
+              }
+            }).catch(function(){});
+          }
           // Only real auth endpoints — not every /Dashboard/* widget.
           var authPath = path.indexOf("/user/") !== -1 || path.indexOf("/user?") !== -1 ||
             path.indexOf("/account") !== -1 || path.indexOf("/auth") !== -1 ||

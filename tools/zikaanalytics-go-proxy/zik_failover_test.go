@@ -77,3 +77,12 @@ func TestZikNoisyWidget401(t *testing.T) {
 		t.Fatal("GetStore is not a noisy widget")
 	}
 }
+
+func TestZikLooksLoggedOutBody(t *testing.T) {
+	if !zikLooksLoggedOutBody([]byte(`{"message": "Unauthorized. Please log in again."}`)) {
+		t.Fatal("expected login-again body")
+	}
+	if zikLooksLoggedOutBody([]byte(`{"items":[]}`)) {
+		t.Fatal("empty items is not logged out")
+	}
+}
