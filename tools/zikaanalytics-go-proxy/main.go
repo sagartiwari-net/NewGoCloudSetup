@@ -1980,10 +1980,22 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// ── 4b. Login wall → next account (panel) ─────────────────────────────────────
+	// ── 4b. Login wall ────────────────────────────────────────────────────────────
+	// Explicit failover reason (from our JS) → account switch / cookie-expired page.
+	// Bare /login from SPA → rewrite to dashboard in-place (NO 302 — 302 caused reload loop).
 	if usesPanelAccountMode(cfg) && currentUser != "" && zikLoginDocument(r, path) {
-		serveZikAccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc, "zik_login_path")
-		return
+		reason := strings.TrimSpace(r.URL.Query().Get("reason"))
+		if reason != "" && reason != "zik_login_path" {
+			serveZikAccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc, reason)
+			return
+		}
+		home := cfg.HomePath
+		if home == "" {
+			home = "/dashboard"
+		}
+		log.Printf("[FAILOVER] rewrite /login → %s in-place user=%s (no 302)", home, currentUser)
+		path = home
+		r.URL.Path = home
 	}
 
 	// ── 5. Build upstream request ─────────────────────────────────────────────────
@@ -1996,6 +2008,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamURL := *r.URL
 	upstreamURL.Scheme = targetParsed.Scheme
 	upstreamURL.Host = targetParsed.Host
+	upstreamURL.Path = path
+	upstreamURL.RawQuery = r.URL.RawQuery
 
 	// Handle CDN proxy routes
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
@@ -2155,6 +2169,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[PROXY] Upstream response: %d for %s", upstreamResp.StatusCode, path)
 	defer upstreamResp.Body.Close()
+
+	// Soften non-critical API 401/403 so SPA axios interceptors don't bounce to /login.
+	if isExtraCDN && zikSoftenAPIUnauthorized(path, upstreamResp.StatusCode) {
+		bodyBytes, _ := io.ReadAll(upstreamResp.Body)
+		log.Printf("[ZIK_AUTH] soften %d → 200 empty for %s (body %d bytes)", upstreamResp.StatusCode, path, len(bodyBytes))
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+		return
+	}
 
 	// ── 7. Handle Set-Cookie from upstream ───────────────────────────────────────
 	reDomain := regexp.MustCompile(`(?i)domain=[^;]+;?\s*`)

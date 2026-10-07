@@ -162,14 +162,6 @@ func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	log.Printf("[ZIK_AUTH] user=%s account=%s bearer=%v sessionCookie=%v jwtExpired=%v reason=%s",
 		currentUser, activeAcc.Name, bearerOK, sessionOK, expired, reason)
 
-	// Soft bounce: SPA navigated to /login without an explicit failover reason.
-	// Don't rotate — send them home so HTML+localStorage inject can run.
-	if reason == "" || reason == "zik_login_path" {
-		log.Printf("[FAILOVER] soft-redirect /login → %s user=%s (no rotate)", home, currentUser)
-		http.Redirect(w, r, home, http.StatusFound)
-		return
-	}
-
 	heading := "Switching account"
 	message := "This account signed out. Trying the next available account."
 	redirect := home
@@ -206,6 +198,21 @@ func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	})
 }
 
+func zikSoftenAPIUnauthorized(path string, status int) bool {
+	if status != http.StatusUnauthorized && status != http.StatusForbidden {
+		return false
+	}
+	p := strings.ToLower(path)
+	if !strings.HasPrefix(p, "/extra-cdn-") {
+		return false
+	}
+	// Keep hard failures for real auth endpoints if they appear under extra-cdn.
+	if strings.Contains(p, "/login") || strings.Contains(p, "/signin") || strings.Contains(p, "/token") {
+		return false
+	}
+	return true
+}
+
 func zikLoginWatchScript(cfg Config) string {
 	home := cfg.HomePath
 	if home == "" {
@@ -218,6 +225,9 @@ func zikLoginWatchScript(cfg Config) string {
   var HOME = %q;
   var switching = false;
   var apiFail = 0;
+  function hasAccess(){
+    try { return !!(localStorage.getItem("access") || ""); } catch (e) { return false; }
+  }
   function wallText(){
     var text = "";
     try { text = (document.body && (document.body.innerText || document.body.textContent)) || ""; } catch (e) {}
@@ -232,8 +242,53 @@ func zikLoginWatchScript(cfg Config) string {
     return path === "/login" || path === "/signin" || path === "/sign-in" ||
       path.indexOf("/login/") === 0 || path.indexOf("/signin/") === 0;
   }
+  function isLoginURL(u){
+    if (!u) return false;
+    var s = String(u);
+    try {
+      var path = s.indexOf("http") === 0 ? (new URL(s, location.origin)).pathname : s.split("?")[0];
+      path = (path || "/").replace(/\/$/, "") || "/";
+      return path === "/login" || path === "/signin" || path === "/sign-in" ||
+        path.indexOf("/login/") === 0 || path.indexOf("/signin/") === 0;
+    } catch (e) { return s.indexOf("/login") !== -1; }
+  }
+  // Keep URL on dashboard when SPA tries to route to /login (mapped session is valid).
+  function guardLoginNav(){
+    if (!hasAccess()) return;
+    if (wallPath()) {
+      try { history.replaceState(null, "", HOME); } catch (e) {}
+    }
+  }
+  try {
+    var _ps = history.pushState.bind(history);
+    var _rs = history.replaceState.bind(history);
+    history.pushState = function(state, title, url){
+      if (hasAccess() && isLoginURL(url)) url = HOME;
+      return _ps(state, title, url);
+    };
+    history.replaceState = function(state, title, url){
+      if (hasAccess() && isLoginURL(url)) url = HOME;
+      return _rs(state, title, url);
+    };
+  } catch (e) {}
+  try {
+    var _la = Location.prototype.assign;
+    var _lr = Location.prototype.replace;
+    Location.prototype.assign = function(u){
+      if (hasAccess() && isLoginURL(u)) u = HOME;
+      return _la.call(this, u);
+    };
+    Location.prototype.replace = function(u){
+      if (hasAccess() && isLoginURL(u)) u = HOME;
+      return _lr.call(this, u);
+    };
+  } catch (e) {}
+  guardLoginNav();
+  setInterval(guardLoginNav, 800);
   function switchAccount(reason){
-    if (switching || wallPath()) return;
+    if (switching) return;
+    // Only rotate on a real login wall, never on a transient /login route flicker.
+    if (!wallText()) return;
     switching = true;
     location.replace("/login?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "zik_login_wall"));
   }
@@ -244,13 +299,14 @@ func zikLoginWatchScript(cfg Config) string {
     if (!token) return init;
     init = init ? Object.assign({}, init) : {};
     var headers = init.headers ? new Headers(init.headers) : new Headers();
-    if (!headers.has("Authorization")) headers.set("Authorization", "Bearer " + token);
+    headers.set("Authorization", "Bearer " + token);
     init.headers = headers;
     return init;
   }
   setInterval(function(){
-    if (wallPath() || wallText()) switchAccount("zik_login_text");
-  }, 2500);
+    // Do NOT treat wallPath alone as logout — that caused /login↔/dashboard storms.
+    if (wallText()) switchAccount("zik_login_text");
+  }, 4000);
   var fo = window.fetch;
   if (typeof fo === "function") {
     window.fetch = function(input, init){
@@ -266,7 +322,7 @@ func zikLoginWatchScript(cfg Config) string {
             path.indexOf("/session") !== -1 || path.indexOf("/subscriber") !== -1;
           if ((res.status === 401 || res.status === 403) && authPath) {
             apiFail += 1;
-            if (apiFail >= 3 && wallText()) switchAccount("zik_api_" + res.status);
+            if (apiFail >= 5 && wallText()) switchAccount("zik_api_" + res.status);
           } else if (res.ok && authPath) {
             apiFail = 0;
           }

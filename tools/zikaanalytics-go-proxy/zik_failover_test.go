@@ -30,6 +30,18 @@ func TestZikJWTExpired(t *testing.T) {
 	}
 }
 
+func TestZikSoftenAPIUnauthorized(t *testing.T) {
+	if !zikSoftenAPIUnauthorized("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers", 401) {
+		t.Fatal("expected soften")
+	}
+	if zikSoftenAPIUnauthorized("/dashboard", 401) {
+		t.Fatal("should not soften app HTML")
+	}
+	if zikSoftenAPIUnauthorized("/extra-cdn-0/auth/login", 401) {
+		t.Fatal("should not soften login")
+	}
+}
+
 func TestZikRewriteLoginLocation(t *testing.T) {
 	cfg := Config{HomePath: "/dashboard"}
 	if got := zikRewriteLoginLocation("https://app.zikanalytics.com/login", cfg); got != "/dashboard" {
