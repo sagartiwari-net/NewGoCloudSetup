@@ -186,7 +186,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `pixlr` (:4901)  
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
 - [ ] `ppspy` (:4961)  
-- [ ] `prezi` (:4751) — **IN PROGRESS** (2026-10-07): stronger chrome — `Name-sc-*` → panel user; document-capture block avatar/name click; remove only `UserDropdown` popup from DOM  
+- [ ] `prezi` (:4751) — **IN PROGRESS** (2026-10-08): chrome username/dropdown; **device soft-allow** for `/extra-cdn-*` + same-origin XHR (was intermittent `device_required` 401 → Craft stuck on “Laying out the canvas”)  
 
 
 - [ ] `rivalflow` (:4811)  

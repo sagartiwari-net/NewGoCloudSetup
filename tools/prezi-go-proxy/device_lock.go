@@ -57,7 +57,23 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "audio", "video", "empty", "worker":
+		return true
+	}
+	path := strings.ToLower(r.URL.Path)
+	// Prezi Craft posts to /extra-cdn-N/... (collab, log/json, assets). Workers and
+	// early XHR often omit X-Device-* → hard 401 froze "Laying out the canvas".
+	if strings.HasPrefix(path, "/extra-cdn-") ||
+		strings.HasPrefix(path, "/cdn-proxy/") ||
+		strings.HasPrefix(path, "/cdn-cgi/") ||
+		strings.HasPrefix(path, "/static") ||
+		path == "/favicon.ico" ||
+		strings.HasSuffix(path, ".js") ||
+		strings.HasSuffix(path, ".css") ||
+		strings.HasSuffix(path, ".woff") ||
+		strings.HasSuffix(path, ".woff2") ||
+		strings.HasSuffix(path, ".map") ||
+		strings.HasSuffix(path, ".json") {
 		return true
 	}
 	return false
@@ -81,6 +97,12 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !usesPanelAccountMode(cfg) {
 		return false
 	}
+	// Session cookie is enough for same-origin API/CDN; device proof still gates
+	// document navigations (stops shared cookie jars opening a fresh tab).
+	path := r.URL.Path
+	if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/extra-cdn-") {
+		return false
+	}
 	token, sess, ok := sessionFromRequest(r)
 	if !ok || sess == nil {
 		return false
@@ -95,6 +117,15 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !bound {
 		return false
 	}
+	// Matching proof is enough — fingerprint noise must not trip this gate.
+	if proof != "" && proof == storedProof {
+		if fp != "" && fp != storedFp {
+			sess.mu.Lock()
+			sess.fp = fp
+			sess.mu.Unlock()
+		}
+		return false
+	}
 	if fp == storedFp && proof == storedProof {
 		return false
 	}
@@ -102,10 +133,16 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
+		// Document / static loads cannot send custom headers.
 		if isDocumentNavigation(r) {
+			return false
+		}
+		// Craft SPA fires XHR/fetch before tmPatchRequests finishes (or from
+		// workers). Soft-allow same-origin so canvas generation does not hang.
+		site := strings.ToLower(r.Header.Get("Sec-Fetch-Site"))
+		dest := strings.ToLower(r.Header.Get("Sec-Fetch-Dest"))
+		if site == "same-origin" || site == "same-site" || site == "" || dest == "empty" {
+			log.Printf("[DEVICE] soft-allow path=%s dest=%s site=%s", r.URL.Path, dest, site)
 			return false
 		}
 		log.Printf("[DEVICE] required path=%s", r.URL.Path)
