@@ -2048,8 +2048,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if authErr != nil && !isFavicon {
 		cands := ctSessionCandidates(r)
 		hasCt := len(cands) > 0
-		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v ct_candidates=%d",
-			path, r.Host, authErr, currentWebsiteID, hasCt, len(cands))
+		tokPrefix := ""
+		if len(cands) > 0 && len(cands[0]) >= 8 {
+			tokPrefix = cands[0][:8]
+		} else if len(cands) > 0 {
+			tokPrefix = cands[0]
+		}
+		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v ct_candidates=%d tok=%s…",
+			path, r.Host, authErr, currentWebsiteID, hasCt, len(cands), tokPrefix)
 		// Orphan / parent-domain ct_session blocks a fresh /access Set-Cookie.
 		if hasCt && (strings.Contains(authErr.Error(), "session not found") || strings.Contains(authErr.Error(), "session ended") || strings.Contains(authErr.Error(), "missing session")) {
 			clearStaleCtSessionCookies(w, r, cfg)

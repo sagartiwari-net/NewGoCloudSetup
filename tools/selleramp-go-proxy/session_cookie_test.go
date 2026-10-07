@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,11 +88,11 @@ func TestSessionEnterSetsCookieAndRedirects(t *testing.T) {
 	rec := httptest.NewRecorder()
 	sessionEnterHandler(rec, req)
 
-	if rec.Code != http.StatusFound {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if loc := rec.Header().Get("Location"); loc != "/" {
-		t.Fatalf("Location=%q", loc)
+	if !strings.Contains(rec.Body.String(), `location.replace("/")`) {
+		t.Fatalf("missing JS redirect, body=%s", rec.Body.String())
 	}
 	cookies := rec.Result().Cookies()
 	found := false
