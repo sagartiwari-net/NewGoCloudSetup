@@ -54,6 +54,9 @@ func sscLooksLoggedOut(path string, body []byte, status int, location string) (b
 	if len(low) > 14000 {
 		low = low[:14000]
 	}
+	if strings.Contains(low, "cannot get user data") {
+		return true, "html:cannot_get_user_data"
+	}
 	pairs := [][2]string{
 		{"sign in", "password"},
 		{"log in", "password"},
@@ -62,6 +65,7 @@ func sscLooksLoggedOut(path string, body []byte, status int, location string) (b
 		{"sign in to seo", "email"},
 		{"auth/login", "password"},
 		{"invalid domain for site key", "password"},
+		{"invalid domain for site key", "login"},
 	}
 	for _, pair := range pairs {
 		if strings.Contains(low, pair[0]) && strings.Contains(low, pair[1]) {
@@ -69,6 +73,27 @@ func sscLooksLoggedOut(path string, body []byte, status int, location string) (b
 		}
 	}
 	return false, ""
+}
+
+// sscConfirmedLoginWall — document/SPA landed on real login UI; unexpired JWT must not skip mark.
+func sscConfirmedLoginWall(reason string) bool {
+	r := strings.ToLower(strings.TrimSpace(reason))
+	if r == "" {
+		return false
+	}
+	if strings.HasPrefix(r, "url:") || strings.HasPrefix(r, "redirect:") || strings.HasPrefix(r, "html:") {
+		return true
+	}
+	markers := []string{
+		"client_wall", "client_login", "client_cannot_get_user",
+		"cannot_get_user", "auth/login", "login_wall",
+	}
+	for _, m := range markers {
+		if strings.Contains(r, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // sscIamStillAlive: refresh_token still works → do NOT mark logged_out / contact-admin.
@@ -172,9 +197,11 @@ func serveSscCookieFailover(w http.ResponseWriter, r *http.Request, cfg Config, 
 		activeAcc = reloaded
 	}
 
-	// Fresh panel cookie / working refresh_token → bounce home, never mark logged_out.
-	// client_path + API 401 false positives were killing good cookies.
-	if sscIamStillAlive(activeAcc.Cookie) {
+	confirmed := sscConfirmedLoginWall(reason)
+
+	// Ambiguous signals only: unexpired JWT → bounce home (API 401 false positives).
+	// Confirmed /auth/login wall must mark logged_out even if JWT exp is still in the future.
+	if !confirmed && sscIamStillAlive(activeAcc.Cookie) {
 		clearSscIamCache(cfg)
 		log.Printf("[FAILOVER] IAM still alive — skip logged_out mark user=%s account=%s reason=%s → %s",
 			currentUser, activeAcc.Name, reason, home)
@@ -182,9 +209,15 @@ func serveSscCookieFailover(w http.ResponseWriter, r *http.Request, cfg Config, 
 		return
 	}
 
-	// Panel cookie just updated → one revive before marking logged_out.
-	if trySscPanelRevive(w, r, cfg, sessionToken, currentUser, activeAcc) {
-		return
+	// Soft revive only for ambiguous signals. Confirmed /auth/login must mark
+	// logged_out on first pass (revive+home loop left panel status stuck on active).
+	if !confirmed {
+		if trySscPanelRevive(w, r, cfg, sessionToken, currentUser, activeAcc) {
+			return
+		}
+	} else {
+		log.Printf("[FAILOVER] confirmed login wall — will mark logged_out user=%s account=%s reason=%s",
+			currentUser, activeAcc.Name, reason)
 	}
 
 	// Switch FIRST while current is still claimable as fallback; then mark old logged_out.
@@ -260,6 +293,7 @@ func sscFailoverWatchScript() string {
   if (window.__tmSscFailoverWatch) return;
   window.__tmSscFailoverWatch = true;
   var authSince = 0;
+  var hits = 0;
   function go(reason){
     if (window.__tmSscFailing) return;
     window.__tmSscFailing = true;
@@ -269,35 +303,42 @@ func sscFailoverWatchScript() string {
   function onAuthPath(){
     try {
       var h = location.pathname || '';
-      return /\\/auth\\/(login|sign-?in|sign-?up)/i.test(h) || /^\\/(login|sign-?in|sign-?up)(\\/|$)/i.test(h);
+      return /\/auth\/(login|sign-?in|sign-?up)/i.test(h) || /^\/(login|sign-?in|sign-?up)(\/|$)/i.test(h);
     } catch (e) { return false; }
+  }
+  function pageText(){
+    try {
+      return (document.body && document.body.innerText || '').replace(/\s+/g,' ').trim().slice(0,1600).toLowerCase();
+    } catch (e) { return ''; }
   }
   function looksWall(){
     try {
-      var t = (document.body && document.body.innerText || '').replace(/\\s+/g,' ').trim().slice(0,1200).toLowerCase();
+      var t = pageText();
       if (!t) return false;
+      if (t.indexOf('cannot get user data') !== -1) return true;
+      if (t.indexOf('invalid domain for site key') !== -1) return true;
       if (t.indexOf('password') < 0) return false;
-      return /sign in|log in|\\blogin\\b|email address|invalid domain for site key/.test(t);
+      return /sign in|log in|\blogin\b|email address/.test(t);
     } catch (e) { return false; }
   }
   function looksLogout(){
     try {
-      if (!onAuthPath()) { authSince = 0; return ''; }
+      if (!onAuthPath()) { authSince = 0; hits = 0; return ''; }
       if (!authSince) authSince = Date.now();
-      // Soft SPA route to /auth/login — do not wait long; official login has no our card.
-      if (Date.now() - authSince < 1200) return '';
+      if (Date.now() - authSince < 600) return '';
       if (looksWall()) return 'wall';
     } catch (e) {}
     return '';
   }
   function tick(){
     var why = looksLogout();
-    if (why) go('client_' + why);
+    if (!why) { hits = 0; return; }
+    hits++;
+    if (hits >= 1) go('client_' + why);
   }
-  // Immediate kick if already parked on login wall (soft-nav).
-  if (onAuthPath()) setTimeout(tick, 800);
-  setTimeout(tick, 1500);
-  setInterval(tick, 2000);
+  if (onAuthPath()) setTimeout(tick, 500);
+  setTimeout(tick, 1200);
+  setInterval(tick, 1800);
   try {
     var _push = history.pushState;
     var _replace = history.replaceState;

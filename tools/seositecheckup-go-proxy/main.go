@@ -3427,14 +3427,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			serveSscCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
 			return
 		}
-		// IAM may still be alive — send home instead of sticky contact-admin.
-		if sscIamStillAlive(activeAcc.Cookie) {
-			home := cfg.HomePath
-			if home == "" {
-				home = "/dashboard"
-			}
-			http.Redirect(w, r, home, http.StatusFound)
-			return
+		// Sticky /auth/login — ensure panel status flips even if failover already ran.
+		if activeAcc.ID > 0 {
+			panelMarkAccountLoggedOut(cfg, activeAcc.ID, why)
 		}
 		renderSscContactAdmin(w, cfg, why)
 		return
