@@ -2067,13 +2067,34 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Buffer body so Content-Length is exact. Chunked/empty POST bodies make
+	// Zik's ASP.NET API return 415 Unsupported Media Type on product search.
+	var reqBody io.Reader = r.Body
+	var reqBodyBytes []byte
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Body != nil {
+		var readErr error
+		reqBodyBytes, readErr = io.ReadAll(io.LimitReader(r.Body, 32<<20))
+		_ = r.Body.Close()
+		if readErr != nil {
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
+		}
+		reqBody = bytes.NewReader(reqBodyBytes)
+	}
+
 	upstreamReq, err := http.NewRequestWithContext(
 		context.WithValue(r.Context(), proxyContextKey, activeAcc.Proxy),
-		r.Method, upstreamURL.String(), r.Body,
+		r.Method, upstreamURL.String(), reqBody,
 	)
 	if err != nil {
 		http.Error(w, "Failed to build upstream request", http.StatusInternalServerError)
 		return
+	}
+	if reqBodyBytes != nil {
+		upstreamReq.ContentLength = int64(len(reqBodyBytes))
+		upstreamReq.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(reqBodyBytes)), nil
+		}
 	}
 
 	// Copy headers (skip hop-by-hop — HTTP/2 rejects Connection: upgrade from nginx)
@@ -2088,6 +2109,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, v := range vv {
 			upstreamReq.Header.Add(k, v)
+		}
+	}
+	if reqBodyBytes != nil {
+		upstreamReq.Header.Set("Content-Length", strconv.FormatInt(int64(len(reqBodyBytes)), 10))
+		// Empty/missing Content-Type on JSON POST → ASP.NET 415.
+		if upstreamReq.Header.Get("Content-Type") == "" && len(reqBodyBytes) > 0 {
+			ct := http.DetectContentType(reqBodyBytes)
+			if strings.HasPrefix(strings.TrimSpace(string(reqBodyBytes)), "{") ||
+				strings.HasPrefix(strings.TrimSpace(string(reqBodyBytes)), "[") {
+				ct = "application/json; charset=utf-8"
+			}
+			upstreamReq.Header.Set("Content-Type", ct)
 		}
 	}
 
@@ -2114,9 +2147,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Always prefer the mapped account access JWT. Browser localStorage can keep a stale token
 	// that Zik rejects with 401 and then the SPA bounces to /login.
+	browserAuth := strings.TrimSpace(upstreamReq.Header.Get("Authorization"))
 	bearer := zikAuthBearerFromAccount(activeAcc.Cookie)
 	if bearer != "" {
 		upstreamReq.Header.Set("Authorization", "Bearer "+bearer)
+	} else if browserAuth != "" {
+		// Panel dump missing localStorage.access — keep browser Authorization as last resort.
+		log.Printf("[ZIK_AUTH] no account bearer; using browser Authorization for %s", path)
 	}
 	if path == cfg.HomePath || path == "/dashboard" || path == "/" {
 		bOK, sOK, exp := zikAuthDiag(activeAcc.Cookie)
@@ -2225,11 +2262,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if zikShouldDiagUpstream(upstreamResp.StatusCode, path) {
-		// Peek is deferred — full body logged later for JSON paths when rewritten.
+		respBytes, _ := io.ReadAll(upstreamResp.Body)
+		upstreamResp.Body = io.NopCloser(bytes.NewReader(respBytes))
+		hasSession := strings.Contains(strings.ToLower(upstreamReq.Header.Get("Cookie")), "sessiontoken=")
+		detail := fmt.Sprintf("host=%s bearer=%v sessionCookie=%v reqCT=%q cl=%d body=%s",
+			upstreamReq.Host, bearer != "", hasSession,
+			upstreamReq.Header.Get("Content-Type"), upstreamReq.ContentLength,
+			snippetForLog(respBytes, upstreamResp.Header.Get("Content-Type")))
+		log.Printf("[NET] %s %s → %d %s", r.Method, path, upstreamResp.StatusCode, detail)
 		pushProxyLog(ProxyLogEntry{
 			Source: "NET", Level: "warn", Method: r.Method, Path: path, Status: upstreamResp.StatusCode,
-			User: currentUser, Account: activeAcc.Name,
-			Detail: fmt.Sprintf("upstream host=%s bearer=%v", upstreamReq.Host, bearer != ""),
+			User: currentUser, Account: activeAcc.Name, Detail: detail,
 		})
 	}
 

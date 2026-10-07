@@ -471,21 +471,21 @@ function tmStore(fp, proof) {
 function tmPatchRequests(fp, proof) {
   if (window.__tmDevicePatched) return;
   window.__tmDevicePatched = true;
-  var origFetch = window.__tmOrigFetch || window.fetch;
+  // Chain current fetch (soft401 / URL patch). Never jump to a saved orig that skips them.
+  var origFetch = window.fetch;
   if (origFetch) {
     window.fetch = function (input, init) {
       var url = typeof input === "string" ? input : (input && input.url) || "";
       var same = false;
       try { same = new URL(url, location.href).origin === location.origin; } catch (e) {}
       if (same) {
-        init = init || {};
+        init = init ? Object.assign({}, init) : {};
         var headers = new Headers(init.headers || (input && input.headers) || undefined);
         if (!headers.get("X-Device-Fp")) headers.set("X-Device-Fp", fp);
         if (!headers.get("X-Device-Proof")) headers.set("X-Device-Proof", proof);
         init.headers = headers;
-        if (typeof input !== "string") {
-          return origFetch.call(this, new Request(input, init));
-        }
+        // Do NOT new Request(input, init) — that drops POST bodies on Chromium → upstream 415.
+        return origFetch.call(this, input, init);
       }
       return origFetch.call(this, input, init);
     };

@@ -311,7 +311,9 @@ func zikLoginWatchScript(cfg Config) string {
 func zikAuthBearerFromAccount(cookieRaw string) string {
 	_, ls := parseCookiesAndStorage(cookieRaw)
 	if ls == nil {
-		return ""
+		// GoAuto dumps sometimes nest storage under includedFormats-only exports;
+		// also try raw JSON map walk for "access".
+		return zikAccessFromRawJSON(cookieRaw)
 	}
 	if v, ok := ls["access"].(string); ok {
 		return strings.TrimSpace(v)
@@ -322,6 +324,41 @@ func zikAuthBearerFromAccount(cookieRaw string) string {
 			var s string
 			if json.Unmarshal(b, &s) == nil {
 				return strings.TrimSpace(s)
+			}
+		}
+	}
+	if tok := zikAccessFromRawJSON(cookieRaw); tok != "" {
+		return tok
+	}
+	return ""
+}
+
+func zikAccessFromRawJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw[0] != '{' {
+		return ""
+	}
+	var top map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &top) != nil {
+		return ""
+	}
+	// storage.localStorage.access
+	if st, ok := top["storage"]; ok {
+		var storage struct {
+			LocalStorage map[string]interface{} `json:"localStorage"`
+		}
+		if json.Unmarshal(st, &storage) == nil {
+			if v, ok := storage.LocalStorage["access"].(string); ok {
+				return strings.TrimSpace(v)
+			}
+		}
+	}
+	// localStorage.access (flat)
+	if ls, ok := top["localStorage"]; ok {
+		var m map[string]interface{}
+		if json.Unmarshal(ls, &m) == nil {
+			if v, ok := m["access"].(string); ok {
+				return strings.TrimSpace(v)
 			}
 		}
 	}
