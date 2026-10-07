@@ -157,9 +157,9 @@ var (
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
-		PublicHost:             "gpt.yourdomain.com",
+		TargetURL:              "https://sketchgeniusapp.com",
+		CDNURL:                 "https://sketchgeniusapp.com",
+		PublicHost:             "sketchgenius.gt4rents.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
 		MySQLPort:              "3306",
@@ -3142,6 +3142,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		path == "/tm-device-sw.js" ||
 		strings.HasPrefix(path, "/api/user-limits") ||
 		strings.HasPrefix(path, "/api/rotate-session") ||
+		strings.HasPrefix(path, "/api/sg-failover") ||
 		strings.HasPrefix(path, "/access") ||
 		path == "/ext-install" ||
 		path == "/extension.zip" ||
@@ -3608,6 +3609,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	// Document redirect / path to SketchGenius login wall → mark logged_out + switch/contact-admin.
+	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 && isDocumentNavigation(r) {
+		locHdr := upstreamResp.Header.Get("Location")
+		if dead, why := sgLooksLoggedOut(path, nil, locHdr); dead {
+			if strings.HasPrefix(why, "redirect:") || strings.HasPrefix(why, "url:") {
+				log.Printf("[COOKIE] login wall user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+				if !sgFailoverRecently(sessionToken) {
+					serveSgCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+			}
+		}
+	}
+
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -3716,6 +3731,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logUpstream(bodyBytes)
 
+		// Login / Unauthenticated wall on document HTML (SPA may stay on /dashboard).
+		if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 && isDocumentNavigation(r) {
+			if dead, why := sgLooksLoggedOut(path, bodyBytes, ""); dead {
+				log.Printf("[COOKIE] login wall user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+				if !sgFailoverRecently(sessionToken) {
+					serveSgCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+			}
+		}
+
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
 
@@ -3744,7 +3770,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		sessionInject := buildSketchGeniusSessionInjectHTML(accountCookieStr)
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr := patcherScript(cfg) + sketchgeniusChromeScript(currentUser) + sgFailoverWatchScript() + buildTextReplaceInjectHTML(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -4030,6 +4056,7 @@ func main() {
 	mux.HandleFunc("/api/auth-handshake", withCORS(authHandshakeHandler))
 	mux.HandleFunc("/api/user-limits", withCORS(userLimitsAPIHandler))
 	mux.HandleFunc("/api/rotate-session", withCORS(rotateSessionHandler))
+	mux.HandleFunc("/api/sg-failover", sgFailoverAPIHandler)
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)

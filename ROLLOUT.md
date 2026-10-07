@@ -166,7 +166,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `grok` (:4831)  
 - [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06)  
 - [ ] `heliumlearning` (:5221)  
-- [ ] `ilovepdf` (:4531) — **FIX PUSHED** (2026-10-07): force `www.ilovepdf.com`; HTTP/1.1-only TLS (h2→h1 fallback caused malformed SETTINGS → 502) — redeploy  
+- [x] `ilovepdf` (:4531) — **HTTPS OK** (2026-10-07): verified OK — force `www.ilovepdf.com`; HTTP/1.1-only TLS (h2→h1 fallback caused malformed SETTINGS → 502)  
 
 
 - [ ] `imgupscaler` (:5091)  
@@ -205,7 +205,9 @@ If fail: note in “Open issues”, fix, re-tick.
 
 - [ ] `shortform` (:4771)  
 - [ ] `similarweb` (:5071)  
-- [ ] `sketchgenius` (:4781)  
+- [ ] `sketchgenius` (:4781) — **FIX PUSHED** (2026-10-07): panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin — redeploy + verify  
+
+
 - [ ] `slidebean` (:5021)  
 - [ ] `speechify` (:5011)  
 - [ ] `spyfu` (:4941)  

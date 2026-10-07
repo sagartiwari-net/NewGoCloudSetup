@@ -350,14 +350,13 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('active','logged_out','inactive')`, assigned, cfg.PublicHost))
 		if accErr == nil {
+			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=? AND status='logged_out'`, acc.ID)
 			return acc, nil
 		}
 	}
-	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+	acc, err := pickPanelAccount(db, cfg.PublicHost, 0)
 	if err != nil {
 		return ToolAccount{}, err
 	}
