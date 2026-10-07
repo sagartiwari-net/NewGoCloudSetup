@@ -109,17 +109,18 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link); prefer **ChatGPT 1** (ID:65); ChatGPT 2 cookies flaky — refresh later  
 - [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer  
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
-- [ ] `cnva` — Canva (:4501) — **rebuild required** (token-only `/access`); Partial (429 / proxy)  
+- [x] `cnva` — Canva (:4501) — **HTTPS OK** (2026-10-07): verified OK — panel access-link working  
 - [x] `helium10` — Helium10 (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified  
 - [x] `mgfc` — Magnific (:5121) — **DONE / HTTPS OK** (2026-10-06): verified OK — `mgfc.gt4rents.com` (Safe Browsing rename from `magnific`) + disk CDN cache (`e62a9ad`)  
 - [x] `junglescout` — JungleScout (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — panel access working  
 - [x] `grammarly` — Grammarly (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)  
-- [ ] `placeit` — Placeit (:4611) — **rebuild required** after token-only access; was HTTPS OK before  
+- [x] `placeit` — Placeit (:4611) — **HTTPS OK** (2026-10-07): verified OK — panel access working  
+
 - [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts — **redeploy if Access Denied**  
 - [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-05, `v17-device-iam`): panel.db cookies, token-only `/access?token=`, device no false `device_required` 401, logout→switch/contact-admin, chrome hide + panel username, static asset cache
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
 - [x] `erank` — eRank (:5191) — **READY / HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
-- [x] `selleramp` — SellerAmp (:5161) — **HTTPS OK** (2026-10-07): panel access + `__tm_s` keepalive + static bypass + device-lock (`rejectPanelDevice` + proof in `live_sessions.fingerprint`); cookie-copy → Access Denied
+- [x] `selleramp` — SellerAmp (:5161) — **DONE / HTTPS OK** (2026-10-07): verified OK — panel access, search `/sas/lookup`, `__tm_s` keepalive + static bypass + device-lock (cookie-copy → Access Denied)
 > **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`).  
 > Binaries built **before** `fad80ac` → Access Denied.  
 > **Already OK (skip rebuild):** `refs` `smrs` `cgpt` `clud` `envt` `cnva`  
@@ -177,7 +178,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `perplexity` (:5101)  
 - [ ] `piktochart` (:4541)  
 - [ ] `pixlr` (:4901)  
-- [x] `placeit` (:4611) — see Priority  
+- [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
 - [ ] `ppspy` (:4961)  
 - [ ] `prezi` (:4751)  
 - [ ] `rivalflow` (:4811)  
@@ -185,7 +186,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `screpy` (:4721)  
 - [ ] `scribd` (:4791)  
 - [ ] `searchatlas` (:4711)  
-- [ ] `selleramp` (:5161) — see Priority (Bad Gateway / bring-up)  
+- [x] `selleramp` (:5161) — **DONE / HTTPS OK** (2026-10-07): see Priority  
+
 - [ ] `sellthetrend` (:4591)  
 - [ ] `seobility` (:4731)  
 - [ ] `seobuddy` (:5131)  
@@ -222,9 +224,7 @@ If fail: note in “Open issues”, fix, re-tick.
 |------|--------|--------|
 | `branalyzer` | Be Curious → snack “Introduce any valid URL or domain” on `branalyzer.gt4rents.com` (home OK; local `59905db` worked) | **Parked.** Resume later: compare server main.js patch + searchText/DOM vs local; wipe `cdn-cache`; hard-refresh |
 | `chatbotapp` | `/api/v2/chat` → 4002 `x_token header is required` (sidebar/history OK; `91f9ad8` inject) | **Parked.** Resume later: confirm panel GoAuto has IndexedDB `stsTokenManager`; check `[CHATBOT] api auth OK` in app.log |
-| `selleramp` | Cookie copy to other Chrome profile still opened tool (device-lock not wired) | **Fixed in `b969cd4`+.** Redeploy device-lock + proof persistence |
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
-| `cnva` | Upstream 429 / dial cancel | Account proxy + slower retest after SSL |
 | `mgfc` (Magnific) | `/photos` still WAF if someone bypasses redirect | **OK on `mgfc`**; `/photos` → `/people-emotions` |
 | `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
 
@@ -248,5 +248,5 @@ Not a proxy crash — Google flags phishing-like pages. Seen / noted on gt4rents
 - [ ] All tools built + started (or consciously skipped)  
 - [ ] Wildcard SSL + auto-renew verified  
 - `TOOL_PUBLIC_SCHEME=https` live  
-- [ ] Priority 8 tools green on **https://** access-links  
+- [x] Priority tools green on **https://** access-links (incl. `cnva` `placeit` `selleramp` 2026-10-07)  
 - [ ] Open issues closed or accepted
