@@ -205,7 +205,8 @@ If fail: note in “Open issues”, fix, re-tick.
 
 
 - [ ] `shortform` (:4771)  
-- [ ] `similarweb` (:5071)  
+- [x] `similarweb` (:5071) — **HTTPS OK** (2026-10-07): verified OK — live working; CDN disk cache already present (`cdn_cache.go` → `cdn-cache/`, 72h TTL)  
+
 - [x] `sketchgenius` (:4781) — **HTTPS OK** (2026-10-07): verified OK — panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin (**failover verified**)  
 
 
