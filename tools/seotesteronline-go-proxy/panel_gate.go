@@ -656,6 +656,9 @@ func preparePanelRequest(w http.ResponseWriter, r *http.Request, cfg Config) (To
 	case "/api/device-bind":
 		deviceBindHandler(w, r)
 		return ToolAccount{}, r, true
+	case "/api/sto-failover":
+		stoFailoverAPIHandler(w, r)
+		return ToolAccount{}, r, true
 	case "/tm-device-sw.js":
 		serveDeviceSW(w, r)
 		return ToolAccount{}, r, true

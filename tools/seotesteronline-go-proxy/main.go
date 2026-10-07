@@ -174,6 +174,9 @@ func buildHeadInject(cfg Config, session string) string {
 		b.WriteString("</style>\n")
 	}
 	b.WriteString(buildInjectScript(cfg, session))
+	if usesPanelAccountMode(cfg) {
+		b.WriteString(stoFailoverWatchScript())
+	}
 	return b.String()
 }
 
@@ -1542,6 +1545,22 @@ func newReverseProxy(target *url.URL, getSession func() string) *httputil.Revers
 		googleSuggest := isGoogleSuggestHost(reqHost)
 		ctLower := strings.ToLower(ct)
 
+		// Login redirect (often empty body) → failover before streaming.
+		if usesPanelAccountMode(cfg) && resp.Request != nil && !apiHost && !apiPath && isDocumentNavigation(resp.Request) {
+			if meta, ok := panelFOMetaFrom(resp.Request.Context()); ok && meta.Token != "" && meta.Account.ID > 0 {
+				locHdr := resp.Header.Get("Location")
+				if dead, why := stoLooksDeadAccount(reqPath, nil, locHdr); dead {
+					if strings.HasPrefix(why, "redirect:") || strings.HasPrefix(why, "url:") {
+						if !stoFailoverRecently(meta.Token) {
+							log.Printf("[COOKIE] login redirect user=%s account=%s why=%s", meta.Username, meta.Account.Name, why)
+							applyStoFailoverToResponse(resp, cfg, meta, why)
+							return nil
+						}
+					}
+				}
+			}
+		}
+
 		// Binary images/fonts/wasm: no decompress, no rewrite — optional cache.
 		if isBinaryStaticCT(ct) || (!isRewritable(ct) && isCacheableStaticPath(reqPath)) {
 			relaxResponseHeaders(resp, cfg)
@@ -1613,6 +1632,20 @@ func newReverseProxy(target *url.URL, getSession func() string) *httputil.Revers
 		}
 		if isHTML(ct) && isCloudflareBlockPage(plain) {
 			log.Printf("[CF] Upstream returned Cloudflare block page for %s", reqPath)
+		}
+		// Document HTML: login wall / no-subscription → mark logged_out + switch/contact-admin.
+		if isHTML(ct) && !apiHost && !apiPath && usesPanelAccountMode(cfg) && resp.Request != nil {
+			meta, ok := panelFOMetaFrom(resp.Request.Context())
+			locHdr := resp.Header.Get("Location")
+			if ok && meta.Token != "" && meta.Account.ID > 0 && isDocumentNavigation(resp.Request) {
+				if dead, why := stoLooksDeadAccount(reqPath, plain, locHdr); dead {
+					if !stoFailoverRecently(meta.Token) {
+						log.Printf("[COOKIE] dead account user=%s account=%s why=%s", meta.Username, meta.Account.Name, why)
+						applyStoFailoverToResponse(resp, cfg, meta, why)
+						return nil
+					}
+				}
+			}
 		}
 		// Inject into suite HTML (not API hosts /api JSON error pages)
 		if isHTML(ct) && !apiHost && !apiPath {
@@ -1824,6 +1857,12 @@ func main() {
 		}
 		if usesPanelAccountMode(cfg) {
 			r = stampPanelAccount(nextReq, acc)
+			token := ""
+			if c, err := r.Cookie("ct_session"); err == nil {
+				token = c.Value
+			}
+			username, _ := panelSessionUsername(r)
+			r = withPanelFOMeta(r, token, username, acc)
 		}
 
 		// Suite home is "/" (Angular app.welcome) — no redirect

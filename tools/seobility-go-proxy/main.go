@@ -2999,6 +2999,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		path == "/tm-device-sw.js" ||
 		strings.HasPrefix(path, "/api/user-limits") ||
 		strings.HasPrefix(path, "/api/rotate-session") ||
+		strings.HasPrefix(path, "/api/seobility-failover") ||
 		strings.HasPrefix(path, "/access") ||
 		path == "/ext-install" ||
 		path == "/extension.zip" ||
@@ -3443,6 +3444,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	// Document redirect / path to Seobility login wall → mark logged_out + switch/contact-admin.
+	if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 && isDocumentNavigation(r) {
+		locHdr := upstreamResp.Header.Get("Location")
+		if dead, why := seobilityLooksLoggedOut(path, nil, locHdr); dead {
+			if strings.HasPrefix(why, "redirect:") || strings.HasPrefix(why, "url:") {
+				log.Printf("[COOKIE] login wall user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+				if !seobilityFailoverRecently(sessionToken) {
+					serveSeobilityCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+			}
+		}
+	}
+
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -3551,6 +3566,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logUpstream(bodyBytes)
 
+		if usesPanelAccountMode(cfg) && sessionToken != "" && activeAcc.ID > 0 && isDocumentNavigation(r) {
+			if dead, why := seobilityLooksLoggedOut(path, bodyBytes, ""); dead {
+				log.Printf("[COOKIE] login HTML wall user=%s account=%s why=%s", currentUser, activeAcc.Name, why)
+				if !seobilityFailoverRecently(sessionToken) {
+					serveSeobilityCookieFailover(w, r, cfg, sessionToken, currentUser, activeAcc, why)
+					return
+				}
+			}
+		}
+
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
 
@@ -3574,7 +3599,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + seobilityProfileChromeScript(currentUser) + buildTextReplaceInjectHTML(cfg)
+		injectStr := patcherScript(cfg) + seobilityProfileChromeScript(currentUser) + seobilityFailoverWatchScript() + buildTextReplaceInjectHTML(cfg)
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -3843,6 +3868,7 @@ func main() {
 	mux.HandleFunc("/api/auth-handshake", withCORS(authHandshakeHandler))
 	mux.HandleFunc("/api/user-limits", withCORS(userLimitsAPIHandler))
 	mux.HandleFunc("/api/rotate-session", withCORS(rotateSessionHandler))
+	mux.HandleFunc("/api/seobility-failover", seobilityFailoverAPIHandler)
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
