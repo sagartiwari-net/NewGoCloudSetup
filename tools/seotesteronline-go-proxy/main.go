@@ -1753,6 +1753,38 @@ func stripPrefix(path, prefix string) string {
 	return p
 }
 
+// slimOversizedCookies keeps ct_session / tm_* when the browser jar is huge.
+// Leftover ChatGPT (and other tool) cookies on this host were ~10KB; the old
+// code deleted the entire Cookie header and wiped the new panel session.
+func slimOversizedCookies(r *http.Request) {
+	raw := r.Header.Get("Cookie")
+	if raw == "" || len(raw) <= 8192 {
+		return
+	}
+	var kept []string
+	for _, part := range strings.Split(raw, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name := part
+		if eq := strings.Index(part, "="); eq >= 0 {
+			name = strings.TrimSpace(part[:eq])
+		}
+		nl := strings.ToLower(name)
+		if nl == "ct_session" || strings.HasPrefix(nl, "tm_") {
+			kept = append(kept, part)
+		}
+	}
+	slim := strings.Join(kept, "; ")
+	log.Printf("[COOKIE] slimmed oversized Cookie %d → %d bytes (path=%s)", len(raw), len(slim), r.URL.Path)
+	if slim == "" {
+		r.Header.Del("Cookie")
+		return
+	}
+	r.Header.Set("Cookie", slim)
+}
+
 func main() {
 	cfg := loadConfig()
 	session := loadSession(cfg)
@@ -1919,16 +1951,13 @@ func main() {
 	log.Printf("║  Auth:   localStorage via cookie.txt         ║")
 	log.Printf("╚══════════════════════════════════════════════╝")
 
-	// Wrap: strip huge Cookie headers before they hit MaxHeaderBytes / upstream.
-	// localhost cookies are shared across ALL ports — other proxies can fill them.
+	// Wrap: slim huge Cookie jars — NEVER delete the whole header.
+	// Dropping Cookie wiped ct_session → /api/device-bind failed → Access Denied.
 	safe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if c := r.Header.Get("Cookie"); len(c) > 8192 {
-			log.Printf("[WARN] dropping oversized Cookie header (%d bytes) — clear localhost cookies if issues persist", len(c))
-			r.Header.Del("Cookie")
-		}
-		// Never forward upstream Set-Cookie that would re-bloat localhost
+		slimOversizedCookies(r)
 		handler.ServeHTTP(w, r)
 	})
+
 
 	server := &http.Server{
 		Addr:           addr,
