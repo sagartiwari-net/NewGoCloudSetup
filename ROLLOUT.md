@@ -189,7 +189,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `selleramp` (:5161) — **DONE / HTTPS OK** (2026-10-07): see Priority  
 
 - [x] `sellthetrend` (:4591) — **HTTPS OK** (2026-10-07): verified OK — `www.sellthetrend.com`, profile dropdowns hidden (left+top), panel username/initials on avatar bar  
-- [ ] `seobility` (:4731)  
+- [x] `seobility` (:4731) — **HTTPS OK** (2026-10-07): verified OK — `app.seobility.net`, account Profile/Subscription/Billing/Members/MCP block hidden, panel username in dropdown  
 - [ ] `seobuddy` (:5131)  
 - [x] `seositecheckup` (:4661) — see Priority  
 - [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): verified OK — cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`  
