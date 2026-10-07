@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -139,13 +140,30 @@ func TestSessionKeepaliveScriptPatchesNav(t *testing.T) {
 		`data-tm-sess`,
 		`__tm_s`,
 		`tm_ct_session`,
+		`tm_device_proof`,
 		`X-Ct-Session`,
+		`X-Device-Proof`,
+		`denyStolen`,
 		`addEventListener("submit"`,
 		`addEventListener("click"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("keepalive missing %q", want)
 		}
+	}
+}
+
+func TestBindPanelDeviceRejectsCookieShare(t *testing.T) {
+	token := "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	panelSess.Store(token, &panelGateSession{username: "sagar", expires: time.Now().Add(time.Hour), proof: "bound-proof"})
+	defer panelSess.Delete(token)
+	err := bindPanelDevice(token, "missing", "missing")
+	if !errors.Is(err, errDeviceCookieShare) {
+		t.Fatalf("want cookie_share, got %v", err)
+	}
+	err = bindPanelDevice(token, "fp", "other-proof")
+	if !errors.Is(err, errDeviceCookieShare) {
+		t.Fatalf("want cookie_share on mismatch, got %v", err)
 	}
 }
 

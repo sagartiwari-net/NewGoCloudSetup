@@ -2134,8 +2134,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderAccessDeniedPage(w, cfg)
 				return
 			}
+		} else if rejectPanelDevice(w, r, cfg) {
+			return
 		} else {
-			// Device lock is enforced at /access boot only (Helium pattern).
 			currentUser = name
 			var panelErr error
 			activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)

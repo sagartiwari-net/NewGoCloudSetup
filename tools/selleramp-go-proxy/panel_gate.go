@@ -142,14 +142,15 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	var username, expires string
+	var username, expires, fingerprint string
 	// Prefer domain match, but fall back to token-only — domain string drift
 	// (trim/case/old host) was leaving valid cookies unrestorable.
-	err = db.QueryRow(`SELECT s.username, s.expires_at FROM live_sessions s
+	// fingerprint holds the device proof so cookie-copy fails after process restart.
+	err = db.QueryRow(`SELECT s.username, s.expires_at, COALESCE(s.fingerprint,'') FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
-		WHERE s.session_token = ? AND lower(trim(w.domain)) = lower(trim(?))`, token, cfg.PublicHost).Scan(&username, &expires)
+		WHERE s.session_token = ? AND lower(trim(w.domain)) = lower(trim(?))`, token, cfg.PublicHost).Scan(&username, &expires, &fingerprint)
 	if err != nil {
-		err = db.QueryRow(`SELECT username, expires_at FROM live_sessions WHERE session_token = ?`, token).Scan(&username, &expires)
+		err = db.QueryRow(`SELECT username, expires_at, COALESCE(fingerprint,'') FROM live_sessions WHERE session_token = ?`, token).Scan(&username, &expires, &fingerprint)
 		if err != nil {
 			return nil, err
 		}
@@ -161,10 +162,23 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 	return &panelGateSession{
 		username:    username,
 		expires:     exp,
+		proof:       strings.TrimSpace(fingerprint),
 		tracked:     true,
 		liveOK:      true,
 		liveChecked: time.Now(),
 	}, nil
+}
+
+func persistDeviceProof(sessionToken, proof string) {
+	proof = strings.TrimSpace(proof)
+	if sessionToken == "" || proof == "" {
+		return
+	}
+	db, err := openPanelDB(loadConfig())
+	if err != nil {
+		return
+	}
+	_, _ = db.Exec(`UPDATE live_sessions SET fingerprint=? WHERE session_token=? AND (fingerprint='' OR fingerprint IS NULL)`, proof, sessionToken)
 }
 
 func panelLiveSessionExists(sessionToken string) bool {

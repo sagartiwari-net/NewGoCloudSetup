@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html"
 	"log"
@@ -9,6 +10,10 @@ import (
 	"strings"
 	"time"
 )
+
+// errDeviceCookieShare means a bound session saw missing/wrong device proof
+// (typical cookie jar copy into another browser/profile).
+var errDeviceCookieShare = errors.New("cookie_share")
 
 const deviceProofKey = "tm_device_proof"
 
@@ -166,13 +171,24 @@ func commitPanelSessionCookie(w http.ResponseWriter, r *http.Request, cfg Config
 }
 
 // sessionKeepaliveScript is injected into SellerAmp HTML (not the heavy device gate).
-// Full-page searches like GET /sas/lookup only send cookies — when the jar keeps a
-// dead ct_session, we re-attach the live token from sessionStorage on every nav/fetch.
+// Keeps ?__tm_s= / X-Ct-Session on navigations AND enforces device proof so a
+// copied cookie jar in another Chrome profile cannot use the tool.
 func sessionKeepaliveScript() string {
 	return `<script data-tm-sess>(function(){
 var KEY=` + fmt.Sprintf("%q", tmSessionStorageKey) + `;
+var PROOF_KEY=` + fmt.Sprintf("%q", deviceProofKey) + `;
 function tok(){try{return sessionStorage.getItem(KEY)||"";}catch(e){return "";}}
+function proof(){try{return localStorage.getItem(PROOF_KEY)||"";}catch(e){return "";}}
+function fp(){try{return localStorage.getItem("tm_device_fp")||sessionStorage.getItem("tm_device_fp")||"";}catch(e){return "";}}
 function save(t){if(!t)return;try{sessionStorage.setItem(KEY,t);sessionStorage.removeItem("tm_ct_retry");}catch(e){}}
+function denyStolen(){
+  try{document.documentElement.style.visibility="hidden";}catch(e){}
+  var headers={"X-Device-Fp":"missing","X-Device-Proof":"missing"};
+  var t=tok(); if(t) headers["X-Ct-Session"]=t;
+  fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:headers})
+    .catch(function(){})
+    .finally(function(){location.replace("/__tm_access_denied");});
+}
 try{
   var u=new URL(location.href);
   var boot=u.searchParams.get("__tm_s");
@@ -182,6 +198,8 @@ try{
     if(history.replaceState) history.replaceState({},"",u.pathname+u.search+u.hash);
   }
 }catch(e){}
+// Cookie copy into another profile has ct_session but not tm_device_proof.
+if(!proof()){denyStolen();return;}
 function withS(href){
   var t=tok(); if(!t) return href;
   try{
@@ -190,6 +208,12 @@ function withS(href){
     u.searchParams.set("__tm_s",t);
     return u.pathname+u.search+u.hash;
   }catch(e){return href;}
+}
+function attachDevice(headers){
+  var p=proof(), f=fp(), t=tok();
+  if(p&&!headers.get("X-Device-Proof")) headers.set("X-Device-Proof",p);
+  if(f&&!headers.get("X-Device-Fp")) headers.set("X-Device-Fp",f);
+  if(t&&!headers.get("X-Ct-Session")) headers.set("X-Ct-Session",t);
 }
 document.addEventListener("submit",function(ev){
   var f=ev.target; if(!f||!f.tagName||f.tagName.toLowerCase()!=="form") return;
@@ -220,8 +244,7 @@ if(of){
     if(same){
       init=init||{};
       var headers=new Headers(init.headers||(input&&input.headers)||undefined);
-      var t=tok();
-      if(t&&!headers.get("X-Ct-Session")) headers.set("X-Ct-Session",t);
+      attachDevice(headers);
       init.headers=headers;
       if(typeof input!=="string") return of.call(this,new Request(input,init));
     }
@@ -233,7 +256,10 @@ XMLHttpRequest.prototype.open=function(m,url){this.__tmURL=url;return xo.apply(t
 XMLHttpRequest.prototype.send=function(){
   try{
     if(new URL(this.__tmURL,location.href).origin===location.origin){
-      var t=tok(); if(t) this.setRequestHeader("X-Ct-Session",t);
+      var p=proof(), f=fp(), t=tok();
+      if(f) this.setRequestHeader("X-Device-Fp",f);
+      if(p) this.setRequestHeader("X-Device-Proof",p);
+      if(t) this.setRequestHeader("X-Ct-Session",t);
     }
   }catch(e){}
   return xs.apply(this,arguments);
@@ -287,18 +313,21 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		return fmt.Errorf("missing proof")
 	}
 	if fp == "missing" || proof == "missing" {
-		// Do not kill the panel session here — page scripts can race during reload.
+		if sess.proof != "" {
+			return errDeviceCookieShare
+		}
+		// First-time boot race: ignore.
 		return fmt.Errorf("missing client proof")
 	}
 	if sess.proof == "" {
 		sess.fp = fp
 		sess.proof = proof
+		persistDeviceProof(sessionToken, proof)
 		return nil
 	}
 	// Proof is the stable device secret. Canvas FP can change between reloads/tabs.
 	if sess.proof != proof {
-		// Reject this bind only. Killing the session races with Access + open tabs.
-		return fmt.Errorf("device mismatch")
+		return errDeviceCookieShare
 	}
 	sess.fp = fp
 	return nil
@@ -324,10 +353,14 @@ func isDocumentNavigation(r *http.Request) bool {
 	return mode == "" && dest == "" && strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 
-// rejectPanelDevice blocks a copied cookie jar. A document request with a missing
-// or different proof deletes the session for every profile that holds it.
+// rejectPanelDevice blocks a copied cookie jar. Bound sessions must present the
+// device proof on API/XHR; document HTML is allowed once so the keepalive script
+// can verify localStorage and report cookie_share if proof is missing.
 func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool {
 	if !usesPanelAccountMode(cfg) {
+		return false
+	}
+	if isStaticAssetPath(r.URL.Path) {
 		return false
 	}
 	token, sess, ok := sessionFromRequest(r)
@@ -345,36 +378,31 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	// Proof match is enough — canvas FP often changes between tabs/reloads.
-	if proof != "" && proof == storedProof {
-		if fp != "" && fp != storedFp {
+	if proof != "" && proof != "missing" && proof == storedProof {
+		if fp != "" && fp != "missing" && fp != storedFp {
 			sess.mu.Lock()
 			sess.fp = fp
 			sess.mu.Unlock()
 		}
 		return false
 	}
-	if fp == storedFp && proof == storedProof {
-		return false
-	}
 	if browserSubresource(r) {
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
+		// Document navigation cannot send custom headers — HTML + keepalive script
+		// verifies localStorage. API/XHR without proof = cookie copy / foreign profile.
 		if isDocumentNavigation(r) {
 			return false
 		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
+		log.Printf("[DEVICE] required path=%s user=%s", r.URL.Path, username)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
 		return true
 	}
-	panelSess.Delete(token)
 	recordCookieShare(cfg, r, token)
-	log.Printf("[DEVICE] session killed user=%s missing=%v", username, proof == "")
+	log.Printf("[DEVICE] session killed user=%s missing=%v", username, proof == "" || proof == "missing")
 	if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
 		renderAccessDeniedPage(w, cfg)
 	} else {
@@ -477,7 +505,12 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		log.Printf("[DEVICE] bind failed: %v", err)
-		// Never wipe the live session from /api/device-bind races.
+		if errors.Is(err, errDeviceCookieShare) {
+			recordCookieShare(cfg, r, token)
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, `{"error":"cookie_share","message":"Open this tool again from your access link."}`)
+			return
+		}
 		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprintf(w, `{"error":"device_bind_failed","message":%q}`, err.Error())
 		return
