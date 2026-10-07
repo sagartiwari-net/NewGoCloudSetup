@@ -205,7 +205,7 @@ If fail: note in “Open issues”, fix, re-tick.
 
 - [ ] `shortform` (:4771)  
 - [ ] `similarweb` (:5071)  
-- [ ] `sketchgenius` (:4781) — **FIX PUSHED** (2026-10-07): panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin — redeploy + verify  
+- [x] `sketchgenius` (:4781) — **HTTPS OK** (2026-10-07): verified OK — panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin (**failover verified**)  
 
 
 - [ ] `slidebean` (:5021)  
@@ -226,7 +226,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `writecream` (:5051)  
 - [ ] `zebracat` (:5111)  
 - [ ] `zikaanalytics` (:5251)  
-- [ ] `zonguru` (:4691)
+- [ ] `zonguru` (:4691) — **FIX PUSHED** (2026-10-07): stop clobbering API Accept/Sec-Fetch (dashboard data); inject FbaToken; fix :4691 host rewrite — redeploy + verify
 
 ---
 

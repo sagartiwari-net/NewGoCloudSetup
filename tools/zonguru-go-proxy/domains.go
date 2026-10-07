@@ -9,6 +9,8 @@ func defaultZonGuruExtraDomains() []string {
 	return []string{
 		"www.zonguru.com",
 		"zonguru.com",
+		"push.my.zonguru.com",
+		"cdn.my.zonguru.com",
 		"track.zonguru.com",
 		"help.zonguru.com",
 		"zonguru.turbodash.co",

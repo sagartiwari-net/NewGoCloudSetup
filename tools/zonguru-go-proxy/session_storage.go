@@ -120,3 +120,29 @@ func sessionToken(sessionRaw string) string {
 	}
 	return strings.TrimSpace(ls["token"])
 }
+
+// fbaTokenFromSession extracts the raw FbaToken value Angular sends on API calls.
+// GoAuto stores token as either a plain string or {"_data":"..."}.
+func fbaTokenFromSession(sessionRaw string) string {
+	tok := sessionToken(sessionRaw)
+	if tok == "" {
+		return ""
+	}
+	tok = strings.TrimSpace(tok)
+	if strings.HasPrefix(tok, "{") {
+		var wrap struct {
+			Data json.RawMessage `json:"_data"`
+		}
+		if json.Unmarshal([]byte(tok), &wrap) == nil && len(wrap.Data) > 0 {
+			s := strings.TrimSpace(string(wrap.Data))
+			if len(s) >= 2 && s[0] == '"' {
+				var unquoted string
+				if json.Unmarshal(wrap.Data, &unquoted) == nil {
+					return strings.TrimSpace(unquoted)
+				}
+			}
+			return strings.Trim(s, `"`)
+		}
+	}
+	return tok
+}

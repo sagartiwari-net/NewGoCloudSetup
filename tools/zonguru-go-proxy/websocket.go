@@ -48,10 +48,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request, cfg Config, targetH
 		return
 	}
 
-	session := ""
-	if getSession != nil {
-		session = getSession()
-	}
+	session := panelSessionFor(r, getSession)
 
 	zgOrigin := upstreamOrigin(cfg)
 	wsPath := buildWSPath(r, targetPath, cfg, session)

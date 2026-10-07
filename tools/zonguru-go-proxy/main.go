@@ -610,10 +610,18 @@ func jsonString(s string) string {
 }
 
 func proxyHostPort(cfg Config) string {
-	if strings.Contains(cfg.PublicHost, ":") {
-		return cfg.PublicHost
+	host := strings.TrimSpace(cfg.PublicHost)
+	if host == "" {
+		return net.JoinHostPort("127.0.0.1", cfg.Port)
 	}
-	return net.JoinHostPort(cfg.PublicHost, cfg.Port)
+	if strings.Contains(host, ":") {
+		return host
+	}
+	// Production domains sit behind nginx — never rewrite to :4691 (browser can't reach it).
+	if host == "127.0.0.1" || host == "localhost" || strings.HasSuffix(host, ".local") {
+		return net.JoinHostPort(host, cfg.Port)
+	}
+	return host
 }
 
 func rewriteBody(body []byte, cfg Config) []byte {
@@ -725,10 +733,11 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 		session := panelSessionFor(req, getSession)
 		req.Host = target.Host
 		applyBrowserHeaders(req, cfg)
-		if req.Method != http.MethodGet && req.Method != http.MethodHead {
-			req.Header.Set("Sec-Fetch-Dest", "empty")
-			req.Header.Set("Sec-Fetch-Mode", "cors")
-			req.Header.Set("Sec-Fetch-Site", "same-origin")
+		// Ensure FbaToken on API calls even if Angular race missed localStorage hydrate.
+		if tok := fbaTokenFromSession(session); tok != "" && req.Header.Get("FbaToken") == "" {
+			if zgIsAPIPath(req.URL.Path) || req.Header.Get("Sec-Fetch-Dest") == "empty" {
+				req.Header.Set("FbaToken", tok)
+			}
 		}
 		if cookieHdr, _ := parseSessionStorage(session); cookieHdr != "" {
 			existing := req.Header.Get("Cookie")
@@ -741,6 +750,8 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 		zgOrigin := upstreamOrigin(cfg)
 		if ref := req.Header.Get("Referer"); ref != "" {
 			req.Header.Set("Referer", strings.ReplaceAll(ref, proxyOrigin(cfg), zgOrigin))
+			req.Header.Set("Referer", strings.ReplaceAll(req.Header.Get("Referer"), "http://"+cfg.PublicHost, zgOrigin))
+			req.Header.Set("Referer", strings.ReplaceAll(req.Header.Get("Referer"), "https://"+cfg.PublicHost, zgOrigin))
 		} else if target.Host != targetHost(cfg) {
 			req.Header.Set("Referer", zgOrigin+"/")
 		}
@@ -755,6 +766,9 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 			return nil
 		}
 		session := panelSessionFor(resp.Request, getSession)
+		if resp.Request != nil && zgIsAPIPath(resp.Request.URL.Path) && resp.StatusCode >= 400 {
+			log.Printf("[API] %s %s -> %d (FbaToken=%v)", resp.Request.Method, resp.Request.URL.Path, resp.StatusCode, resp.Request.Header.Get("FbaToken") != "")
+		}
 		ct := resp.Header.Get("Content-Type")
 		enc := resp.Header.Get("Content-Encoding")
 		body, err := io.ReadAll(resp.Body)
@@ -909,12 +923,19 @@ func main() {
 		addr = "127.0.0.1:" + cfg.Port
 	}
 
+	authMode := "localStorage via cookie.txt"
+	if usesPanelAccountMode(cfg) {
+		authMode = "panel.db GoAuto localStorage (token+me)"
+	}
 	log.Printf("╔══════════════════════════════════════════════╗")
-	log.Printf("║  ZonGuru Go Proxy — LOCAL                      ║")
+	log.Printf("║  ZonGuru Go Proxy                              ║")
 	log.Printf("║  URL:    %s://%s", cfg.PublicScheme, cfg.PublicHost)
 	log.Printf("║  Target: %s", cfg.TargetURL)
-	log.Printf("║  Auth:   localStorage via cookie.txt         ║")
+	log.Printf("║  Auth:   %s", authMode)
 	log.Printf("╚══════════════════════════════════════════════╝")
+	if usesPanelAccountMode(cfg) && session == "" {
+		log.Printf("[INFO] cookie.txt empty is OK in panel mode — paste GoAuto localStorage into the panel account cookie")
+	}
 
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("[FATAL] %v", err)

@@ -126,19 +126,86 @@ func buildChromeTransport() http.RoundTripper {
 	return &chromeRoundTripper{h2: h2, h1: h1}
 }
 
+func zgIsAPIPath(path string) bool {
+	p := strings.ToLower(path)
+	return strings.HasPrefix(p, "/api/") ||
+		strings.HasPrefix(p, "/signalr") ||
+		strings.HasPrefix(p, "/hubs/") ||
+		strings.Contains(p, "/negotiate")
+}
+
+// applyBrowserHeaders fills Chrome-like defaults without clobbering browser API
+// headers. Overwriting Accept/Sec-Fetch on GET /api/* made ZonGuru return
+// non-JSON / auth failures → dashboard "error loading your data".
 func applyBrowserHeaders(req *http.Request, cfg Config) {
-	req.Header.Set("User-Agent", cfg.UserAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	req.Header.Set("Sec-CH-UA", `"Chromium";v="131", "Google Chrome";v="131", "Not_A Brand";v="24"`)
-	req.Header.Set("Sec-CH-UA-Mobile", "?0")
-	req.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
-	req.Header.Set("Sec-Fetch-Dest", "document")
-	req.Header.Set("Sec-Fetch-Mode", "navigate")
-	req.Header.Set("Sec-Fetch-Site", "none")
-	req.Header.Set("Sec-Fetch-User", "?1")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	if strings.TrimSpace(req.Header.Get("User-Agent")) == "" {
+		req.Header.Set("User-Agent", cfg.UserAgent)
+	}
+	if req.Header.Get("Accept-Language") == "" {
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	}
+	if req.Header.Get("Accept-Encoding") == "" {
+		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	}
+	if req.Header.Get("Sec-CH-UA") == "" {
+		req.Header.Set("Sec-CH-UA", `"Chromium";v="131", "Google Chrome";v="131", "Not_A Brand";v="24"`)
+		req.Header.Set("Sec-CH-UA-Mobile", "?0")
+		req.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
+	}
+
+	apiLike := zgIsAPIPath(req.URL.Path) ||
+		strings.Contains(strings.ToLower(req.Header.Get("Accept")), "application/json") ||
+		req.Header.Get("Sec-Fetch-Dest") == "empty" ||
+		req.Header.Get("FbaToken") != "" ||
+		req.Header.Get("X-Requested-With") != ""
+
+	if apiLike {
+		if req.Header.Get("Accept") == "" {
+			req.Header.Set("Accept", "application/json, text/plain, */*")
+		}
+		if req.Header.Get("Sec-Fetch-Dest") == "" {
+			req.Header.Set("Sec-Fetch-Dest", "empty")
+		}
+		if req.Header.Get("Sec-Fetch-Mode") == "" {
+			req.Header.Set("Sec-Fetch-Mode", "cors")
+		}
+		if req.Header.Get("Sec-Fetch-Site") == "" {
+			req.Header.Set("Sec-Fetch-Site", "same-origin")
+		}
+	} else if req.Method == http.MethodGet || req.Method == http.MethodHead {
+		if req.Header.Get("Accept") == "" {
+			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+		}
+		if req.Header.Get("Sec-Fetch-Dest") == "" {
+			req.Header.Set("Sec-Fetch-Dest", "document")
+		}
+		if req.Header.Get("Sec-Fetch-Mode") == "" {
+			req.Header.Set("Sec-Fetch-Mode", "navigate")
+		}
+		if req.Header.Get("Sec-Fetch-Site") == "" {
+			req.Header.Set("Sec-Fetch-Site", "none")
+		}
+		if req.Header.Get("Sec-Fetch-User") == "" {
+			req.Header.Set("Sec-Fetch-User", "?1")
+		}
+		if req.Header.Get("Upgrade-Insecure-Requests") == "" {
+			req.Header.Set("Upgrade-Insecure-Requests", "1")
+		}
+	} else {
+		if req.Header.Get("Accept") == "" {
+			req.Header.Set("Accept", "application/json, text/plain, */*")
+		}
+		if req.Header.Get("Sec-Fetch-Dest") == "" {
+			req.Header.Set("Sec-Fetch-Dest", "empty")
+		}
+		if req.Header.Get("Sec-Fetch-Mode") == "" {
+			req.Header.Set("Sec-Fetch-Mode", "cors")
+		}
+		if req.Header.Get("Sec-Fetch-Site") == "" {
+			req.Header.Set("Sec-Fetch-Site", "same-origin")
+		}
+	}
+
 	req.Header.Del("X-Forwarded-For")
 	req.Header.Del("X-Real-IP")
 	req.Header.Del("Forwarded")
