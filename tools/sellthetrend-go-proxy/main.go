@@ -2100,9 +2100,9 @@ func stripSubresourceIntegrity(body []byte) []byte {
 	return body
 }
 
-// sellthetrendProfileChromeScript hides ONLY the profile dropdown panel, blocks
-// opening it from the bottom bar click, and shows the panel access-link username
-// (not the shared Sell The Trend account name).
+// sellthetrendProfileChromeScript hides ONLY the left + top profile dropdown
+// panels (not the avatar chips), blocks opening them on click, and shows the
+// panel access-link username (not the shared Sell The Trend account name).
 func sellthetrendProfileChromeScript(panelUsername string) string {
 	user := strings.TrimSpace(panelUsername)
 	if user == "" || user == "guest_favicon" || user == "local_dev" {
@@ -2113,7 +2113,11 @@ func sellthetrendProfileChromeScript(panelUsername string) string {
 #leftSidebarProfileMenuContainer.left-sidebar__bottom-dropdown_container,
 #leftSidebarProfileMenuContainer,
 .left-sidebar__bottom-dropdown_container.show,
-.left-sidebar__bottom-dropdown_container{
+.left-sidebar__bottom-dropdown_container,
+#topNavbarProfileMenuContainer.top-navbar_profile-container,
+#topNavbarProfileMenuContainer,
+.top-navbar_profile-container.show,
+.top-navbar_profile-container{
   display:none!important;
   visibility:hidden!important;
   pointer-events:none!important;
@@ -2127,17 +2131,23 @@ func sellthetrendProfileChromeScript(panelUsername string) string {
   if (window.__tmSttProfileChrome) return;
   window.__tmSttProfileChrome = true;
   var TM_USER = %s;
-  function hideDropdown(){
-    var el = document.getElementById("leftSidebarProfileMenuContainer");
-    if (el) {
-      el.classList.remove("show");
-      el.style.setProperty("display", "none", "important");
-      el.style.setProperty("visibility", "hidden", "important");
-      el.setAttribute("aria-hidden", "true");
+  var DROPDOWN_IDS = ["leftSidebarProfileMenuContainer", "topNavbarProfileMenuContainer"];
+  var TRIGGER_IDS = ["leftSidebarProfileMenu", "topNavbarProfileMenu"];
+  function hideOne(el){
+    if (!el) return;
+    el.classList.remove("show");
+    el.classList.remove("active");
+    el.style.setProperty("display", "none", "important");
+    el.style.setProperty("visibility", "hidden", "important");
+    el.setAttribute("aria-hidden", "true");
+  }
+  function hideDropdowns(){
+    for (var i = 0; i < DROPDOWN_IDS.length; i++) {
+      hideOne(document.getElementById(DROPDOWN_IDS[i]));
     }
   }
   function blockOpen(e){
-    hideDropdown();
+    hideDropdowns();
     if (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -2145,13 +2155,17 @@ func sellthetrendProfileChromeScript(panelUsername string) string {
     }
     return false;
   }
-  function wireTrigger(){
-    var trigger = document.getElementById("leftSidebarProfileMenu");
+  function wireTrigger(id){
+    var trigger = document.getElementById(id);
     if (!trigger || trigger.dataset.tmSttBound === "1") return;
     trigger.dataset.tmSttBound = "1";
+    trigger.classList.remove("active");
     ["click","mousedown","mouseup","pointerdown","touchstart"].forEach(function(ev){
       trigger.addEventListener(ev, blockOpen, true);
     });
+  }
+  function wireTriggers(){
+    for (var i = 0; i < TRIGGER_IDS.length; i++) wireTrigger(TRIGGER_IDS[i]);
   }
   function initials(name){
     var s = String(name || "").replace(/[^a-zA-Z0-9]/g, "");
@@ -2169,7 +2183,9 @@ func sellthetrendProfileChromeScript(panelUsername string) string {
     }
     var ini = initials(TM_USER);
     if (!ini) return;
-    var avatars = document.querySelectorAll("#leftSidebarProfileMenu .left-sidebar__bottom_avatar p");
+    var avatars = document.querySelectorAll(
+      "#leftSidebarProfileMenu .left-sidebar__bottom_avatar p, #topNavbarProfileMenu p, .top-navbar_avatar p"
+    );
     for (var j = 0; j < avatars.length; j++) {
       var p = avatars[j];
       if (p.dataset.tmUser === TM_USER) continue;
@@ -2178,7 +2194,7 @@ func sellthetrendProfileChromeScript(panelUsername string) string {
     }
   }
   function run(){
-    try { hideDropdown(); wireTrigger(); setPanelUser(); } catch (e) {}
+    try { hideDropdowns(); wireTriggers(); setPanelUser(); } catch (e) {}
   }
   run();
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
