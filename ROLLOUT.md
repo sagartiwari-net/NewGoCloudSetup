@@ -211,7 +211,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `slidebean` (:5021)  
 - [ ] `speechify` (:5011)  
 - [ ] `spyfu` (:4941)  
-- [ ] `storybase` (:4551) — **START NEEDED**: seedha URL Bad Gateway = process down; overlay `https` + `www.storybase.com`; after `build-one`/`start-tool` expect Access Denied on seedha URL, app via panel access-link  
+- [ ] `storybase` (:4551) — **ALPN fix** (2026-10-07): was 502 proxying `chatgpt.com` + HTTP/2 SETTINGS “malformed HTTP response”; force `www.storybase.com` + HTTP/1.1-only dial (ilovepdf pattern). Rebuild/start then panel access-link. Note: MySQL domain `storybase.gt4rents.com` missing → website_id stayed 1 (register in panel/ahrefs_websites).  
 
 - [ ] `storyblocks` (:4971)  
 - [ ] `syntx` (:4981)  
