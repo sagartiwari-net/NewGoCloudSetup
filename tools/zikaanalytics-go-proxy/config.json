@@ -36,11 +36,7 @@
     "access_token",
     "refresh_token"
   ],
-  "watchdog_triggers": [
-    "Please sign in",
-    "Session expired",
-    "Upgrade to Pro"
-  ],
+  "watchdog_triggers": [],
   "extra_cdn_domains": [
     "api.zikanalytics.com"
   ],

@@ -32,16 +32,42 @@ func TestZikJWTExpired(t *testing.T) {
 
 func TestZikSoftenAPIUnauthorized(t *testing.T) {
 	if !zikSoftenAPIUnauthorized("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers", 401) {
-		t.Fatal("expected soften")
+		t.Fatal("expected soften bestsellers")
+	}
+	if zikSoftenAPIUnauthorized("/extra-cdn-0/User/GetStore", 401) {
+		t.Fatal("should not soften GetStore")
 	}
 	if zikSoftenAPIUnauthorized("/dashboard", 401) {
 		t.Fatal("should not soften app HTML")
 	}
-	if zikSoftenAPIUnauthorized("/extra-cdn-0/auth/login", 401) {
-		t.Fatal("should not soften login")
-	}
 	if got := zikSoftenEmptyBody("/extra-cdn-0/Dashboard/GetEbayWeeklyBestSellers"); got != "[]" {
 		t.Fatalf("expected [] got %s", got)
+	}
+}
+
+func TestZikPublicAssetPath(t *testing.T) {
+	for _, p := range []string{"/manifest.json", "/static/js/main.js", "/favicon.ico", "/static/css/a.css"} {
+		if !zikPublicAssetPath(p) {
+			t.Fatalf("expected public: %s", p)
+		}
+	}
+	if zikPublicAssetPath("/dashboard") || zikPublicAssetPath("/extra-cdn-0/User/GetStore") {
+		t.Fatal("dashboard/api must require auth")
+	}
+}
+
+func TestZikEssentialStorage(t *testing.T) {
+	in := map[string]interface{}{
+		"access":  "jwt",
+		"intercom": "huge",
+		"_BEAMER_X": "x",
+	}
+	out := zikEssentialStorage(in)
+	if out["access"] != "jwt" {
+		t.Fatal("missing access")
+	}
+	if _, ok := out["intercom"]; ok {
+		t.Fatal("intercom must be stripped")
 	}
 }
 

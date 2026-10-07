@@ -1850,9 +1850,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
+	// Static/manifest must not 401 — SPA treats that as a hard boot failure.
+	isPublicAsset := zikPublicAssetPath(path)
 	currentUser, err := getAuthenticatedUser(r, cfg)
-	if err != nil {
-		// Check if request is browser navigation (not API)
+	if err != nil && !isPublicAsset {
 		acceptHeader := r.Header.Get("Accept")
 		isNavigation := strings.Contains(acceptHeader, "text/html")
 		if isNavigation {
@@ -1863,6 +1864,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, `{"error":"unauthorized","message":"Please log in via the member area."}`)
 		}
 		return
+	}
+	if err != nil && isPublicAsset {
+		currentUser = ""
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
@@ -1897,22 +1901,26 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		name, sessionErr := panelSessionUsername(r)
 		if sessionErr != nil {
-			if strings.Contains(strings.ToLower(path), "favicon") {
+			if isPublicAsset || strings.Contains(strings.ToLower(path), "favicon") {
 				activeAcc = ToolAccount{}
 			} else {
 				renderAccessDeniedPage(w, cfg)
 				return
 			}
-		} else if rejectPanelDevice(w, r, cfg) {
+		} else if !isPublicAsset && rejectPanelDevice(w, r, cfg) {
 			return
-		} else {
+		} else if sessionErr == nil {
 			currentUser = name
 			var panelErr error
 			activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
 			if panelErr != nil {
-				log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
-				renderNoActiveAccountsPage(w, cfg)
-				return
+				if isPublicAsset {
+					activeAcc = ToolAccount{}
+				} else {
+					log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
+					renderNoActiveAccountsPage(w, cfg)
+					return
+				}
 			}
 		}
 	} else if !dbConnected {
@@ -2292,6 +2300,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// Inject localStorage + patches at the start of <head> so the SPA sees the access JWT.
 		earlyInject := ""
 		_, localStorageData := parseCookiesAndStorage(activeAcc.Cookie)
+		localStorageData = zikEssentialStorage(localStorageData)
 		if len(localStorageData) > 0 {
 			lsBytes, err := json.Marshal(localStorageData)
 			if err == nil {
@@ -2315,7 +2324,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 </script>`, string(safe))
 			}
 		}
-		earlyInject += zikLoginWatchScript(cfg) + patcherScript(cfg) + zikUsernameLabelScript(currentUser)
+		// NEVER enable text watchdog on Zik — dashboard marketing copy includes
+		// "Upgrade to Pro" / "sign in" and the overlay blanked the whole SPA.
+		patchCfg := cfg
+		patchCfg.WatchdogTriggers = nil
+		earlyInject += zikLoginWatchScript(cfg) + patcherScript(patchCfg) + zikUsernameLabelScript(currentUser)
 		// Failsafe: strip any leftover device hide styles (old SW/HTML) and force visible.
 		lateInject := `<script data-tm-reveal>(function(){function show(){try{document.querySelectorAll("style[data-tm-device]").forEach(function(n){n.remove();});document.documentElement.style.setProperty("visibility","visible","important");if(document.body)document.body.style.setProperty("visibility","visible","important");if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.unregister();});}).catch(function(){});}}catch(e){}}show();setTimeout(show,300);setTimeout(show,1500);})();</script>` +
 			limitWidgetScript(cfg) + limitOverlayScript()

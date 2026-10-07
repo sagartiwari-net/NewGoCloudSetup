@@ -169,7 +169,6 @@ func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	spin := true
 
 	if !zikSwitchCooldownOK(sessionToken) {
-		// Cooldown: do NOT keep spinning forever — stop if cookie looks dead.
 		if !bearerOK || expired || !sessionOK {
 			serveZikCookieExpired(w, cfg, currentUser, activeAcc.Name, reason+":cooldown")
 			return
@@ -180,7 +179,6 @@ func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	} else {
 		next, err := panelSwitchAccount(cfg, sessionToken, activeAcc.ID, activeAcc.Name, currentUser, reason)
 		if err != nil {
-			// Only one account (or none left) — stop the loop; cookie needs refresh.
 			serveZikCookieExpired(w, cfg, currentUser, activeAcc.Name, reason)
 			return
 		}
@@ -206,29 +204,55 @@ func zikSoftenAPIUnauthorized(path string, status int) bool {
 	if !strings.HasPrefix(p, "/extra-cdn-") {
 		return false
 	}
-	// Keep hard failures for real auth endpoints if they appear under extra-cdn.
 	if strings.Contains(p, "/login") || strings.Contains(p, "/signin") || strings.Contains(p, "/token") {
 		return false
 	}
-	return true
+	// Only soften known non-critical dashboard widgets (not every API).
+	return strings.Contains(p, "bestseller")
 }
 
-// zikSoftenEmptyBody picks a JSON empty value that won't crash Zik's SPA.
-// List-like GETs expect arrays; returning {} caused blank white React crashes.
 func zikSoftenEmptyBody(path string) string {
-	p := strings.ToLower(path)
-	if strings.Contains(p, "bestseller") ||
-		strings.Contains(p, "trends") ||
-		strings.Contains(p, "competitors") ||
-		strings.Contains(p, "announcements") ||
-		strings.Contains(p, "getstores") ||
-		strings.Contains(p, "insights") ||
-		strings.HasPrefix(strings.TrimPrefix(p, "/extra-cdn-0"), "/dashboard") {
-		return "[]"
-	}
-	return "null"
+	_ = path
+	return "[]"
 }
 
+// zikPublicAssetPath — no ct_session required (SPA still needs these after hard refresh).
+func zikPublicAssetPath(path string) bool {
+	p := strings.ToLower(strings.Split(path, "?")[0])
+	if p == "/manifest.json" || p == "/favicon.ico" || p == "/robots.txt" {
+		return true
+	}
+	if strings.HasPrefix(p, "/static/") {
+		return true
+	}
+	for _, ext := range []string{".js", ".css", ".map", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// zikEssentialStorage keeps only keys the SPA needs for auth — dumping full
+// Chrome localStorage (Intercom/Beamer/etc.) has broken page parse before.
+func zikEssentialStorage(all map[string]interface{}) map[string]interface{} {
+	if len(all) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{})
+	for _, k := range []string{"access", "accessToken", "token", "defaultMarketplace", "sidebarExpand", "zk_geo_iso", "crDefaultTab"} {
+		if v, ok := all[k]; ok && v != nil {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// zikLoginWatchScript — lightweight. Same-origin auth headers only.
+// No history/Location monkeypatches (those blanked React). No watchdog overlay.
 func zikLoginWatchScript(cfg Config) string {
 	home := cfg.HomePath
 	if home == "" {
@@ -240,9 +264,8 @@ func zikLoginWatchScript(cfg Config) string {
   window.__zikLogoutWatch = true;
   var HOME = %q;
   var switching = false;
-  var apiFail = 0;
-  function hasAccess(){
-    try { return !!(localStorage.getItem("access") || ""); } catch (e) { return false; }
+  function sameOrigin(url){
+    try { return new URL(url, location.href).origin === location.origin; } catch (e) { return false; }
   }
   function wallText(){
     var text = "";
@@ -253,53 +276,13 @@ func zikLoginWatchScript(cfg Config) string {
     if (text.indexOf("Welcome!") !== -1 && text.indexOf("Sign in with Google") !== -1) return true;
     return false;
   }
-  function wallPath(){
-    var path = (location.pathname || "/").replace(/\/$/, "") || "/";
-    return path === "/login" || path === "/signin" || path === "/sign-in" ||
-      path.indexOf("/login/") === 0 || path.indexOf("/signin/") === 0;
-  }
-  function isLoginURL(u){
-    if (!u) return false;
-    var s = String(u);
-    try {
-      var path = s.indexOf("http") === 0 ? (new URL(s, location.origin)).pathname : s.split("?")[0];
-      path = (path || "/").replace(/\/$/, "") || "/";
-      return path === "/login" || path === "/signin" || path === "/sign-in" ||
-        path.indexOf("/login/") === 0 || path.indexOf("/signin/") === 0;
-    } catch (e) { return s.indexOf("/login") !== -1; }
-  }
-  // Keep URL on dashboard when SPA tries to route to /login (mapped session is valid).
-  function guardLoginNav(){
-    if (!hasAccess()) return;
-    if (wallPath()) {
-      try { history.replaceState(null, "", HOME); } catch (e) {}
-    }
-  }
-  try {
-    var _ps = history.pushState.bind(history);
-    var _rs = history.replaceState.bind(history);
-    history.pushState = function(state, title, url){
-      if (hasAccess() && isLoginURL(url)) url = HOME;
-      return _ps(state, title, url);
-    };
-    history.replaceState = function(state, title, url){
-      if (hasAccess() && isLoginURL(url)) url = HOME;
-      return _rs(state, title, url);
-    };
-  } catch (e) {}
-  // Do NOT patch Location.prototype.assign/replace — that blanks React Router apps.
-  guardLoginNav();
-  setTimeout(guardLoginNav, 0);
-  setTimeout(guardLoginNav, 1000);
   function switchAccount(reason){
-    if (switching) return;
-    // Only rotate on a real login wall, never on a transient /login route flicker.
-    if (!wallText()) return;
+    if (switching || !wallText()) return;
     switching = true;
     location.replace("/login?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "zik_login_wall"));
   }
-  // Force mapped Authorization + device headers early (before tmPatchRequests).
-  function authHeader(init){
+  function patchInit(url, init){
+    if (!sameOrigin(url)) return init;
     init = init ? Object.assign({}, init) : {};
     var headers = init.headers ? new Headers(init.headers) : new Headers();
     try {
@@ -313,32 +296,13 @@ func zikLoginWatchScript(cfg Config) string {
     init.headers = headers;
     return init;
   }
-  setInterval(function(){
-    // Do NOT treat wallPath alone as logout — that caused /login↔/dashboard storms.
-    if (wallText()) switchAccount("zik_login_text");
-  }, 4000);
+  setInterval(function(){ if (wallText()) switchAccount("zik_login_text"); }, 5000);
   var fo = window.fetch;
   if (typeof fo === "function") {
     window.fetch = function(input, init){
-      try { init = authHeader(init); } catch (e) {}
-      return fo(input, init).then(function(res){
-        try {
-          var url = "";
-          if (typeof input === "string") url = input;
-          else if (input && input.url) url = input.url;
-          var path = (url || "").split("?")[0].toLowerCase();
-          var authPath = path.indexOf("/user/") !== -1 || path.indexOf("/dashboard/") !== -1 ||
-            path.indexOf("/account") !== -1 || path.indexOf("/auth") !== -1 ||
-            path.indexOf("/session") !== -1 || path.indexOf("/subscriber") !== -1;
-          if ((res.status === 401 || res.status === 403) && authPath) {
-            apiFail += 1;
-            if (apiFail >= 5 && wallText()) switchAccount("zik_api_" + res.status);
-          } else if (res.ok && authPath) {
-            apiFail = 0;
-          }
-        } catch (e) {}
-        return res;
-      });
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      try { init = patchInit(url, init); } catch (e) {}
+      return fo(input, init);
     };
   }
   try {
@@ -347,12 +311,14 @@ func zikLoginWatchScript(cfg Config) string {
     XMLHttpRequest.prototype.open = function(m, u){ this.__zikURL = u; return xo.apply(this, arguments); };
     XMLHttpRequest.prototype.send = function(body){
       try {
-        var token = localStorage.getItem("access") || "";
-        if (token) this.setRequestHeader("Authorization", "Bearer " + token);
-        var proof = localStorage.getItem("tm_device_proof") || "";
-        var fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
-        if (proof) this.setRequestHeader("X-Device-Proof", proof);
-        if (fp) this.setRequestHeader("X-Device-Fp", fp);
+        if (sameOrigin(this.__zikURL || "")) {
+          var token = localStorage.getItem("access") || "";
+          if (token) this.setRequestHeader("Authorization", "Bearer " + token);
+          var proof = localStorage.getItem("tm_device_proof") || "";
+          var fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
+          if (proof) this.setRequestHeader("X-Device-Proof", proof);
+          if (fp) this.setRequestHeader("X-Device-Fp", fp);
+        }
       } catch (e) {}
       return xs.apply(this, arguments);
     };
@@ -369,7 +335,6 @@ func zikAuthBearerFromAccount(cookieRaw string) string {
 	if v, ok := ls["access"].(string); ok {
 		return strings.TrimSpace(v)
 	}
-	// Some exports store nested JSON strings.
 	if raw, ok := ls["access"]; ok {
 		b, err := json.Marshal(raw)
 		if err == nil {
@@ -382,7 +347,6 @@ func zikAuthBearerFromAccount(cookieRaw string) string {
 	return ""
 }
 
-// stripNamedCookies removes specific cookie names from a Cookie header (case-insensitive).
 func stripNamedCookies(cookieHeader string, names ...string) string {
 	if cookieHeader == "" || len(names) == 0 {
 		return cookieHeader
@@ -419,7 +383,6 @@ func zikRewriteLoginLocation(loc string, cfg Config) string {
 	if u == "" {
 		return loc
 	}
-	// Absolute upstream login → stay on proxy home
 	lower := strings.ToLower(u)
 	if strings.Contains(lower, "zikanalytics.com") && (strings.Contains(lower, "/login") || strings.Contains(lower, "/signin")) {
 		return home
