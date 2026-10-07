@@ -1,7 +1,12 @@
 {
   "port": "4621",
   "public_host": "creaitor.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://app.creaitor.ai",
+  "cdn_url": "https://app.creaitor.ai",
+  "tool_name": "Creaitor AI",
+  "home_path": "/home",
+  "cookie_domain_suffix": "creaitor.ai",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -10,5 +15,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "Force app.creaitor.ai — empty/stale target fell through to chatgpt.com default"
 }

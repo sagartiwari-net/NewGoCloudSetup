@@ -117,7 +117,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `placeit` — Placeit (:4611) — **HTTPS OK** (2026-10-07): verified OK — panel access working  
 
 - [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts — **redeploy if Access Denied**  
-- [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-07): panel.db cookies, device lock, chrome hide + panel username; logout→`logged_out`; disk `cdn-cache` (72h) + memory L1 for JS/CSS — faster reloads
+- [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-07): panel.db cookies, device lock, chrome hide + panel username; logout→`logged_out`; disk `cdn-cache` (72h) + memory L1 for JS/CSS (**cache added / redeploy**)
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
 - [x] `erank` — eRank (:5191) — **READY / HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
 - [x] `selleramp` — SellerAmp (:5161) — **DONE / HTTPS OK** (2026-10-07): verified OK — panel access, search `/sas/lookup`, `__tm_s` keepalive + static bypass + device-lock (cookie-copy → Access Denied)
@@ -147,7 +147,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `copywritely` (:4521)  
 - [ ] `coursera` (:4701)  
 - [ ] `cramly` (:4841)  
-- [ ] `creaitor` (:4621)  
+- [ ] `creaitor` (:4621) — **FIX PUSHED** (2026-10-07): was ChatGPT (empty target → chatgpt.com default); overlay+defaults force `https://app.creaitor.ai` + `/home` — redeploy then verify  
+
 - [ ] `creattie` (:4861)  
 - [ ] `digen` (:5271)  
 - [ ] `educative` (:4851)  
