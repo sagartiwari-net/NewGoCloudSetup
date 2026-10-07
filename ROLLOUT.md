@@ -226,7 +226,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `writecream` (:5051)  
 - [ ] `zebracat` (:5111)  
 - [ ] `zikaanalytics` (:5251)  
-- [ ] `zonguru` (:4691) — **FIX PUSHED** (2026-10-07): skip device-gate on `/api/*` (widgets never hit proxy); force `$http`/XHR rewrite; `[REQ]`/`[DASH]` logs — redeploy + fresh access-link
+- [ ] `zonguru` (:4691) — **PARKED** (2026-10-07): dashboard widgets still “error loading your data” while official `my.zonguru.com` shows zeros OK. **Seen so far:** panel access + device-bind OK; `[REQ]` only `/signalr/hubs` + `/api/device-bind` — **no** `/api/dashboard/*` ever hits the Go proxy (browser not posting tiles through us). Local curl through proxy: `POST /api/dashboard/EssentialBusinessData` → 200 zeros when `FbaToken` set. Attempted: DigitaVision rewrite off JSON/emails; `baseUrl`/cookieDomain rewrite; device soft-allow + skip gate on `/api`; Angular `$http`/XHR re-hook. **Next:** DevTools Network — confirm tile calls URL host (`zonguru.gt4rents.com` vs `my.zonguru.com` CORS); why Angular never fires `/api/dashboard/*` on proxy; SignalR hubs / `lib-bundle` API client. Cookie = GoAuto `localStorage` `token`+`me` (account ZonGuru 1).
 
 ---
 
@@ -239,6 +239,7 @@ If fail: note in “Open issues”, fix, re-tick.
 | `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
 | `mgfc` (Magnific) | `/photos` still WAF if someone bypasses redirect | **OK on `mgfc`**; `/photos` → `/people-emotions` |
 | `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
+| `zonguru` | Dashboard tiles error; proxy never sees `/api/dashboard/*` (only signalr + device-bind). Official OK (zeros). | **Parked.** Resume: DevTools host of tile XHRs; Angular API client / lib-bundle; why posts never reach `:4691` |
 
 ### Chrome Safe Browsing (“Dangerous site”) — who got hit
 
