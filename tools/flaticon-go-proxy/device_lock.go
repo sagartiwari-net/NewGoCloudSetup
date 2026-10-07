@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -242,8 +243,27 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
 		return
 	}
-	log.Printf("[DEVICE] proof stored")
+	// Heartbeat is noisy — only log first bind / fp change.
+	if flaticonDeviceBindShouldLog(token, strings.TrimSpace(r.Header.Get("X-Device-Fp"))) {
+		log.Printf("[DEVICE] proof stored")
+	}
 	fmt.Fprintf(w, `{"status":"ok"}`)
+}
+
+var (
+	flaticonDeviceBindMu sync.Mutex
+	flaticonDeviceBindFP = map[string]string{}
+)
+
+func flaticonDeviceBindShouldLog(token, fp string) bool {
+	flaticonDeviceBindMu.Lock()
+	defer flaticonDeviceBindMu.Unlock()
+	prev, ok := flaticonDeviceBindFP[token]
+	if ok && prev == fp {
+		return false
+	}
+	flaticonDeviceBindFP[token] = fp
+	return true
 }
 
 
@@ -300,10 +320,16 @@ function tmWatch(fp, proof) {
     }).then(function (res) {
       if (!res.ok) tmDeny();
     }).catch(function () {});
-  }, 2000);
+  }, 30000);
 }
 (function () {
   try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}
+  // Stale device SW caused blank Flaticon + reload loops on WAF cards.
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister(); });
+    }).catch(function () {});
+  }
   var proof = "";
   var fp = "";
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
@@ -342,14 +368,7 @@ function tmWatch(fp, proof) {
   }).then(function (fp) {
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
+    // Do not register device SW on Flaticon — races with Freepik/Akamai and blanks WAF cards.
   }).catch(function () {});
 })();
 </script>`

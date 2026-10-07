@@ -3336,6 +3336,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
 
+	// Freepik WAF blocks Hetzner — without a residential proxy, never hit upstream
+	// (403 challenge HTML rewrites to a blank page + device SW refresh loop).
+	if usesPanelAccountMode(cfg) && strings.TrimSpace(activeAcc.Proxy) == "" &&
+		isDocumentNavigation(r) && !strings.HasPrefix(path, "/api/") &&
+		!strings.HasPrefix(path, "/cdn-cgi/") && path != "/favicon.ico" {
+		log.Printf("[WAF] skip upstream — account %q has NO proxy (path=%s)", activeAcc.Name, path)
+		renderFlaticonWAFPage(w, cfg, false)
+		return
+	}
+
 	// ── 5. Build upstream request ─────────────────────────────────────────────────
 	targetParsed, err := url.Parse(cfg.TargetURL)
 	if err != nil {

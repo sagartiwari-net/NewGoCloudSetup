@@ -147,7 +147,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `copywritely` (:4521)  
 - [ ] `coursera` (:4701)  
 - [ ] `cramly` (:4841)  
-- [ ] `creaitor` (:4621) — **FIX PUSHED** (2026-10-07): was ChatGPT (empty target → chatgpt.com default); overlay+defaults force `https://app.creaitor.ai` + `/home` — redeploy then verify  
+- [ ] `creaitor` (:4621) — **PARKED** (2026-10-07): ChatGPT-target fix pushed (`app.creaitor.ai`); retry later  
+
 
 - [ ] `creattie` (:4861)  
 - [ ] `digen` (:5271)  
@@ -155,7 +156,8 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `epidemicsound` (:4641)  
 - [x] `erank` (:5191) — **READY / HTTPS OK** (2026-10-06): see Priority  
 - [ ] `fishaudio` (:4991)  
-- [ ] `flaticon` (:4921) — **parked** (Freepik WAF 403 on Hetzner; needs Proxy Manager)  
+- [ ] `flaticon` (:4921) — **needs Proxy Manager** (2026-10-07): Freepik WAF 403 on Hetzner; blank/refresh fixed → clear “Proxy required” card when account has no proxy; assign residential proxy then retest  
+
 - [ ] `flexclip` (:4671)  
 - [ ] `glorify` (:4681)  
 - [x] `grammarly` (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  

@@ -454,7 +454,37 @@ func isFlaticonSecurityFilterHTML(body []byte) bool {
 	if strings.Contains(lower, "that request didn't go through") {
 		return true
 	}
+	// Soft challenges / Akamai / CF interstitial — rewrite looks blank after host replace.
+	markers := []string{
+		"just a moment", "checking your browser", "attention required",
+		"cf-browser-verification", "cf-challenge", "akamai", "access denied",
+		"request blocked", "bot detection", "enable javascript and cookies",
+	}
+	for _, m := range markers {
+		if strings.Contains(lower, m) {
+			return true
+		}
+	}
 	return false
+}
+
+func flaticonWAFCleanupScript() string {
+	// Kill device SW + heartbeat so the card does not blank/reload-loop.
+	return `<script>(function(){
+  try { if (window.__tmWatch) clearInterval(window.__tmWatch); } catch (e) {}
+  try {
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      });
+    }
+  } catch (e) {}
+  try {
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
+    }
+  } catch (e) {}
+})();</script>`
 }
 
 func flaticonWAFNeedsProxyCard(cfg Config) lightCard {
@@ -464,6 +494,7 @@ func flaticonWAFNeedsProxyCard(cfg Config) lightCard {
 		Heading: "Proxy required",
 		Message: "<span class=\"brand\">" + name + "</span> is blocked by Flaticon's <b>security filter</b> on this server IP (Hetzner). Assign a <b>Proxy Manager</b> residential proxy on the Flaticon account in the panel (same as Magnific / Claude / Envato), then open a <b>new access link</b>.",
 		Footer:  "Cookie refresh alone will not clear datacenter IP blocks",
+		ExtraScript: flaticonWAFCleanupScript(),
 	}
 }
 
@@ -492,7 +523,7 @@ func flaticonWAFRetryCard(cfg Config) lightCard {
   }
   try{sessionStorage.setItem('tm_fi_waf_retry', String(n+1));}catch(e){}
   setTimeout(function(){ location.replace(home); }, 1800);
-})();</script>`,
+})();</script>` + flaticonWAFCleanupScript(),
 	}
 }
 
@@ -501,6 +532,10 @@ func renderFlaticonWAFPage(w http.ResponseWriter, cfg Config, hasProxy bool) {
 	if hasProxy {
 		card = flaticonWAFRetryCard(cfg)
 	}
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Del("Content-Encoding")
+	w.Header().Del("Content-Length")
 	writeLightCard(w, http.StatusOK, card)
 }
 
