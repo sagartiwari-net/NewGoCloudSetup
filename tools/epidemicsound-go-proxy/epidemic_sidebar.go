@@ -19,12 +19,24 @@ func epidemicSidebarScript(panelUsername string) string {
 button[class*="_sidebarBoxButton_"]{
   pointer-events:none!important;
 }
+button[class*="_sidebarBoxButton_"] [class*="_sidebarFooterUserInfo_"] > p.es-text-button-xs{
+  font-size:0!important;
+  color:transparent!important;
+}
+button[class*="_sidebarBoxButton_"] [class*="_sidebarFooterUserInfo_"] > p.es-text-button-xs::after{
+  content:var(--tm-es-user, "");
+  font-size:var(--es-text-button-xs-font-size, .75rem);
+  font-weight:var(--es-text-button-xs-font-weight, 500);
+  line-height:var(--es-text-button-xs-line-height, 1rem);
+  color:var(--es-color-text, #fff);
+}
 </style>
 <script data-es-sidebar-lock="1">
 (function(){
   if (window.__tmEsSidebar) return;
   window.__tmEsSidebar = true;
   var TM_USER = %s;
+  if (TM_USER) document.documentElement.style.setProperty("--tm-es-user", JSON.stringify(TM_USER));
   function accountButton(){
     return document.querySelector('button[class*="_sidebarBoxButton_"]');
   }
@@ -36,9 +48,8 @@ button[class*="_sidebarBoxButton_"]{
     var info = btn.querySelector('[class*="_sidebarFooterUserInfo_"]');
     if (!info) return;
     var email = info.querySelector("p.es-text-button-xs");
-    if (!email || email.dataset.tmUser === TM_USER) return;
-    email.textContent = TM_USER;
-    email.dataset.tmUser = TM_USER;
+    if (!email) return;
+    if (email.textContent !== TM_USER) email.textContent = TM_USER;
   }
   function run(){ try { lock(accountButton()); } catch (e) {} }
   run();
@@ -54,7 +65,7 @@ button[class*="_sidebarBoxButton_"]{
       e.stopPropagation();
     }
   }, true);
-  setInterval(run, 1000);
+  setInterval(run, 500);
 })();
 </script>`, string(userJS))
 }
