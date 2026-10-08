@@ -206,7 +206,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): verified OK — cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`; no-subscription / dead cookie → soft-revive then switch / panel `logged_out` + contact-admin (**failover verified**)  
 
 
-- [ ] `shortform` (:4771) — **IN PROGRESS** (2026-10-08): device page fixed (keep `ct_session`). Discover “can not load” = `/api/home/docs` 401 — force Basic `auth_token`, no cookies on `/api`, https origin, device-gate skips `/api`.
+- [x] `shortform` (:4771) — **HTTPS OK** (2026-10-08): verified OK — `www.shortform.com`, panel `auth_token` Basic on `/api`. **Logout:** user logout + API 401 → account `logged_out` + panel `logout_events`.
 
 - [x] `similarweb` (:5071) — **HTTPS OK** (2026-10-07): verified OK — live working; CDN disk cache already present (`cdn_cache.go` → `cdn-cache/`, 72h TTL)  
 

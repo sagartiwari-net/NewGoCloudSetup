@@ -565,6 +565,9 @@ func buildInjectScript(cfg Config, session string) string {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
+    try {
+      fetch("/__tm_logout", { method: "POST", credentials: "same-origin", keepalive: true });
+    } catch (eOut) {}
     goHome();
   }, true);
 
@@ -798,6 +801,9 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 				snip = snip[:180]
 			}
 			log.Printf("[API] %s %s → %d %s", resp.Request.Method, resp.Request.URL.Path, resp.StatusCode, bytes.TrimSpace(snip))
+			if resp.StatusCode == http.StatusUnauthorized && bytes.Contains(bytes.ToLower(body), []byte("unauthorized")) {
+				noteShortformLogout(cfg, resp.Request, "api_unauthorized")
+			}
 		}
 		plain, err := decompressBody(body, enc)
 		if err != nil {
@@ -896,6 +902,12 @@ func main() {
 		}
 		if usesPanelAccountMode(cfg) {
 			r = stampPanelAccount(nextReq, acc)
+			r = withShortformAccount(r, acc)
+		}
+		if r.URL.Path == "/__tm_logout" {
+			noteShortformLogout(cfg, r, "user_logout")
+			w.WriteHeader(http.StatusNoContent)
+			return
 		}
 
 
