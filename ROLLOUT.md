@@ -182,7 +182,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `minvo` (:4871)  
 - [ ] `mojo` (:4881)  
 - [ ] `perplexity` (:5101)  
-- [ ] `piktochart` (:4541) — **IN PROGRESS** (2026-10-08): Bad Gateway was empty `target_url` → `chatgpt.com` plus HTTP/2 ALPN. Target is now `https://create.piktochart.com`, HTTP/1.1 only.  
+- [ ] `piktochart` (:4541) — **IN PROGRESS** (2026-10-08): target `https://create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” is a logout: Analytics Logouts row + one switch to another active account, or contact-admin. Account status stays unchanged.  
 - [ ] `pixlr` (:4901)  
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
 - [ ] `ppspy` (:4961)  
