@@ -176,7 +176,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `junglescout` (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `kalodata` (:4951)  
 - [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): verified OK — panel access working  
-- [ ] `linkedinlearning` (:4571) — **IN PROGRESS** (2026-10-08): page loads on `www.linkedin.com/learning/` over HTTP/1.1. Disk cache `cdn-cache/` (72h). Video/audio streamed with Range. Hide only `li[data-live-test-me-menu]` (Me). Logout detection is not added.
+- [ ] `linkedinlearning` (:4571) — **IN PROGRESS** (2026-10-08): page loads on `www.linkedin.com/learning/` over HTTP/1.1. Disk cache `cdn-cache/` (72h). Video/audio streamed with Range. Hide only `li[data-live-test-me-menu]` (Me). Guest home (Start free trial / Sign in), `/learning-login`, and logout URLs switch accounts or show contact-admin. Status stays unchanged. Analytics → Logouts.
 - [x] `mgfc` (:5121) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `merchinformer` (:4651)  
 - [ ] `minvo` (:4871)  
