@@ -144,7 +144,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `chatbotapp` (:5061) — **parked** — home/chats list OK; `/api/v2/chat` still 4002 `x_token` on server (`91f9ad8` inject) — resume later; see Open issues  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
-- [ ] `copywritely` (:4521)  
+- [ ] `copywritely` (:4521) — **IN PROGRESS** (2026-10-08): was opening ChatGPT because `target_url` was empty. Now `https://copywritely.com`, home `/tools/`.
 - [ ] `coursera` (:4701)  
 - [ ] `cramly` (:4841)  
 - [ ] `creaitor` (:4621) — **PARKED** (2026-10-07): ChatGPT-target fix pushed (`app.creaitor.ai`); retry later  
@@ -206,7 +206,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): verified OK — cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`; no-subscription / dead cookie → soft-revive then switch / panel `logged_out` + contact-admin (**failover verified**)  
 
 
-- [x] `shortform` (:4771) — **HTTPS OK** (2026-10-08): verified OK — `www.shortform.com`, panel `auth_token` Basic on `/api`. **Logout:** detect only (API 401, logout click, and `/app/login`) — Analytics Logouts row + switch to another active account, or contact-admin if it is the only one. Account status stays unchanged.
+- [x] `shortform` (:4771) — **HTTPS OK** (2026-10-08): verified OK — `www.shortform.com`. Logout (API 401, logout click, `/app/login`) writes Analytics Logouts, swaps to another active account, or shows contact-admin. Account status stays unchanged.
 
 - [x] `similarweb` (:5071) — **HTTPS OK** (2026-10-07): verified OK — live working; CDN disk cache already present (`cdn_cache.go` → `cdn-cache/`, 72h TTL)  
 

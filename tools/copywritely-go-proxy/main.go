@@ -116,8 +116,8 @@ var (
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
+		TargetURL:              "https://copywritely.com",
+		CDNURL:                 "https://copywritely.com",
 		PublicHost:             "gpt.yourdomain.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
@@ -131,7 +131,7 @@ var (
 		ToolName:               "Tool",
 		CreditLabel:            "Credits",
 		ExportLabel:            "Exports",
-		HomePath:               "/",
+		HomePath:               "/tools/",
 		CountedPaths:           []string{},
 		CountedPrefixes:        []string{},
 		BlockedPaths:           []string{},
@@ -2661,6 +2661,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if isFavicon && authErr != nil {
 		currentUser = "guest_favicon"
+	}
+	if (path == "/" || path == "") && cfg.HomePath != "" && cfg.HomePath != "/" &&
+		(r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
+		return
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────

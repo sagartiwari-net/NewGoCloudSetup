@@ -1,7 +1,11 @@
 {
   "port": "4521",
   "public_host": "copywritely.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://copywritely.com",
+  "tool_name": "Copywritely",
+  "home_path": "/tools/",
+  "cookie_domain_suffix": "copywritely.com",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -10,5 +14,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "Empty target_url fell through to chatgpt.com. Home is /tools/."
 }
