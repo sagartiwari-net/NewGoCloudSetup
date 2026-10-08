@@ -30,7 +30,6 @@ import (
 	"github.com/andybalholm/brotli"
 	_ "github.com/go-sql-driver/mysql"
 	utls "github.com/refraction-networking/utls"
-	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
 )
 
@@ -134,8 +133,8 @@ var (
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
+		TargetURL:              "https://create.piktochart.com",
+		CDNURL:                 "https://create.piktochart.com",
 		PublicHost:             "gpt.yourdomain.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
@@ -1819,7 +1818,6 @@ func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTL
 }
 
 type roundTripper struct {
-	h2 *http2.Transport
 	h1 *http.Transport
 }
 
@@ -1828,38 +1826,24 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
 		}
-		if rt.h2 != nil {
-			rt.h2.CloseIdleConnections()
-		}
 	}
-	// IMPORTANT: do NOT probe-dial before RoundTrip. The old code dialed uTLS
-	// once just to read ALPN, discarded that conn (leak), then dialed AGAIN
-	// inside h1/h2 — doubling TLS cost on every asset and making the SPA
-	// stick on the splash screen for a long time. Let http2.Transport pool
-	// connections via DialTLSContext.
-	resp, err := rt.h2.RoundTrip(req)
-	if err != nil {
-		return rt.h1.RoundTrip(req)
-	}
-	return resp, nil
+	return rt.h1.RoundTrip(req)
 }
 
 func buildChromeHTTPClient() *http.Client {
-	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) { return dialChrome(ctx, addr) }
+	// Force ALPN http/1.1 only. Offering h2 then reading the socket as HTTP/1
+	// turns Cloudflare SETTINGS frames into "malformed HTTP response" and a 502.
+	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return dialChromeHTTP1(ctx, addr)
+	}
 	h1 := &http.Transport{
 		DialTLSContext: dialTLS, MaxIdleConns: 200, MaxIdleConnsPerHost: 32,
 		IdleConnTimeout: 120 * time.Second, TLSHandshakeTimeout: 15 * time.Second,
 		DisableCompression: false, ForceAttemptHTTP2: false,
 		ResponseHeaderTimeout: 60 * time.Second,
 	}
-	h2 := &http2.Transport{
-		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-			return dialChrome(ctx, addr)
-		}, DisableCompression: false,
-		AllowHTTP: false,
-	}
 	return &http.Client{
-		Transport:     &roundTripper{h2: h2, h1: h1},
+		Transport:     &roundTripper{h1: h1},
 		Timeout:       120 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
 	}
