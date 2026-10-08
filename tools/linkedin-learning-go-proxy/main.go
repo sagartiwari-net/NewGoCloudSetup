@@ -3477,6 +3477,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		// Hide only the nav "Me" menu. Ember ids (hue-menu-trigger-emberN) change
+		// every render; data-live-test-me-menu is the stable marker on that one <li>.
+		injectStr += `<style data-li-hide>li[data-live-test-me-menu]{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>`
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
