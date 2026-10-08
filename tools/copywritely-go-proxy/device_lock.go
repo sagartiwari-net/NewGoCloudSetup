@@ -57,7 +57,24 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "worker", "sharedworker":
+		return true
+	}
+	p := strings.ToLower(r.URL.Path)
+	switch {
+	case strings.HasSuffix(p, ".js"),
+		strings.HasSuffix(p, ".css"),
+		strings.HasSuffix(p, ".map"),
+		strings.HasSuffix(p, ".woff"),
+		strings.HasSuffix(p, ".woff2"),
+		strings.HasSuffix(p, ".ttf"),
+		strings.HasSuffix(p, ".png"),
+		strings.HasSuffix(p, ".jpg"),
+		strings.HasSuffix(p, ".jpeg"),
+		strings.HasSuffix(p, ".gif"),
+		strings.HasSuffix(p, ".svg"),
+		strings.HasSuffix(p, ".webp"),
+		strings.HasSuffix(p, ".ico"):
 		return true
 	}
 	return false
