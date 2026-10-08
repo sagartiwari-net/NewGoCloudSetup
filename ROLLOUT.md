@@ -176,13 +176,13 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `junglescout` (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `kalodata` (:4951)  
 - [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): verified OK — panel access working  
-- [ ] `linkedinlearning` (:4571)  
+- [ ] `linkedinlearning` (:4571) — **IN PROGRESS** (2026-10-08): Bad Gateway was empty `target_url` → `chatgpt.com` plus HTTP/2 ALPN. Target is now `https://www.linkedin.com`, home `/learning/`, HTTP/1.1. CDN `static.licdn.com`.
 - [x] `mgfc` (:5121) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `merchinformer` (:4651)  
 - [ ] `minvo` (:4871)  
 - [ ] `mojo` (:4881)  
 - [ ] `perplexity` (:5101)  
-- [ ] `piktochart` (:4541) — **IN PROGRESS** (2026-10-08): target `https://create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” switches accounts or shows contact-admin; status stays unchanged. Hide only `#usersettings-dropdown`. `Digitavision` → `ToolsMandi` in HTML and on-screen text. Disk cache `cdn-cache/` (72h) for static assets.  
+- [x] `piktochart` (:4541) — **HTTPS OK** (2026-10-08): verified OK — `create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” switches accounts or shows contact-admin; status stays unchanged. Hide only `#usersettings-dropdown`. `Digitavision` → `ToolsMandi`. Disk cache `cdn-cache/` (72h).  
 - [ ] `pixlr` (:4901)  
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
 - [ ] `ppspy` (:4961)  
