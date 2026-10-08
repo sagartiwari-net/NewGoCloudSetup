@@ -392,6 +392,12 @@ func buildInjectScript(cfg Config, session string) string {
     console.warn("[Shortform Proxy] localStorage restore failed", e);
   }
 
+  function sfLoggedOut(url) {
+    var u = String(url || "");
+    if (u.indexOf("/api/") === -1) return;
+    if (location.pathname === "/__tm_logged_out") return;
+    location.replace("/__tm_logged_out");
+  }
   var __fetch = window.fetch;
   window.fetch = function(input, init) {
     if (typeof input === "string") input = proxyUrl(input);
@@ -399,7 +405,10 @@ func buildInjectScript(cfg Config, session string) string {
       var proxied = proxyUrl(input.url);
       if (proxied !== input.url) input = new Request(proxied, input);
     }
-    return __fetch.call(this, input, init);
+    return __fetch.call(this, input, init).then(function(res) {
+      try { if (res && res.status === 401) sfLoggedOut(typeof input === "string" ? input : (input && input.url)); } catch (e401) {}
+      return res;
+    });
   };
 
   var __xhrOpen = XMLHttpRequest.prototype.open;
@@ -407,7 +416,15 @@ func buildInjectScript(cfg Config, session string) string {
     var args = arguments;
     if (typeof url === "string") args[1] = proxyUrl(url);
     else if (url && typeof url.toString === "function") args[1] = proxyUrl(url.toString());
+    this.__sfURL = args[1];
     return __xhrOpen.apply(this, args);
+  };
+  var __xhrSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function() {
+    this.addEventListener("load", function() {
+      try { if (this.status === 401) sfLoggedOut(this.__sfURL); } catch (e401) {}
+    });
+    return __xhrSend.apply(this, arguments);
   };
 
   var __beacon = navigator.sendBeacon && navigator.sendBeacon.bind(navigator);
@@ -907,6 +924,11 @@ func main() {
 		if r.URL.Path == "/__tm_logout" {
 			noteShortformLogout(cfg, r, "user_logout")
 			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.URL.Path == "/__tm_logged_out" {
+			noteShortformLogout(cfg, r, "api_unauthorized")
+			renderShortformLoggedOut(w, cfg)
 			return
 		}
 
