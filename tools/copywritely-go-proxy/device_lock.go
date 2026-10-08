@@ -63,6 +63,25 @@ func browserSubresource(r *http.Request) bool {
 	return false
 }
 
+// copywritelyToolAction is the in-app Check / editor call. The browser submits
+// it as a form or XHR and does not attach X-Device-Fp.
+func copywritelyToolAction(r *http.Request) bool {
+	if r == nil || r.URL == nil {
+		return false
+	}
+	mode := strings.ToLower(r.Header.Get("Sec-Fetch-Mode"))
+	dest := strings.ToLower(r.Header.Get("Sec-Fetch-Dest"))
+	if mode == "navigate" || dest == "document" {
+		return true
+	}
+	site := strings.ToLower(r.Header.Get("Sec-Fetch-Site"))
+	if site != "" && site != "same-origin" && site != "none" {
+		return false
+	}
+	p := r.URL.Path
+	return strings.HasPrefix(p, "/tools/") || strings.HasPrefix(p, "/wp-admin/") || strings.HasPrefix(p, "/wp-json/")
+}
+
 func isDocumentNavigation(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
@@ -103,9 +122,9 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	}
 	if fp == "" && proof == "" {
 		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
+		// Check is a same-origin form POST to /tools/copywritely/create_new_task
+		// and also cannot send them. Images and files are allowed above.
+		if isDocumentNavigation(r) || copywritelyToolAction(r) {
 			return false
 		}
 		log.Printf("[DEVICE] required path=%s", r.URL.Path)
