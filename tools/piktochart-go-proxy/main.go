@@ -879,11 +879,14 @@ func getStaticCached(method, path string) *staticCacheEntry {
 	}
 	v, ok := staticAssetCache.Load(staticCacheKey(method, path))
 	if !ok {
-		// HEAD can reuse GET cache
 		if method == http.MethodHead {
 			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path))
 		}
 		if !ok {
+			if ent := loadDiskStatic(method, path); ent != nil {
+				staticAssetCache.Store(staticCacheKey(http.MethodGet, path), ent)
+				return ent
+			}
 			return nil
 		}
 	}
@@ -911,6 +914,7 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	storeDiskStatic(method, path, status, contentType, encoding, cp)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
@@ -3358,6 +3362,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr += `<style data-pikto-hide>#usersettings-dropdown{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>`
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -3606,6 +3611,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	cfg := loadConfig()
 	log.Printf("🚀 Starting Generic Tool Proxy — Tool: %s | Target: %s | Port: %s", cfg.ToolName, cfg.TargetURL, cfg.Port)
+	startCDNCacheSweep()
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
