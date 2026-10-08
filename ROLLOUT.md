@@ -144,7 +144,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `chatbotapp` (:5061) — **parked** — home/chats list OK; `/api/v2/chat` still 4002 `x_token` on server (`91f9ad8` inject) — resume later; see Open issues  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
-- [ ] `copywritely` (:4521) — **IN PROGRESS** (2026-10-08): was opening ChatGPT because `target_url` was empty. Now `https://copywritely.com`, home `/tools/`.
+- [ ] `copywritely` (:4521) — **IN PROGRESS** (2026-10-08): target is `https://copywritely.com`, home `/tools/`. Do not redirect `/` to `/tools/` — that URL is the login popup and caused `ERR_TOO_MANY_REDIRECTS`.
 - [ ] `coursera` (:4701)  
 - [ ] `cramly` (:4841)  
 - [ ] `creaitor` (:4621) — **PARKED** (2026-10-07): ChatGPT-target fix pushed (`app.creaitor.ai`); retry later  

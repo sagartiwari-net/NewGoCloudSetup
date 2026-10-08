@@ -2662,11 +2662,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if isFavicon && authErr != nil {
 		currentUser = "guest_favicon"
 	}
-	if (path == "/" || path == "") && cfg.HomePath != "" && cfg.HomePath != "/" &&
-		(r.Method == http.MethodGet || r.Method == http.MethodHead) {
-		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
-		return
-	}
+	// Do not bounce "/" to /tools/. Logged-out Copywritely answers /tools/ with
+	// 302 Location /?login_popup=1&redirect_to=/tools/ — sending that back to
+	// /tools/ is an endless redirect.
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
 	if isBlockedPath(path, cfg) {
