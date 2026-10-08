@@ -988,12 +988,20 @@ func getStaticCached(method, path string) *staticCacheEntry {
 			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path))
 		}
 		if !ok {
+			if disk := loadDiskStatic(method, path); disk != nil {
+				staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+				return disk
+			}
 			return nil
 		}
 	}
 	ent := v.(*staticCacheEntry)
 	if time.Now().After(ent.expires) {
 		staticAssetCache.Delete(staticCacheKey(http.MethodGet, path))
+		if disk := loadDiskStatic(method, path); disk != nil {
+			staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+			return disk
+		}
 		return nil
 	}
 	return ent
@@ -1015,6 +1023,7 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	storeDiskStatic(method, path, status, contentType, encoding, cp)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
@@ -3341,6 +3350,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && flexclipLogoutPath(r) {
+		reason := "session_expired"
+		if strings.Contains(strings.ToLower(path), "logout") {
+			reason = "user_logout"
+		}
+		serveFlexclipLogout(w, r, cfg, activeAcc, sessionToken, reason)
+		return
+	}
+
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
 
@@ -3631,6 +3649,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && flexclipUpstreamLogout(upstreamResp) {
+		serveFlexclipLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
+		return
+	}
+
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -3735,6 +3758,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err != nil {
 			w.WriteHeader(upstreamResp.StatusCode)
+			return
+		}
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && flexclipLoggedOutHTML(bodyBytes) {
+			serveFlexclipLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
 			return
 		}
 		logUpstream(bodyBytes)
@@ -4080,6 +4107,7 @@ func main() {
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
+	startCDNCacheSweep()
 	warmCFCookies(cfg)
 
 	mux := http.NewServeMux()
