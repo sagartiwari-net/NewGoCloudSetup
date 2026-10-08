@@ -79,6 +79,14 @@ func browserSubresource(r *http.Request) bool {
 	return false
 }
 
+func epidemicAPIRequest(r *http.Request) bool {
+	if r == nil || r.URL == nil {
+		return false
+	}
+	p := strings.ToLower(r.URL.Path)
+	return strings.Contains(p, "/soundtrack-graph/") || strings.Contains(p, "/graphql")
+}
+
 func isDocumentNavigation(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
@@ -119,9 +127,8 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	}
 	if fp == "" && proof == "" {
 		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
+		// Assistant GraphQL is called on client-api and also omits those headers.
+		if isDocumentNavigation(r) || epidemicAPIRequest(r) {
 			return false
 		}
 		log.Printf("[DEVICE] required path=%s", r.URL.Path)

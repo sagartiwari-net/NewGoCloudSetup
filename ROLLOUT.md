@@ -153,7 +153,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `creattie` (:4861)  
 - [ ] `digen` (:5271)  
 - [ ] `educative` (:4851)  
-- [ ] `epidemicsound` (:4641) — **IN PROGRESS** (2026-10-08): target `https://www.epidemicsound.com`, home `/music/featured/?override_referrer=`. Preview MP3 (`/lqmp3/*.mp3`) was 401 `device_required` because the player does not send device headers; audio/waveform paths are allowed through the device gate.  
+- [ ] `epidemicsound` (:4641) — **IN PROGRESS** (2026-10-08): target `www.epidemicsound.com`, home `/music/featured/`. Preview MP3 allowed through the device gate. Assistant “Network error” was CORS: `client-api.epidemicsound.com/soundtrack-graph/graphql/` was called directly; that host is now proxied. `wa/` and `insight_log` blocked requests are analytics, not the failure.  
 - [x] `erank` (:5191) — **READY / HTTPS OK** (2026-10-06): see Priority  
 - [ ] `fishaudio` (:4991)  
 - [ ] `flaticon` (:4921) — **PARKED** (2026-10-07): Freepik WAF; blank/refresh fixed; still blocked even with proxy — retry later with fresh cookies on same residential proxy IP (or another proxy)  

@@ -41,7 +41,8 @@
     "https://cognito-identity.eu-west-1.amazonaws.com",
     "https://firehose.eu-west-1.amazonaws.com",
     "https://com-epidemicsound-prod1.mini.snplow.net",
-    "https://static.cloudflareinsights.com"
+    "https://static.cloudflareinsights.com",
+    "https://client-api.epidemicsound.com"
   ],
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
