@@ -3837,7 +3837,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
-		injectStr += `<style data-flex-hide>[data-auto-id="Editor_avatar"]{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>`
+		// Bottom account chip only (avatar, name, Tier, menu). The hash after
+		// FJMenu_bottom__ changes between builds; the dropdown lives inside it.
+		injectStr += `<style data-flex-hide>[class*="FJMenu_bottom__"]{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>`
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
