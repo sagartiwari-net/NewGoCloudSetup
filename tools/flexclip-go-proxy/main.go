@@ -2528,6 +2528,13 @@ func patcherScript(cfg Config) string {
         }
         u = u.replace('https://'+T, O).replace('http://'+T, O);
         u = u.replace('https://flexclip.com', O).replace('http://flexclip.com', O);
+        // Any other *.flexclip.com host (avatar/AI media) must stay on the proxy
+        // or the <video> request is cross-origin and the preview never starts.
+        u = u.replace(/(https?:)?\/\/([a-z0-9.-]+\.flexclip\.com)(?::\d+)?(?=\/|$)/gi, function(match, proto, host) {
+            host = String(host || '').toLowerCase();
+            if (!host || host === 'www.flexclip.com') return match;
+            return O + '/ext-host/' + host;
+        });
         if (C && C !== T) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
         // Dynamic chunk-composing hosts (any TLD / mangled IP-derived host)
         if (CHUNK_COMPOSE) {
@@ -2847,6 +2854,8 @@ func patcherScript(cfg Config) string {
     try {
         patchProp(HTMLScriptElement.prototype, 'src');
         patchProp(HTMLLinkElement.prototype, 'href');
+        if (window.HTMLMediaElement) patchProp(HTMLMediaElement.prototype, 'src');
+        if (window.HTMLSourceElement) patchProp(HTMLSourceElement.prototype, 'src');
     } catch (e) {}
 
     // ── Strip integrity + rewrite src/href on dynamically created tags ──
@@ -2855,7 +2864,7 @@ func patcherScript(cfg Config) string {
         Document.prototype.createElement = function(tag) {
             var el = ce.apply(this, arguments);
             var t = tag ? String(tag).toLowerCase() : '';
-            if (t === 'script' || t === 'link') {
+            if (t === 'script' || t === 'link' || t === 'video' || t === 'audio' || t === 'source') {
                 el.setAttribute = (function(orig) {
                     return function(name, value) {
                         if (String(name).toLowerCase() === 'integrity') return;
@@ -3193,7 +3202,9 @@ func isStreamingContentType(contentType string) bool {
 		strings.Contains(ct, "text/x-component") ||
 		strings.Contains(ct, "application/x-ndjson") ||
 		strings.Contains(ct, "application/grpc") ||
-		strings.Contains(ct, "application/octet-stream")
+		strings.Contains(ct, "application/octet-stream") ||
+		strings.HasPrefix(ct, "video/") ||
+		strings.HasPrefix(ct, "audio/")
 }
 
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
@@ -3619,6 +3630,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Header.Set("Referer", newReferer)
 	} else {
 		upstreamReq.Header.Set("Referer", targetBase+"/")
+	}
+
+	// Video and audio must not be gzip-wrapped or the player never starts.
+	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
+	case "video", "audio", "track":
+		upstreamReq.Header.Set("Accept-Encoding", "identity")
+	default:
+		p := strings.ToLower(path)
+		for _, ext := range []string{".mp4", ".webm", ".m3u8", ".m4s", ".mov", ".mp3", ".m4a"} {
+			if strings.HasSuffix(p, ext) {
+				upstreamReq.Header.Set("Accept-Encoding", "identity")
+				break
+			}
+		}
 	}
 
 	upstreamResp, err := doUpstreamWith429Retry(upstreamReq, accountCookieStr)

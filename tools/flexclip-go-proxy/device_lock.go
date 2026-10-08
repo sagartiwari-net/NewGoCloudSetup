@@ -56,9 +56,27 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 }
 
 func browserSubresource(r *http.Request) bool {
-	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	if r != nil && r.URL != nil && strings.HasPrefix(r.URL.Path, "/cdn-cgi/") {
 		return true
+	}
+	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
+	case "image", "style", "font", "script", "audio", "video", "track", "worker", "sharedworker":
+		return true
+	}
+	if r == nil || r.URL == nil {
+		return false
+	}
+	p := strings.ToLower(r.URL.Path)
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	if strings.Contains(p, "/export") || strings.Contains(p, "/download") {
+		return true
+	}
+	for _, ext := range []string{".mp4", ".webm", ".m3u8", ".m4s", ".mov", ".mp3", ".m4a", ".ts", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".woff", ".woff2"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
 	}
 	return false
 }
@@ -102,17 +120,12 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
-			return false
-		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
+		// FlexClip's player, file download, and credit check run as a video tag,
+		// sendBeacon, or a fetch that never gets the device headers. A 401 here
+		// is what the editor turns into "Subscribe to AI Credits Plan" and a
+		// spinner that never becomes a video. A copied cookie is still dropped
+		// when the page script posts a mismatched proof.
+		return false
 	}
 	panelSess.Delete(token)
 	recordCookieShare(cfg, r, token)
@@ -229,7 +242,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -502,7 +514,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())
