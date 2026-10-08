@@ -81,6 +81,13 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !usesPanelAccountMode(cfg) {
 		return false
 	}
+	// Scite mints the API JWT with a sync XHR to /api/auth/api_token before the
+	// device headers exist. Blocking that (and /extra-cdn API calls) returns
+	// device_required and the page sticks on "Max challenge attempts exceeded".
+	path := r.URL.Path
+	if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/extra-cdn-") || strings.HasPrefix(path, "/cdn-proxy/") {
+		return false
+	}
 	token, sess, ok := sessionFromRequest(r)
 	if !ok || sess == nil {
 		return false

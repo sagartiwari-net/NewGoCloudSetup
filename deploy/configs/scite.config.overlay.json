@@ -1,7 +1,12 @@
 {
   "port": "4761",
   "public_host": "scite.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://scite.ai",
+  "cdn_url": "https://cdn.scite.ai",
+  "tool_name": "Scite",
+  "home_path": "/assistant",
+  "cookie_domain_suffix": "scite.ai",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,

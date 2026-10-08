@@ -834,6 +834,44 @@ func cookieEntriesToHeader(cookies []browserCookieEntry) string {
 	return strings.Join(parts, "; ")
 }
 
+// preferBrowserCookie replaces one cookie in the account header with the
+// value the browser just set (same name). Other account cookies stay.
+func preferBrowserCookie(accountHeader, browserHeader, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || browserHeader == "" {
+		return accountHeader
+	}
+	var fresh string
+	prefix := name + "="
+	for _, part := range strings.Split(browserHeader, ";") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, prefix) && len(part) > len(prefix) {
+			fresh = part
+		}
+	}
+	if fresh == "" {
+		return accountHeader
+	}
+	var parts []string
+	replaced := false
+	for _, part := range strings.Split(accountHeader, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if strings.HasPrefix(part, prefix) {
+			parts = append(parts, fresh)
+			replaced = true
+			continue
+		}
+		parts = append(parts, part)
+	}
+	if !replaced {
+		parts = append(parts, fresh)
+	}
+	return strings.Join(parts, "; ")
+}
+
 func dedupeCookieHeader(header string) string {
 	best := map[string]string{}
 	order := []string{}
@@ -2103,7 +2141,8 @@ func sciteEarlyHeadInject() string {
 	return `<script>
 (function(){
   try {
-    window.awsWafCookieDomainList = ['scite.ai','scite.org','localhost'];
+    var host = location.hostname || 'localhost';
+    window.awsWafCookieDomainList = [host, 'scite.ai', 'scite.org', 'localhost'];
   } catch (e0) {}
   try {
     var xhr = new XMLHttpRequest();
@@ -2281,7 +2320,7 @@ func patcherScript(cfg Config) string {
 
     // ── Scite: AWS WAF cookie domains + apiToken (Bearer for api.scite.ai) ──
     try {
-        var wafDomains = ['scite.ai','scite.org','localhost'];
+        var wafDomains = [window.location.hostname, 'scite.ai', 'scite.org', 'localhost'];
         window.awsWafCookieDomainList = wafDomains;
         var wafEl = document.getElementById('scite-waf-cookie-domains');
         if (wafEl) wafEl.textContent = JSON.stringify(wafDomains);
@@ -3396,6 +3435,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if accountCookieStr != "" && cookieSuffix != "" && strings.HasSuffix(hostWithoutPort, cookieSuffix) {
+		// Browser just solved AWS WAF on this host. The panel copy is tied to
+		// another IP and CloudFront answers 401 / "max challenge attempts".
+		accountCookieStr = preferBrowserCookie(accountCookieStr, r.Header.Get("Cookie"), "aws-waf-token")
 		upstreamReq.Header.Set("Cookie", accountCookieStr)
 	}
 
@@ -3663,9 +3705,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				bodyBytes = out
 			}
 			// Also rewrite official WAF domain list in the page JSON element
+			wafHost := cfg.PublicHost
+			if i := strings.Index(wafHost, ":"); i > 0 {
+				wafHost = wafHost[:i]
+			}
 			bodyBytes = bytes.ReplaceAll(bodyBytes,
 				[]byte(`["scite.ai","scite.org"]`),
-				[]byte(`["scite.ai","scite.org","localhost"]`))
+				[]byte(fmt.Sprintf(`["%s","scite.ai","scite.org"]`, wafHost)))
 		}
 		// Inject only before the FIRST </head>. Canva embeds a full error-page
 		// HTML string (with its own </head>) in bootstrap — ReplaceAll would

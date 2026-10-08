@@ -190,7 +190,7 @@ If fail: note in “Open issues”, fix, re-tick.
 
 
 - [ ] `rivalflow` (:4811)  
-- [ ] `scite` (:4761)  
+- [ ] `scite` (:4761) — **IN PROGRESS** (2026-10-08): “Max challenge attempts” = `/api/auth/api_token` blocked by device gate (no JWT) + WAF cookie domain was `scite.ai` not the proxy host. Soft-allow `/api` + `/extra-cdn`, keep browser `aws-waf-token`.
 - [ ] `screpy` (:4721)  
 - [x] `scribd` (:4791) — **HTTPS OK** (2026-10-07): verified OK — live working on `scribd.gt4rents.com`  
 
