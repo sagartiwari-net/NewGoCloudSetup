@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -82,8 +82,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 }
@@ -2765,6 +2765,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && copywritelyLogoutRequest(r) {
+		serveCopywritelyLogout(w, r, cfg, activeAcc, sessionToken, copywritelyLogoutReason(r))
+		return
+	}
+
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
 
@@ -3015,6 +3020,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer upstreamResp.Body.Close()
+
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && copywritelyUpstreamLogout(upstreamResp) {
+		serveCopywritelyLogout(w, r, cfg, activeAcc, sessionToken, "login_popup")
+		return
+	}
 
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
