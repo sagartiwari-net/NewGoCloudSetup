@@ -144,7 +144,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `chatbotapp` (:5061) — **parked** — home/chats list OK; `/api/v2/chat` still 4002 `x_token` on server (`91f9ad8` inject) — resume later; see Open issues  
 - [ ] `closerscopy` (:5241)  
 - [ ] `copyspace` (:4741)  
-- [ ] `copywritely` (:4521) — **IN PROGRESS** (2026-10-08): target `https://copywritely.com`, home `/tools/`. Sign-in popup (`login_popup`) is a logout: Analytics Logouts row + switch to another active account, or contact-admin if it is the only one. Account status stays unchanged.
+- [ ] `copywritely` (:4521) — **IN PROGRESS** (2026-10-08): target `https://copywritely.com`, home `/tools/`. Sign-in popup (`login_popup`) is a logout: Analytics Logouts row + one switch to another active account, then contact-admin (no redirect loop). Account status stays unchanged.
 - [ ] `coursera` (:4701)  
 - [ ] `cramly` (:4841)  
 - [ ] `creaitor` (:4621) — **PARKED** (2026-10-07): ChatGPT-target fix pushed (`app.creaitor.ai`); retry later  

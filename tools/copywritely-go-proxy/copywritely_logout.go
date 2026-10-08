@@ -19,6 +19,7 @@ type cwLogoutHit struct {
 var (
 	cwLogoutMu   sync.Mutex
 	cwLogoutSeen = map[int]cwLogoutHit{}
+	cwSessionHop = map[string]time.Time{}
 )
 
 func copywritelyLogoutRequest(r *http.Request) bool {
@@ -60,7 +61,8 @@ func noteCopywritelyLogout(cfg Config, r *http.Request, acc ToolAccount, session
 	cwLogoutMu.Lock()
 	if last, seen := cwLogoutSeen[acc.ID]; seen && time.Since(last.at) < 2*time.Minute {
 		cwLogoutMu.Unlock()
-		return last.switched, last.next
+		// Already handled this account. Redirecting again loops on /tools/.
+		return false, last.next
 	}
 	cwLogoutMu.Unlock()
 
@@ -142,9 +144,9 @@ func copywritelyLogoutMeta(db *sql.DB, cfg Config, sessionToken string) (website
 
 func serveCopywritelyLogout(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount, sessionToken, reason string) {
 	switched, _ := noteCopywritelyLogout(cfg, r, acc, sessionToken, reason)
-	if switched {
+	if switched && copywritelyCanHop(sessionToken) {
 		home := cfg.HomePath
-		if home == "" {
+		if home == "" || home == "/" {
 			home = "/tools/"
 		}
 		http.Redirect(w, r, home, http.StatusFound)
@@ -157,4 +159,19 @@ func serveCopywritelyLogout(w http.ResponseWriter, r *http.Request, cfg Config, 
 		Message: "The <span class=\"brand\">" + name + "</span> session ended and no other account is available. Contact Admin/Provider.",
 		Footer:  "Saved in panel Analytics → Logouts. Account status was not changed.",
 	})
+}
+
+// copywritelyCanHop allows one switch redirect per session. A second logout
+// in the same burst must render contact-admin, not 302 back to /tools/.
+func copywritelyCanHop(sessionToken string) bool {
+	if sessionToken == "" {
+		return false
+	}
+	cwLogoutMu.Lock()
+	defer cwLogoutMu.Unlock()
+	if last, ok := cwSessionHop[sessionToken]; ok && time.Since(last) < 2*time.Minute {
+		return false
+	}
+	cwSessionHop[sessionToken] = time.Now()
+	return true
 }
