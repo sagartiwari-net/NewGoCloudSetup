@@ -153,7 +153,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `creattie` (:4861)  
 - [ ] `digen` (:5271)  
 - [ ] `educative` (:4851)  
-- [ ] `epidemicsound` (:4641) — **IN PROGRESS** (2026-10-08): target `www.epidemicsound.com`. Preview MP3 allowed through the device gate. Assistant GraphQL host `client-api.epidemicsound.com` is proxied. Sidebar account button does not open its menu; the email line shows the panel username. Static files are cached in memory only — no disk `cdn-cache/`.  
+- [ ] `epidemicsound` (:4641) — **IN PROGRESS** (2026-10-08): target `www.epidemicsound.com`. Preview MP3 allowed through the device gate. Assistant GraphQL host `client-api.epidemicsound.com` is proxied. Sidebar account button does not open its menu; the email line shows the panel username. Disk cache `cdn-cache/` (72h) for JS/CSS/images. Logout detection is not added.  
 - [x] `erank` (:5191) — **READY / HTTPS OK** (2026-10-06): see Priority  
 - [ ] `fishaudio` (:4991)  
 - [ ] `flaticon` (:4921) — **PARKED** (2026-10-07): Freepik WAF; blank/refresh fixed; still blocked even with proxy — retry later with fresh cookies on same residential proxy IP (or another proxy)  

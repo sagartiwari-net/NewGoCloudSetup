@@ -1031,12 +1031,20 @@ func getStaticCached(method, path string) *staticCacheEntry {
 			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path))
 		}
 		if !ok {
+			if disk := loadDiskStatic(method, path); disk != nil {
+				staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+				return disk
+			}
 			return nil
 		}
 	}
 	ent := v.(*staticCacheEntry)
 	if time.Now().After(ent.expires) {
 		staticAssetCache.Delete(staticCacheKey(http.MethodGet, path))
+		if disk := loadDiskStatic(method, path); disk != nil {
+			staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+			return disk
+		}
 		return nil
 	}
 	return ent
@@ -1058,6 +1066,7 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	storeDiskStatic(method, path, status, contentType, encoding, cp)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
@@ -4082,6 +4091,7 @@ func main() {
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
+	startCDNCacheSweep()
 	warmCFCookies(cfg)
 
 	mux := http.NewServeMux()
