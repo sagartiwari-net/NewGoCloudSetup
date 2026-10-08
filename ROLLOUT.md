@@ -159,7 +159,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `flaticon` (:4921) — **PARKED** (2026-10-07): Freepik WAF; blank/refresh fixed; still blocked even with proxy — retry later with fresh cookies on same residential proxy IP (or another proxy)  
 
 
-- [ ] `flexclip` (:4671) — **IN PROGRESS** (2026-10-08): target `https://www.flexclip.com`, home `/editor/`. `/` is not bounced back to `/editor/`. Guest page (Login + Sign Up) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Disk cache `cdn-cache/` (72h).  
+- [ ] `flexclip` (:4671) — **IN PROGRESS** (2026-10-08): target `https://www.flexclip.com`, home `/editor/`. Guest page switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Disk cache `cdn-cache/` (72h). `Digitavision` → `ToolsMandi`. Hide only `[data-auto-id="Editor_avatar"]`.  
 - [ ] `glorify` (:4681)  
 - [x] `grammarly` (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide  
