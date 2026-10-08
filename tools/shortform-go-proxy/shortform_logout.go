@@ -37,36 +37,52 @@ func shortformAccountFrom(r *http.Request) (sfAccountCtx, bool) {
 	return v, ok && v.ID > 0
 }
 
+type sfLogoutHit struct {
+	at       time.Time
+	next     string
+	switched bool
+}
+
 var (
 	sfLogoutMu   sync.Mutex
-	sfLogoutSeen = map[int]time.Time{}
+	sfLogoutSeen = map[int]sfLogoutHit{}
 )
 
-// noteShortformLogout marks the panel account logged_out and writes logout_events
-// so Analytics Logouts shows the entry. Bursts of 401s count as one event.
-func noteShortformLogout(cfg Config, r *http.Request, reason string) {
+// noteShortformLogout writes a panel Analytics logout row and moves this
+// session to another active account when one exists. Account status is left as-is.
+func noteShortformLogout(cfg Config, r *http.Request, reason string) (switched bool, next string) {
 	if !usesPanelAccountMode(cfg) || r == nil {
-		return
+		return false, ""
 	}
 	acc, ok := shortformAccountFrom(r)
 	if !ok {
-		return
+		return false, ""
 	}
 	sfLogoutMu.Lock()
-	if last, seen := sfLogoutSeen[acc.ID]; seen && time.Since(last) < 2*time.Minute {
+	if last, seen := sfLogoutSeen[acc.ID]; seen && time.Since(last.at) < 2*time.Minute {
 		sfLogoutMu.Unlock()
-		return
+		return last.switched, last.next
 	}
-	sfLogoutSeen[acc.ID] = time.Now()
 	sfLogoutMu.Unlock()
 
 	db, err := openPanelDB(cfg)
 	if err != nil {
 		log.Printf("[LB] logout db open failed: %v", err)
-		return
+		return false, ""
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, acc.ID)
+	nextName := "(none)"
+	if other, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, acc.ID)); err == nil {
+		_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, other.ID)
+		if acc.Session != "" {
+			_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, other.ID, acc.Session)
+		}
+		nextName = other.Name
+		switched = true
+		log.Printf("[LB] switched %s -> %s (status unchanged)", acc.Name, other.Name)
+	}
 
 	var websiteID int
 	var username, loginIP string
@@ -97,19 +113,28 @@ func noteShortformLogout(cfg Config, r *http.Request, reason string) {
 		created_at TEXT NOT NULL
 	)`)
 	if _, err = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
-		websiteID, username, acc.Name, "(none)", reason, ip, now); err != nil {
+		websiteID, username, acc.Name, nextName, reason, ip, now); err != nil {
 		log.Printf("[LB] logout_events insert failed: %v", err)
-		return
+	} else {
+		log.Printf("[LB] logout recorded account=%s next=%s user=%s ip=%s reason=%s", acc.Name, nextName, username, ip, reason)
 	}
-	log.Printf("[LB] logout recorded account=%s user=%s ip=%s reason=%s", acc.Name, username, ip, reason)
+	sfLogoutMu.Lock()
+	sfLogoutSeen[acc.ID] = sfLogoutHit{at: time.Now(), next: nextName, switched: switched}
+	sfLogoutMu.Unlock()
+	return switched, nextName
 }
 
-func renderShortformLoggedOut(w http.ResponseWriter, cfg Config) {
+func serveShortformLogout(w http.ResponseWriter, r *http.Request, cfg Config, reason string) {
+	switched, _ := noteShortformLogout(cfg, r, reason)
+	if switched {
+		http.Redirect(w, r, "/app/discover", http.StatusFound)
+		return
+	}
 	name := html.EscapeString(toolDisplayName(cfg))
-	writeLightCard(w, http.StatusUnauthorized, lightCard{
-		Title:   "Logged out",
-		Heading: "Logged out",
-		Message: "The <span class=\"brand\">" + name + "</span> account session ended. Contact Admin/Provider.",
-		Footer:  "This logout was saved in the panel",
+	writeLightCard(w, http.StatusOK, lightCard{
+		Title:   "Contact admin",
+		Heading: "Contact admin",
+		Message: "The <span class=\"brand\">" + name + "</span> session ended and no other account is available. Contact Admin/Provider.",
+		Footer:  "Saved in panel Analytics → Logouts. Account status was not changed.",
 	})
 }

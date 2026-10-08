@@ -583,9 +583,8 @@ func buildInjectScript(cfg Config, session string) string {
     e.stopPropagation();
     e.stopImmediatePropagation();
     try {
-      fetch("/__tm_logout", { method: "POST", credentials: "same-origin", keepalive: true });
-    } catch (eOut) {}
-    goHome();
+      location.replace("/__tm_logged_out");
+    } catch (eOut) { goHome(); }
   }, true);
 
   try {
@@ -921,14 +920,12 @@ func main() {
 			r = stampPanelAccount(nextReq, acc)
 			r = withShortformAccount(r, acc)
 		}
-		if r.URL.Path == "/__tm_logout" {
-			noteShortformLogout(cfg, r, "user_logout")
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path == "/__tm_logged_out" {
-			noteShortformLogout(cfg, r, "api_unauthorized")
-			renderShortformLoggedOut(w, cfg)
+		if r.URL.Path == "/__tm_logout" || r.URL.Path == "/__tm_logged_out" {
+			reason := "api_unauthorized"
+			if r.URL.Path == "/__tm_logout" {
+				reason = "user_logout"
+			}
+			serveShortformLogout(w, r, cfg, reason)
 			return
 		}
 
