@@ -182,7 +182,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `minvo` (:4871)  
 - [ ] `mojo` (:4881)  
 - [ ] `perplexity` (:5101)  
-- [ ] `piktochart` (:4541) — **IN PROGRESS** (2026-10-08): target `https://create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” switches accounts or shows contact-admin; status stays unchanged. Hide only `#usersettings-dropdown`. Disk cache `cdn-cache/` (72h) for static assets.  
+- [ ] `piktochart` (:4541) — **IN PROGRESS** (2026-10-08): target `https://create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” switches accounts or shows contact-admin; status stays unchanged. Hide only `#usersettings-dropdown`. `Digitavision` → `ToolsMandi` in HTML and on-screen text. Disk cache `cdn-cache/` (72h) for static assets.  
 - [ ] `pixlr` (:4901)  
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
 - [ ] `ppspy` (:4961)  

@@ -6,6 +6,11 @@
   "tool_name": "Piktochart",
   "home_path": "/",
   "cookie_domain_suffix": "piktochart.com",
+  "replacements": [
+    {"search": "Digitavision", "replace": "ToolsMandi"},
+    {"search": "DigitaVision", "replace": "ToolsMandi"},
+    {"search": "digitavision", "replace": "ToolsMandi"}
+  ],
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
