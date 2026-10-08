@@ -952,6 +952,14 @@ var absorbCookieNames = map[string]bool{
 	"_ilovepdf": true, "_csrf-ilovepdf": true, "_identity-ilovepdf": true, "_identity_ulc": true,
 }
 
+// Auth cookies already stored on the panel account must win. The login page
+// Set-Cookie is an anonymous session; overlaying it keeps a fresh cookie logged out.
+var sessionCookieNames = map[string]bool{
+	"_piktov3_final_session": true,
+	"user_session":           true,
+	"remember_user_token":    true,
+}
+
 func cookieHeaderToMap(header string) map[string]string {
 	out := map[string]string{}
 	for _, part := range strings.Split(header, ";") {
@@ -992,9 +1000,15 @@ func applyLocalCookieOverlay(base string) string {
 	}
 	m := cookieHeaderToMap(base)
 	for k, v := range localCookieOverlay {
-		if v != "" {
-			m[k] = v
+		if v == "" {
+			continue
 		}
+		if sessionCookieNames[k] {
+			if existing := strings.TrimSpace(m[k]); existing != "" {
+				continue
+			}
+		}
+		m[k] = v
 	}
 	return mapToCookieHeader(m)
 }
@@ -1024,6 +1038,14 @@ func absorbUpstreamSetCookies(h http.Header) (changed bool) {
 		}
 	}
 	return changed
+}
+
+func dropSessionCookieOverlay() {
+	localCookieMu.Lock()
+	defer localCookieMu.Unlock()
+	for name := range sessionCookieNames {
+		delete(localCookieOverlay, name)
+	}
 }
 
 func doUpstreamWith429Retry(req *http.Request, cookieStr string) (*http.Response, error) {

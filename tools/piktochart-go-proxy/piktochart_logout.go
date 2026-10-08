@@ -147,6 +147,7 @@ func clearProxyHeaders(w http.ResponseWriter) {
 
 func servePiktochartLogout(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount, sessionToken, reason string) {
 	clearProxyHeaders(w)
+	dropSessionCookieOverlay()
 	switched, _ := notePiktochartLogout(cfg, r, acc, sessionToken, reason)
 	if switched && piktochartCanHop(sessionToken) {
 		home := cfg.HomePath
