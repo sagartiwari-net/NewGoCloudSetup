@@ -57,8 +57,24 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "audio", "video", "track":
 		return true
+	}
+	if r == nil || r.URL == nil {
+		return false
+	}
+	p := strings.ToLower(r.URL.Path)
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	// The player fetches preview MP3s and waveforms without device headers.
+	if strings.Contains(p, "/lqmp3/") || strings.Contains(p, "/waveform/") {
+		return true
+	}
+	for _, ext := range []string{".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac", ".webm", ".mp4", ".m4s"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
 	}
 	return false
 }
@@ -229,7 +245,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -502,7 +517,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())
