@@ -153,7 +153,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `creattie` (:4861)  
 - [ ] `digen` (:5271)  
 - [ ] `educative` (:4851)  
-- [ ] `epidemicsound` (:4641)  
+- [ ] `epidemicsound` (:4641) — **IN PROGRESS** (2026-10-08): ChatGPT opened because `target_url` was empty. Target is now `https://www.epidemicsound.com`, home `/music/featured/?override_referrer=`.  
 - [x] `erank` (:5191) — **READY / HTTPS OK** (2026-10-06): see Priority  
 - [ ] `fishaudio` (:4991)  
 - [ ] `flaticon` (:4921) — **PARKED** (2026-10-07): Freepik WAF; blank/refresh fixed; still blocked even with proxy — retry later with fresh cookies on same residential proxy IP (or another proxy)  
