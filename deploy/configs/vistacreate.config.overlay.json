@@ -1,7 +1,25 @@
 {
   "port": "4581",
   "public_host": "vistacreate.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://create.vista.com",
+  "cdn_url": "https://create.vista.com",
+  "tool_name": "VistaCreate",
+  "home_path": "/home/",
+  "cookie_domain_suffix": "vista.com",
+  "extra_cdn_domains": [
+    "https://static.create.vista.com",
+    "https://cdn.create.vista.com",
+    "https://support.create.vista.com",
+    "https://api.create.vista.com",
+    "https://media.create.vista.com",
+    "https://www.create.vista.com",
+    "https://vista.com",
+    "https://www.vista.com",
+    "https://vistacreate-web.s3.eu-west-1.amazonaws.com",
+    "https://oauth.cimpress.io",
+    "https://www.cimpress.com"
+  ],
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -10,5 +28,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "Empty target fell through to chatgpt.com. App is https://create.vista.com/home/."
 }

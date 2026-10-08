@@ -71,7 +71,7 @@ ov = json.loads(Path("${OVERLAY}").read_text()) if Path("${OVERLAY}").exists() e
 for k in ("port","public_host","public_scheme","panel_db","local_test_mode","bypass_auth",
           "mysql_host","mysql_port","mysql_user","mysql_db","website_id",
           "target_url","cdn_url","tool_name","cookie_domain_suffix","home_path",
-          "use_database","inject_css","watchdog_triggers","replacements"):
+          "use_database","inject_css","watchdog_triggers","replacements","extra_cdn_domains"):
     if k in ov:
         base[k] = ov[k]
 pw = os.environ.get("GT4RENTS_MYSQL_PASSWORD")
