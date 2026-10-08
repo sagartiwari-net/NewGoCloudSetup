@@ -3239,11 +3239,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		currentUser = "guest_favicon"
 	}
 
-	// Root → logged-in app home (WooRank marketing `/` is not useful behind proxy)
-	if (path == "/" || path == "") && cfg.HomePath != "" && cfg.HomePath != "/" {
-		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
-		return
-	}
+	// www.flexclip.com/editor/ answers 302 Location: / when the session is missing.
+	// Bouncing `/` back to /editor/ loops forever, so `/` is proxied as-is.
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
 	if isBlockedPath(path, cfg) {

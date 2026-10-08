@@ -159,7 +159,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `flaticon` (:4921) — **PARKED** (2026-10-07): Freepik WAF; blank/refresh fixed; still blocked even with proxy — retry later with fresh cookies on same residential proxy IP (or another proxy)  
 
 
-- [ ] `flexclip` (:4671) — **IN PROGRESS** (2026-10-08): ChatGPT opened because `target_url` was empty. Target is now `https://www.flexclip.com`, home `/editor/`.  
+- [ ] `flexclip` (:4671) — **IN PROGRESS** (2026-10-08): target `https://www.flexclip.com`, home `/editor/`. `/editor/` without a session 302s to `/`; do not bounce `/` back to `/editor/` (that was ERR_TOO_MANY_REDIRECTS).  
 - [ ] `glorify` (:4681)  
 - [x] `grammarly` (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide  
