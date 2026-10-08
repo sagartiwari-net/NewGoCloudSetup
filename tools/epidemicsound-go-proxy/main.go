@@ -3375,6 +3375,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && epidemicLogoutPath(r) {
+		reason := "session_expired"
+		if strings.Contains(strings.ToLower(path), "logout") {
+			reason = "user_logout"
+		}
+		serveEpidemicLogout(w, r, cfg, activeAcc, sessionToken, reason)
+		return
+	}
+
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
 
@@ -3669,6 +3678,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer upstreamResp.Body.Close()
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && epidemicUpstreamLogout(upstreamResp) {
+		serveEpidemicLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
+		return
+	}
+
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -3781,6 +3795,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err != nil {
 			w.WriteHeader(upstreamResp.StatusCode)
+			return
+		}
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && epidemicLoggedOutHTML(bodyBytes) {
+			serveEpidemicLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
 			return
 		}
 		logUpstream(bodyBytes)
