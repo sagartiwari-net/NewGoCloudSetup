@@ -56,19 +56,19 @@ func slimOversizedCookies(r *http.Request) {
 }
 
 type Config struct {
-	Port          string   `json:"port"`
-	TargetURL     string   `json:"target_url"`
-	PublicHost    string   `json:"public_host"`
-	PublicScheme  string   `json:"public_scheme"`
-	CookieFile    string   `json:"cookie_file"`
-	LocalTestMode bool     `json:"local_test_mode"`
-	BindLocalhost bool     `json:"bind_localhost"`
-	DebugLog      bool     `json:"debug_log"`
-	ToolName      string   `json:"tool_name"`
-	ExtraDomains  []string `json:"extra_domains"`
-	BlockedPaths      []string `json:"blocked_paths"`
-	UserAgent         string   `json:"user_agent"`
-	CloudflareBypass  bool     `json:"cloudflare_bypass"`
+	Port             string   `json:"port"`
+	TargetURL        string   `json:"target_url"`
+	PublicHost       string   `json:"public_host"`
+	PublicScheme     string   `json:"public_scheme"`
+	CookieFile       string   `json:"cookie_file"`
+	LocalTestMode    bool     `json:"local_test_mode"`
+	BindLocalhost    bool     `json:"bind_localhost"`
+	DebugLog         bool     `json:"debug_log"`
+	ToolName         string   `json:"tool_name"`
+	ExtraDomains     []string `json:"extra_domains"`
+	BlockedPaths     []string `json:"blocked_paths"`
+	UserAgent        string   `json:"user_agent"`
+	CloudflareBypass bool     `json:"cloudflare_bypass"`
 	PanelDB          string   `json:"panel_db"`
 	HomePath         string   `json:"home_path"`
 }
@@ -270,6 +270,11 @@ try {
         if (_realHrefSet) {
           var s = String(v || "");
           if (s.indexOf(FAKE_ORIGIN) === 0) s = REAL_PROXY_ORIGIN + s.slice(FAKE_ORIGIN.length);
+          try {
+            var lu = new URL(s, REAL_PROXY_ORIGIN);
+            var lp = String(lu.pathname || "").toLowerCase();
+            if (lp === "/app/login" || lp === "/login" || lp.indexOf("/app/login/") === 0) s = REAL_PROXY_ORIGIN + "/__tm_logged_out";
+          } catch (eLogin) {}
           _realHrefSet.call(this, s);
           return;
         }
@@ -534,8 +539,31 @@ func buildInjectScript(cfg Config, session string) string {
   function goHome() {
     try { location.replace(HOME_PATH); } catch (eR) { location.href = HOME_PATH; }
   }
+  function isLoginPath(p) {
+    p = String(p || "").toLowerCase().split("?")[0];
+    return p === "/app/login" || p === "/login" || p.indexOf("/app/login/") === 0;
+  }
+  try {
+    ["assign", "replace"].forEach(function(method) {
+      var orig = Location.prototype[method];
+      if (!orig) return;
+      Location.prototype[method] = function(url) {
+        try {
+          var lu = new URL(String(url || ""), location.origin);
+          if (isLoginPath(lu.pathname)) url = "/__tm_logged_out";
+        } catch (eNav) {}
+        return orig.call(this, url);
+      };
+    });
+  } catch (eNavWrap) {}
   function guardPath() {
-    try { if (pathBlocked(location.pathname)) goHome(); } catch (eG) {}
+    try {
+      if (isLoginPath(location.pathname)) {
+        location.replace("/__tm_logged_out");
+        return;
+      }
+      if (pathBlocked(location.pathname)) goHome();
+    } catch (eG) {}
   }
   guardPath();
   window.addEventListener("popstate", guardPath, true);
@@ -548,7 +576,8 @@ func buildInjectScript(cfg Config, session string) string {
       if (url != null) {
         try {
           var u = new URL(String(url), location.origin);
-          if (pathBlocked(u.pathname)) url = HOME_PATH;
+          if (isLoginPath(u.pathname)) url = "/__tm_logged_out";
+          else if (pathBlocked(u.pathname)) url = HOME_PATH;
         } catch (eU) {}
       }
       return _push(state, title, url);
@@ -557,7 +586,8 @@ func buildInjectScript(cfg Config, session string) string {
       if (url != null) {
         try {
           var u2 = new URL(String(url), location.origin);
-          if (pathBlocked(u2.pathname)) url = HOME_PATH;
+          if (isLoginPath(u2.pathname)) url = "/__tm_logged_out";
+          else if (pathBlocked(u2.pathname)) url = HOME_PATH;
         } catch (eU2) {}
       }
       return _replace(state, title, url);
@@ -920,15 +950,16 @@ func main() {
 			r = stampPanelAccount(nextReq, acc)
 			r = withShortformAccount(r, acc)
 		}
-		if r.URL.Path == "/__tm_logout" || r.URL.Path == "/__tm_logged_out" {
+		if r.URL.Path == "/__tm_logout" || r.URL.Path == "/__tm_logged_out" || (usesPanelAccountMode(cfg) && shortformLoginPath(r.URL.Path)) {
 			reason := "api_unauthorized"
 			if r.URL.Path == "/__tm_logout" {
 				reason = "user_logout"
+			} else if shortformLoginPath(r.URL.Path) {
+				reason = "login_page"
 			}
 			serveShortformLogout(w, r, cfg, reason)
 			return
 		}
-
 
 		path := strings.ToLower(r.URL.Path)
 		for _, blocked := range cfg.BlockedPaths {

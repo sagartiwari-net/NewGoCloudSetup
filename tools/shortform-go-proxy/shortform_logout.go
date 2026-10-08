@@ -72,9 +72,20 @@ func noteShortformLogout(cfg Config, r *http.Request, reason string) (switched b
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	nextName := "(none)"
+	skipIDs := []any{cfg.PublicHost, acc.ID}
+	placeholders := "?"
+	sfLogoutMu.Lock()
+	for id, hit := range sfLogoutSeen {
+		if id == acc.ID || time.Since(hit.at) >= 10*time.Minute {
+			continue
+		}
+		skipIDs = append(skipIDs, id)
+		placeholders += ",?"
+	}
+	sfLogoutMu.Unlock()
 	if other, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, acc.ID)); err == nil {
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id NOT IN (`+placeholders+`)
+		`+panelAccountOrder+` LIMIT 1`, skipIDs...)); err == nil {
 		_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, other.ID)
 		if acc.Session != "" {
 			_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, other.ID, acc.Session)
@@ -122,6 +133,11 @@ func noteShortformLogout(cfg Config, r *http.Request, reason string) (switched b
 	sfLogoutSeen[acc.ID] = sfLogoutHit{at: time.Now(), next: nextName, switched: switched}
 	sfLogoutMu.Unlock()
 	return switched, nextName
+}
+
+func shortformLoginPath(p string) bool {
+	p = strings.ToLower(strings.TrimSpace(p))
+	return p == "/app/login" || p == "/login" || strings.HasPrefix(p, "/app/login/")
 }
 
 func serveShortformLogout(w http.ResponseWriter, r *http.Request, cfg Config, reason string) {
