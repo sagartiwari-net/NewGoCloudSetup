@@ -176,7 +176,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [x] `junglescout` (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `kalodata` (:4951)  
 - [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): verified OK — panel access working  
-- [ ] `linkedinlearning` (:4571) — **IN PROGRESS** (2026-10-08): Bad Gateway was empty `target_url` → `chatgpt.com` plus HTTP/2 ALPN. Target is now `https://www.linkedin.com`, home `/learning/`, HTTP/1.1. CDN `static.licdn.com`.
+- [ ] `linkedinlearning` (:4571) — **IN PROGRESS** (2026-10-08): page loads on `www.linkedin.com/learning/` over HTTP/1.1. Disk cache `cdn-cache/` (72h) for JS/CSS/images. Video/audio is streamed with Range (no full-body buffer) so playback can start on the first chunk.
 - [x] `mgfc` (:5121) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
 - [ ] `merchinformer` (:4651)  
 - [ ] `minvo` (:4871)  

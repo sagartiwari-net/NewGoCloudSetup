@@ -950,12 +950,20 @@ func getStaticCached(method, path string) *staticCacheEntry {
 			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path))
 		}
 		if !ok {
+			if disk := loadDiskStatic(method, path); disk != nil {
+				staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+				return disk
+			}
 			return nil
 		}
 	}
 	ent := v.(*staticCacheEntry)
 	if time.Now().After(ent.expires) {
 		staticAssetCache.Delete(staticCacheKey(http.MethodGet, path))
+		if disk := loadDiskStatic(method, path); disk != nil {
+			staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+			return disk
+		}
 		return nil
 	}
 	return ent
@@ -977,6 +985,7 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	storeDiskStatic(method, path, status, contentType, encoding, cp)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
@@ -2819,6 +2828,64 @@ func isStreamingContentType(contentType string) bool {
 		strings.Contains(ct, "application/octet-stream")
 }
 
+// isMediaStream is a video/audio byte stream. These must not be buffered:
+// the player starts as soon as the first chunk arrives, and Range seeks
+// need a 206 written immediately.
+func isMediaStream(path, contentType string) bool {
+	ct := strings.ToLower(contentType)
+	if strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") {
+		return true
+	}
+	p := strings.ToLower(path)
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	for _, ext := range []string{".mp4", ".m4s", ".m4v", ".m4a", ".ts", ".webm", ".cmfv", ".cmfa", ".mp3", ".aac"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
+	}
+	return strings.Contains(p, "/dms/video") || strings.Contains(p, "/playlist/vid") || strings.Contains(p, "mp4-")
+}
+
+func streamMedia(w http.ResponseWriter, resp *http.Response) {
+	skip := map[string]bool{
+		"set-cookie":                          true,
+		"strict-transport-security":           true,
+		"content-security-policy":             true,
+		"content-security-policy-report-only": true,
+		"x-frame-options":                     true,
+		"transfer-encoding":                   true,
+	}
+	for k, vv := range resp.Header {
+		if skip[strings.ToLower(k)] {
+			continue
+		}
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
+	}
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("Cache-Control", "private, no-transform")
+	w.WriteHeader(resp.StatusCode)
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 128*1024)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := loadConfig()
 	path := r.URL.Path
@@ -3160,6 +3227,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// LinkedIn Voyager/Learning APIs require csrf-token == JSESSIONID (quotes stripped).
 	ensureLinkedInCsrf(upstreamReq, accountCookieStr)
+	// Video/audio must arrive uncompressed so the player can start on the first bytes.
+	if isMediaStream(path, "") {
+		upstreamReq.Header.Set("Accept-Encoding", "identity")
+	}
 
 	// ── WebSocket upgrade: hijack and bidirectionally pipe ───────────────────────
 	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
@@ -3291,6 +3362,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 7. Handle Set-Cookie and Location headers from upstream ──────────────────
 	contentType := upstreamResp.Header.Get("Content-Type")
+	if isMediaStream(path, contentType) {
+		streamMedia(w, upstreamResp)
+		return
+	}
 	// Build all domain pairs for location header rewriting (same as HTML body rewriting)
 	locationPairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 	for k, vv := range upstreamResp.Header {
@@ -3653,6 +3728,7 @@ func main() {
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
+	startCDNCacheSweep()
 	warmCFCookies(cfg)
 
 	mux := http.NewServeMux()
