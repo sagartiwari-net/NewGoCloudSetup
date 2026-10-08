@@ -224,7 +224,7 @@ If fail: note in “Open issues”, fix, re-tick.
 - [ ] `ubersuggest` (:5281)  
 - [ ] `uncensoredchat` (:4891)  
 - [ ] `videotoblog` (:5041)  
-- [ ] `vistacreate` (:4581) — **IN PROGRESS** (2026-10-08): ChatGPT opened because `target_url` was empty (config.json is not deployed). Target is now `https://create.vista.com`, home `/home/`.  
+- [ ] `vistacreate` (:4581) — **IN PROGRESS** (2026-10-08): target `https://create.vista.com`, home `/home/`. Cloudflare “Unable to connect” was HTTP/1.1-only TLS; upstream is Chrome HTTP/2. `/` is not bounced back to `/home/` (upstream 302s there). `/cdn-cgi/` is allowed through the device gate.  
 - [x] `wrank` (:4561) — see Priority  
 
 

@@ -30,6 +30,7 @@ import (
 	"github.com/andybalholm/brotli"
 	_ "github.com/go-sql-driver/mysql"
 	utls "github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
 )
 
@@ -1856,29 +1857,54 @@ func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTL
 }
 
 type roundTripper struct {
+	h2 *http2.Transport
 	h1 *http.Transport
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// HTTP/2 rejects hop-by-hop headers. A Chrome fingerprint that only
+	// speaks HTTP/1.1 makes Cloudflare abort the security check.
+	req.Header.Del("Connection")
+	req.Header.Del("Upgrade")
+	req.Header.Del("Proxy-Connection")
+	req.Header.Del("Keep-Alive")
+	req.Header.Del("TE")
+	req.Header.Del("Trailer")
+	req.Header.Del("Transfer-Encoding")
 	if px, ok := req.Context().Value(proxyContextKey).(string); ok && strings.TrimSpace(px) != "" {
 		if rt.h1 != nil {
 			rt.h1.CloseIdleConnections()
 		}
+		if rt.h2 != nil {
+			rt.h2.CloseIdleConnections()
+		}
 	}
-	return rt.h1.RoundTrip(req)
+	resp, err := rt.h2.RoundTrip(req)
+	if err != nil {
+		return rt.h1.RoundTrip(req)
+	}
+	return resp, nil
 }
 
 func buildChromeHTTPClient() *http.Client {
-	// Force ALPN http/1.1 — h2 ClientHello triggers CF "Just a moment..." on artboard.
-	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) { return dialChromeHTTP1(ctx, addr) }
 	h1 := &http.Transport{
-		DialTLSContext: dialTLS, MaxIdleConns: 200, MaxIdleConnsPerHost: 32,
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialChromeHTTP1(ctx, addr)
+		},
+		MaxIdleConns: 200, MaxIdleConnsPerHost: 32,
 		IdleConnTimeout: 120 * time.Second, TLSHandshakeTimeout: 15 * time.Second,
 		DisableCompression: false, ForceAttemptHTTP2: false,
 		ResponseHeaderTimeout: 60 * time.Second,
 	}
+	h2 := &http2.Transport{
+		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+			return dialChrome(ctx, addr)
+		},
+		DisableCompression: false,
+		AllowHTTP:          false,
+	}
 	return &http.Client{
-		Transport:     &roundTripper{h1: h1},
+		Transport:     &roundTripper{h2: h2, h1: h1},
 		Timeout:       120 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
 	}
@@ -2840,11 +2866,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		currentUser = "guest_favicon"
 	}
 
-	// Root → logged-in app home (WooRank marketing `/` is not useful behind proxy)
-	if (path == "/" || path == "") && cfg.HomePath != "" && cfg.HomePath != "/" {
-		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
-		return
-	}
+	// create.vista.com/home/ answers 302 Location: /. Bouncing `/` back to
+	// /home/ loops forever, so `/` is proxied as-is.
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
 	if isBlockedPath(path, cfg) {
