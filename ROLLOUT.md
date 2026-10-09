@@ -99,28 +99,104 @@ Panel access links should become `https://`.
 
 ## Phase C — Per-tool verify (after SSL)
 
-For each tool: access-link → login shell → one real action → tick below.  
-If fail: note in “Open issues”, fix, re-tick.
+For each tool: access-link → login shell → one real action.  
+Lists below: **Fixed**, then **Not started**, then **Tried — still an issue** (last, with the issue).
 
-### Priority
+### Fixed
 
-- [x] `refs` — Ahrefs (:5291) — HTTP access-link LIVE  
-- [x] `smrs` — Semrush (:5141) — **HTTPS OK** (mixed-content https rewrite + panel account swap; proxy optional)  
-- [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link); prefer **ChatGPT 1** (ID:65); ChatGPT 2 cookies flaky — refresh later  
-- [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer  
-- [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL  
-- [x] `cnva` — Canva (:4501) — **HTTPS OK** (2026-10-07): verified OK — panel access-link working  
-- [x] `helium10` — Helium10 (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified  
-- [x] `mgfc` — Magnific (:5121) — **DONE / HTTPS OK** (2026-10-06): verified OK — `mgfc.gt4rents.com` (Safe Browsing rename from `magnific`) + disk CDN cache (`e62a9ad`)  
-- [x] `junglescout` — JungleScout (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — panel access working  
-- [x] `grammarly` — Grammarly (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)  
-- [x] `placeit` — Placeit (:4611) — **HTTPS OK** (2026-10-07): verified OK — panel access working  
+Verified on an access link. Each tool is listed once.
 
-- [x] `wordtune` — Wordtune (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts — **redeploy if Access Denied**  
-- [x] `seositecheckup` — SEO Site Checkup (:4661) — **HTTPS OK** (2026-10-07): panel.db cookies, device lock, chrome hide + panel username; logout→`logged_out`; disk `cdn-cache` (72h) + memory L1 for JS/CSS (**cache added / redeploy**)
-- [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible (no `visibility:hidden`/SW), panel.db cookies + overview
-- [x] `erank` — eRank (:5191) — **READY / HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
-- [x] `selleramp` — SellerAmp (:5161) — **DONE / HTTPS OK** (2026-10-07): verified OK — panel access, search `/sas/lookup`, `__tm_s` keepalive + static bypass + device-lock (cookie-copy → Access Denied)
+- [x] `answerthepublic` (:4931) — **HTTPS OK** (2026-10-07): panel access + disk CDN cache (`60c3335`)
+- [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link). Prefer **ChatGPT 1** (ID:65). ChatGPT 2 cookies are flaky (`no_access_token` / login wall) — refresh that account in the panel when free.
+- [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer
+- [x] `cnva` — Canva (:4501) — **HTTPS OK** (2026-10-07): panel access-link working
+- [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL
+- [x] `epidemicsound` (:4641) — **HTTPS OK** (2026-10-08): `www.epidemicsound.com`. Preview MP3 allowed through the device gate. Assistant GraphQL host `client-api.epidemicsound.com` is proxied. Sidebar account button does not open its menu; the email line shows the panel username. Disk cache `cdn-cache/` (72h). “Something went wrong”, Log in, and Create free account switch accounts or show contact-admin. Status stays unchanged. Analytics → Logouts.
+- [x] `erank` (:5191) — **HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
+- [x] `flexclip` (:4671) — **HTTPS OK** (2026-10-09): `https://www.flexclip.com/editor/`. Guest page switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Disk cache `cdn-cache/` (72h). `Digitavision` → `ToolsMandi`. Hide only `[class*="FJMenu_bottom__"]` (account chip + its menu). Video, download, and credit checks are not blocked by `device_required`. Video/audio is streamed. Other `*.flexclip.com` media hosts go through `/ext-host/`.
+- [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide
+- [x] `grammarly` (:4911) — **HTTPS OK** (2026-10-06): panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)
+- [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified
+- [x] `ilovepdf` (:4531) — **HTTPS OK** (2026-10-07): force `www.ilovepdf.com`; HTTP/1.1-only TLS (h2→h1 fallback caused malformed SETTINGS → 502)
+- [x] `junglescout` (:5211) — **HTTPS OK** (2026-10-06): panel access working
+- [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): panel access working
+- [x] `linkedinlearning` (:4571) — **HTTPS OK** (2026-10-08): `www.linkedin.com/learning/`, HTTP/1.1. Disk cache `cdn-cache/` (72h). Video/audio streamed with Range. Hide only `li[data-live-test-me-menu]` (Me). Guest home (Start free trial / Sign in) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts.
+- [x] `mgfc` — Magnific (:5121) — **HTTPS OK** (2026-10-06): `mgfc.gt4rents.com` (Safe Browsing rename from `magnific`) + disk CDN cache (`e62a9ad`). `/photos` redirects to `/people-emotions` (direct `/photos` can still hit WAF).
+- [x] `piktochart` (:4541) — **HTTPS OK** (2026-10-08): `create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” switches accounts or shows contact-admin; status stays unchanged. Hide only `#usersettings-dropdown`. `Digitavision` → `ToolsMandi`. Disk cache `cdn-cache/` (72h).
+- [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): panel access working
+- [x] `prezi` (:4751) — **HTTPS OK** (2026-10-08): panel username + UserDropdown blocked; Craft CDN/API device soft-allow (was stuck on “Laying out the canvas”)
+- [x] `refs` — Ahrefs (:5291) — HTTP access-link LIVE
+- [x] `scribd` (:4791) — **HTTPS OK** (2026-10-07): live working on `scribd.gt4rents.com`
+- [x] `selleramp` (:5161) — **HTTPS OK** (2026-10-07): panel access, search `/sas/lookup`, `__tm_s` keepalive + static bypass + device-lock (cookie-copy → Access Denied)
+- [x] `sellthetrend` (:4591) — **HTTPS OK** (2026-10-07): `www.sellthetrend.com`, profile dropdowns hidden (left+top), panel username/initials on avatar bar
+- [x] `seobility` (:4731) — **HTTPS OK** (2026-10-07): `app.seobility.net`, account Profile/Subscription/Billing/Members/MCP block hidden, panel username in dropdown; logout→`/user/login` wall → switch / panel `logged_out` + contact-admin (failover verified)
+- [x] `seositecheckup` (:4661) — **HTTPS OK** (2026-10-07): panel.db cookies, device lock, chrome hide + panel username; logout→`logged_out`; disk `cdn-cache` (72h) + memory L1 for JS/CSS
+- [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`; no-subscription / dead cookie → soft-revive then switch / panel `logged_out` + contact-admin (failover verified)
+- [x] `shortform` (:4771) — **HTTPS OK** (2026-10-08): `www.shortform.com`. Logout (API 401, logout click, `/app/login`) writes Analytics Logouts, swaps to another active account, or shows contact-admin. Account status stays unchanged.
+- [x] `similarweb` (:5071) — **HTTPS OK** (2026-10-07): live working; CDN disk cache `cdn-cache/` (72h)
+- [x] `sketchgenius` (:4781) — **HTTPS OK** (2026-10-07): panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin (failover verified)
+- [x] `smrs` — Semrush (:5141) — **HTTPS OK** (mixed-content https rewrite + panel account swap; proxy optional)
+- [x] `storybase` (:4551) — **HTTPS OK** (2026-10-07): `www.storybase.com`, HTTP/1.1 ALPN (was 502/`chatgpt.com`); `#profile-widget` hidden (Settings/Billing/Logout + sidebar avatar/name)
+- [x] `wordtune` (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts
+- [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible, panel.db cookies + overview
+
+### Not started
+
+Built with the batch. Not verified on an access link yet.
+
+- [ ] `airbrush` (:5181)
+- [ ] `artistly` (:4821)
+- [ ] `closerscopy` (:5241)
+- [ ] `copyspace` (:4741)
+- [ ] `coursera` (:4701)
+- [ ] `cramly` (:4841)
+- [ ] `creattie` (:4861)
+- [ ] `digen` (:5271)
+- [ ] `educative` (:4851)
+- [ ] `fishaudio` (:4991)
+- [ ] `glorify` (:4681)
+- [ ] `grok` (:4831)
+- [ ] `heliumlearning` (:5221)
+- [ ] `imgupscaler` (:5091)
+- [ ] `indexification` (:5231)
+- [ ] `jasper` (:4511)
+- [ ] `joggai` (:5031)
+- [ ] `kalodata` (:4951)
+- [ ] `merchinformer` (:4651)
+- [ ] `minvo` (:4871)
+- [ ] `mojo` (:4881)
+- [ ] `perplexity` (:5101)
+- [ ] `pixlr` (:4901)
+- [ ] `ppspy` (:4961)
+- [ ] `rivalflow` (:4811)
+- [ ] `screpy` (:4721)
+- [ ] `searchatlas` (:4711)
+- [ ] `seobuddy` (:5131)
+- [ ] `slidebean` (:5021)
+- [ ] `speechify` (:5011)
+- [ ] `spyfu` (:4941)
+- [ ] `storyblocks` (:4971)
+- [ ] `syntx` (:4981)
+- [ ] `ubersuggest` (:5281)
+- [ ] `uncensoredchat` (:4891)
+- [ ] `videotoblog` (:5041)
+- [ ] `writecream` (:5051)
+- [ ] `zebracat` (:5111)
+- [ ] `zikaanalytics` (:5251)
+
+### Tried — still an issue
+
+Opened on the proxy. Leave these until the note below is cleared.
+
+- [ ] `branalyzer` (:5081) — **Parked** (home loads). Be Curious still shows the snack “Introduce any valid URL or domain” on `branalyzer.gt4rents.com`. The same patch (`59905db`) worked locally. Resume: compare the server `main.js` patch and searchText/DOM with local, wipe `cdn-cache`, hard-refresh.
+- [ ] `chatbotapp` (:5061) — **Parked** (home and chats list OK). `POST /api/v2/chat` still returns 4002 `x_token header is required` (`91f9ad8` inject). Resume: confirm the panel GoAuto account has IndexedDB `stsTokenManager`, and check `[CHATBOT] api auth OK` in `app.log`.
+- [ ] `copywritely` (:4521) — **In progress** (2026-10-08). Target `https://copywritely.com`, home `/tools/`. Sign-in popup (`login_popup`) is treated as logout: Analytics Logouts, one account switch, then contact-admin. Status stays unchanged. Still open: confirm POST `/tools/copywritely/*` and the highlighter worker (`/wp-content/.../js`, `.map`) are not blocked by `device_required`.
+- [ ] `creaitor` (:4621) — **Parked** (2026-10-07). It opened ChatGPT. Target fix is pushed (`app.creaitor.ai`). Not retested after that.
+- [ ] `flaticon` (:4921) — **Parked** (2026-10-07). Blank page / refresh loop was fixed. Freepik/Akamai WAF still returns 403 on this server, including with a proxy. Retry later with fresh cookies on the same residential proxy IP, or another proxy.
+- [ ] `scite` (:4761) — **In progress** (2026-10-08). “Max challenge attempts” because `/api/auth/api_token` was blocked by the device gate (no JWT) and the WAF cookie domain was `scite.ai` instead of the proxy host. Soft-allow for `/api` + `/extra-cdn` is pushed, and the browser `aws-waf-token` is kept. Not confirmed on the live site after that.
+- [ ] `vistacreate` (:4581) — **Parked** (2026-10-08). ChatGPT target was fixed: `https://create.vista.com`, home `/home/`. Cloudflare still stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `create.vista.com` (Ray ID on the error). Chrome HTTP/2 and allowing `/cdn-cgi/` did not clear it.
+- [ ] `zonguru` (:4691) — **Parked** (2026-10-07). Dashboard widgets still say “error loading your data” while official `my.zonguru.com` shows zeros. Panel access and device-bind are OK. Proxy log shows only `/signalr/hubs` and `/api/device-bind` — `/api/dashboard/*` never reaches the Go process. Local curl through the proxy: `POST /api/dashboard/EssentialBusinessData` → 200 zeros when `FbaToken` is set. Already tried: DigitaVision rewrite off JSON/emails, `baseUrl`/cookieDomain rewrite, device soft-allow and skip gate on `/api`, Angular `$http`/XHR re-hook. Next: in DevTools, see whether tile calls go to `zonguru.gt4rents.com` or `my.zonguru.com` (CORS), and why Angular never fires `/api/dashboard/*` on the proxy (SignalR hubs / `lib-bundle`). Cookie is GoAuto `localStorage` `token`+`me` (account ZonGuru 1).
+
 > **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`).  
 > Binaries built **before** `fad80ac` → Access Denied.  
 > **Already OK (skip rebuild):** `refs` `smrs` `cgpt` `clud` `envt` `cnva`  
@@ -135,118 +211,6 @@ If fail: note in “Open issues”, fix, re-tick.
 > ```
 >
 > After that, open each tool with a **fresh** panel access-link (old tokens are one-time).
-### Rest (alphabetical)
-
-- [ ] `airbrush` (:5181)  
-- [x] `answerthepublic` (:4931) — **HTTPS OK** (2026-10-07): verified OK — panel access + disk CDN cache (`60c3335`)  
-- [ ] `artistly` (:4821)  
-- [ ] `branalyzer` (:5081) — **parked** — home loads; Be Curious still snack “Introduce any valid URL” on server (`59905db` local OK) — resume later; see Open issues  
-- [ ] `chatbotapp` (:5061) — **parked** — home/chats list OK; `/api/v2/chat` still 4002 `x_token` on server (`91f9ad8` inject) — resume later; see Open issues  
-- [ ] `closerscopy` (:5241)  
-- [ ] `copyspace` (:4741)  
-- [ ] `copywritely` (:4521) — **IN PROGRESS** (2026-10-08): target `https://copywritely.com`, home `/tools/`. Sign-in popup (`login_popup`) is a logout: Analytics Logouts row + one switch to another active account, then contact-admin (no redirect loop). Account status stays unchanged. Check POST `/tools/copywritely/*` and the highlighter worker (`/wp-content/.../js`, `.map`) are not blocked by device_required.
-- [ ] `coursera` (:4701)  
-- [ ] `cramly` (:4841)  
-- [ ] `creaitor` (:4621) — **PARKED** (2026-10-07): ChatGPT-target fix pushed (`app.creaitor.ai`); retry later  
-
-
-- [ ] `creattie` (:4861)  
-- [ ] `digen` (:5271)  
-- [ ] `educative` (:4851)  
-- [x] `epidemicsound` (:4641) — **HTTPS OK** (2026-10-08): verified OK — `www.epidemicsound.com`. Preview MP3 allowed through the device gate. Assistant GraphQL host `client-api.epidemicsound.com` is proxied. Sidebar account button does not open its menu; the email line shows the panel username. Disk cache `cdn-cache/` (72h). “Something went wrong”, Log in, and Create free account switch accounts or show contact-admin. Status stays unchanged. Analytics → Logouts.  
-- [x] `erank` (:5191) — **READY / HTTPS OK** (2026-10-06): see Priority  
-- [ ] `fishaudio` (:4991)  
-- [ ] `flaticon` (:4921) — **PARKED** (2026-10-07): Freepik WAF; blank/refresh fixed; still blocked even with proxy — retry later with fresh cookies on same residential proxy IP (or another proxy)  
-
-
-- [x] `flexclip` (:4671) — **HTTPS OK** (2026-10-09): verified OK — `https://www.flexclip.com/editor/`. Guest page switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Disk cache `cdn-cache/` (72h). `Digitavision` → `ToolsMandi`. Hide only `[class*="FJMenu_bottom__"]` (account chip + its menu). Video, download, and credit checks are not blocked by `device_required`. Video/audio is streamed. Other `*.flexclip.com` media hosts go through `/ext-host/`.  
-- [ ] `glorify` (:4681)  
-- [x] `grammarly` (:4911) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
-- [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide  
-- [ ] `grok` (:4831)  
-- [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06)  
-- [ ] `heliumlearning` (:5221)  
-- [x] `ilovepdf` (:4531) — **HTTPS OK** (2026-10-07): verified OK — force `www.ilovepdf.com`; HTTP/1.1-only TLS (h2→h1 fallback caused malformed SETTINGS → 502)  
-
-
-- [ ] `imgupscaler` (:5091)  
-- [ ] `indexification` (:5231)  
-- [ ] `jasper` (:4511)  
-- [ ] `joggai` (:5031)  
-- [x] `junglescout` (:5211) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
-- [ ] `kalodata` (:4951)  
-- [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): verified OK — panel access working  
-- [x] `linkedinlearning` (:4571) — **HTTPS OK** (2026-10-08): verified OK — `www.linkedin.com/learning/`, HTTP/1.1. Disk cache `cdn-cache/` (72h). Video/audio streamed with Range. Hide only `li[data-live-test-me-menu]` (Me). Guest home (Start free trial / Sign in) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts.
-- [x] `mgfc` (:5121) — **DONE / HTTPS OK** (2026-10-06): verified OK — see Priority  
-- [ ] `merchinformer` (:4651)  
-- [ ] `minvo` (:4871)  
-- [ ] `mojo` (:4881)  
-- [ ] `perplexity` (:5101)  
-- [x] `piktochart` (:4541) — **HTTPS OK** (2026-10-08): verified OK — `create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” switches accounts or shows contact-admin; status stays unchanged. Hide only `#usersettings-dropdown`. `Digitavision` → `ToolsMandi`. Disk cache `cdn-cache/` (72h).  
-- [ ] `pixlr` (:4901)  
-- [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): see Priority  
-- [ ] `ppspy` (:4961)  
-- [x] `prezi` (:4751) — **HTTPS OK** (2026-10-08): verified OK — panel username + UserDropdown blocked; Craft CDN/API device soft-allow (was stuck on “Laying out the canvas”)  
-
-
-- [ ] `rivalflow` (:4811)  
-- [ ] `scite` (:4761) — **IN PROGRESS** (2026-10-08): “Max challenge attempts” = `/api/auth/api_token` blocked by device gate (no JWT) + WAF cookie domain was `scite.ai` not the proxy host. Soft-allow `/api` + `/extra-cdn`, keep browser `aws-waf-token`.
-- [ ] `screpy` (:4721)  
-- [x] `scribd` (:4791) — **HTTPS OK** (2026-10-07): verified OK — live working on `scribd.gt4rents.com`  
-
-- [ ] `searchatlas` (:4711)  
-- [x] `selleramp` (:5161) — **DONE / HTTPS OK** (2026-10-07): see Priority  
-
-- [x] `sellthetrend` (:4591) — **HTTPS OK** (2026-10-07): verified OK — `www.sellthetrend.com`, profile dropdowns hidden (left+top), panel username/initials on avatar bar  
-- [x] `seobility` (:4731) — **HTTPS OK** (2026-10-07): verified OK — `app.seobility.net`, account Profile/Subscription/Billing/Members/MCP block hidden, panel username in dropdown; logout→`/user/login` wall → switch / panel `logged_out` + contact-admin (**failover verified**)  
-
-
-- [ ] `seobuddy` (:5131)  
-- [x] `seositecheckup` (:4661) — see Priority  
-- [x] `seotesteronline` (:4801) — **HTTPS OK** (2026-10-07): verified OK — cookie slim keeps `ct_session`, device bind works, `suite.seotesteronline.com`; no-subscription / dead cookie → soft-revive then switch / panel `logged_out` + contact-admin (**failover verified**)  
-
-
-- [x] `shortform` (:4771) — **HTTPS OK** (2026-10-08): verified OK — `www.shortform.com`. Logout (API 401, logout click, `/app/login`) writes Analytics Logouts, swaps to another active account, or shows contact-admin. Account status stays unchanged.
-
-- [x] `similarweb` (:5071) — **HTTPS OK** (2026-10-07): verified OK — live working; CDN disk cache already present (`cdn_cache.go` → `cdn-cache/`, 72h TTL)  
-
-- [x] `sketchgenius` (:4781) — **HTTPS OK** (2026-10-07): verified OK — panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin (**failover verified**)  
-
-
-- [ ] `slidebean` (:5021)  
-- [ ] `speechify` (:5011)  
-- [ ] `spyfu` (:4941)  
-- [x] `storybase` (:4551) — **HTTPS OK** (2026-10-07): verified OK — `www.storybase.com`, HTTP/1.1 ALPN (was 502/`chatgpt.com`); `#profile-widget` hidden (Settings/Billing/Logout + sidebar avatar/name)  
-
-
-- [ ] `storyblocks` (:4971)  
-- [ ] `syntx` (:4981)  
-- [ ] `ubersuggest` (:5281)  
-- [ ] `uncensoredchat` (:4891)  
-- [ ] `videotoblog` (:5041)  
-- [ ] `vistacreate` (:4581) — **PARKED** (2026-10-08): ChatGPT fixed — target `https://create.vista.com`, home `/home/`. Still blocked by Cloudflare on the proxy: page “Performing security verification” then “Unable to connect to the website” for `create.vista.com` (Ray ID on the error). Chrome HTTP/2 and allowing `/cdn-cgi/` did not clear it. Leave until later.  
-- [x] `wrank` (:4561) — see Priority  
-
-
-- [x] `wordtune` (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com target, device-lock reveal, avatar menu hide + panel username, cookie reload from panel.db, logout detect → switch / `logged_out` + Analytics Logouts  
-
-- [ ] `writecream` (:5051)  
-- [ ] `zebracat` (:5111)  
-- [ ] `zikaanalytics` (:5251)  
-- [ ] `zonguru` (:4691) — **PARKED** (2026-10-07): dashboard widgets still “error loading your data” while official `my.zonguru.com` shows zeros OK. **Seen so far:** panel access + device-bind OK; `[REQ]` only `/signalr/hubs` + `/api/device-bind` — **no** `/api/dashboard/*` ever hits the Go proxy (browser not posting tiles through us). Local curl through proxy: `POST /api/dashboard/EssentialBusinessData` → 200 zeros when `FbaToken` set. Attempted: DigitaVision rewrite off JSON/emails; `baseUrl`/cookieDomain rewrite; device soft-allow + skip gate on `/api`; Angular `$http`/XHR re-hook. **Next:** DevTools Network — confirm tile calls URL host (`zonguru.gt4rents.com` vs `my.zonguru.com` CORS); why Angular never fires `/api/dashboard/*` on proxy; SignalR hubs / `lib-bundle` API client. Cookie = GoAuto `localStorage` `token`+`me` (account ZonGuru 1).
-
----
-
-## Open issues (don’t block Phase A)
-
-| Tool | Issue | Action |
-|------|--------|--------|
-| `branalyzer` | Be Curious → snack “Introduce any valid URL or domain” on `branalyzer.gt4rents.com` (home OK; local `59905db` worked) | **Parked.** Resume later: compare server main.js patch + searchText/DOM vs local; wipe `cdn-cache`; hard-refresh |
-| `chatbotapp` | `/api/v2/chat` → 4002 `x_token header is required` (sidebar/history OK; `91f9ad8` inject) | **Parked.** Resume later: confirm panel GoAuto has IndexedDB `stsTokenManager`; check `[CHATBOT] api auth OK` in app.log |
-| `cgpt` | ChatGPT 2 cookies flaky (`no_access_token` / login wall) | Prefer ChatGPT 1 (verified OK); refresh ChatGPT 2 cookies in panel when free |
-| `mgfc` (Magnific) | `/photos` still WAF if someone bypasses redirect | **OK on `mgfc`**; `/photos` → `/people-emotions` |
-| `flaticon` | Freepik/Akamai WAF 403 on Hetzner | Parked until Proxy Manager |
-| `zonguru` | Dashboard tiles error; proxy never sees `/api/dashboard/*` (only signalr + device-bind). Official OK (zeros). | **Parked.** Resume: DevTools host of tile XHRs; Angular API client / lib-bundle; why posts never reach `:4691` |
 
 ### Chrome Safe Browsing (“Dangerous site”) — who got hit
 
@@ -268,5 +232,5 @@ Not a proxy crash — Google flags phishing-like pages. Seen / noted on gt4rents
 - [ ] All tools built + started (or consciously skipped)  
 - [ ] Wildcard SSL + auto-renew verified  
 - `TOOL_PUBLIC_SCHEME=https` live  
-- [x] Priority tools green on **https://** access-links (incl. `cnva` `placeit` `selleramp` `answerthepublic` `leonardo` 2026-10-07)  
-- [ ] Open issues closed or accepted
+- [x] Fixed list is the verified set (priority tools plus later HTTPS OK tools)  
+- [ ] “Tried — still an issue” list closed or accepted
