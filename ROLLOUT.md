@@ -165,7 +165,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `merchinformer` (:4651)
 - [ ] `minvo` (:4871)
 - [ ] `mojo` (:4881)
-- [ ] `perplexity` (:5101)
 - [ ] `pixlr` (:4901)
 - [ ] `ppspy` (:4961)
 - [ ] `rivalflow` (:4811)
@@ -193,6 +192,7 @@ Opened on the proxy. Leave these until the note below is cleared.
 - [ ] `copywritely` (:4521) — **In progress** (2026-10-08). Target `https://copywritely.com`, home `/tools/`. Sign-in popup (`login_popup`) is treated as logout: Analytics Logouts, one account switch, then contact-admin. Status stays unchanged. Still open: confirm POST `/tools/copywritely/*` and the highlighter worker (`/wp-content/.../js`, `.map`) are not blocked by `device_required`.
 - [ ] `creaitor` (:4621) — **Parked** (2026-10-07). It opened ChatGPT. Target fix is pushed (`app.creaitor.ai`). Not retested after that.
 - [ ] `flaticon` (:4921) — **Parked** (2026-10-07). Blank page / refresh loop was fixed. Freepik/Akamai WAF still returns 403 on this server, including with a proxy. Retry later with fresh cookies on the same residential proxy IP, or another proxy.
+- [ ] `perplexity` (:5101) — **Parked** (2026-10-09). Cloudflare stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `www.perplexity.ai`. Same class of block as VistaCreate. Leave until later.
 - [ ] `scite` (:4761) — **In progress** (2026-10-08). “Max challenge attempts” because `/api/auth/api_token` was blocked by the device gate (no JWT) and the WAF cookie domain was `scite.ai` instead of the proxy host. Soft-allow for `/api` + `/extra-cdn` is pushed, and the browser `aws-waf-token` is kept. Not confirmed on the live site after that.
 - [ ] `vistacreate` (:4581) — **Parked** (2026-10-08). ChatGPT target was fixed: `https://create.vista.com`, home `/home/`. Cloudflare still stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `create.vista.com` (Ray ID on the error). Chrome HTTP/2 and allowing `/cdn-cgi/` did not clear it.
 - [ ] `zonguru` (:4691) — **Parked** (2026-10-07). Dashboard widgets still say “error loading your data” while official `my.zonguru.com` shows zeros. Panel access and device-bind are OK. Proxy log shows only `/signalr/hubs` and `/api/device-bind` — `/api/dashboard/*` never reaches the Go process. Local curl through the proxy: `POST /api/dashboard/EssentialBusinessData` → 200 zeros when `FbaToken` is set. Already tried: DigitaVision rewrite off JSON/emails, `baseUrl`/cookieDomain rewrite, device soft-allow and skip gate on `/api`, Angular `$http`/XHR re-hook. Next: in DevTools, see whether tile calls go to `zonguru.gt4rents.com` or `my.zonguru.com` (CORS), and why Angular never fires `/api/dashboard/*` on the proxy (SignalR hubs / `lib-bundle`). Cookie is GoAuto `localStorage` `token`+`me` (account ZonGuru 1).
