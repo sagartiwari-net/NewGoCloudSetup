@@ -127,6 +127,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `prezi` (:4751) — **HTTPS OK** (2026-10-08): panel username + UserDropdown blocked; Craft CDN/API device soft-allow (was stuck on “Laying out the canvas”)
 - [x] `refs` — Ahrefs (:5291) — HTTP access-link LIVE
 - [x] `scribd` (:4791) — **HTTPS OK** (2026-10-07): live working on `scribd.gt4rents.com`
+- [x] `searchatlas` (:4711) — **HTTPS OK** (2026-10-09): `dashboard.searchatlas.com`. Huge browser cookie is slimmed to `ct_session` so device bind keeps working. User button stays; the account menu (Settings, Billing, Logout) does not open, and the label is the panel username. Payment-failed banner is hidden. Dashboard `/api/countries` stays on the dashboard host. Agent websocket is allowed through the device gate. UI sounds (`.wav`) are allowed. Disk cache `cdn-cache/` (72h) for hashed JS, fonts, images, and short sounds.
 - [x] `selleramp` (:5161) — **HTTPS OK** (2026-10-07): panel access, search `/sas/lookup`, `__tm_s` keepalive + static bypass + device-lock (cookie-copy → Access Denied)
 - [x] `sellthetrend` (:4591) — **HTTPS OK** (2026-10-07): `www.sellthetrend.com`, profile dropdowns hidden (left+top), panel username/initials on avatar bar
 - [x] `seobility` (:4731) — **HTTPS OK** (2026-10-07): `app.seobility.net`, account Profile/Subscription/Billing/Members/MCP block hidden, panel username in dropdown; logout→`/user/login` wall → switch / panel `logged_out` + contact-admin (failover verified)
@@ -169,7 +170,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `ppspy` (:4961)
 - [ ] `rivalflow` (:4811)
 - [ ] `screpy` (:4721)
-- [ ] `searchatlas` (:4711)
 - [ ] `seobuddy` (:5131)
 - [ ] `slidebean` (:5021)
 - [ ] `speechify` (:5011)
