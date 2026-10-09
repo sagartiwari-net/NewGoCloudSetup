@@ -147,7 +147,7 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if deviceHeaderMatches(fp, storedFp) && deviceHeaderMatches(proof, storedProof) {
 		return false
 	}
-	if browserSubresource(r) {
+	if browserSubresource(r) || isWebSocket(r) || strings.Contains(strings.ToLower(r.URL.Path), "/ws/") {
 		return false
 	}
 	if fp == "" && proof == "" {

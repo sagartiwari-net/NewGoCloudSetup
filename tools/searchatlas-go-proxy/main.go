@@ -1067,6 +1067,13 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 		if err != nil {
 			plain = body
 		}
+		if resp.StatusCode >= 400 && resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/api/agent/") {
+			msg := string(plain)
+			if len(msg) > 300 {
+				msg = msg[:300]
+			}
+			log.Printf("[AGENT] %s %s -> %d %s", resp.Request.Method, resp.Request.URL.Path, resp.StatusCode, msg)
+		}
 		if isRewritable(ct) {
 			plain = rewriteBody(plain, cfg)
 			if cfg.CloudflareBypass {

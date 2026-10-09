@@ -50,7 +50,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request, cfg Config, targetH
 
 	session := ""
 	if getSession != nil {
-		session = getSession()
+		session = panelSessionFor(r, getSession)
 	}
 
 	zgOrigin := upstreamOrigin(cfg)
@@ -115,16 +115,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request, cfg Config, targetH
 	fmt.Fprintf(&reqBuf, "Cache-Control: no-cache\r\n")
 	fmt.Fprintf(&reqBuf, "Pragma: no-cache\r\n")
 
-	// --- Cookie injection (if any browser cookies exist) ---
-	if cookieHdr, _ := parseSessionStorage(session); cookieHdr != "" {
-		existing := r.Header.Get("Cookie")
-		if existing != "" {
-			fmt.Fprintf(&reqBuf, "Cookie: %s; %s\r\n", existing, cookieHdr)
-		} else {
-			fmt.Fprintf(&reqBuf, "Cookie: %s\r\n", cookieHdr)
-		}
-	} else if existing := r.Header.Get("Cookie"); existing != "" {
-		fmt.Fprintf(&reqBuf, "Cookie: %s\r\n", existing)
+	// The browser cannot set Authorization on a WebSocket. The agent stream
+	// uses the same JWT as the dashboard API.
+	if tok := sessionToken(session); tok != "" {
+		fmt.Fprintf(&reqBuf, "Authorization: Bearer %s\r\n", tok)
+	}
+
+	// Account cookies only. The slimmed browser jar is just ct_session.
+	if cookieHdr, _ := parseSessionStorage(session); cookieHdr != "" && len(cookieHdr) < 4096 {
+		fmt.Fprintf(&reqBuf, "Cookie: %s\r\n", cookieHdr)
 	}
 
 	reqBuf.WriteString("\r\n")
