@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -778,6 +779,31 @@ func buildInjectScript(cfg Config, session string) string {
 </script>`
 }
 
+type panelUserCtx struct{}
+
+func withPanelUser(r *http.Request) *http.Request {
+	if r == nil {
+		return r
+	}
+	name, err := panelSessionUsername(r)
+	if err != nil {
+		return r
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), panelUserCtx{}, name))
+}
+
+func panelUserFrom(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	name, _ := r.Context().Value(panelUserCtx{}).(string)
+	return strings.TrimSpace(name)
+}
+
 func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
@@ -789,7 +815,8 @@ func jsonString(s string) string {
 func searchAtlasUserMenuScript(panelUsername string) string {
 	userJS, _ := json.Marshal(strings.TrimSpace(panelUsername))
 	return `<style data-tm-sa-user>
-.user-menu-overlay,[data-radix-popper-content-wrapper]:has(.user-menu-overlay){display:none!important;visibility:hidden!important;pointer-events:none!important}
+.user-menu-overlay,[data-radix-popper-content-wrapper]:has(.user-menu-overlay),[data-radix-popper-content-wrapper]:has(.logout-item){display:none!important;visibility:hidden!important;pointer-events:none!important}
+[class*="ffe5e5"]:has([aria-label="Resolve payment issue"]){display:none!important}
 </style>
 <script data-tm-sa-user="1">
 (function(){
@@ -797,7 +824,10 @@ func searchAtlasUserMenuScript(panelUsername string) string {
   window.__tmSaUserMenu = true;
   var TM_USER = ` + string(userJS) + `;
   function menuBtn(t) {
-    return !!(t && t.closest && t.closest('button[aria-label="Open user menu"]'));
+    var el = t && t.closest ? t.closest("button") : null;
+    if (!el) return false;
+    if (el.getAttribute("aria-label") === "Open user menu") return true;
+    return !!(el.querySelector && el.querySelector("#loggedInUserFullName"));
   }
   function block(e) {
     if (!menuBtn(e.target)) return;
@@ -808,34 +838,60 @@ func searchAtlasUserMenuScript(panelUsername string) string {
   ["pointerdown","mousedown","mouseup","click","auxclick","keydown","keyup","touchstart","touchend"].forEach(function(type){
     document.addEventListener(type, block, true);
   });
+  function hideEl(el) {
+    if (!el) return;
+    el.style.setProperty("display", "none", "important");
+    el.style.setProperty("visibility", "hidden", "important");
+    el.style.setProperty("pointer-events", "none", "important");
+  }
   function hideMenus(root) {
     if (!root || !root.querySelectorAll) return;
-    var menus = root.querySelectorAll(".user-menu-overlay");
+    var menus = root.querySelectorAll(".user-menu-overlay, .logout-item");
     for (var i = 0; i < menus.length; i++) {
-      var wrap = menus[i].closest("[data-radix-popper-content-wrapper]") || menus[i];
-      wrap.style.setProperty("display", "none", "important");
+      var wrap = menus[i].closest("[data-radix-popper-content-wrapper]") || menus[i].closest('[role="menu"]') || menus[i];
+      hideEl(wrap);
     }
-    var btns = root.querySelectorAll('button[aria-label="Open user menu"][aria-expanded="true"]');
+    var btns = root.querySelectorAll('button[aria-label="Open user menu"], button:has(#loggedInUserFullName)');
     for (var b = 0; b < btns.length; b++) {
       try { btns[b].setAttribute("aria-expanded", "false"); } catch (e) {}
     }
   }
+  function hidePayment(root) {
+    if (!root || !root.querySelectorAll) return;
+    var btns = root.querySelectorAll('[aria-label="Resolve payment issue"]');
+    for (var i = 0; i < btns.length; i++) {
+      var bar = btns[i].closest('[class*="ffe5e5"]');
+      if (!bar && btns[i].parentElement) bar = btns[i].parentElement.parentElement;
+      hideEl(bar || btns[i]);
+    }
+  }
   function setPanelName(root) {
     if (!TM_USER || !root || !root.querySelectorAll) return;
-    var spans = root.querySelectorAll('button[aria-label="Open user menu"] span.block');
-    for (var i = 0; i < spans.length; i++) {
-      if (spans[i].textContent !== TM_USER) spans[i].textContent = TM_USER;
+    var btns = root.querySelectorAll('button[aria-label="Open user menu"], button:has(#loggedInUserFullName)');
+    for (var b = 0; b < btns.length; b++) {
+      var btn = btns[b];
+      var hidden = btn.querySelector("#loggedInUserFullName");
+      var accountName = hidden ? String(hidden.value || "").trim() : "";
+      var spans = btn.querySelectorAll("span");
+      for (var i = 0; i < spans.length; i++) {
+        if (spans[i].querySelector("svg")) continue;
+        var text = String(spans[i].textContent || "").trim();
+        if (!text) continue;
+        if (spans[i].classList.contains("block") || (accountName && text === accountName)) {
+          if (spans[i].textContent !== TM_USER) spans[i].textContent = TM_USER;
+        }
+      }
     }
   }
   function run() {
-    try { hideMenus(document); setPanelName(document); } catch (e) {}
+    try { hideMenus(document); hidePayment(document); setPanelName(document); } catch (e) {}
   }
   run();
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
   try {
     new MutationObserver(function(){ run(); }).observe(document.documentElement, {childList:true, subtree:true, characterData:true});
   } catch (e) {}
-  setInterval(run, 500);
+  setInterval(run, 400);
 })();
 </script>`
 }
@@ -1146,10 +1202,8 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 					plain = injectDeviceHTML(plain)
 				}
 				inject := buildInjectScript(cfg, session)
-				if usesPanelAccountMode(cfg) && resp.Request != nil {
-					if panelUser, err := panelSessionUsername(resp.Request); err == nil {
-						inject += searchAtlasUserMenuScript(panelUser)
-					}
+				if usesPanelAccountMode(cfg) {
+					inject += searchAtlasUserMenuScript(panelUserFrom(resp.Request))
 				}
 				lower := strings.ToLower(string(plain))
 				if idx := strings.Index(lower, "<head>"); idx >= 0 {
@@ -1278,6 +1332,7 @@ func main() {
 		}
 		if usesPanelAccountMode(cfg) {
 			r = stampPanelAccount(nextReq, acc)
+			r = withPanelUser(r)
 		}
 
 		// Home redirect: / → /home
