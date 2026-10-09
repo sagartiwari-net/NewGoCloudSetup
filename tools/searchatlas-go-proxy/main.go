@@ -279,11 +279,20 @@ func buildInjectScript(cfg Config, session string) string {
 
 	return `<script data-searchatlas-proxy="1">
 (function(){
+  // Production leaves local_test_mode off, so the host-spoof block is empty.
+  // proxyUrl still reads these; an undefined origin throws and the dashboard
+  // fetch never leaves the browser (the star loader never finishes).
+  var REAL_PROXY_ORIGIN = window.location.origin;
+  var REAL_PROXY_HOST = window.location.host;
+  var REAL_PROXY_PROTOCOL = window.location.protocol;
 ` + localFix + `
   var EXTRA_DOMAINS = ` + string(extraDomains) + `;
   var TARGET_HOST = ` + jsonString(tHost) + `;
   function proxyUrl(url) {
     if (typeof url !== "string") return url;
+    try { return proxyUrlInner(url); } catch (e) { return url; }
+  }
+  function proxyUrlInner(url) {
     var u = url.trim();
     var pairs = [
       ["https://" + TARGET_HOST, REAL_PROXY_ORIGIN],
@@ -424,6 +433,50 @@ func buildInjectScript(cfg Config, session string) string {
     init.headers = h;
     return init;
   }
+  function readDevice() {
+    var fp = "", proof = "";
+    try {
+      fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
+      proof = localStorage.getItem("tm_device_proof") || "";
+    } catch (e) {}
+    return { fp: fp, proof: proof };
+  }
+  function sameOriginUrl(u) {
+    try { return new URL(String(u || ""), location.href).origin === location.origin; } catch (e) { return false; }
+  }
+  // Device patch only stamps headers when the URL is already same-origin.
+  // API calls start as https://api.searchatlas.com and become /ext-proxy/ here,
+  // after that check, so they must be stamped again or the gate returns 401.
+  function withDevice(init, url) {
+    if (!sameOriginUrl(url)) return init;
+    var d = readDevice();
+    if (!d.fp || !d.proof) return init;
+    init = init ? Object.assign({}, init) : {};
+    var headers = init.headers;
+    if (headers && typeof Headers !== "undefined" && headers instanceof Headers) {
+      headers = new Headers(headers);
+      if (!headers.get("X-Device-Fp")) headers.set("X-Device-Fp", d.fp);
+      if (!headers.get("X-Device-Proof")) headers.set("X-Device-Proof", d.proof);
+      init.headers = headers;
+      return init;
+    }
+    var h = {};
+    if (headers && typeof headers === "object") {
+      for (var k in headers) {
+        if (Object.prototype.hasOwnProperty.call(headers, k)) h[k] = headers[k];
+      }
+    }
+    var hasFp = false, hasProof = false;
+    for (var ak in h) {
+      var lk = String(ak).toLowerCase();
+      if (lk === "x-device-fp") hasFp = true;
+      if (lk === "x-device-proof") hasProof = true;
+    }
+    if (!hasFp) h["X-Device-Fp"] = d.fp;
+    if (!hasProof) h["X-Device-Proof"] = d.proof;
+    init.headers = h;
+    return init;
+  }
 
   var __beacon = navigator.sendBeacon && navigator.sendBeacon.bind(navigator);
   if (__beacon) {
@@ -487,7 +540,7 @@ func buildInjectScript(cfg Config, session string) string {
     var finalUrl = typeof input === "string" ? input : (input && input.url ? input.url : url);
     // Keep session alive even if upstream refresh HTML/404s
     if (isTokenRefreshUrl(finalUrl) && authToken()) {
-      return __fetch.call(this, input, withBearer(init, finalUrl)).then(function(resp) {
+      return __fetch.call(this, input, withDevice(withBearer(init, finalUrl), finalUrl)).then(function(resp) {
         if (resp && resp.ok) {
           var ct = (resp.headers && resp.headers.get("content-type")) || "";
           if (ct.indexOf("application/json") !== -1) return resp;
@@ -498,7 +551,7 @@ func buildInjectScript(cfg Config, session string) string {
         return refreshStubResponse();
       });
     }
-    return __fetch.call(this, input, withBearer(init, finalUrl));
+    return __fetch.call(this, input, withDevice(withBearer(init, finalUrl), finalUrl));
   };
 
   var __xhrOpen = XMLHttpRequest.prototype.open;
@@ -529,6 +582,11 @@ func buildInjectScript(cfg Config, session string) string {
       if (this.__saNeedAuth && authToken() && !this.__saHasAuth) {
         __xhrSetHeader.call(this, "Authorization", bearerValue());
         this.__saHasAuth = true;
+      }
+      var dev = readDevice();
+      if (dev.fp && dev.proof && sameOriginUrl(this.__saUrl)) {
+        __xhrSetHeader.call(this, "X-Device-Fp", dev.fp);
+        __xhrSetHeader.call(this, "X-Device-Proof", dev.proof);
       }
     } catch (eAuthHdr) {}
     // Axios uses XHR — stub refresh if upstream returns non-JSON

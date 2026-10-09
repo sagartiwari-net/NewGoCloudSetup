@@ -57,8 +57,25 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "worker", "sharedworker":
 		return true
+	}
+	if r == nil || r.URL == nil {
+		return false
+	}
+	p := strings.ToLower(r.URL.Path)
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	// DevTools source maps and workers send an empty Sec-Fetch-Dest.
+	// A 401 there is noise; it is not an account API call.
+	if strings.HasPrefix(p, "/ingest/") || strings.HasPrefix(p, "/_next/") || p == "/tm-device-sw.js" {
+		return true
+	}
+	for _, ext := range []string{".js", ".mjs", ".css", ".map", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
 	}
 	return false
 }
@@ -229,7 +246,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
