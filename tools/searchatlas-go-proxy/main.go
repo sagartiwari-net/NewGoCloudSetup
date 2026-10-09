@@ -1117,6 +1117,22 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 	return proxy
 }
 
+func dashboardLocalAPI(path string) bool {
+	p := path
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	if p == "/api/countries" || strings.HasPrefix(p, "/api/countries/") {
+		return true
+	}
+	for _, pre := range []string{"/api/chatwoot/", "/api/mcp-connect/", "/api/project-creation/"} {
+		if strings.HasPrefix(p, pre) {
+			return true
+		}
+	}
+	return false
+}
+
 func stripPrefix(path, prefix string) string {
 	if !strings.HasPrefix(path, prefix) {
 		return path
@@ -1275,8 +1291,10 @@ func main() {
 			return
 		}
 
-		// Dashboard-relative /api/* → api.searchatlas.com (Next rewrites + axios fallbacks)
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		// Dashboard-relative /api/* → api.searchatlas.com (Next rewrites + axios fallbacks).
+		// A few routes are Next handlers on the dashboard itself. Sending those to
+		// api.searchatlas.com returns the HTML "Not Found" page (countries, etc.).
+		if strings.HasPrefix(r.URL.Path, "/api/") && !dashboardLocalAPI(r.URL.Path) {
 			apiHost := "api.searchatlas.com"
 			apiTarget, err := url.Parse("https://" + apiHost)
 			if err == nil {
