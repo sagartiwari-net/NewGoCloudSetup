@@ -567,13 +567,21 @@ func buildInjectScript(cfg Config, session string) string {
     return __xhrOpen.apply(this, args);
   };
   XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
-    if (String(name || "").toLowerCase() === "authorization") {
+    var lk = String(name || "").toLowerCase();
+    if (lk === "authorization") {
       this.__saHasAuth = true;
       if (!this.__saNeedAuth) {
         // Drop auth on static assets — CDN returns 401
         return;
       }
       value = normalizeAuthHeader(value);
+    }
+    // setRequestHeader appends. A second device stamp becomes "proof, proof"
+    // and the gate treats it as a copied session.
+    if (lk === "x-device-fp" || lk === "x-device-proof") {
+      this.__saDevHdrs = this.__saDevHdrs || {};
+      if (this.__saDevHdrs[lk]) return;
+      this.__saDevHdrs[lk] = 1;
     }
     return __xhrSetHeader.call(this, name, value);
   };
@@ -585,8 +593,9 @@ func buildInjectScript(cfg Config, session string) string {
       }
       var dev = readDevice();
       if (dev.fp && dev.proof && sameOriginUrl(this.__saUrl)) {
-        __xhrSetHeader.call(this, "X-Device-Fp", dev.fp);
-        __xhrSetHeader.call(this, "X-Device-Proof", dev.proof);
+        this.__saDevHdrs = this.__saDevHdrs || {};
+        if (!this.__saDevHdrs["x-device-fp"]) __xhrSetHeader.call(this, "X-Device-Fp", dev.fp);
+        if (!this.__saDevHdrs["x-device-proof"]) __xhrSetHeader.call(this, "X-Device-Proof", dev.proof);
       }
     } catch (eAuthHdr) {}
     // Axios uses XHR — stub refresh if upstream returns non-JSON

@@ -48,11 +48,31 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		sess.proof = proof
 		return nil
 	}
-	if sess.proof != proof || sess.fp != fp {
+	if !deviceHeaderMatches(fp, sess.fp) || !deviceHeaderMatches(proof, sess.proof) {
 		panelSess.Delete(sessionToken)
 		return fmt.Errorf("device mismatch")
 	}
 	return nil
+}
+
+// deviceHeaderMatches: XHR setRequestHeader appends, so the page script and the
+// proxy both stamp the same proof and the browser sends "proof, proof".
+// That is still this browser. A second different value is a copied session.
+func deviceHeaderMatches(got, stored string) bool {
+	got = strings.TrimSpace(got)
+	stored = strings.TrimSpace(stored)
+	if got == stored {
+		return true
+	}
+	if stored == "" || !strings.Contains(got, ",") {
+		return false
+	}
+	for _, part := range strings.Split(got, ",") {
+		if strings.TrimSpace(part) != stored {
+			return false
+		}
+	}
+	return true
 }
 
 func browserSubresource(r *http.Request) bool {
@@ -112,7 +132,7 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !bound {
 		return false
 	}
-	if fp == storedFp && proof == storedProof {
+	if deviceHeaderMatches(fp, storedFp) && deviceHeaderMatches(proof, storedProof) {
 		return false
 	}
 	if browserSubresource(r) {
