@@ -134,6 +134,10 @@ func skipLocalStorageKey(k, v string) bool {
 	if strings.HasPrefix(k, "onboarding") {
 		return false
 	}
+	// Never overwrite this browser's device id with the account export.
+	if k == "tm_device_fp" || k == "tm_device_proof" || strings.HasPrefix(kl, "tm_") {
+		return true
+	}
 	// Drop analytics / caches / SDKs
 	prefixes := []string{
 		"ph_", "_mp", "__mpq", "_uet", "_gcl", "_grecaptcha", "countries_data",

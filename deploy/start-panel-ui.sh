@@ -26,6 +26,6 @@ if [[ ! -f .env.production ]]; then
   echo 'NEXT_PUBLIC_PANEL_API=' > .env.production
 fi
 
-nohup env PORT="${PORT}" npm run start >>"${LOG}" 2>&1 &
+nohup env PORT="${PORT}" NODE_OPTIONS="--max-http-header-size=65536" npm run start >>"${LOG}" 2>&1 &
 echo $! >"${PIDF}"
 echo "OK: panel-ui pid $(cat "${PIDF}") → 127.0.0.1:${PORT} (log ${LOG})"

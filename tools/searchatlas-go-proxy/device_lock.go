@@ -19,7 +19,18 @@ func sessionFromRequest(r *http.Request) (string, *panelGateSession, bool) {
 	}
 	raw, ok := panelSess.Load(cookie.Value)
 	if !ok {
-		return cookie.Value, nil, false
+		// A restart clears memory. The panel DB row is still the live session.
+		restored, restoreErr := restorePanelSession(cookie.Value)
+		if restoreErr != nil {
+			return cookie.Value, nil, false
+		}
+		actual, loaded := panelSess.LoadOrStore(cookie.Value, restored)
+		if loaded {
+			restored = actual.(*panelGateSession)
+		} else {
+			log.Printf("[PANEL] session restored user=%s", restored.username)
+		}
+		return cookie.Value, restored, true
 	}
 	return cookie.Value, raw.(*panelGateSession), true
 }
@@ -49,7 +60,8 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		return nil
 	}
 	if !deviceHeaderMatches(fp, sess.fp) || !deviceHeaderMatches(proof, sess.proof) {
-		panelSess.Delete(sessionToken)
+		// Keep the session. A stale header from this same browser was deleting it
+		// and the access page then showed Access Denied.
 		return fmt.Errorf("device mismatch")
 	}
 	return nil
@@ -149,6 +161,16 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
+		return true
+	}
+	// One API call can carry a stale fingerprint while the access-page proof is
+	// still valid. Reject that call only. Deleting the session here is what
+	// bounces a good browser to Access Denied.
+	if !isDocumentNavigation(r) {
+		log.Printf("[DEVICE] mismatch path=%s fpOk=%v proofOk=%v fpLen=%d proofLen=%d", r.URL.Path, deviceHeaderMatches(fp, storedFp), deviceHeaderMatches(proof, storedProof), len(fp), len(proof))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
 		return true
 	}
 	panelSess.Delete(token)
@@ -254,7 +276,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[DEVICE] bind failed: %v", err)
 		if err.Error() == "device mismatch" {
-			recordCookieShare(cfg, r, token)
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
 			return
@@ -302,12 +323,13 @@ function tmReveal() {
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
   window.__tmWatch = setInterval(function () {
+    var live = tmLiveDevice(fp, proof);
     fetch("/api/device-bind", {
       method: "POST",
       credentials: "same-origin",
-      headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+      headers: { "X-Device-Fp": live.fp, "X-Device-Proof": live.proof }
     }).then(function (res) {
-      if (!res.ok) tmDeny();
+      if (res.status === 403) tmDeny();
     }).catch(function () {});
   }, 2000);
 }
@@ -497,6 +519,16 @@ function tmStore(fp, proof) {
     });
   });
 }
+function tmLiveDevice(fallbackFp, fallbackProof) {
+  var fp = "", proof = "";
+  try {
+    fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || "";
+    proof = localStorage.getItem("tm_device_proof") || "";
+  } catch (e) {}
+  if (!fp) fp = fallbackFp || "";
+  if (!proof) proof = fallbackProof || "";
+  return { fp: fp, proof: proof };
+}
 function tmPatchRequests(fp, proof) {
   if (window.__tmDevicePatched) return;
   window.__tmDevicePatched = true;
@@ -507,10 +539,11 @@ function tmPatchRequests(fp, proof) {
       var same = false;
       try { same = new URL(url, location.href).origin === location.origin; } catch (e) {}
       if (same) {
+        var live = tmLiveDevice(fp, proof);
         init = init || {};
         var headers = new Headers(init.headers || (input && input.headers) || undefined);
-        if (!headers.get("X-Device-Fp")) headers.set("X-Device-Fp", fp);
-        if (!headers.get("X-Device-Proof")) headers.set("X-Device-Proof", proof);
+        if (live.fp && !headers.get("X-Device-Fp")) headers.set("X-Device-Fp", live.fp);
+        if (live.proof && !headers.get("X-Device-Proof")) headers.set("X-Device-Proof", live.proof);
         init.headers = headers;
         if (typeof input !== "string") {
           return origFetch.call(this, new Request(input, init));
@@ -529,8 +562,9 @@ function tmPatchRequests(fp, proof) {
     try {
       var same = new URL(this.__tmURL, location.href).origin === location.origin;
       if (same) {
-        this.setRequestHeader("X-Device-Fp", fp);
-        this.setRequestHeader("X-Device-Proof", proof);
+        var live = tmLiveDevice(fp, proof);
+        if (live.fp) this.setRequestHeader("X-Device-Fp", live.fp);
+        if (live.proof) this.setRequestHeader("X-Device-Proof", live.proof);
       }
     } catch (e) {}
     return origSend.apply(this, arguments);
