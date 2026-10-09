@@ -2,4 +2,5 @@ searchatlas-go-proxy
 cookie.txt
 cooldown.txt
 *.log
+cdn-cache/
 .DS_Store

@@ -89,7 +89,7 @@ func deviceHeaderMatches(got, stored string) bool {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script", "worker", "sharedworker":
+	case "image", "style", "font", "script", "worker", "sharedworker", "audio":
 		return true
 	}
 	if r == nil || r.URL == nil {
@@ -104,7 +104,10 @@ func browserSubresource(r *http.Request) bool {
 	if strings.HasPrefix(p, "/ingest/") || strings.HasPrefix(p, "/_next/") || p == "/tm-device-sw.js" {
 		return true
 	}
-	for _, ext := range []string{".js", ".mjs", ".css", ".map", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"} {
+	if strings.HasPrefix(p, "/sound/") {
+		return true
+	}
+	for _, ext := range []string{".js", ".mjs", ".css", ".map", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".wav", ".mp3", ".ogg", ".m4a"} {
 		if strings.HasSuffix(p, ext) {
 			return true
 		}

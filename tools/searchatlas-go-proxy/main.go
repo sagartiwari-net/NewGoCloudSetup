@@ -1102,6 +1102,12 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 			}
 		}
 		relaxResponseHeaders(resp, cfg)
+		if key := staticCacheKeyFrom(resp.Request); key != "" && resp.StatusCode == http.StatusOK {
+			resp.Header.Set("Cache-Control", "public, max-age=86400")
+			resp.Header.Del("Pragma")
+			resp.Header.Del("Expires")
+			putStaticCached(key, ct, resp.StatusCode, plain)
+		}
 		resp.Header.Del("Content-Encoding")
 		resp.Header.Del("Content-Length")
 		resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(plain)))
@@ -1256,10 +1262,14 @@ func main() {
 				handleWebSocket(w, r, cfg, extHost, extPath, getSession)
 				return
 			}
+			if serveCachedStatic(w, r) {
+				return
+			}
 			r2 := r.Clone(r.Context())
 			r2.URL.Path = extPath
 			r2.URL.RawPath = ""
 			r2.Host = extHost
+			r2 = tagStaticCache(r2, r)
 			debugLog(cfg, "%s /ext-proxy/%s%s", r.Method, extHost, extPath)
 			newReverseProxy(extTarget, cfg, getSession).ServeHTTP(w, r2)
 			return
@@ -1283,7 +1293,10 @@ func main() {
 			handleWebSocket(w, r, cfg, targetHost(cfg), r.URL.Path, getSession)
 			return
 		}
-		newReverseProxy(targetURL, cfg, getSession).ServeHTTP(w, r)
+		if serveCachedStatic(w, r) {
+			return
+		}
+		newReverseProxy(targetURL, cfg, getSession).ServeHTTP(w, tagStaticCache(r, r))
 	})
 
 	addr := ":" + cfg.Port
@@ -1297,6 +1310,7 @@ func main() {
 	log.Printf("║  Target: %s", cfg.TargetURL)
 	log.Printf("║  Auth:   localStorage via cookie.txt         ║")
 	log.Printf("╚══════════════════════════════════════════════╝")
+	startCDNCacheSweep()
 
 	// Wrap: slim huge Cookie jars — NEVER delete the whole header.
 	// Dropping Cookie wiped ct_session → /api/device-bind failed → Access Denied
