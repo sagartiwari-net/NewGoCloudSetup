@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -17,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -84,8 +84,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -4082,6 +4082,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		// Only the header account chip. The dropdown lives inside .sf-account.
+		injectStr += `<style>.sf-account{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>`
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
