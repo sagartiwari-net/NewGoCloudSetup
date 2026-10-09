@@ -783,6 +783,63 @@ func jsonString(s string) string {
 	return string(b)
 }
 
+// searchAtlasUserMenuScript keeps the header user button, but the account
+// menu (Settings, Billing, Logout, …) does not open. The visible name is the
+// panel user, not the Search Atlas account display name.
+func searchAtlasUserMenuScript(panelUsername string) string {
+	userJS, _ := json.Marshal(strings.TrimSpace(panelUsername))
+	return `<style data-tm-sa-user>
+.user-menu-overlay,[data-radix-popper-content-wrapper]:has(.user-menu-overlay){display:none!important;visibility:hidden!important;pointer-events:none!important}
+</style>
+<script data-tm-sa-user="1">
+(function(){
+  if (window.__tmSaUserMenu) return;
+  window.__tmSaUserMenu = true;
+  var TM_USER = ` + string(userJS) + `;
+  function menuBtn(t) {
+    return !!(t && t.closest && t.closest('button[aria-label="Open user menu"]'));
+  }
+  function block(e) {
+    if (!menuBtn(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+  }
+  ["pointerdown","mousedown","mouseup","click","auxclick","keydown","keyup","touchstart","touchend"].forEach(function(type){
+    document.addEventListener(type, block, true);
+  });
+  function hideMenus(root) {
+    if (!root || !root.querySelectorAll) return;
+    var menus = root.querySelectorAll(".user-menu-overlay");
+    for (var i = 0; i < menus.length; i++) {
+      var wrap = menus[i].closest("[data-radix-popper-content-wrapper]") || menus[i];
+      wrap.style.setProperty("display", "none", "important");
+    }
+    var btns = root.querySelectorAll('button[aria-label="Open user menu"][aria-expanded="true"]');
+    for (var b = 0; b < btns.length; b++) {
+      try { btns[b].setAttribute("aria-expanded", "false"); } catch (e) {}
+    }
+  }
+  function setPanelName(root) {
+    if (!TM_USER || !root || !root.querySelectorAll) return;
+    var spans = root.querySelectorAll('button[aria-label="Open user menu"] span.block');
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].textContent !== TM_USER) spans[i].textContent = TM_USER;
+    }
+  }
+  function run() {
+    try { hideMenus(document); setPanelName(document); } catch (e) {}
+  }
+  run();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
+  try {
+    new MutationObserver(function(){ run(); }).observe(document.documentElement, {childList:true, subtree:true, characterData:true});
+  } catch (e) {}
+  setInterval(run, 500);
+})();
+</script>`
+}
+
 func proxyHostPort(cfg Config) string {
 	if strings.Contains(cfg.PublicHost, ":") {
 		return cfg.PublicHost
@@ -1089,6 +1146,11 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 					plain = injectDeviceHTML(plain)
 				}
 				inject := buildInjectScript(cfg, session)
+				if usesPanelAccountMode(cfg) && resp.Request != nil {
+					if panelUser, err := panelSessionUsername(resp.Request); err == nil {
+						inject += searchAtlasUserMenuScript(panelUser)
+					}
+				}
 				lower := strings.ToLower(string(plain))
 				if idx := strings.Index(lower, "<head>"); idx >= 0 {
 					pos := idx + len("<head>")
