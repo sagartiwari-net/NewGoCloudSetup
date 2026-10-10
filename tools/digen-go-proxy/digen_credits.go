@@ -464,6 +464,23 @@ func digenUserLimits(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func injectDigenHeaderHide(body []byte) []byte {
+	if bytes.Contains(body, []byte("data-tm-digen-hide")) {
+		return body
+	}
+	// Only the meme pill and the header avatar. Other header buttons stay.
+	style := []byte(`<style data-tm-digen-hide>span.header-actions__item:has(.credits-pill-wrap),span.header-actions__item:has(.avatar-wrapper){display:none!important}</style>`)
+	lower := bytes.ToLower(body)
+	if i := bytes.Index(lower, []byte("</head>")); i >= 0 {
+		out := make([]byte, 0, len(body)+len(style))
+		out = append(out, body[:i]...)
+		out = append(out, style...)
+		out = append(out, body[i:]...)
+		return out
+	}
+	return append(body, style...)
+}
+
 func injectDigenCreditHTML(body []byte) []byte {
 	if bytes.Contains(body, []byte("data-tm-credits")) {
 		return body

@@ -490,6 +490,7 @@ func main() {
 					if panelOn {
 						bodyBytes = injectDeviceHTML(bodyBytes)
 						bodyBytes = injectDigenCreditHTML(bodyBytes)
+						bodyBytes = injectDigenHeaderHide(bodyBytes)
 					}
 				}
 			}
