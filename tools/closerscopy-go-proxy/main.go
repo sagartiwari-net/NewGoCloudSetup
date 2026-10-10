@@ -836,15 +836,27 @@ func expireDroppedCookies(w http.ResponseWriter, r *http.Request, names []string
 			continue
 		}
 		seen[nl] = true
-		http.SetCookie(w, &http.Cookie{
-			Name:     name,
-			Value:    "",
-			Path:     "/",
-			Expires:  time.Unix(0, 0),
-			MaxAge:   -1,
-			Secure:   cookieSecure(r, cfg),
-			SameSite: http.SameSiteLaxMode,
-		})
+		domains := []string{""}
+		if host := strings.TrimSpace(cfg.PublicHost); host != "" {
+			if i := strings.Index(host, "."); i > 0 {
+				domains = append(domains, host[i:])
+			}
+		}
+		for _, domain := range domains {
+			c := &http.Cookie{
+				Name:     name,
+				Value:    "",
+				Path:     "/",
+				Expires:  time.Unix(0, 0),
+				MaxAge:   -1,
+				Secure:   cookieSecure(r, cfg),
+				SameSite: http.SameSiteLaxMode,
+			}
+			if domain != "" {
+				c.Domain = domain
+			}
+			http.SetCookie(w, c)
+		}
 	}
 }
 
@@ -3400,7 +3412,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if usesPanelAccountMode(cfg) && strings.TrimSpace(currentUser) != "" {
 			userJSON, _ := json.Marshal(currentUser)
 			injectStr += `<style>.dropdown-menu[aria-labelledby="navbarDropdown"]{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>` +
-				`<script>(function(){var USER=` + string(userJSON) + `;function lock(){var btn=document.getElementById("navbarDropdown");if(btn){for(var i=0;i<btn.childNodes.length;i++){var n=btn.childNodes[i];if(n.nodeType===3&&n.nodeValue.trim())n.nodeValue=USER+" ";}btn.setAttribute("aria-expanded","false");}document.querySelectorAll('.dropdown-menu[aria-labelledby="navbarDropdown"]').forEach(function(m){m.classList.remove("show");});}function block(e){var t=e.target&&e.target.closest?e.target.closest("#navbarDropdown"):null;if(!t)return;e.preventDefault();e.stopPropagation();}["pointerdown","mousedown","mouseup","click","auxclick","keydown"].forEach(function(ev){document.addEventListener(ev,block,true);});lock();new MutationObserver(lock).observe(document.documentElement,{childList:true,subtree:true,characterData:true});setInterval(lock,400);})();</script>`
+				`<script>(function(){var USER=` + string(userJSON) + `;function lock(){var btn=document.getElementById("navbarDropdown");if(btn){for(var i=0;i<btn.childNodes.length;i++){var n=btn.childNodes[i];if(n.nodeType===3&&n.nodeValue.trim()&&n.nodeValue.trim()!==USER)n.nodeValue=USER+" ";}if(btn.getAttribute("aria-expanded")!=="false")btn.setAttribute("aria-expanded","false");}document.querySelectorAll('.dropdown-menu[aria-labelledby="navbarDropdown"]').forEach(function(m){if(m.classList.contains("show"))m.classList.remove("show");});}function block(e){var t=e.target&&e.target.closest?e.target.closest("#navbarDropdown"):null;if(!t)return;e.preventDefault();e.stopPropagation();}["pointerdown","mousedown","mouseup","click","auxclick","keydown"].forEach(function(ev){document.addEventListener(ev,block,true);});lock();new MutationObserver(lock).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
 		}
 		if !usesCookieFileMode(cfg) {
 			injectStr += buildDomainCheckJS(cfg) + buildSecurityHeartbeatJS(cfg)
@@ -3556,7 +3568,7 @@ func main() {
 	// ── Security middleware wrapper ───────────────────────────────────────────────
 	secureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg := loadConfig()
-		if dropped := slimBrowserCookies(r); len(dropped) > 0 {
+		if dropped := slimBrowserCookies(r); len(dropped) > 0 && isDocumentNavigation(r) {
 			expireDroppedCookies(w, r, dropped, cfg)
 		}
 		// Production only: nginx may forward X-Forwarded-Proto:http for plain HTTP clients → redirect to HTTPS.
