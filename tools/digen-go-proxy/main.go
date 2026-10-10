@@ -42,6 +42,7 @@ const accountIDContextKey contextKey = "account_id"
 const sessionTokenContextKey contextKey = "session_token"
 const publicHostContextKey contextKey = "public_host"
 const publicSchemeContextKey contextKey = "public_scheme"
+const digenOrigPathKey contextKey = "digen_orig_path"
 
 // Config structure with MySQL support
 type Config struct {
@@ -92,6 +93,8 @@ func main() {
 
 	// Load configuration
 	loadConfig()
+
+	startCDNCacheSweep()
 
 	// Connect to MySQL if configured
 	if cfg.MySQLHost != "" && cfg.MySQLUser != "" && cfg.MySQLDB != "" {
@@ -520,6 +523,15 @@ func main() {
 			resp.Body = io.NopCloser(bytes.NewReader(finalBody))
 			resp.ContentLength = int64(len(finalBody))
 			resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(finalBody)))
+			if resp.Request != nil && resp.StatusCode == http.StatusOK {
+				if orig, ok := resp.Request.Context().Value(digenOrigPathKey).(string); ok {
+					enc := ""
+					if strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+						enc = "gzip"
+					}
+					putStaticCached(http.MethodGet, orig, resp.StatusCode, resp.Header.Get("Content-Type"), enc, finalBody)
+				}
+			}
 
 			return nil
 		},
@@ -600,6 +612,12 @@ func main() {
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
+		}
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && isCacheableStaticPath(r.URL.Path) {
+			if ent := getStaticCached(r.Method, r.URL.RequestURI()); ent != nil {
+				serveDigenCached(w, r, ent)
+				return
+			}
 		}
 
 		publicHost := r.Host
@@ -846,6 +864,7 @@ func main() {
 
 		// Pass resolved cookie, UA, and proxy to the reverse proxy Director via request headers or context
 		ctx := r.Context()
+		ctx = context.WithValue(ctx, digenOrigPathKey, r.URL.RequestURI())
 		ctx = context.WithValue(ctx, publicHostContextKey, publicHost)
 		ctx = context.WithValue(ctx, publicSchemeContextKey, publicScheme)
 		if resolvedProxy != "" {

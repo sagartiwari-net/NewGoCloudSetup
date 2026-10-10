@@ -468,26 +468,21 @@ func injectDigenHeaderHide(body []byte) []byte {
 	if bytes.Contains(body, []byte("data-tm-digen-hide")) {
 		return body
 	}
-	// Only the meme pill and the header avatar. Other header buttons stay.
-	// A style tag can be ignored by the page policy, so the script removes those two nodes.
-	style := []byte(`<style data-tm-digen-hide>.credits-pill-wrap,.header-actions__item:has(.credits-pill-wrap),.header-actions__item:has(.avatar-wrapper){display:none!important}</style><script data-tm-digen-hide>
+	// Only the meme pill and the header avatar. Do not delete the nodes: the app
+	// rebuilds them and that reset the browser connection.
+	style := []byte(`<style id="tm-digen-hide" data-tm-digen-hide>.credits-pill-wrap,.header-actions__item:has(.credits-pill-wrap),.header-actions__item:has(.avatar-wrapper){display:none!important}</style><script data-tm-digen-hide>
 (function(){
-  function hide(){
-    var pills = document.querySelectorAll(".credits-pill-wrap");
-    for (var i = 0; i < pills.length; i++) {
-      var pillItem = pills[i].closest(".header-actions__item") || pills[i];
-      if (pillItem.parentNode) pillItem.parentNode.removeChild(pillItem);
-    }
-    var avatars = document.querySelectorAll(".avatar-wrapper");
-    for (var j = 0; j < avatars.length; j++) {
-      var avatarItem = avatars[j].closest(".header-actions__item");
-      if (avatarItem && avatarItem.parentNode) avatarItem.parentNode.removeChild(avatarItem);
-    }
+  var css = ".credits-pill-wrap,.header-actions__item:has(.credits-pill-wrap),.header-actions__item:has(.avatar-wrapper){display:none!important}";
+  function ensure(){
+    var el = document.getElementById("tm-digen-hide");
+    if (el) return;
+    el = document.createElement("style");
+    el.id = "tm-digen-hide";
+    el.textContent = css;
+    (document.head || document.documentElement).appendChild(el);
   }
-  hide();
-  if (document.documentElement) {
-    new MutationObserver(hide).observe(document.documentElement, { childList: true, subtree: true });
-  }
+  ensure();
+  setInterval(ensure, 1000);
 })();
 </script>`)
 	lower := bytes.ToLower(body)
