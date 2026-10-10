@@ -110,6 +110,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link). Prefer **ChatGPT 1** (ID:65). ChatGPT 2 cookies are flaky (`no_access_token` / login wall) — refresh that account in the panel when free.
 - [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer
 - [x] `cnva` — Canva (:4501) — **HTTPS OK** (2026-10-07): panel access-link working
+- [x] `coursera` (:4701) — **HTTPS OK** (2026-10-10): `www.coursera.org`, home `/organizations/reliance-family`. `X-Forwarded-Host` is not forwarded (CloudFront 403). Header Log In (`header-login-button`) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only `#authenticated-info-menu` and `button[data-e2e="header-profile"]`. Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL
 - [x] `epidemicsound` (:4641) — **HTTPS OK** (2026-10-08): `www.epidemicsound.com`. Preview MP3 allowed through the device gate. Assistant GraphQL host `client-api.epidemicsound.com` is proxied. Sidebar account button does not open its menu; the email line shows the panel username. Disk cache `cdn-cache/` (72h). “Something went wrong”, Log in, and Create free account switch accounts or show contact-admin. Status stays unchanged. Analytics → Logouts.
 - [x] `erank` (:5191) — **HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
@@ -150,7 +151,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `artistly` (:4821)
 - [ ] `closerscopy` (:5241)
 - [ ] `copyspace` (:4741)
-- [ ] `coursera` (:4701)
 - [ ] `cramly` (:4841)
 - [ ] `creattie` (:4861)
 - [ ] `digen` (:5271)
