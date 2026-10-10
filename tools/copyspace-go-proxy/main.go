@@ -2344,6 +2344,17 @@ func patcherScript(cfg Config) string {
         }
         var args = arguments;
         var xhr = this;
+        try {
+            xhr.addEventListener('load', function() {
+                try {
+                    if (xhr.status !== 409 && xhr.status !== 419) return;
+                    var loc = xhr.getResponseHeader('X-Inertia-Location');
+                    if (!loc || window.__tmLogoutGo) return;
+                    window.__tmLogoutGo = true;
+                    window.location.replace(loc);
+                } catch (e) {}
+            });
+        } catch (e) {}
         if (!shouldRetry429(xhr.__canvaURL)) {
             return xs.apply(xhr, args);
         }
@@ -2386,6 +2397,15 @@ func patcherScript(cfg Config) string {
         var doFetch = function() { return fo(inp, init); };
         var runner = shouldRetry429(finalURL) ? function() { return ajaxSlot(doFetch); } : doFetch;
         return runner().then(function(res) {
+            try {
+                if (res && (res.status === 409 || res.status === 419)) {
+                    var loc = res.headers.get('X-Inertia-Location');
+                    if (loc && !window.__tmLogoutGo) {
+                        window.__tmLogoutGo = true;
+                        window.location.replace(loc);
+                    }
+                }
+            } catch (e) {}
             if (res && res.status === 429 && shouldRetry429(finalURL)) {
                 return sleep(800).then(function(){ return runner(); }).then(function(res2) {
                     if (res2 && res2.status === 429) {
