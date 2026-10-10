@@ -119,6 +119,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `epidemicsound` (:4641) — **HTTPS OK** (2026-10-08): `www.epidemicsound.com`. Preview MP3 allowed through the device gate. Assistant GraphQL host `client-api.epidemicsound.com` is proxied. Sidebar account button does not open its menu; the email line shows the panel username. Disk cache `cdn-cache/` (72h). “Something went wrong”, Log in, and Create free account switch accounts or show contact-admin. Status stays unchanged. Analytics → Logouts.
 - [x] `erank` (:5191) — **HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
 - [x] `flexclip` (:4671) — **HTTPS OK** (2026-10-09): `https://www.flexclip.com/editor/`. Guest page switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Disk cache `cdn-cache/` (72h). `Digitavision` → `ToolsMandi`. Hide only `[class*="FJMenu_bottom__"]` (account chip + its menu). Video, download, and credit checks are not blocked by `device_required`. Video/audio is streamed. Other `*.flexclip.com` media hosts go through `/ext-host/`.
+- [x] `fishaudio` (:4991) — **HTTPS OK** (2026-10-10): `fish.audio`, home `/app/`. Login is a localStorage `token`. Scripts, `/i18n/`, and `manifest.json` are not blocked by the device gate. Generated audio downloads go through the proxy (`platform.r2.fish.audio`). Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images. Hide only the team switcher (My Team / Free / avatar).
 - [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide
 - [x] `grammarly` (:4911) — **HTTPS OK** (2026-10-06): panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)
 - [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified
@@ -153,7 +154,6 @@ Built with the batch. Not verified on an access link yet.
 
 - [ ] `airbrush` (:5181)
 - [ ] `digen` (:5271)
-- [ ] `fishaudio` (:4991)
 - [ ] `glorify` (:4681)
 - [ ] `grok` (:4831)
 - [ ] `heliumlearning` (:5221)
