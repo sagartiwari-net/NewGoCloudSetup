@@ -10,7 +10,7 @@
   "credit_label": "Credits",
   "home_path": "/learn/home",
   "cookie_domain_suffix": "educative.io",
-  "inject_css": "a[href*='/logout'],a[href*='/login'],a[href*='/signup'],a[href*='/sign-in'],a[href*='/sign-up'],a[href*='/pricing'],a[href*='/billing'],a[href*='/subscription'],a[href*='/account'],a[href*='/settings'],a[href*='/checkout'],[class*='user-menu'],[id*='user-menu'],[data-user-menu],div.logged-in[class*='Header_loggedInGroup']{display:none!important}",
+  "inject_css": "div.logged-in[class*=\"Header_loggedInGroup\"]{display:none!important}",
   "counted_paths": [],
   "counted_prefixes": [],
   "blocked_paths": [

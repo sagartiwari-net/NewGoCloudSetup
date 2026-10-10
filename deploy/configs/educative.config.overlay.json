@@ -7,6 +7,7 @@
   "tool_name": "Educative",
   "cookie_domain_suffix": "educative.io",
   "home_path": "/learn/home",
+  "inject_css": "div.logged-in[class*=\"Header_loggedInGroup\"]{display:none!important}",
   "extra_cdn_domains": [
     "https://educative.io",
     "https://cdn.educative.io",
