@@ -342,8 +342,11 @@ func main() {
 			}
 			logDigenUse(resp, bodyBytes)
 
-			// Detect limit/free in body content or status code
-			if db != nil && resp.Request != nil && detectDigenLimitOrFree(resp.Request.URL.Path, resp.StatusCode, string(bodyBytes)) {
+			isHTML := strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html")
+			hostInBody := bytes.Contains(bodyBytes, []byte("digen.ai"))
+
+			// Detect limit/free in body content or status code. Large catalog JSON is not a login page.
+			if db != nil && resp.Request != nil && (len(bodyBytes) <= 64*1024 || resp.StatusCode == 401 || resp.StatusCode == 403) && detectDigenLimitOrFree(resp.Request.URL.Path, resp.StatusCode, string(bodyBytes)) {
 				ctx := resp.Request.Context()
 				sessionToken, _ := ctx.Value(sessionTokenContextKey).(string)
 				accIDVal, _ := ctx.Value(accountIDContextKey).(int)
@@ -420,58 +423,68 @@ func main() {
 				}
 			}
 
-			// Subdomain-specific asset path prefixing
+			// Catalog JSON has no site host. Rewriting those multi-megabyte bodies is what stalls the page.
+			skipRewrite := !hostInBody && !isHTML
 			if resp.Request != nil {
-				requestHost := resp.Request.Host
-				if requestHost == "agent.digen.ai" {
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/_next/`), []byte(`"/agent-proxy/_next/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/_next/`), []byte(`'/agent-proxy/_next/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/assets/`), []byte(`"/agent-proxy/assets/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/assets/`), []byte(`'/agent-proxy/assets/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/favicon`), []byte(`"/agent-proxy/favicon`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/favicon`), []byte(`'/agent-proxy/favicon`))
-				} else if requestHost == "create.digen.ai" {
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/_next/`), []byte(`"/create-proxy/_next/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/_next/`), []byte(`'/create-proxy/_next/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/assets/`), []byte(`"/create-proxy/assets/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/assets/`), []byte(`'/create-proxy/assets/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/favicon`), []byte(`"/create-proxy/favicon`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/favicon`), []byte(`'/create-proxy/favicon`))
-				} else if requestHost == "blog.digen.ai" {
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/_next/`), []byte(`"/blog-proxy/_next/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/_next/`), []byte(`'/blog-proxy/_next/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/assets/`), []byte(`"/blog-proxy/assets/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/assets/`), []byte(`'/blog-proxy/assets/`))
-				} else if requestHost == "resource.digen.ai" {
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/_next/`), []byte(`"/resource-proxy/_next/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/_next/`), []byte(`'/resource-proxy/_next/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/assets/`), []byte(`"/resource-proxy/assets/`))
-					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/assets/`), []byte(`'/resource-proxy/assets/`))
+				switch resp.Request.Host {
+				case "agent.digen.ai", "create.digen.ai", "blog.digen.ai", "resource.digen.ai":
+					skipRewrite = false
 				}
 			}
+			if !skipRewrite {
+				// Subdomain-specific asset path prefixing
+				if resp.Request != nil {
+					requestHost := resp.Request.Host
+					if requestHost == "agent.digen.ai" {
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/_next/`), []byte(`"/agent-proxy/_next/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/_next/`), []byte(`'/agent-proxy/_next/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/assets/`), []byte(`"/agent-proxy/assets/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/assets/`), []byte(`'/agent-proxy/assets/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/favicon`), []byte(`"/agent-proxy/favicon`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/favicon`), []byte(`'/agent-proxy/favicon`))
+					} else if requestHost == "create.digen.ai" {
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/_next/`), []byte(`"/create-proxy/_next/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/_next/`), []byte(`'/create-proxy/_next/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/assets/`), []byte(`"/create-proxy/assets/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/assets/`), []byte(`'/create-proxy/assets/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/favicon`), []byte(`"/create-proxy/favicon`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/favicon`), []byte(`'/create-proxy/favicon`))
+					} else if requestHost == "blog.digen.ai" {
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/_next/`), []byte(`"/blog-proxy/_next/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/_next/`), []byte(`'/blog-proxy/_next/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/assets/`), []byte(`"/blog-proxy/assets/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/assets/`), []byte(`'/blog-proxy/assets/`))
+					} else if requestHost == "resource.digen.ai" {
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/_next/`), []byte(`"/resource-proxy/_next/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/_next/`), []byte(`'/resource-proxy/_next/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`"/assets/`), []byte(`"/resource-proxy/assets/`))
+						bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(`'/assets/`), []byte(`'/resource-proxy/assets/`))
+					}
+				}
 
-			// Rewrite HTML/JS body content to replace target domain and subdomains with proxy paths
-			bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://api.digen.ai"), []byte(fmt.Sprintf("%s://%s/api-proxy", publicScheme, publicHost)))
-			bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://test.api.digen.ai"), []byte(fmt.Sprintf("%s://%s/test-api-proxy", publicScheme, publicHost)))
-			bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://agent.digen.ai"), []byte(fmt.Sprintf("%s://%s/agent-proxy", publicScheme, publicHost)))
-			bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://create.digen.ai"), []byte(fmt.Sprintf("%s://%s/create-proxy", publicScheme, publicHost)))
-			bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://blog.digen.ai"), []byte(fmt.Sprintf("%s://%s/blog-proxy", publicScheme, publicHost)))
-			bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://resource.digen.ai"), []byte(fmt.Sprintf("%s://%s/resource-proxy", publicScheme, publicHost)))
+				// Rewrite HTML/JS body content to replace target domain and subdomains with proxy paths
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://api.digen.ai"), []byte(fmt.Sprintf("%s://%s/api-proxy", publicScheme, publicHost)))
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://test.api.digen.ai"), []byte(fmt.Sprintf("%s://%s/test-api-proxy", publicScheme, publicHost)))
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://agent.digen.ai"), []byte(fmt.Sprintf("%s://%s/agent-proxy", publicScheme, publicHost)))
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://create.digen.ai"), []byte(fmt.Sprintf("%s://%s/create-proxy", publicScheme, publicHost)))
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://blog.digen.ai"), []byte(fmt.Sprintf("%s://%s/blog-proxy", publicScheme, publicHost)))
+				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://resource.digen.ai"), []byte(fmt.Sprintf("%s://%s/resource-proxy", publicScheme, publicHost)))
 
-			targetURLParsed, _ := url.Parse(cfg.TargetURL)
-			if targetURLParsed != nil {
-				targetDomain := targetURLParsed.Host
-				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://"+targetDomain), []byte(fmt.Sprintf("%s://%s", publicScheme, publicHost)))
-				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("http://"+targetDomain), []byte(fmt.Sprintf("%s://%s", publicScheme, publicHost)))
-				bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(targetDomain), []byte(publicHost))
-			}
+				targetURLParsed, _ := url.Parse(cfg.TargetURL)
+				if targetURLParsed != nil {
+					targetDomain := targetURLParsed.Host
+					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("https://"+targetDomain), []byte(fmt.Sprintf("%s://%s", publicScheme, publicHost)))
+					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("http://"+targetDomain), []byte(fmt.Sprintf("%s://%s", publicScheme, publicHost)))
+					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(targetDomain), []byte(publicHost))
+				}
 
-			if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
-				cfgMu.RLock()
-				panelOn := usesPanelAccountMode(cfg)
-				cfgMu.RUnlock()
-				if panelOn {
-					bodyBytes = injectDeviceHTML(bodyBytes)
+				if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+					cfgMu.RLock()
+					panelOn := usesPanelAccountMode(cfg)
+					cfgMu.RUnlock()
+					if panelOn {
+						bodyBytes = injectDeviceHTML(bodyBytes)
+					}
 				}
 			}
 
@@ -585,21 +598,31 @@ func main() {
 
 		cfgMu.RLock()
 		websiteID := cfg.WebsiteID
+		panelCfg := cfg
 		cfgMu.RUnlock()
+		panelOn := usesPanelAccountMode(panelCfg)
+		if panelOn {
+			switch r.URL.Path {
+			case "/access":
+				servePanelAccess(w, r, panelCfg)
+				return
+			case "/api/device-bind":
+				deviceBindHandler(w, r)
+				return
+			case "/tm-device-sw.js":
+				serveDeviceSW(w, r)
+				return
+			}
+		}
 
-		// Resolve website ID dynamically from Host header to support multi-domain
-		if db != nil {
+		// The live panel does not use this MySQL lookup. Waiting on it stalls every request, including device-bind.
+		if db != nil && !panelOn {
 			var resolvedWebID int
 			errW := db.QueryRow("SELECT id FROM ahrefs_websites WHERE domain = ?", getHostWithoutPort(r.Host)).Scan(&resolvedWebID)
 			if errW == nil {
 				websiteID = resolvedWebID
 			}
 		}
-
-		cfgMu.RLock()
-		panelCfg := cfg
-		cfgMu.RUnlock()
-		panelOn := usesPanelAccountMode(panelCfg)
 		var panelAcc ToolAccount
 		if panelOn {
 			var handled bool

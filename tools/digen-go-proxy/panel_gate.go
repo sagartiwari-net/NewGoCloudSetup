@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -11,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +27,8 @@ type panelGateSession struct {
 	tracked     bool
 	liveChecked time.Time
 	liveOK      bool
+	account     ToolAccount
+	accountOK   bool
 }
 
 var (
@@ -35,7 +37,6 @@ var (
 	panelDBErr  error
 	panelSess   sync.Map
 )
-
 
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
@@ -115,7 +116,21 @@ func panelSessionUsername(r *http.Request) (string, error) {
 	return username, nil
 }
 
+var panelDurationCache struct {
+	mu sync.Mutex
+	at time.Time
+	d  time.Duration
+}
+
 func panelSessionDuration() time.Duration {
+	panelDurationCache.mu.Lock()
+	if panelDurationCache.d > 0 && time.Since(panelDurationCache.at) < 5*time.Minute {
+		d := panelDurationCache.d
+		panelDurationCache.mu.Unlock()
+		return d
+	}
+	panelDurationCache.mu.Unlock()
+
 	cfg := loadConfig()
 	db, err := openPanelDB(cfg)
 	if err != nil {
@@ -126,7 +141,12 @@ func panelSessionDuration() time.Duration {
 	if mins <= 0 {
 		mins = 30
 	}
-	return time.Duration(mins) * time.Minute
+	d := time.Duration(mins) * time.Minute
+	panelDurationCache.mu.Lock()
+	panelDurationCache.d = d
+	panelDurationCache.at = time.Now()
+	panelDurationCache.mu.Unlock()
+	return d
 }
 
 func extendPanelSession(token string, sess *panelGateSession) {
@@ -334,6 +354,31 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 
 // loadPanelSessionAccount uses the account pinned on the live session.
 // assigned_account_id 0 means auto: claim the least recently used account and pin it.
+func cachedPanelAccount(cfg Config, sessionToken string) (ToolAccount, error) {
+	if raw, ok := panelSess.Load(sessionToken); ok {
+		sess := raw.(*panelGateSession)
+		sess.mu.Lock()
+		if sess.accountOK && sess.account.Cookie != "" {
+			acc := sess.account
+			sess.mu.Unlock()
+			return acc, nil
+		}
+		sess.mu.Unlock()
+	}
+	acc, err := loadPanelSessionAccount(cfg, sessionToken)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	if raw, ok := panelSess.Load(sessionToken); ok {
+		sess := raw.(*panelGateSession)
+		sess.mu.Lock()
+		sess.account = acc
+		sess.accountOK = true
+		sess.mu.Unlock()
+	}
+	return acc, nil
+}
+
 func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
@@ -674,7 +719,7 @@ func preparePanelRequest(w http.ResponseWriter, r *http.Request, cfg Config) (To
 	if c, err := r.Cookie("ct_session"); err == nil {
 		token = c.Value
 	}
-	acc, err := loadPanelSessionAccount(cfg, token)
+	acc, err := cachedPanelAccount(cfg, token)
 	if err != nil {
 		log.Printf("[PANEL] mapped account unavailable: %v", err)
 		panelNoAccounts(w, cfg)

@@ -15,7 +15,7 @@ func logDigenUse(resp *http.Response, body []byte) {
 	}
 	req := resp.Request
 	path := req.URL.Path
-	if digenSkipUseLog(req.Method, path, resp.Header.Get("Content-Type")) {
+	if digenSkipUseLog(req.Method, path) {
 		return
 	}
 	q := req.URL.RawQuery
@@ -25,30 +25,22 @@ func logDigenUse(resp *http.Response, body []byte) {
 	if q != "" {
 		path += "?" + q
 	}
-	log.Printf("[USE] %s %s%s %d %dB %s", req.Method, req.Host, path, resp.StatusCode, len(body), digenCreditHint(body))
+	log.Printf("[USE] %s %s%s %d %s", req.Method, req.Host, path, resp.StatusCode, digenCreditHint(path, body))
 }
 
-func digenSkipUseLog(method, path, contentType string) bool {
-	switch method {
-	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+func digenSkipUseLog(method, path string) bool {
+	lower := strings.ToLower(path)
+	if strings.Contains(lower, "/credit/") {
 		return false
 	}
-	lower := strings.ToLower(path)
-	ct := strings.ToLower(contentType)
-	if strings.Contains(ct, "image/") || strings.Contains(ct, "font/") || strings.Contains(ct, "video/") || strings.Contains(ct, "audio/") {
-		return true
-	}
-	for _, part := range []string{"/_next/", "/assets/", "/static/", "/fonts/", "/favicon"} {
-		if strings.Contains(lower, part) {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		if strings.Contains(lower, "cdn-cgi/") {
 			return true
 		}
+		return false
 	}
-	for _, ext := range []string{".js", ".css", ".map", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp4", ".webm", ".mp3", ".wasm"} {
-		if strings.HasSuffix(lower, ext) {
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 func digenQuietQuery(q string) bool {
@@ -64,8 +56,11 @@ func digenQuietQuery(q string) bool {
 	return false
 }
 
-func digenCreditHint(body []byte) string {
-	if len(body) == 0 || len(body) > 2<<20 {
+func digenCreditHint(path string, body []byte) string {
+	if len(body) == 0 || len(body) > 64*1024 {
+		return "-"
+	}
+	if !strings.Contains(strings.ToLower(path), "/credit/") && len(body) > 4096 {
 		return "-"
 	}
 	matches := digenCreditField.FindAllSubmatch(body, 8)
