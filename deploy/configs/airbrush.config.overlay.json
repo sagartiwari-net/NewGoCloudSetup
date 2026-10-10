@@ -2,6 +2,7 @@
   "port": "5181",
   "public_host": "airbrush.gt4rents.com",
   "public_scheme": "http",
+  "inject_css": "div.profile_log.dropdown,li.logout{display:none!important}",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
