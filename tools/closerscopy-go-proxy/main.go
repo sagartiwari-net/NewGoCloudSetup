@@ -131,8 +131,8 @@ var (
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
+		TargetURL:              "https://www.closerscopy.com",
+		CDNURL:                 "https://www.closerscopy.com",
 		PublicHost:             "gpt.yourdomain.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
@@ -143,10 +143,10 @@ var (
 		SecretKey:              "your_secret_key_here",
 		SessionDurationMinutes: 120,
 		MemberAreaURL:          "https://members.yourdomain.com/",
-		ToolName:               "Tool",
+		ToolName:               "ClosersCopy",
 		CreditLabel:            "Credits",
 		ExportLabel:            "Exports",
-		HomePath:               "/",
+		HomePath:               "/dashboard",
 		CountedPaths:           []string{},
 		CountedPrefixes:        []string{},
 		BlockedPaths:           []string{},
@@ -2959,6 +2959,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		currentUser = "guest_favicon"
 	}
 
+	if (path == "/" || path == "") && cfg.HomePath != "" && cfg.HomePath != "/" && isDocumentNavigation(r) {
+		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
+		return
+	}
+
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
 	if isBlockedPath(path, cfg) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
@@ -3392,6 +3397,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		injectStr := patcherScript(cfg)
+		if usesPanelAccountMode(cfg) && strings.TrimSpace(currentUser) != "" {
+			userJSON, _ := json.Marshal(currentUser)
+			injectStr += `<style>.dropdown-menu[aria-labelledby="navbarDropdown"]{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>` +
+				`<script>(function(){var USER=` + string(userJSON) + `;function lock(){var btn=document.getElementById("navbarDropdown");if(btn){for(var i=0;i<btn.childNodes.length;i++){var n=btn.childNodes[i];if(n.nodeType===3&&n.nodeValue.trim())n.nodeValue=USER+" ";}btn.setAttribute("aria-expanded","false");}document.querySelectorAll('.dropdown-menu[aria-labelledby="navbarDropdown"]').forEach(function(m){m.classList.remove("show");});}function block(e){var t=e.target&&e.target.closest?e.target.closest("#navbarDropdown"):null;if(!t)return;e.preventDefault();e.stopPropagation();}["pointerdown","mousedown","mouseup","click","auxclick","keydown"].forEach(function(ev){document.addEventListener(ev,block,true);});lock();new MutationObserver(lock).observe(document.documentElement,{childList:true,subtree:true,characterData:true});setInterval(lock,400);})();</script>`
+		}
 		if !usesCookieFileMode(cfg) {
 			injectStr += buildDomainCheckJS(cfg) + buildSecurityHeartbeatJS(cfg)
 			if logoutPageDetected {

@@ -36,6 +36,9 @@ func closersLogoutPath(r *http.Request) bool {
 
 func closersLoggedOutHTML(body []byte) bool {
 	s := strings.ToLower(string(body))
+	if strings.Contains(s, `id="navbardropdown"`) {
+		return false
+	}
 	if strings.Contains(s, "/signin") && strings.Contains(s, "sign in") {
 		return true
 	}

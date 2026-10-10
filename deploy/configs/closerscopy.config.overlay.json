@@ -10,5 +10,10 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
+  "target_url": "https://www.closerscopy.com",
+  "cdn_url": "https://www.closerscopy.com",
+  "tool_name": "ClosersCopy",
+  "home_path": "/dashboard",
+  "cookie_domain_suffix": "closerscopy.com",
   "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
 }

@@ -10,7 +10,7 @@
   "tool_name": "ClosersCopy",
   "credit_label": "Credits",
   "export_label": "Exports",
-  "home_path": "/",
+  "home_path": "/dashboard",
   "counted_paths": [],
   "counted_prefixes": [
     "/api/"
