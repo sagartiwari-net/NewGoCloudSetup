@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -78,6 +78,8 @@ type Config struct {
 	UserAgent string `json:"user_agent"`
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
+	// InjectCSS is appended in <head>. Keep the selector to the element that should disappear.
+	InjectCSS string `json:"inject_css"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
 	PanelDB string `json:"panel_db"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
@@ -2926,6 +2928,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject patcher + security + logout overlay script
 		injectStr := patcherScript(cfg) + buildDomainCheckJS(cfg) + buildSecurityHeartbeatJS(cfg)
+		if css := strings.TrimSpace(cfg.InjectCSS); css != "" {
+			injectStr += "<style>" + css + "</style>"
+		}
 		if logoutPageDetected {
 			injectStr = logoutOverlayImmediateScript(cfg) + injectStr
 		}
