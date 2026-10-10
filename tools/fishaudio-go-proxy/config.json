@@ -10,7 +10,7 @@
   "credit_label": "Credits",
   "home_path": "/app/",
   "cookie_domain_suffix": "fish.audio",
-  "inject_css": "",
+  "inject_css": "button[aria-haspopup=\"menu\"]:has([class*=\"team-switcher-trigger-icon-bg\"]){display:none!important}",
   "counted_paths": [],
   "counted_prefixes": [],
   "blocked_paths": [

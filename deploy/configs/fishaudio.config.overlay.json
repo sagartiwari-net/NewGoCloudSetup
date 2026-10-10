@@ -15,6 +15,7 @@
   "cdn_url": "https://fish.audio",
   "tool_name": "Fish Audio",
   "cookie_domain_suffix": "fish.audio",
+  "inject_css": "button[aria-haspopup=\"menu\"]:has([class*=\"team-switcher-trigger-icon-bg\"]){display:none!important}",
   "extra_cdn_domains": [
     "https://api.fish.audio",
     "https://public-platform.r2.fish.audio",
