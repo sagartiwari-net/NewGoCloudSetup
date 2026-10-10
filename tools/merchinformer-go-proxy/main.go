@@ -3789,6 +3789,83 @@ func warmStaticAssets(cfg Config, cookieHeader string) {
 	log.Printf("[CACHE] Static warm-up done (%d assets fetched, %d total listed)", cached, len(assets))
 }
 
+func keepBrowserCookie(name string) bool {
+	nl := strings.ToLower(strings.TrimSpace(name))
+	return nl == "ct_session" || strings.HasPrefix(nl, "tm_")
+}
+
+// slimBrowserCookies drops the ChatGPT jar this host collected. A Cookie header
+// over nginx's 64k buffer resets HTTP/2 (Chrome: ERR_HTTP2_SERVER_REFUSED_STREAM).
+func slimBrowserCookies(r *http.Request) []string {
+	raw := r.Header.Get("Cookie")
+	if raw == "" {
+		return nil
+	}
+	var kept []string
+	var dropped []string
+	for _, part := range strings.Split(raw, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name := part
+		if eq := strings.Index(part, "="); eq >= 0 {
+			name = strings.TrimSpace(part[:eq])
+		}
+		if keepBrowserCookie(name) {
+			kept = append(kept, part)
+			continue
+		}
+		if name != "" && name != part {
+			dropped = append(dropped, name)
+		}
+	}
+	if len(dropped) == 0 {
+		return nil
+	}
+	slim := strings.Join(kept, "; ")
+	log.Printf("[COOKIE] slimmed browser Cookie %d → %d bytes path=%s", len(raw), len(slim), r.URL.Path)
+	if slim == "" {
+		r.Header.Del("Cookie")
+	} else {
+		r.Header.Set("Cookie", slim)
+	}
+	return dropped
+}
+
+func expireDroppedCookies(w http.ResponseWriter, r *http.Request, names []string, cfg Config) {
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	seen := map[string]bool{}
+	domains := []string{""}
+	if host := strings.TrimSpace(cfg.PublicHost); host != "" {
+		if i := strings.Index(host, "."); i > 0 {
+			domains = append(domains, host[i:])
+		}
+	}
+	for _, name := range names {
+		nl := strings.ToLower(strings.TrimSpace(name))
+		if nl == "" || seen[nl] || keepBrowserCookie(nl) {
+			continue
+		}
+		seen[nl] = true
+		for _, domain := range domains {
+			c := &http.Cookie{
+				Name:     name,
+				Value:    "",
+				Path:     "/",
+				Expires:  time.Unix(0, 0),
+				MaxAge:   -1,
+				Secure:   secure,
+				SameSite: http.SameSiteLaxMode,
+			}
+			if domain != "" {
+				c.Domain = domain
+			}
+			http.SetCookie(w, c)
+		}
+	}
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	cfg := loadConfig()
@@ -3848,6 +3925,9 @@ func main() {
 	// ── Security middleware wrapper ───────────────────────────────────────────────
 	secureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg := loadConfig()
+		if dropped := slimBrowserCookies(r); len(dropped) > 0 && strings.Contains(r.Header.Get("Accept"), "text/html") {
+			expireDroppedCookies(w, r, dropped, cfg)
+		}
 		// Force HTTPS redirect (when running behind reverse proxy with X-Forwarded-Proto)
 		if r.Header.Get("X-Forwarded-Proto") == "http" && strings.EqualFold(cfg.PublicScheme, "https") {
 			target := "https://" + r.Host + r.URL.RequestURI()
@@ -3865,11 +3945,12 @@ func main() {
 	addr := ":" + cfg.Port
 	log.Printf("✅ Generic Tool Proxy listening on %s", addr)
 	server := &http.Server{
-		Addr:         addr,
-		Handler:      secureHandler,
-		ReadTimeout:  600 * time.Second,
-		WriteTimeout: 600 * time.Second,
-		IdleTimeout:  180 * time.Second,
+		Addr:           addr,
+		Handler:        secureHandler,
+		ReadTimeout:    600 * time.Second,
+		WriteTimeout:   600 * time.Second,
+		IdleTimeout:    180 * time.Second,
+		MaxHeaderBytes: 4 << 20,
 	}
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("[SERVER] Fatal: %v", err)
