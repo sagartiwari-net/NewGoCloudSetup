@@ -315,13 +315,13 @@ function tmWatch(fp, proof) {
   }).then(function (fp) {
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
+    if (!navigator.serviceWorker || !navigator.serviceWorker.getRegistrations) return;
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (reg) {
+        var script = reg.active || reg.waiting || reg.installing;
+        var url = script ? String(script.scriptURL || "") : "";
+        if (url.indexOf("/tm-device-sw.js") !== -1) reg.unregister();
+      });
     }).catch(function () {});
   }).catch(function () {});
 })();
@@ -355,29 +355,7 @@ func deviceBootScript(home string) string {
           headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
         });
       }
-      // Service workers require a secure context. On plain HTTP skip SW and bind directly.
-      if (!navigator.serviceWorker || !window.isSecureContext) {
-        return doBind();
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1500);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+      return doBind();
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");
@@ -532,8 +510,8 @@ func injectDeviceHTML(body []byte) []byte {
 const deviceSWSource = `
 var memFp = "";
 var memProof = "";
-self.addEventListener("install", function () { self.skipWaiting(); });
-self.addEventListener("activate", function (event) { event.waitUntil(self.clients.claim()); });
+self.addEventListener("install", function () {});
+self.addEventListener("activate", function () {});
 self.addEventListener("message", function (event) {
   var data = event.data || {};
   if (data.fp) memFp = String(data.fp);

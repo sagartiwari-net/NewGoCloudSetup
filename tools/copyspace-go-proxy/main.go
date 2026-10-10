@@ -34,6 +34,10 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+// rel=manifest is stripped from HTML. CopySpace's file is display:standalone
+// and cached for a year, which makes Chrome relaunch the tab.
+var manifestLinkRe = regexp.MustCompile(`(?i)<link\b[^>]*\brel\s*=\s*["']?[^"'>]*\bmanifest\b[^"'>]*["']?[^>]*>`)
+
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 
 // Config holds all runtime-configurable settings loaded from config.json.
@@ -2621,11 +2625,16 @@ func patcherScript(cfg Config) string {
         }
         return false;
     }
+    function stayOrHome() {
+        var here = (window.location.pathname || '/').replace(/\/$/, '') || '/';
+        var home = String(HOME || '/').replace(/\/$/, '') || '/';
+        if (here !== home) window.location.href = HOME;
+    }
     var _push = history.pushState.bind(history);
     history.pushState = function(state, title, url) {
         if (typeof url === 'string') {
             url = patchURL(url);
-            try { var p = new URL(url, O); if (isBlocked(p.pathname)) { window.location.href = HOME; return; } } catch(e) {}
+            try { var p = new URL(url, O); if (isBlocked(p.pathname)) { stayOrHome(); return; } } catch(e) {}
         }
         return _push(state, title, url);
     };
@@ -2633,7 +2642,7 @@ func patcherScript(cfg Config) string {
     history.replaceState = function(state, title, url) {
         if (typeof url === 'string') {
             url = patchURL(url);
-            try { var p = new URL(url, O); if (isBlocked(p.pathname)) { window.location.href = HOME; return; } } catch(e) {}
+            try { var p = new URL(url, O); if (isBlocked(p.pathname)) { stayOrHome(); return; } } catch(e) {}
         }
         return _replace(state, title, url);
     };
@@ -2924,10 +2933,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
-	// Chrome asks for the PWA manifest with no cookies. A 401 makes the app reload.
-	isPublicAsset := strings.Contains(strings.ToLower(path), "favicon") ||
-		strings.HasSuffix(strings.ToLower(path), ".webmanifest") ||
-		strings.HasSuffix(strings.ToLower(path), "/manifest.json")
+	// The upstream manifest is display:standalone with a one-year cache. Chrome
+	// relaunches the tab to apply it. A 401 on the same URL did the same thing.
+	// Always answer here, including when the browser has a session.
+	if strings.HasSuffix(strings.ToLower(path), ".webmanifest") || strings.HasSuffix(strings.ToLower(path), "/manifest.json") {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"name":"CopySpace","display":"browser"}`)
+		return
+	}
+	isPublicAsset := strings.Contains(strings.ToLower(path), "favicon")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
 	if authErr != nil && !isPublicAsset {
 		_, hasSess := r.Cookie("ct_session")
@@ -2956,13 +2972,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isPublicAsset && authErr != nil {
-		if strings.HasSuffix(strings.ToLower(path), ".webmanifest") || strings.HasSuffix(strings.ToLower(path), "/manifest.json") {
-			w.Header().Set("Content-Type", "application/manifest+json")
-			w.Header().Set("Cache-Control", "public, max-age=3600")
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"name":"CopySpace","start_url":"/","display":"browser"}`)
-			return
-		}
 		currentUser = "guest_asset"
 	}
 
@@ -3489,6 +3498,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// after URL rewrites they fail → app dies with ~15 asset requests and
 		// no API calls ("Something went wrong").
 		bodyBytes = stripSubresourceIntegrity(bodyBytes)
+		bodyBytes = manifestLinkRe.ReplaceAll(bodyBytes, nil)
 
 		// Remove CSP header (prevents our injected scripts)
 		w.Header().Del("Content-Security-Policy")
