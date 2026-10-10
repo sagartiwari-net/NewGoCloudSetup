@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -9,6 +8,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +33,6 @@ var (
 	panelDBErr  error
 	panelSess   sync.Map
 )
-
 
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
@@ -262,7 +261,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	acc, accErr := claimPanelAccount(cfg)
+	acc, accErr := claimPanelAccount(cfg, websiteID)
 	if accErr != nil {
 		log.Printf("[PANEL] no mapped account: %v", accErr)
 		renderNoActiveAccountsPage(w, cfg)
@@ -314,7 +313,7 @@ var panelPickMu sync.Mutex
 
 // claimPanelAccount picks the least recently used active account and stamps last_used_at.
 // Status is left unchanged. The next login then lands on a different account.
-func claimPanelAccount(cfg Config) (ToolAccount, error) {
+func claimPanelAccount(cfg Config, websiteID int) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
 	db, err := openPanelDB(cfg)
@@ -322,8 +321,8 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 		return ToolAccount{}, err
 	}
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+		WHERE a.website_id = ? AND a.status = 'active' AND trim(a.cookie) != ''
+		`+panelAccountOrder+` LIMIT 1`, websiteID))
 	if err != nil {
 		return ToolAccount{}, err
 	}
@@ -343,21 +342,21 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 		return ToolAccount{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	var assigned int
-	err = db.QueryRow(`SELECT assigned_account_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned)
+	var assigned, websiteID int
+	err = db.QueryRow(`SELECT assigned_account_id, website_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned, &websiteID)
 	if err != nil {
 		return ToolAccount{}, err
 	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+			WHERE a.id = ? AND a.website_id = ? AND a.status = 'active' AND trim(a.cookie) != ''`, assigned, websiteID))
 		if accErr == nil {
 			return acc, nil
 		}
 	}
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+		WHERE a.website_id = ? AND a.status = 'active' AND trim(a.cookie) != ''
+		`+panelAccountOrder+` LIMIT 1`, websiteID))
 	if err != nil {
 		return ToolAccount{}, err
 	}
@@ -417,7 +416,6 @@ func toolDisplayName(cfg Config) string {
 	}
 	return name
 }
-
 
 func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
@@ -515,7 +513,6 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 </body>
 </html>`, html.EscapeString(card.Title), spinClass, html.EscapeString(card.Heading), card.Message, badge, footer, redirect)
 }
-
 
 func cookieSecure(r *http.Request, cfg Config) bool {
 	// Pre-SSL: overlays use public_scheme=http. Never mark cookies Secure or CF X-Forwarded-Proto=https drops them on http:// pages.
