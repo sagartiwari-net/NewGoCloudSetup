@@ -489,6 +489,7 @@ func main() {
 					cfgMu.RUnlock()
 					if panelOn {
 						bodyBytes = injectDeviceHTML(bodyBytes)
+						bodyBytes = injectDigenCreditHTML(bodyBytes)
 					}
 				}
 			}
@@ -540,6 +541,7 @@ func main() {
 		accessHandler(w, r)
 	})
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
+	mux.HandleFunc("/api/user-limits", digenUserLimits)
 	mux.HandleFunc("/__tm_access_denied", serveAccessDeniedHTML)
 	mux.HandleFunc("/tm-device-sw.js", serveDeviceSW)
 
@@ -613,6 +615,9 @@ func main() {
 				return
 			case "/api/device-bind":
 				deviceBindHandler(w, r)
+				return
+			case "/api/user-limits":
+				digenUserLimits(w, r)
 				return
 			case "/tm-device-sw.js":
 				serveDeviceSW(w, r)

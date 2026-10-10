@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -432,6 +433,276 @@ func digenCharge(cfg Config, bill digenBill) {
 func digenRejectLimit(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-TM-Limit", "credit")
 	w.WriteHeader(http.StatusForbidden)
-	_, _ = io.WriteString(w, `{"error":"limit_reached","message":"Credit limit reached. This generate was not started.","code":403}`)
+	_, _ = io.WriteString(w, `{"error":"limit_reached","message":"Limit khatam hai. Is generate ke liye itne credits nahi bache.","code":403}`)
+}
+
+func digenUserLimits(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	user, err := panelSessionUsername(r)
+	if err != nil || user == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"unauthorized"}`)
+		return
+	}
+	state, stateErr := digenCreditStateFor(loadConfig(), user)
+	if stateErr != nil || state.limit == 0 {
+		state.limit = digenCreditLimit
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"show_limit":   true,
+		"username":     user,
+		"credit_limit": state.limit,
+		"credit_used":  state.used,
+		"credit_label": digenMeterLabel,
+	})
+}
+
+func injectDigenCreditHTML(body []byte) []byte {
+	if bytes.Contains(body, []byte("data-tm-credits")) {
+		return body
+	}
+	script := []byte(digenLimitWidgetHTML())
+	lower := bytes.ToLower(body)
+	if i := bytes.Index(lower, []byte("</head>")); i >= 0 {
+		out := make([]byte, 0, len(body)+len(script))
+		out = append(out, body[:i]...)
+		out = append(out, script...)
+		out = append(out, body[i:]...)
+		return out
+	}
+	return append(body, script...)
+}
+
+func digenLimitWidgetHTML() string {
+	return `<script data-tm-credits="1">
+(function () {
+  if (window.__tmCredits) return;
+  window.__tmCredits = true;
+  var latest = null;
+  var open = false;
+  function removeDock() {
+    var el = document.getElementById('tm-limit-dock');
+    if (el) el.remove();
+  }
+  function host() {
+    var el = document.getElementById('tm-limit-dock');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'tm-limit-dock';
+    var root = el.attachShadow({ mode: 'open' });
+    root.innerHTML = ''
+      + '<style>'
+      + ':host{all:initial}'
+      + '.tab{position:fixed;left:16px;bottom:24px;z-index:2147483646;width:48px;height:48px;border:0;border-radius:999px;background:#22c55e;color:#fff;display:grid;place-items:center;box-shadow:0 10px 24px rgba(22,163,74,.35);cursor:pointer}'
+      + '.tab svg{width:22px;height:22px;display:block}'
+      + '.tab.warn{background:#f59e0b}.tab.low{background:#ef4444}.tab.hide{opacity:0;pointer-events:none}'
+      + '.back{position:fixed;inset:0;z-index:2147483646;background:rgba(15,23,42,.18);opacity:0;pointer-events:none;transition:opacity .2s}'
+      + '.back.show{opacity:1;pointer-events:auto}'
+      + '.card{position:fixed;left:16px;bottom:24px;z-index:2147483647;width:232px;background:#f3fbf6;color:#14532d;border-radius:28px;box-shadow:0 22px 50px rgba(15,23,42,.18);padding:16px 16px 14px;box-sizing:border-box;font:500 14px/1.3 system-ui,sans-serif;transform:translateY(10px) scale(.96);opacity:0;pointer-events:none;transition:transform .22s ease,opacity .22s ease}'
+      + '.card.show{transform:none;opacity:1;pointer-events:auto}'
+      + '.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}'
+      + '.title{font-weight:750;font-size:15px}'
+      + '.x{border:0;background:#e7f6ec;color:#166534;width:28px;height:28px;border-radius:999px;cursor:pointer;font:700 16px/1 system-ui,sans-serif}'
+      + '.ringwrap{position:relative;width:168px;height:168px;margin:4px auto 8px}'
+      + '.ring{width:168px;height:168px;transform:rotate(-90deg)}'
+      + '.track{fill:none;stroke:#d9f3e3;stroke-width:10}'
+      + '.fill{fill:none;stroke:#22c55e;stroke-width:10;stroke-linecap:round;stroke-dasharray:289;stroke-dashoffset:0;transition:stroke-dashoffset .35s ease,stroke .2s}'
+      + '.fill.warn{stroke:#f59e0b}.fill.low{stroke:#ef4444}'
+      + '.center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}'
+      + '.num{font-size:34px;font-weight:800;letter-spacing:-.04em;color:#14532d}'
+      + '.sub{margin-top:2px;color:#4d7c5e;font-size:13px}'
+      + '.meter{background:#fff;border-radius:16px;padding:10px 12px}'
+      + '.meter-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:#166534;font-size:13px}'
+      + '.count{font-weight:750}'
+      + '.bar{height:6px;border-radius:999px;background:#e7f6ec;overflow:hidden}'
+      + '.barfill{height:100%;width:0;border-radius:999px;background:#22c55e;transition:width .35s ease}'
+      + '.barfill.warn{background:#f59e0b}.barfill.low{background:#ef4444}'
+      + '<' + '/style>'
+      + '<button class="tab" id="tm-tab" type="button" aria-label="Credits"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" opacity=".35"><' + '/circle><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><' + '/path><' + '/svg><' + '/button>'
+      + '<div class="back" id="tm-back"><' + '/div>'
+      + '<aside class="card" id="tm-drawer">'
+      + '<div class="head"><div class="title" id="tm-title">Credits<' + '/div><button class="x" id="tm-close" type="button" aria-label="Close">×<' + '/button><' + '/div>'
+      + '<div class="ringwrap"><svg class="ring" viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="46"><' + '/circle><circle class="fill" id="tm-ring" cx="60" cy="60" r="46"><' + '/circle><' + '/svg>'
+      + '<div class="center"><div class="num" id="tm-left">0<' + '/div><div class="sub" id="tm-sub">left<' + '/div><' + '/div><' + '/div>'
+      + '<div class="meter"><div class="meter-top"><span id="tm-meter-label">Credits<' + '/span><span class="count" id="tm-count">0 / 0<' + '/span><' + '/div><div class="bar"><div class="barfill" id="tm-bar"><' + '/div><' + '/div><' + '/div>'
+      + '<' + '/aside>';
+    (document.body || document.documentElement).appendChild(el);
+    var shadow = root;
+    shadow.getElementById('tm-tab').addEventListener('click', function (ev) { ev.stopPropagation(); setOpen(true); });
+    shadow.getElementById('tm-close').addEventListener('click', function (ev) { ev.stopPropagation(); setOpen(false); });
+    shadow.getElementById('tm-back').addEventListener('click', function () { setOpen(false); });
+    shadow.getElementById('tm-drawer').addEventListener('click', function (ev) { ev.stopPropagation(); });
+    return el;
+  }
+  function setOpen(next) {
+    open = next;
+    var el = host();
+    if (!el) return;
+    var root = el.shadowRoot;
+    root.getElementById('tm-drawer').classList.toggle('show', open);
+    root.getElementById('tm-back').classList.toggle('show', open);
+    root.getElementById('tm-tab').classList.toggle('hide', open);
+  }
+  function paint(d) {
+    if (!d) return;
+    var el = host();
+    if (!el) return;
+    var root = el.shadowRoot;
+    var tab = root.getElementById('tm-tab');
+    var ring = root.getElementById('tm-ring');
+    var bar = root.getElementById('tm-bar');
+    var used = Number(d.credit_used) || 0;
+    var limit = Number(d.credit_limit);
+    if (!(limit >= 0)) limit = 1000;
+    var left = Math.max(0, limit - used);
+    var ratio = limit === 0 ? 0 : left / limit;
+    root.getElementById('tm-left').textContent = String(left);
+    root.getElementById('tm-sub').textContent = 'left';
+    root.getElementById('tm-count').textContent = String(used) + ' / ' + String(limit);
+    ring.style.strokeDasharray = '289';
+    ring.style.strokeDashoffset = String(289 * (1 - ratio));
+    bar.style.width = Math.round(ratio * 100) + '%';
+    var low = left < 20;
+    var warn = left >= 20 && left < 200;
+    tab.classList.toggle('low', low);
+    tab.classList.toggle('warn', warn);
+    ring.classList.toggle('low', low);
+    ring.classList.toggle('warn', warn);
+    bar.classList.toggle('low', low);
+    bar.classList.toggle('warn', warn);
+  }
+  function showLimitCard() {
+    if (document.getElementById('tm-limit-screen')) return;
+    var el = document.createElement('div');
+    el.id = 'tm-limit-screen';
+    el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#eef3f8;color:#0f172a;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;';
+    el.innerHTML = '<div style="width:min(440px,92vw);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center;">'
+      + '<div style="width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:28px;border:1px solid #e6ebf2;">&#128274;<' + '/div>'
+      + '<h1 style="font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin:0 0 12px;">Limit khatam hai<' + '/h1>'
+      + '<p style="color:#64748b;font-size:15px;line-height:1.55;margin:0;">Is generate ke liye itne credits nahi bache. Request nahi gayi. Limit midnight (12:00 AM IST) par reset hoti hai.<' + '/p>'
+      + '<p style="margin:22px 0 0;color:#94a3b8;font-size:13px;">This limit applies to the current access<' + '/p><' + '/div>';
+    (document.body || document.documentElement).appendChild(el);
+  }
+  function leftCredits() {
+    if (!latest) return null;
+    var limit = Number(latest.credit_limit);
+    if (!(limit >= 0)) return null;
+    return Math.max(0, limit - (Number(latest.credit_used) || 0));
+  }
+  function canAfford(cost) {
+    var left = leftCredits();
+    if (left === null) return true;
+    return cost <= left;
+  }
+  function upstreamPath(url) {
+    var p = String(url || '').split('?')[0];
+    try { p = new URL(p, location.href).pathname; } catch (e) {}
+    var marks = ['/api-proxy', '/test-api-proxy', '/agent-proxy', '/create-proxy'];
+    for (var i = 0; i < marks.length; i++) {
+      var at = p.indexOf(marks[i]);
+      if (at >= 0) {
+        p = p.slice(at + marks[i].length);
+        break;
+      }
+    }
+    if (p.charAt(0) !== '/') p = '/' + p;
+    return p.toLowerCase();
+  }
+  function billable(url) {
+    var p = upstreamPath(url);
+    if (p.indexOf('/job/submit') !== -1) return true;
+    if (p.indexOf('/text_to_image') !== -1 || p.indexOf('/image_to_image') !== -1 || p.indexOf('/img2img') !== -1) return true;
+    if (p.indexOf('/sora') !== -1 && (p.indexOf('submit') !== -1 || p.indexOf('generat') !== -1)) return true;
+    return false;
+  }
+  function costFrom(url, text) {
+    if (!billable(url)) return 0;
+    var meme = 0;
+    var low = String(text || '').toLowerCase();
+    var re = /"(credit|credits|meme|memes|cost|price|points|point|consume|consume_credit|credit_cost|creditsperuse|credits_per_use)"\s*:\s*(-?\d+(?:\.\d+)?)/gi;
+    var m;
+    while ((m = re.exec(low))) {
+      var n = Math.round(Number(m[2]));
+      if (n > meme && n <= 100000) meme = n;
+    }
+    if (meme > 0) return meme;
+    if (low.indexOf('veo') !== -1) return 200;
+    if (low.indexOf('sora') !== -1) return 400;
+    if (upstreamPath(url).indexOf('text_to_image') !== -1 && low.indexOf('image') === -1) return 0;
+    return 20;
+  }
+  function blockedResponse() {
+    showLimitCard();
+    return new Response('{"error":"limit_reached","message":"Limit khatam hai"}', {
+      status: 403,
+      headers: { 'Content-Type': 'application/json', 'X-TM-Limit': 'credit' }
+    });
+  }
+  function updateBadge() {
+    window.fetch('/api/user-limits', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { latest = d; paint(d); })
+      .catch(function () {});
+  }
+  window.__tmUpdateCredits = updateBadge;
+  if (document.body) updateBadge();
+  else document.addEventListener('DOMContentLoaded', updateBadge);
+  setInterval(updateBadge, 4000);
+  var origFetch = window.fetch;
+  if (origFetch) {
+    window.fetch = function (input, init) {
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      var method = (init && init.method) || (input && input.method) || 'GET';
+      if (String(url).indexOf('/api/user-limits') !== -1) return origFetch.apply(this, arguments);
+      if (String(method).toUpperCase() !== 'POST' || !billable(url)) {
+        var plain = origFetch.apply(this, arguments);
+        return plain;
+      }
+      var self = this;
+      var args = arguments;
+      var bodyText = '';
+      if (init && typeof init.body === 'string') bodyText = init.body;
+      var ready = Promise.resolve(bodyText);
+      if (!bodyText && input && typeof input !== 'string' && input.clone) {
+        ready = input.clone().text().catch(function () { return ''; });
+      }
+      return ready.then(function (text) {
+        var cost = costFrom(url, text);
+        if (cost > 0 && !canAfford(cost)) return blockedResponse();
+        return origFetch.apply(self, args).then(function (res) {
+          if (res && res.headers && res.headers.get('X-TM-Limit')) showLimitCard();
+          if (cost > 0) setTimeout(updateBadge, 700);
+          return res;
+        });
+      });
+    };
+  }
+  var origOpen = XMLHttpRequest.prototype.open;
+  var origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    this.__tmCreditURL = url;
+    this.__tmCreditMethod = method;
+    return origOpen.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function (body) {
+    var url = this.__tmCreditURL || '';
+    if (String(this.__tmCreditMethod || '').toUpperCase() === 'POST' && billable(url)) {
+      var text = typeof body === 'string' ? body : '';
+      var cost = costFrom(url, text);
+      if (cost > 0 && !canAfford(cost)) {
+        showLimitCard();
+        return;
+      }
+    }
+    return origSend.apply(this, arguments);
+  };
+})();
+</script>`
 }
