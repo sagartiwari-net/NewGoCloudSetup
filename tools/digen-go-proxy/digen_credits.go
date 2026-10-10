@@ -12,10 +12,9 @@ import (
 )
 
 const (
-	digenMeterKey      = "credits"
-	digenMeterLabel    = "Credits"
-	digenCreditLimit   = 100
-	digenMemePerCredit = 20
+	digenMeterKey    = "credits"
+	digenMeterLabel  = "Credits"
+	digenCreditLimit = 1000
 )
 
 const digenBillKey contextKey = "digen_bill"
@@ -70,33 +69,29 @@ func digenQuoteFrom(path string, body []byte) digenQuote {
 	credits := digenCreditsFor(up, model, body, meme)
 	return digenQuote{
 		credits: credits,
-		action:  digenActionLabel(up, model, seconds, resolution, meme, prompt),
+		action:  digenActionLabel(up, model, seconds, resolution, credits, prompt),
 		path:    up,
 	}
 }
 
 func digenCreditsFor(path, model string, body []byte, meme int) int {
 	if meme > 0 {
-		n := (meme + digenMemePerCredit - 1) / digenMemePerCredit
-		if n < 1 {
-			return 1
-		}
-		return n
+		return meme
 	}
 	low := strings.ToLower(model + " " + path)
 	switch {
 	case strings.Contains(low, "veo"):
-		return 10
+		return 200
 	case strings.Contains(low, "sora"):
-		return 20
+		return 400
 	case strings.Contains(low, "text_to_image") && !digenBodyHasImage(body):
 		return 0
 	default:
-		return 1
+		return 20
 	}
 }
 
-func digenActionLabel(path, model string, seconds int, resolution string, meme int, prompt string) string {
+func digenActionLabel(path, model string, seconds int, resolution string, credits int, prompt string) string {
 	name := strings.TrimSpace(model)
 	if name == "" {
 		switch {
@@ -118,8 +113,8 @@ func digenActionLabel(path, model string, seconds int, resolution string, meme i
 		parts = append(parts, resolution)
 	}
 	label := strings.Join(parts, " · ")
-	if meme > 0 {
-		label += fmt.Sprintf(" · %d meme", meme)
+	if credits > 0 {
+		label += fmt.Sprintf(" · %d credits", credits)
 	}
 	if prompt != "" {
 		label += " — " + prompt
