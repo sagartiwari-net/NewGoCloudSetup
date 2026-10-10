@@ -151,7 +151,6 @@ Built with the batch. Not verified on an access link yet.
 
 - [ ] `airbrush` (:5181)
 - [ ] `copyspace` (:4741)
-- [ ] `creattie` (:4861)
 - [ ] `digen` (:5271)
 - [ ] `educative` (:4851)
 - [ ] `fishaudio` (:4991)
@@ -191,6 +190,7 @@ Opened on the proxy. Leave these until the note below is cleared.
 - [ ] `chatbotapp` (:5061) — **Parked** (home and chats list OK). `POST /api/v2/chat` still returns 4002 `x_token header is required` (`91f9ad8` inject). Resume: confirm the panel GoAuto account has IndexedDB `stsTokenManager`, and check `[CHATBOT] api auth OK` in `app.log`.
 - [ ] `copywritely` (:4521) — **In progress** (2026-10-08). Target `https://copywritely.com`, home `/tools/`. Sign-in popup (`login_popup`) is treated as logout: Analytics Logouts, one account switch, then contact-admin. Status stays unchanged. Still open: confirm POST `/tools/copywritely/*` and the highlighter worker (`/wp-content/.../js`, `.map`) are not blocked by `device_required`.
 - [ ] `creaitor` (:4621) — **Parked** (2026-10-07). It opened ChatGPT. Target fix is pushed (`app.creaitor.ai`). Not retested after that.
+- [ ] `creattie` (:4861) — **Parked** (2026-10-10). Target `https://creattie.com`. Cloudflare stops the proxy: “Performing security verification”, then “Unable to connect to the website” (Ray ID `a48581119662aa5`). Same class of block as VistaCreate and Perplexity. Leave until later.
 - [ ] `flaticon` (:4921) — **Parked** (2026-10-07). Blank page / refresh loop was fixed. Freepik/Akamai WAF still returns 403 on this server, including with a proxy. Retry later with fresh cookies on the same residential proxy IP, or another proxy.
 - [ ] `perplexity` (:5101) — **Parked** (2026-10-09). Cloudflare stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `www.perplexity.ai`. Same class of block as VistaCreate. Leave until later.
 - [ ] `scite` (:4761) — **In progress** (2026-10-08). “Max challenge attempts” because `/api/auth/api_token` was blocked by the device gate (no JWT) and the WAF cookie domain was `scite.ai` instead of the proxy host. Soft-allow for `/api` + `/extra-cdn` is pushed, and the browser `aws-waf-token` is kept. Not confirmed on the live site after that.
