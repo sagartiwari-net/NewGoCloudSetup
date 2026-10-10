@@ -3672,7 +3672,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
-	if authErr != nil && !isFavicon {
+	if authErr != nil && !isFavicon && !fishStaticAsset(path) {
 		_, hasSess := r.Cookie("ct_session")
 		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v",
 			path, r.Host, authErr, currentWebsiteID, hasSess == nil)
@@ -3748,7 +3748,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		name, sessionErr := panelSessionUsername(r)
 		if sessionErr != nil {
-			if strings.Contains(strings.ToLower(path), "favicon") {
+			if strings.Contains(strings.ToLower(path), "favicon") || fishStaticAsset(path) {
 				activeAcc = ToolAccount{}
 			} else {
 				renderAccessDeniedPage(w, cfg)
