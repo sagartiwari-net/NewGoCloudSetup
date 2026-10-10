@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -16,6 +15,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -82,8 +82,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -155,9 +155,9 @@ var (
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
-		PublicHost:             "gpt.yourdomain.com",
+		TargetURL:              "https://app.glorify.com",
+		CDNURL:                 "https://app.glorify.com",
+		PublicHost:             "glorify.gt4rents.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
 		MySQLPort:              "3306",
@@ -167,10 +167,10 @@ var (
 		SecretKey:              "your_secret_key_here",
 		SessionDurationMinutes: 120,
 		MemberAreaURL:          "https://members.yourdomain.com/",
-		ToolName:               "Tool",
+		ToolName:               "Glorify",
 		CreditLabel:            "Credits",
 		ExportLabel:            "Exports",
-		HomePath:               "/",
+		HomePath:               "/dashboard",
 		CountedPaths:           []string{},
 		CountedPrefixes:        []string{},
 		BlockedPaths:           []string{},
@@ -1062,7 +1062,7 @@ var absorbCookieNames = map[string]bool{
 	// Glorify Hyperf / Joomla session
 	"HYPERF_SESSION_ID": true, "joomla_user_state": true, "fingerprint": true,
 	"joomla_remember_me_f0580777bbce9a00ec37120f9b008456": true,
-	"2852a6d68fb45d283c5a2cc519b36b45": true,
+	"2852a6d68fb45d283c5a2cc519b36b45":                    true,
 }
 
 func cookieHeaderToMap(header string) map[string]string {
