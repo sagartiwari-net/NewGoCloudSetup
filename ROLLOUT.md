@@ -106,6 +106,7 @@ Lists below: **Fixed**, then **Not started**, then **Tried — still an issue** 
 
 Verified on an access link. Each tool is listed once.
 
+- [x] `airbrush` (:5181) — **HTTPS OK** (2026-10-10): `app.airbrush.ai`, home `/dashboard`. Hide only `div.profile_log` (profile menu) and `li.logout` (Signout).
 - [x] `answerthepublic` (:4931) — **HTTPS OK** (2026-10-07): panel access + disk CDN cache (`60c3335`)
 - [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link). Prefer **ChatGPT 1** (ID:65). ChatGPT 2 cookies are flaky (`no_access_token` / login wall) — refresh that account in the panel when free.
 - [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer
@@ -153,7 +154,6 @@ Verified on an access link. Each tool is listed once.
 
 Built with the batch. Not verified on an access link yet.
 
-- [ ] `airbrush` (:5181)
 - [ ] `digen` (:5271)
 - [ ] `heliumlearning` (:5221)
 - [ ] `imgupscaler` (:5091)
