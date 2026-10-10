@@ -1,7 +1,29 @@
 {
   "port": "4651",
   "public_host": "merchinformer.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://members.merchinformer.com",
+  "cdn_url": "https://members.merchinformer.com",
+  "tool_name": "Merch Informer",
+  "cookie_domain_suffix": "merchinformer.com",
+  "home_path": "/tutorials",
+  "extra_cdn_domains": [
+    "https://www.merchinformer.com",
+    "https://merchinformer.com",
+    "https://studio.merchinformer.com",
+    "https://designer.merchinformer.com",
+    "https://helpdesk.merchinformer.com",
+    "https://cdn.materialdesignicons.com",
+    "https://js.stripe.com",
+    "https://m.stripe.com",
+    "https://m.stripe.network",
+    "https://fonts.googleapis.com",
+    "https://fonts.gstatic.com",
+    "https://www.google-analytics.com",
+    "https://www.googletagmanager.com",
+    "https://cdnjs.cloudflare.com",
+    "https://cdn.jsdelivr.net"
+  ],
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -9,6 +31,5 @@
   "mysql_port": "3306",
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
-  "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "mysql_db": "gt4rents"
 }

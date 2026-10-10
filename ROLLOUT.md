@@ -115,6 +115,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `copyspace` (:4741) — **HTTPS OK** (2026-10-10): `space.copyspace.ai`, home `/`. The manifest is `display: browser`, so Chrome does not keep relaunching the tab. An expired cookie (419, or Inertia reloading the same page) switches accounts once or shows contact-admin. Status stays unchanged. Analytics → Logouts. The editor follows that response instead of staying on a silent 409.
 - [x] `coursera` (:4701) — **HTTPS OK** (2026-10-10): `www.coursera.org`, home `/organizations/reliance-family`. `X-Forwarded-Host` is not forwarded (CloudFront 403). Header Log In (`header-login-button`) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only `#authenticated-info-menu` and `button[data-e2e="header-profile"]`. Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
 - [x] `cramly` (:4841) — **HTTPS OK** (2026-10-10): `app.cramly.ai`, home `/dashboard`. Upstream uses IPv4 so Cloudflare does not reset the connection. A fat browser cookie is slimmed, and the Access button clears the jar first so the dashboard is not rejected as too large.
+- [x] `digen` (:5271) — **HTTPS OK** (2026-10-10): `digen.ai`. Each user gets 1000 credits a day. A generate is charged the meme amount shown for that job (20 stays 20, 200 stays 200). The quota log records what was generated. The credit card matches ChatGPT. Hide only the header meme pill and the header avatar. Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
 - [x] `educative` (:4851) — **HTTPS OK** (2026-10-10): `www.educative.io`, home `/learn/home`. A logged-out cookie (`{"status":401}` on `/api/user/info`) switches accounts once or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only the logged-in header profile group and the logged-out header group (Log In / Join for free). The welcome heading shows the panel username instead of the account name.
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL
 - [x] `epidemicsound` (:4641) — **HTTPS OK** (2026-10-08): `www.epidemicsound.com`. Preview MP3 allowed through the device gate. Assistant GraphQL host `client-api.epidemicsound.com` is proxied. Sidebar account button does not open its menu; the email line shows the panel username. Disk cache `cdn-cache/` (72h). “Something went wrong”, Log in, and Create free account switch accounts or show contact-admin. Status stays unchanged. Analytics → Logouts.
@@ -154,7 +155,6 @@ Verified on an access link. Each tool is listed once.
 
 Built with the batch. Not verified on an access link yet.
 
-- [ ] `digen` (:5271)
 - [ ] `heliumlearning` (:5221)
 - [ ] `imgupscaler` (:5091)
 - [ ] `indexification` (:5231)
