@@ -3453,12 +3453,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if kLower == "x-frame-options" {
 			continue
 		}
-		if kLower == "location" {
+		if kLower == "location" || kLower == "link" {
 			for _, v := range vv {
 				newLoc := rewriteWoorankHostURL(v, publicBase)
 				for _, pair := range locationPairs {
 					newLoc = strings.ReplaceAll(newLoc, pair[0], pair[1])
 				}
+				newLoc = string(rewriteArtistlyHost([]byte(newLoc), publicHost))
 				w.Header().Add(k, newLoc)
 			}
 			continue
