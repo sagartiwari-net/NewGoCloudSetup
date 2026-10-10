@@ -120,6 +120,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `erank` (:5191) — **HTTPS OK** (2026-10-06): panel access-link, h1 upstream, no browser cookie leak, CDN disk+browser cache (`erank-v7`)
 - [x] `flexclip` (:4671) — **HTTPS OK** (2026-10-09): `https://www.flexclip.com/editor/`. Guest page switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Disk cache `cdn-cache/` (72h). `Digitavision` → `ToolsMandi`. Hide only `[class*="FJMenu_bottom__"]` (account chip + its menu). Video, download, and credit checks are not blocked by `device_required`. Video/audio is streamed. Other `*.flexclip.com` media hosts go through `/ext-host/`.
 - [x] `fishaudio` (:4991) — **HTTPS OK** (2026-10-10): `fish.audio`, home `/app/`. Login is a localStorage `token`. Scripts, `/i18n/`, and `manifest.json` are not blocked by the device gate. Generated audio downloads go through the proxy (`platform.r2.fish.audio`). Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images. Hide only the team switcher (My Team / Free / avatar).
+- [x] `glorify` (:4681) — **HTTPS OK** (2026-10-10): `app.glorify.com`, home `/dashboard`. A sign-in page (`/dashboard/login`, including a client-side jump) switches accounts once or shows contact-admin. Status stays unchanged. Analytics → Logouts. The account-name labels show the panel username. Hide only `.account-menu`.
 - [x] `gptzero` (:5301) — **HTTPS OK** (2026-10-04): panel credits, logout→swap/`[SWAP]`, Premium features stub, CDN fast open, Upgrade/upsell hide
 - [x] `grammarly` (:4911) — **HTTPS OK** (2026-10-06): panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)
 - [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified
@@ -154,8 +155,6 @@ Built with the batch. Not verified on an access link yet.
 
 - [ ] `airbrush` (:5181)
 - [ ] `digen` (:5271)
-- [ ] `glorify` (:4681)
-- [ ] `grok` (:4831)
 - [ ] `heliumlearning` (:5221)
 - [ ] `imgupscaler` (:5091)
 - [ ] `indexification` (:5231)
@@ -192,6 +191,7 @@ Opened on the proxy. Leave these until the note below is cleared.
 - [ ] `creaitor` (:4621) — **Parked** (2026-10-07). It opened ChatGPT. Target fix is pushed (`app.creaitor.ai`). Not retested after that.
 - [ ] `creattie` (:4861) — **Parked** (2026-10-10). Target `https://creattie.com`. Cloudflare stops the proxy: “Performing security verification”, then “Unable to connect to the website” (Ray ID `a48581119662aa5`). Same class of block as VistaCreate and Perplexity. Leave until later.
 - [ ] `flaticon` (:4921) — **Parked** (2026-10-07). Blank page / refresh loop was fixed. Freepik/Akamai WAF still returns 403 on this server, including with a proxy. Retry later with fresh cookies on the same residential proxy IP, or another proxy.
+- [ ] `grok` (:4831) — **Parked** (2026-10-10). Target `https://grok.com`. Cloudflare blocks this server: “Sorry, you have been blocked” / “You are unable to access grok.com”. Same class of block as VistaCreate, Perplexity, and Creattie. Leave until later.
 - [ ] `perplexity` (:5101) — **Parked** (2026-10-09). Cloudflare stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `www.perplexity.ai`. Same class of block as VistaCreate. Leave until later.
 - [ ] `scite` (:4761) — **In progress** (2026-10-08). “Max challenge attempts” because `/api/auth/api_token` was blocked by the device gate (no JWT) and the WAF cookie domain was `scite.ai` instead of the proxy host. Soft-allow for `/api` + `/extra-cdn` is pushed, and the browser `aws-waf-token` is kept. Not confirmed on the live site after that.
 - [ ] `vistacreate` (:4581) — **Parked** (2026-10-08). ChatGPT target was fixed: `https://create.vista.com`, home `/home/`. Cloudflare still stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `create.vista.com` (Ray ID on the error). Chrome HTTP/2 and allowing `/cdn-cgi/` did not clear it.
