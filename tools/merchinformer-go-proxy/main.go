@@ -2997,7 +2997,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
-	if isBlockedPath(path, cfg) {
+	if isBlockedPath(path, cfg) && !merchLogoutPath(path) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
 		if dbConnected {
 			_, _ = db.Exec(
@@ -3097,6 +3097,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
+
+	if usesPanelAccountMode(cfg) && merchLogoutPath(path) {
+		serveMerchLogout(w, r, cfg, activeAcc, sessionToken, "logged_out")
+		return
+	}
 
 	// ── 5. Build upstream request ─────────────────────────────────────────────────
 	targetParsed, err := url.Parse(cfg.TargetURL)
@@ -3385,6 +3390,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && merchUpstreamLogout(upstreamResp) {
+		finishMerchUpstreamLogout(w, r, upstreamResp, cfg, activeAcc, sessionToken)
+		return
+	}
+
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -3493,6 +3503,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logUpstream(bodyBytes)
 
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && merchLoggedOutHTML(bodyBytes) {
+			serveMerchLogout(w, r, cfg, activeAcc, sessionToken, "logged_out")
+			return
+		}
+
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
 
@@ -3522,6 +3537,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) {
+			injectStr += merchLoginWatchHTML()
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
