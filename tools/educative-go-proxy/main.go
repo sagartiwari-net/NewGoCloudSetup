@@ -936,7 +936,16 @@ func buildEducativeSessionInjectHTML(cookieHeader string) string {
       if (init && typeof init === 'object' && init.mode === 'no-cors') {
         init = Object.assign({}, init, {mode: 'cors'});
       }
-      return _tf.call(this, inp, init);
+      return _tf.call(this, inp, init).then(function(res){
+        try {
+          var loc = res && res.headers && res.headers.get && res.headers.get('X-TM-Logout');
+          if (loc && !window.__tmLogoutGo) {
+            window.__tmLogoutGo = true;
+            location.replace(loc);
+          }
+        } catch (e) {}
+        return res;
+      });
     };
   } catch(e){}
   try { console.log('[Educative] logged_in hydrated'); } catch(e){}
@@ -3240,6 +3249,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		currentUser = "guest_favicon"
 	}
 
+	if path == "/__tm_contact_admin" {
+		writeEducativeContactAdmin(w, cfg)
+		return
+	}
+
 	// Root → logged-in app home (WooRank marketing `/` is not useful behind proxy)
 	if (path == "/" || path == "") && cfg.HomePath != "" && cfg.HomePath != "/" {
 		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
@@ -3247,7 +3261,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
-	if isBlockedPath(path, cfg) {
+	if isBlockedPath(path, cfg) && !(usesPanelAccountMode(cfg) && educativeLogoutPath(path)) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
 		if dbConnected {
 			_, _ = db.Exec(
@@ -3343,6 +3357,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	if usesPanelAccountMode(cfg) && educativeLogoutPath(path) {
+		log.Printf("[LB] expired session path=%s account=%s", path, activeAcc.Name)
+		serveEducativeLogout(w, r, cfg, activeAcc, sessionToken, "logged_out", "")
+		return
 	}
 
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
@@ -3837,6 +3857,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
+				if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && educativeLoggedOutAPI(path, bodyBytes) {
+					if loc := educativeLogoutTarget(cfg, r, activeAcc, sessionToken, "session_expired", publicBase); loc != "" {
+						log.Printf("[LB] expired session path=%s account=%s -> %s", path, activeAcc.Name, loc)
+						setEducativeLogoutHeader(w, loc)
+					}
+				}
 			} else if strings.Contains(contentType, "text/css") {
 				putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", bodyBytes)
 			}

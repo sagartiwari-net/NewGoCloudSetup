@@ -102,10 +102,9 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
+		// Educative polls /api/user/info without device headers. Blocking it
+		// retries forever and never shows whether the account cookie is logged out.
+		if isDocumentNavigation(r) || strings.HasPrefix(r.URL.Path, "/api/") {
 			return false
 		}
 		log.Printf("[DEVICE] required path=%s", r.URL.Path)
@@ -229,7 +228,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -470,6 +468,7 @@ function tmPatchRequests(fp, proof) {
       var url = typeof input === "string" ? input : (input && input.url) || "";
       var same = false;
       try { same = new URL(url, location.href).origin === location.origin; } catch (e) {}
+      var call;
       if (same) {
         init = init || {};
         var headers = new Headers(init.headers || (input && input.headers) || undefined);
@@ -477,10 +476,20 @@ function tmPatchRequests(fp, proof) {
         if (!headers.get("X-Device-Proof")) headers.set("X-Device-Proof", proof);
         init.headers = headers;
         if (typeof input !== "string") {
-          return origFetch.call(this, new Request(input, init));
+          call = origFetch.call(this, new Request(input, init));
         }
       }
-      return origFetch.call(this, input, init);
+      if (!call) call = origFetch.call(this, input, init);
+      return Promise.resolve(call).then(function (res) {
+        try {
+          var loc = res && res.headers && res.headers.get && res.headers.get("X-TM-Logout");
+          if (loc && !window.__tmLogoutGo) {
+            window.__tmLogoutGo = true;
+            location.replace(loc);
+          }
+        } catch (e) {}
+        return res;
+      });
     };
   }
   var origOpen = XMLHttpRequest.prototype.open;
@@ -497,12 +506,22 @@ function tmPatchRequests(fp, proof) {
         this.setRequestHeader("X-Device-Proof", proof);
       }
     } catch (e) {}
+    try {
+      this.addEventListener("load", function () {
+        try {
+          var loc = this.getResponseHeader("X-TM-Logout");
+          if (loc && !window.__tmLogoutGo) {
+            window.__tmLogoutGo = true;
+            location.replace(loc);
+          }
+        } catch (e) {}
+      });
+    } catch (e) {}
     return origSend.apply(this, arguments);
   };
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())
