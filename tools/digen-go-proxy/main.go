@@ -348,6 +348,13 @@ func main() {
 			logDigenUse(resp, bodyBytes)
 
 			isHTML := strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html")
+			if !isHTML {
+				trimmed := bytes.TrimSpace(bodyBytes)
+				lowTrim := bytes.ToLower(trimmed)
+				if bytes.HasPrefix(lowTrim, []byte("<!doctype html")) || bytes.HasPrefix(lowTrim, []byte("<html")) {
+					isHTML = true
+				}
+			}
 			hostInBody := bytes.Contains(bodyBytes, []byte("digen.ai"))
 
 			// Detect limit/free in body content or status code. Large catalog JSON is not a login page.
@@ -483,7 +490,7 @@ func main() {
 					bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(targetDomain), []byte(publicHost))
 				}
 
-				if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+				if isHTML {
 					cfgMu.RLock()
 					panelOn := usesPanelAccountMode(cfg)
 					cfgMu.RUnlock()
@@ -491,6 +498,7 @@ func main() {
 						bodyBytes = injectDeviceHTML(bodyBytes)
 						bodyBytes = injectDigenCreditHTML(bodyBytes)
 						bodyBytes = injectDigenHeaderHide(bodyBytes)
+						resp.Header.Set("Cache-Control", "no-store")
 					}
 				}
 			}

@@ -469,7 +469,27 @@ func injectDigenHeaderHide(body []byte) []byte {
 		return body
 	}
 	// Only the meme pill and the header avatar. Other header buttons stay.
-	style := []byte(`<style data-tm-digen-hide>span.header-actions__item:has(.credits-pill-wrap),span.header-actions__item:has(.avatar-wrapper){display:none!important}</style>`)
+	// A style tag can be ignored by the page policy, so the script removes those two nodes.
+	style := []byte(`<style data-tm-digen-hide>.credits-pill-wrap,.header-actions__item:has(.credits-pill-wrap),.header-actions__item:has(.avatar-wrapper){display:none!important}</style><script data-tm-digen-hide>
+(function(){
+  function hide(){
+    var pills = document.querySelectorAll(".credits-pill-wrap");
+    for (var i = 0; i < pills.length; i++) {
+      var pillItem = pills[i].closest(".header-actions__item") || pills[i];
+      if (pillItem.parentNode) pillItem.parentNode.removeChild(pillItem);
+    }
+    var avatars = document.querySelectorAll(".avatar-wrapper");
+    for (var j = 0; j < avatars.length; j++) {
+      var avatarItem = avatars[j].closest(".header-actions__item");
+      if (avatarItem && avatarItem.parentNode) avatarItem.parentNode.removeChild(avatarItem);
+    }
+  }
+  hide();
+  if (document.documentElement) {
+    new MutationObserver(hide).observe(document.documentElement, { childList: true, subtree: true });
+  }
+})();
+</script>`)
 	lower := bytes.ToLower(body)
 	if i := bytes.Index(lower, []byte("</head>")); i >= 0 {
 		out := make([]byte, 0, len(body)+len(style))
