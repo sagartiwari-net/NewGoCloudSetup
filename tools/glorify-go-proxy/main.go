@@ -3841,6 +3841,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) && strings.TrimSpace(currentUser) != "" {
+			userJSON, _ := json.Marshal(currentUser)
+			injectStr += `<script>(function(){var USER=` + string(userJSON) + `;var skip={"account settings":1,"theme":1,"favorites":1,"get support":1,"refer a friend":1,"logout":1,"upgrade plan":1};function set(el){if(!el||(el.closest&&el.closest(".account-menu")))return;var t=(el.textContent||"").trim();if(!t||t===USER||skip[t.toLowerCase()]||t.length>40)return;el.textContent=USER;}function fix(){document.querySelectorAll("p.text-text-03.text-body-small-01,p.list-one-line-row__text-first.text-subheading-3.text-light-700").forEach(set);}fix();new MutationObserver(fix).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders

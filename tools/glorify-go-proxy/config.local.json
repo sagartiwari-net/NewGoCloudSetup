@@ -10,7 +10,7 @@
   "credit_label": "Credits",
   "home_path": "/dashboard",
   "cookie_domain_suffix": "glorify.com",
-  "inject_css": ".list-one-line-row:has(use[href*=\"icon-logout\"]),.list-one-line-row:has(use[*|href*=\"icon-logout\"]){display:none!important}",
+  "inject_css": ".account-menu{display:none!important}",
   "counted_paths": [],
   "counted_prefixes": [],
   "blocked_paths": [
