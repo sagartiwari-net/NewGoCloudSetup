@@ -3069,7 +3069,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(strings.ToLower(path), "logout") {
 			reason = "user_logout"
 		}
-		serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, reason)
+		serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, reason, "")
+		return
+	}
+
+	if path == "/__tm_contact_admin" {
+		name := html.EscapeString(toolDisplayName(cfg))
+		writeLightCard(w, http.StatusOK, lightCard{
+			Title:   "Contact admin",
+			Heading: "Contact admin",
+			Message: "The <span class=\"brand\">" + name + "</span> session ended and no other account is available. Contact Admin/Provider.",
+			Footer:  "Saved in panel Analytics → Logouts. Account status was not changed.",
+		})
 		return
 	}
 
@@ -3370,8 +3381,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
-	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && copyspaceUpstreamLogout(upstreamResp) {
-		serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && copyspaceExpiredUpstream(r, upstreamResp) {
+		log.Printf("[LB] expired session status=%d path=%s account=%s", upstreamResp.StatusCode, path, activeAcc.Name)
+		serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, "session_expired", publicBase)
 		return
 	}
 
@@ -3505,7 +3517,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		logUpstream(bodyBytes)
 
 		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && copyspaceLoggedOutHTML(bodyBytes) {
-			serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
+			serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, "session_expired", publicBase)
 			return
 		}
 

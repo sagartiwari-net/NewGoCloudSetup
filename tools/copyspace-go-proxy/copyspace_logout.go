@@ -5,6 +5,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +56,42 @@ func copyspaceUpstreamLogout(resp *http.Response) bool {
 		strings.Contains(loc, "/login") || strings.Contains(loc, "/logout")
 }
 
+// An expired account cookie comes back as 419, or as an Inertia 409 that
+// points at the page already open. That 409 is the refresh loop.
+func copyspaceExpiredUpstream(r *http.Request, resp *http.Response) bool {
+	if resp == nil {
+		return false
+	}
+	if resp.StatusCode == 419 || copyspaceUpstreamLogout(resp) {
+		return true
+	}
+	if resp.StatusCode != http.StatusConflict {
+		return false
+	}
+	loc := resp.Header.Get("X-Inertia-Location")
+	if loc == "" {
+		return false
+	}
+	low := strings.ToLower(loc)
+	if strings.Contains(low, "/signin") || strings.Contains(low, "/sign-in") ||
+		strings.Contains(low, "/login") || strings.Contains(low, "/logout") {
+		return true
+	}
+	locURL, err := url.Parse(loc)
+	refURL, err2 := url.Parse(r.Referer())
+	if err != nil || err2 != nil || locURL.Path == "" || refURL.Path == "" {
+		return false
+	}
+	trim := func(p string) string {
+		p = strings.TrimSuffix(p, "/")
+		if p == "" {
+			return "/"
+		}
+		return p
+	}
+	return trim(locURL.Path) == trim(refURL.Path)
+}
+
 func clearCopyspaceSessionOverlay() {
 	localCookieMu.Lock()
 	delete(localCookieOverlay, "copyspaceai_session")
@@ -66,23 +103,31 @@ func noteCopyspaceLogout(cfg Config, r *http.Request, acc ToolAccount, sessionTo
 	if !usesPanelAccountMode(cfg) || acc.ID <= 0 {
 		return false, ""
 	}
+	key := sessionToken
+	if key == "" {
+		key = "acc:" + acc.Name
+	}
 	csLogoutMu.Lock()
-	if last, seen := csLogoutSeen[acc.ID]; seen && time.Since(last.at) < 2*time.Minute {
-		csLogoutMu.Unlock()
+	defer csLogoutMu.Unlock()
+	if prev, seen := csSessionHop[key]; seen && time.Since(prev) < 2*time.Minute {
+		last := csLogoutSeen[acc.ID]
+		if time.Since(prev) < 2*time.Second {
+			return last.switched, last.next
+		}
 		return false, last.next
 	}
-	csLogoutMu.Unlock()
+	csSessionHop[key] = time.Now()
 
 	db, err := openPanelDB(cfg)
 	if err != nil {
 		log.Printf("[LB] logout db open failed: %v", err)
+		delete(csSessionHop, key)
 		return false, ""
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	nextName := "(none)"
 	skipIDs := []any{cfg.PublicHost, acc.ID}
 	placeholders := "?"
-	csLogoutMu.Lock()
 	for id, hit := range csLogoutSeen {
 		if id == acc.ID || time.Since(hit.at) >= 10*time.Minute {
 			continue
@@ -90,7 +135,6 @@ func noteCopyspaceLogout(cfg Config, r *http.Request, acc ToolAccount, sessionTo
 		skipIDs = append(skipIDs, id)
 		placeholders += ",?"
 	}
-	csLogoutMu.Unlock()
 	if other, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id NOT IN (`+placeholders+`)
 		`+panelAccountOrder+` LIMIT 1`, skipIDs...)); err == nil {
@@ -133,9 +177,7 @@ func noteCopyspaceLogout(cfg Config, r *http.Request, acc ToolAccount, sessionTo
 	} else {
 		log.Printf("[LB] logout recorded account=%s next=%s user=%s ip=%s reason=%s", acc.Name, nextName, username, ip, reason)
 	}
-	csLogoutMu.Lock()
 	csLogoutSeen[acc.ID] = csLogoutHit{at: time.Now(), next: nextName, switched: switched}
-	csLogoutMu.Unlock()
 	return switched, nextName
 }
 
@@ -149,18 +191,41 @@ func copyspaceLogoutMeta(db *sql.DB, cfg Config, sessionToken string) (websiteID
 	return websiteID, username, loginIP
 }
 
-func serveCopyspaceLogout(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount, sessionToken, reason string) {
+func serveCopyspaceLogout(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount, sessionToken, reason, publicBase string) {
 	clearCopyspaceSessionOverlay()
 	for k := range w.Header() {
 		w.Header().Del(k)
 	}
 	switched, _ := noteCopyspaceLogout(cfg, r, acc, sessionToken, reason)
-	if switched && copyspaceCanHop(sessionToken) {
-		home := cfg.HomePath
-		if home == "" {
-			home = "/"
+	home := cfg.HomePath
+	if home == "" {
+		home = "/"
+	}
+	if publicBase == "" {
+		scheme := cfg.PublicScheme
+		if scheme == "" {
+			scheme = "https"
 		}
-		http.Redirect(w, r, home, http.StatusFound)
+		host := cfg.PublicHost
+		if host == "" && r != nil {
+			host = r.Host
+		}
+		publicBase = scheme + "://" + host
+	}
+	if switched {
+		if isDocumentNavigation(r) {
+			http.Redirect(w, r, home, http.StatusFound)
+			return
+		}
+		w.Header().Set("X-Inertia-Location", strings.TrimRight(publicBase, "/")+home)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if r != nil && !isDocumentNavigation(r) {
+		w.Header().Set("X-Inertia-Location", strings.TrimRight(publicBase, "/")+"/__tm_contact_admin")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusConflict)
 		return
 	}
 	name := html.EscapeString(toolDisplayName(cfg))
@@ -170,17 +235,4 @@ func serveCopyspaceLogout(w http.ResponseWriter, r *http.Request, cfg Config, ac
 		Message: "The <span class=\"brand\">" + name + "</span> session ended and no other account is available. Contact Admin/Provider.",
 		Footer:  "Saved in panel Analytics → Logouts. Account status was not changed.",
 	})
-}
-
-func copyspaceCanHop(sessionToken string) bool {
-	if sessionToken == "" {
-		return false
-	}
-	csLogoutMu.Lock()
-	defer csLogoutMu.Unlock()
-	if last, ok := csSessionHop[sessionToken]; ok && time.Since(last) < 2*time.Minute {
-		return false
-	}
-	csSessionHop[sessionToken] = time.Now()
-	return true
 }
