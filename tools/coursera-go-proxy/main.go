@@ -3683,6 +3683,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamReq.Header.Del("X-Device-Fp")
 	upstreamReq.Header.Del("X-Device-Proof")
 	upstreamReq.Header.Del("X-Forwarded-For")
+	upstreamReq.Header.Del("X-Forwarded-Host")
 	upstreamReq.Header.Del("X-Real-IP")
 
 	// Rewrite Origin and Referer — prefer config.json values (most reliable).
