@@ -3204,6 +3204,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		currentUser = "guest_favicon"
 	}
 
+	if path == "/__tm_contact_admin" {
+		writeGlorifyContactAdmin(w, cfg)
+		return
+	}
+
 	// Root → logged-in app home (WooRank marketing `/` is not useful behind proxy)
 	if (path == "/" || path == "") && cfg.HomePath != "" && cfg.HomePath != "/" {
 		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
@@ -3211,7 +3216,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
-	if isBlockedPath(path, cfg) {
+	if isBlockedPath(path, cfg) && !(usesPanelAccountMode(cfg) && glorifyLogoutPath(path)) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
 		if dbConnected {
 			_, _ = db.Exec(
@@ -3311,6 +3316,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
+
+	if usesPanelAccountMode(cfg) && glorifyLogoutPath(path) {
+		serveGlorifyLogout(w, r, cfg, activeAcc, sessionToken, "logged_out")
+		return
+	}
 
 	// ── 5. Build upstream request ─────────────────────────────────────────────────
 	targetParsed, err := url.Parse(cfg.TargetURL)
@@ -3602,6 +3612,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && glorifyUpstreamLogout(upstreamResp) {
+		finishGlorifyUpstreamLogout(w, r, upstreamResp, cfg, activeAcc, sessionToken)
+		return
+	}
+
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -3709,6 +3724,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logUpstream(bodyBytes)
+
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && glorifyLoggedOutHTML(bodyBytes) {
+			serveGlorifyLogout(w, r, cfg, activeAcc, sessionToken, "logged_out")
+			return
+		}
 
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
