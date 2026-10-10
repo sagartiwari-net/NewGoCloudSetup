@@ -230,7 +230,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
 
-
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
@@ -331,6 +330,15 @@ function tmWatch(fp, proof) {
 func deviceBootScript(home string) string {
 	return `<script>` + deviceSharedJS() + `
 (function () {
+  try {
+    document.cookie.split(';').forEach(function(part) {
+      var name = (part.split('=')[0] || '').trim();
+      if (!name || name === 'ct_session' || name.indexOf('tm_') === 0) return;
+      var exp = '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+      document.cookie = name + exp;
+      document.cookie = name + exp + ';domain=.gt4rents.com';
+    });
+  } catch (e) {}
   var home = ` + fmt.Sprintf("%q", home) + `;
   var started = Date.now();
   function fail() {
@@ -502,7 +510,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())

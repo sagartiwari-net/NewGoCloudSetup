@@ -1878,6 +1878,15 @@ func patcherScript(cfg Config) string {
 
 	return fmt.Sprintf(`<script>
 (function() {
+    try {
+      document.cookie.split(';').forEach(function(part) {
+        var name = (part.split('=')[0] || '').trim();
+        if (!name || name === 'ct_session' || name.indexOf('tm_') === 0) return;
+        var exp = '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+        document.cookie = name + exp;
+        document.cookie = name + exp + ';domain=.gt4rents.com';
+      });
+    } catch (e) {}
     var T = '%s', C = '%s', O = window.location.origin;
     var HOME = '%s';
     var BLOCKED = [%s];
@@ -2468,15 +2477,16 @@ func isStreamingContentType(contentType string) bool {
 		strings.Contains(ct, "application/octet-stream")
 }
 
-// slimIncomingCookies keeps only our session cookie when the jar is oversized.
-// Leftover ChatGPT/OpenAI cookies on cramly.gt4rents.com blow past Cloudflare's
-// ~16–32KB header budget → Error 520 (empty/malformed origin view).
-func slimIncomingCookies(r *http.Request) {
+// slimIncomingCookies keeps ct_session / tm_* and returns the other names so the
+// browser can drop them. A fat jar never reaches this process: Cloudflare
+// answers 400 Request Header Or Cookie Too Large first.
+func slimIncomingCookies(r *http.Request) []string {
 	raw := r.Header.Get("Cookie")
-	if raw == "" || len(raw) < 6144 {
-		return
+	if raw == "" {
+		return nil
 	}
 	var kept []string
+	var dropped []string
 	for _, part := range strings.Split(raw, ";") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -2489,15 +2499,64 @@ func slimIncomingCookies(r *http.Request) {
 		nl := strings.ToLower(name)
 		if nl == "ct_session" || strings.HasPrefix(nl, "tm_") {
 			kept = append(kept, part)
+			continue
 		}
+		if name != "" && name != part {
+			dropped = append(dropped, name)
+		}
+	}
+	if len(dropped) == 0 {
+		return nil
 	}
 	slim := strings.Join(kept, "; ")
 	log.Printf("[COOKIE] slimmed oversized Cookie %d → %d bytes (path=%s)", len(raw), len(slim), r.URL.Path)
 	if slim == "" {
 		r.Header.Del("Cookie")
-		return
+	} else {
+		r.Header.Set("Cookie", slim)
 	}
-	r.Header.Set("Cookie", slim)
+	return dropped
+}
+
+func cramlyExpireJar(r *http.Request) bool {
+	p := r.URL.Path
+	if p == "/api/device-bind" || p == "/access" || strings.HasPrefix(p, "/access/") {
+		return true
+	}
+	return cramlyPageRequest(r)
+}
+
+func expireCramlyCookies(w http.ResponseWriter, r *http.Request, names []string, cfg Config) {
+	seen := map[string]bool{}
+	domains := []string{""}
+	if host := strings.TrimSpace(cfg.PublicHost); host != "" {
+		if i := strings.Index(host, "."); i > 0 {
+			domains = append(domains, host[i:])
+		}
+	}
+	secure := strings.EqualFold(cfg.PublicScheme, "https") || r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	for _, name := range names {
+		nl := strings.ToLower(strings.TrimSpace(name))
+		if nl == "" || seen[nl] || nl == "ct_session" || strings.HasPrefix(nl, "tm_") {
+			continue
+		}
+		seen[nl] = true
+		for _, domain := range domains {
+			c := &http.Cookie{
+				Name:     name,
+				Value:    "",
+				Path:     "/",
+				Expires:  time.Unix(0, 0),
+				MaxAge:   -1,
+				Secure:   secure,
+				SameSite: http.SameSiteLaxMode,
+			}
+			if domain != "" {
+				c.Domain = domain
+			}
+			http.SetCookie(w, c)
+		}
+	}
 }
 
 // cramlyPageRequest is the document the visitor is looking at. A stylesheet
@@ -3364,6 +3423,9 @@ func main() {
 		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		if dropped := slimIncomingCookies(r); len(dropped) > 0 && cramlyExpireJar(r) {
+			expireCramlyCookies(w, r, dropped, cfg)
+		}
 		mux.ServeHTTP(w, r)
 	})
 
