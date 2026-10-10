@@ -1102,11 +1102,12 @@ func applyLocalCookieOverlay(base string) string {
 }
 
 func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
-	// Never absorb CF/session cookies from challenge responses (403 "Just a moment...").
-	// Those overwrite a good DigitaVision cf_clearance with unusable challenge cookies.
-	if statusCode < 200 || statusCode > 299 {
+	// Never absorb cookies from a Cloudflare challenge. Those overwrite a good
+	// cf_clearance with an unusable one.
+	if statusCode == http.StatusForbidden || statusCode == http.StatusServiceUnavailable {
 		return false
 	}
+	twoXX := statusCode >= 200 && statusCode <= 299
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
 	for _, sc := range h.Values("Set-Cookie") {
@@ -1121,7 +1122,18 @@ func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 		}
 		name := strings.TrimSpace(nv[:eq])
 		val := strings.TrimSpace(nv[eq+1:])
-		if !absorbCookieNames[name] || val == "" || strings.EqualFold(val, "deleted") {
+		if val == "" || strings.EqualFold(val, "deleted") {
+			continue
+		}
+		// A logged-out Laravel response rotates copyspaceai_session and
+		// XSRF-TOKEN together, including on 302 and 419. Keeping the old pair
+		// makes every follow-up request 419, and Inertia reloads the tab.
+		sessionCookie := name == "copyspaceai_session" || strings.EqualFold(name, "XSRF-TOKEN")
+		if sessionCookie {
+			if strings.EqualFold(name, "XSRF-TOKEN") {
+				name = "XSRF-TOKEN"
+			}
+		} else if !twoXX || !absorbCookieNames[name] {
 			continue
 		}
 		if localCookieOverlay[name] != val {
@@ -3391,7 +3403,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if kLower == "x-frame-options" {
 			continue
 		}
-		if kLower == "location" || kLower == "link" {
+		if kLower == "location" || kLower == "link" || kLower == "x-inertia-location" {
 			for _, v := range vv {
 				newLoc := rewriteWoorankHostURL(v, publicBase)
 				for _, pair := range locationPairs {
@@ -3403,6 +3415,27 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, v := range vv {
 			w.Header().Add(k, v)
+		}
+	}
+
+	// Inertia reloads the tab when a 409 X-Inertia-Location points at the page
+	// already open. A logged-out 419 becomes that 409, so the reload never stops.
+	if upstreamResp.StatusCode == http.StatusConflict {
+		if loc := w.Header().Get("X-Inertia-Location"); loc != "" {
+			locPath := path
+			if u, err := url.Parse(loc); err == nil && u.Path != "" {
+				locPath = u.Path
+			}
+			trim := func(p string) string {
+				p = strings.TrimSuffix(p, "/")
+				if p == "" {
+					return "/"
+				}
+				return p
+			}
+			if trim(locPath) == trim(path) {
+				w.Header().Del("X-Inertia-Location")
+			}
 		}
 	}
 
