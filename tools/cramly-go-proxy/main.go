@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -83,8 +83,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: find/replace text in HTML + JSON responses (and live DOM).
@@ -1556,6 +1556,21 @@ type contextKey string
 
 const proxyContextKey contextKey = "account_proxy"
 
+// dialPreferIPv4 skips the server's IPv6 path. Cloudflare resets writes to
+// 2606:4700:: from this host, which the browser shows as error 520.
+func dialPreferIPv4(ctx context.Context, addr string) (net.Conn, error) {
+	d := &net.Dialer{Timeout: 20 * time.Second}
+	conn, err4 := d.DialContext(ctx, "tcp4", addr)
+	if err4 == nil {
+		return conn, nil
+	}
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err == nil {
+		return conn, nil
+	}
+	return nil, fmt.Errorf("TCP dial: %w", err4)
+}
+
 func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 	return dialChromeALPN(ctx, addr, nil) // default Chrome ALPN (h2, http/1.1)
 }
@@ -1583,9 +1598,9 @@ func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTL
 			return nil, fmt.Errorf("proxy dial %s: %w", px.Host, err)
 		}
 	} else {
-		tcpConn, err = (&net.Dialer{Timeout: 20 * time.Second}).DialContext(ctx, "tcp", addr)
+		tcpConn, err = dialPreferIPv4(ctx, addr)
 		if err != nil {
-			return nil, fmt.Errorf("TCP dial: %w", err)
+			return nil, err
 		}
 	}
 
@@ -1652,9 +1667,10 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func buildChromeHTTPClient() *http.Client {
-	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) { return dialChrome(ctx, addr) }
 	h1 := &http.Transport{
-		DialTLSContext: dialTLS, MaxIdleConns: 200, MaxIdleConnsPerHost: 32,
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialChromeHTTP1(ctx, addr)
+		}, MaxIdleConns: 200, MaxIdleConnsPerHost: 32,
 		IdleConnTimeout: 120 * time.Second, TLSHandshakeTimeout: 15 * time.Second,
 		DisableCompression: false, ForceAttemptHTTP2: false,
 		ResponseHeaderTimeout: 60 * time.Second,
@@ -2484,6 +2500,25 @@ func slimIncomingCookies(r *http.Request) {
 	r.Header.Set("Cookie", slim)
 }
 
+// cramlyPageRequest is the document the visitor is looking at. A stylesheet
+// reset must not rotate the account.
+func cramlyPageRequest(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	p := strings.ToLower(r.URL.Path)
+	if strings.HasPrefix(p, "/cdn-cgi/") || strings.HasPrefix(p, "/assets/") || strings.HasPrefix(p, "/api/") {
+		return false
+	}
+	for _, ext := range []string{".css", ".js", ".map", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".woff", ".woff2"} {
+		if strings.HasSuffix(p, ext) {
+			return false
+		}
+	}
+	accept := r.Header.Get("Accept")
+	return accept == "" || strings.Contains(accept, "text/html")
+}
+
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	slimIncomingCookies(r)
 	cfg := loadConfig()
@@ -2807,8 +2842,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		isGoogleAuth := strings.Contains(hostL, "googleapis.com") ||
 			strings.Contains(hostL, "firebaseio.com") ||
 			strings.Contains(hostL, "firebaseapp.com")
-		needsBearer := !isGoogleAuth && (
-			strings.Contains(hostL, "api.cramly.ai") ||
+		needsBearer := !isGoogleAuth && (strings.Contains(hostL, "api.cramly.ai") ||
 			strings.Contains(hostL, "python.cramly.ai") ||
 			(strings.HasSuffix(hostL, "cramly.ai") &&
 				hostL != "app.cramly.ai" &&
@@ -2931,7 +2965,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			HasAPI:  r.Header.Get("X-API-TOKEN") != "",
 			CookieN: countCookieNames(accountCookieStr),
 		})
-		if dbConnected {
+		if dbConnected && cramlyPageRequest(r) {
 			activeAcc, _ = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error")
 		}
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
@@ -3033,7 +3067,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", contentType)
 		}
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
 		// Restore encoding if upstream compressed a stream chunk bundle
 		if ce := upstreamResp.Header.Get("Content-Encoding"); ce != "" && !isSSEResponse(contentType) {
