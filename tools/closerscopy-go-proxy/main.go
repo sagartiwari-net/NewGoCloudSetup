@@ -3053,6 +3053,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && closersLogoutPath(r) {
+		reason := "session_expired"
+		if strings.Contains(strings.ToLower(path), "logout") {
+			reason = "user_logout"
+		}
+		serveClosersLogout(w, r, cfg, activeAcc, sessionToken, reason)
+		return
+	}
+
 	// ── 3b. Logout path hint (full handling on HTML response) ─────────────────────
 	if detected, reason := detectLogout(path, nil, cfg); detected {
 		log.Printf("[LOGOUT] Path hint | user=%s account=%s reason=%s", currentUser, activeAcc.Name, reason)
@@ -3267,6 +3276,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && closersUpstreamLogout(upstreamResp) {
+		serveClosersLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
+		return
+	}
+
 	absorbUpstreamSetCookies(upstreamResp.Header)
 	// Mirror Laravel XSRF-TOKEN to browser (session cookie stays server-side)
 	forwardAllowlistedSetCookies(w, r, upstreamResp.Header, cfg)
@@ -3344,6 +3358,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err != nil {
 			w.WriteHeader(upstreamResp.StatusCode)
+			return
+		}
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && closersLoggedOutHTML(bodyBytes) {
+			serveClosersLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
 			return
 		}
 
