@@ -201,6 +201,11 @@ func main() {
 				if val, ok := ctx.Value(publicSchemeContextKey).(string); ok && val != "" {
 					publicScheme = val
 				}
+				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+					if bill, ok := ctx.Value(digenBillKey).(digenBill); ok {
+						digenCharge(cfg, bill)
+					}
+				}
 			}
 
 			// Rewrite Set-Cookie domains
@@ -838,6 +843,11 @@ func main() {
 		if errC == nil && sessionCookie != nil && sessionCookie.Value != "" {
 			ctx = context.WithValue(ctx, sessionTokenContextKey, sessionCookie.Value)
 		}
+		if panelOn && currentUser == "" {
+			if name, err := panelSessionUsername(r); err == nil {
+				currentUser = name
+			}
+		}
 		*r = *r.WithContext(ctx)
 
 		r.Header.Set("X-Resolved-Cookie", resolvedCookie)
@@ -848,6 +858,21 @@ func main() {
 			log.Printf("[STATIC-MODE] 🔐 Running in Static Testing Mode! (Proxy: %s)", resolvedProxy)
 		} else if accID != 0 {
 			log.Printf("[PROXY-LB] 🎯 Route user session '%s' to Account: %s (ID: %d)", currentUser, activeAccountName, accID)
+		}
+
+		if panelOn && currentUser != "" && digenBillable(r.Method, r.URL.Path) {
+			bodyBytes, _ := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+			_ = r.Body.Close()
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			r.ContentLength = int64(len(bodyBytes))
+			r.Header.Set("Content-Length", fmt.Sprintf("%d", len(bodyBytes)))
+			quote := digenQuoteFrom(r.URL.Path, bodyBytes)
+			if quote.credits > 0 && !digenCreditsAllow(currentUser, quote.credits) {
+				log.Printf("[QUOTA] blocked user=%s need=%d %q", currentUser, quote.credits, quote.action)
+				digenRejectLimit(w)
+				return
+			}
+			*r = *r.WithContext(context.WithValue(r.Context(), digenBillKey, digenBill{username: currentUser, quote: quote}))
 		}
 
 		reverseProxy.ServeHTTP(w, r)
