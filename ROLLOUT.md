@@ -137,6 +137,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `similarweb` (:5071) — **HTTPS OK** (2026-10-07): live working; CDN disk cache `cdn-cache/` (72h)
 - [x] `sketchgenius` (:4781) — **HTTPS OK** (2026-10-07): panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin (failover verified)
 - [x] `smrs` — Semrush (:5141) — **HTTPS OK** (mixed-content https rewrite + panel account swap; proxy optional)
+- [x] `spyfu` (:4941) — **HTTPS OK** (2026-10-10): `www.spyfu.com`. Hide only `.sf-account` (header account chip). Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
 - [x] `storybase` (:4551) — **HTTPS OK** (2026-10-07): `www.storybase.com`, HTTP/1.1 ALPN (was 502/`chatgpt.com`); `#profile-widget` hidden (Settings/Billing/Logout + sidebar avatar/name)
 - [x] `wordtune` (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible, panel.db cookies + overview
@@ -173,7 +174,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `seobuddy` (:5131)
 - [ ] `slidebean` (:5021)
 - [ ] `speechify` (:5011)
-- [ ] `spyfu` (:4941)
 - [ ] `storyblocks` (:4971)
 - [ ] `syntx` (:4981)
 - [ ] `ubersuggest` (:5281)
