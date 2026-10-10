@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -82,8 +82,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -2924,9 +2924,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
-	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
+	// Chrome asks for the PWA manifest with no cookies. A 401 makes the app reload.
+	isPublicAsset := strings.Contains(strings.ToLower(path), "favicon") ||
+		strings.HasSuffix(strings.ToLower(path), ".webmanifest") ||
+		strings.HasSuffix(strings.ToLower(path), "/manifest.json")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
-	if authErr != nil && !isFavicon {
+	if authErr != nil && !isPublicAsset {
 		_, hasSess := r.Cookie("ct_session")
 		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v",
 			path, r.Host, authErr, currentWebsiteID, hasSess == nil)
@@ -2952,8 +2955,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if isFavicon && authErr != nil {
-		currentUser = "guest_favicon"
+	if isPublicAsset && authErr != nil {
+		if strings.HasSuffix(strings.ToLower(path), ".webmanifest") || strings.HasSuffix(strings.ToLower(path), "/manifest.json") {
+			w.Header().Set("Content-Type", "application/manifest+json")
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, `{"name":"CopySpace","start_url":"/","display":"browser"}`)
+			return
+		}
+		currentUser = "guest_asset"
 	}
 
 	// Root → logged-in app home (WooRank marketing `/` is not useful behind proxy)

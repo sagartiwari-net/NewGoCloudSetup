@@ -57,10 +57,11 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "manifest":
 		return true
 	}
-	return false
+	p := strings.ToLower(r.URL.Path)
+	return strings.HasSuffix(p, ".webmanifest") || strings.HasSuffix(p, "/manifest.json")
 }
 
 func isDocumentNavigation(r *http.Request) bool {
@@ -229,7 +230,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -502,7 +502,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())
