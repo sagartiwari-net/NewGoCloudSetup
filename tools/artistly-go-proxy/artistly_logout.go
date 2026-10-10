@@ -44,9 +44,6 @@ func artistlyUpstreamLogout(resp *http.Response) bool {
 	if resp == nil {
 		return false
 	}
-	if resp.StatusCode == 419 {
-		return true
-	}
 	loc := strings.ToLower(resp.Header.Get("Location"))
 	inertia := strings.ToLower(resp.Header.Get("X-Inertia-Location"))
 	if resp.StatusCode == http.StatusConflict && artistlyLoginLocation(inertia) {
@@ -65,22 +62,18 @@ func artistlyLoginLocation(loc string) bool {
 
 func artistlyLoggedOutHTML(body []byte) bool {
 	s := strings.ToLower(string(body))
-	if strings.Contains(s, "page expired") {
-		return true
-	}
-	if strings.Contains(s, ">419<") && strings.Contains(s, "expired") {
-		return true
+	if strings.Contains(s, "write your prompt") || strings.Contains(s, "ai image designer") {
+		return false
 	}
 	return strings.Contains(s, "name=\"password\"") &&
-		(strings.Contains(s, "name=\"email\"") || strings.Contains(s, "forgot password") || strings.Contains(s, "sign in"))
+		(strings.Contains(s, "name=\"email\"") || strings.Contains(s, "forgot password") || strings.Contains(s, ">sign in<"))
 }
 
 func artistlyUnauthenticatedJSON(status int, body []byte) bool {
-	if status != http.StatusUnauthorized && status != 419 {
+	if status != http.StatusUnauthorized {
 		return false
 	}
-	s := strings.ToLower(string(body))
-	return strings.Contains(s, "unauthenticated") || strings.Contains(s, "page expired") || strings.Contains(s, "csrf token mismatch")
+	return strings.Contains(strings.ToLower(string(body)), "unauthenticated")
 }
 
 // noteArtistlyLogout writes Analytics → Logouts and moves this session to
@@ -232,5 +225,5 @@ func artistlyCanHop(sessionToken string) bool {
 }
 
 func artistlyReloadScript(home string) string {
-	return fmt.Sprintf(`<script>(function(){var HOME=%q;var once=false;function go(){if(once)return;once=true;location.replace(HOME);}var of=window.fetch;if(of){window.fetch=function(){return of.apply(this,arguments).then(function(res){if(res&&(res.status===419||(res.headers&&res.headers.get("X-Artistly-Reload")==="1")))go();return res;});};}var xs=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(){this.addEventListener("load",function(){if(this.status===419||this.getResponseHeader("X-Artistly-Reload")==="1")go();});return xs.apply(this,arguments);};})();</script>`, home)
+	return fmt.Sprintf(`<script>(function(){var HOME=%q;var once=false;function go(){if(once)return;once=true;location.replace(HOME);}function reload(res){return res&&res.headers&&res.headers.get&&res.headers.get("X-Artistly-Reload")==="1";}var of=window.fetch;if(of){window.fetch=function(){return of.apply(this,arguments).then(function(res){if(reload(res))go();return res;});};}var xs=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(){this.addEventListener("load",function(){if(this.getResponseHeader("X-Artistly-Reload")==="1")go();});return xs.apply(this,arguments);};})();</script>`, home)
 }
