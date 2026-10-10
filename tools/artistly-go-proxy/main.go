@@ -950,6 +950,18 @@ func staticCacheKey(method, path string) string {
 	return method + " " + path
 }
 
+func isJavaScriptResponse(contentType, path string) bool {
+	ct := strings.ToLower(contentType)
+	if strings.Contains(ct, "javascript") || strings.Contains(ct, "ecmascript") {
+		return true
+	}
+	p := strings.ToLower(path)
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	return strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".mjs")
+}
+
 func isCacheableStaticPath(path string) bool {
 	p := path
 	if i := strings.Index(p, "?"); i >= 0 {
@@ -2017,6 +2029,18 @@ func rewriteBody(body []byte, pairs [][2]string) []byte {
 		body = bytes.ReplaceAll(body, []byte(pair[0]), []byte(pair[1]))
 	}
 	return body
+}
+
+// rewriteArtistlyHost maps every encoding of the upstream host onto the proxy
+// host. Laravel's prefetch JSON stores https:\\\/\\\/app.artistly.ai, which the
+// normal https:// replacement does not match, so the browser loads those
+// scripts straight from app.artistly.ai and the module fails CORS.
+func rewriteArtistlyHost(body []byte, publicHost string) []byte {
+	publicHost = strings.TrimSpace(publicHost)
+	if publicHost == "" || strings.EqualFold(publicHost, "app.artistly.ai") || len(body) == 0 {
+		return body
+	}
+	return bytes.ReplaceAll(body, []byte("app.artistly.ai"), []byte(publicHost))
 }
 
 // applyTextReplacements runs config.json "replacements" on response bodies
@@ -3304,6 +3328,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			publicScheme = "https"
 		}
 	}
+	// The site is served over HTTPS. Rewriting asset URLs to http:// is mixed
+	// content and the browser drops the scripts.
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" || r.Header.Get("X-Forwarded-Ssl") == "on" {
+		publicScheme = "https"
+	}
 	publicHost := cfg.PublicHost
 	if publicHost == "" {
 		// Fallback: use Host header
@@ -3496,6 +3525,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// Rewrite domain references
 		pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 		bodyBytes = rewriteBody(bodyBytes, pairs)
+		bodyBytes = rewriteArtistlyHost(bodyBytes, publicHost)
 		bodyBytes = applyTextReplacements(bodyBytes, cfg)
 
 		// Strip SRI — HTML attributes AND Canva bootstrap asset manifests
@@ -3558,6 +3588,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 			bodyBytes = rewriteBody(bodyBytes, pairs)
+			bodyBytes = rewriteArtistlyHost(bodyBytes, publicHost)
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
@@ -3566,6 +3597,23 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
+			return
+		}
+	}
+
+	// Vite prefetch and some chunks name app.artistly.ai. Rewrite the host, and
+	// pin dynamic /build/ URLs to this page so a <base> tag cannot send them off-origin.
+	if upstreamResp.StatusCode == http.StatusOK && isJavaScriptResponse(contentType, path) {
+		if jsBody, jsErr := decompressBody(upstreamResp); jsErr == nil {
+			jsBody = rewriteArtistlyHost(jsBody, publicHost)
+			jsBody = bytes.ReplaceAll(jsBody, []byte(`return"/build/"+`), []byte(`return location.origin+"/build/"+`))
+			w.Header().Del("Content-Encoding")
+			w.Header().Set("Content-Type", contentType)
+			w.Header().Set("Content-Length", strconv.Itoa(len(jsBody)))
+			putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", jsBody)
+			w.Header().Set("X-OCG-Cache", "MISS")
+			w.WriteHeader(upstreamResp.StatusCode)
+			w.Write(jsBody)
 			return
 		}
 	}
