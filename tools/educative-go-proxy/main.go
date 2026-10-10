@@ -3809,6 +3809,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) && strings.TrimSpace(currentUser) != "" {
+			userJSON, _ := json.Marshal(currentUser)
+			injectStr += `<script>(function(){var NEXT=", "+` + string(userJSON) + `+"!";function fix(){var list=document.querySelectorAll('p[class*="WelcomeMessage_heading"]');for(var i=0;i<list.length;i++){if(list[i].textContent!==NEXT)list[i].textContent=NEXT;}}fix();new MutationObserver(fix).observe(document.documentElement,{childList:true,subtree:true});})();</script>`
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
