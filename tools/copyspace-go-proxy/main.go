@@ -1102,12 +1102,12 @@ func applyLocalCookieOverlay(base string) string {
 }
 
 func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
-	// Never absorb cookies from a Cloudflare challenge. Those overwrite a good
-	// cf_clearance with an unusable one.
-	if statusCode == http.StatusForbidden || statusCode == http.StatusServiceUnavailable {
+	// Never absorb CF cookies from challenge responses (403 "Just a moment...").
+	// Never absorb copyspaceai_session: a logged-out response replaces the
+	// account cookie with a guest session and the browser is sent to copyspace.ai.
+	if statusCode < 200 || statusCode > 299 {
 		return false
 	}
-	twoXX := statusCode >= 200 && statusCode <= 299
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
 	for _, sc := range h.Values("Set-Cookie") {
@@ -1122,18 +1122,10 @@ func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 		}
 		name := strings.TrimSpace(nv[:eq])
 		val := strings.TrimSpace(nv[eq+1:])
-		if val == "" || strings.EqualFold(val, "deleted") {
+		if name == "copyspaceai_session" || strings.EqualFold(name, "XSRF-TOKEN") {
 			continue
 		}
-		// A logged-out Laravel response rotates copyspaceai_session and
-		// XSRF-TOKEN together, including on 302 and 419. Keeping the old pair
-		// makes every follow-up request 419, and Inertia reloads the tab.
-		sessionCookie := name == "copyspaceai_session" || strings.EqualFold(name, "XSRF-TOKEN")
-		if sessionCookie {
-			if strings.EqualFold(name, "XSRF-TOKEN") {
-				name = "XSRF-TOKEN"
-			}
-		} else if !twoXX || !absorbCookieNames[name] {
+		if !absorbCookieNames[name] || val == "" || strings.EqualFold(val, "deleted") {
 			continue
 		}
 		if localCookieOverlay[name] != val {
@@ -2619,12 +2611,22 @@ func patcherScript(cfg Config) string {
         setInterval(fixZiggy, 400);
     } catch (e) {}
 
-    // Hard navigations / Livewire redirects that set location to absolute target URL
+	// Hard navigations must stay on our host. Assigning location.href to
+    // copyspace.ai is what sent the browser to the official sign-in page.
     try {
         var _locAssign = window.location.assign.bind(window.location);
         window.location.assign = function(u) { return _locAssign(patchURL(String(u))); };
         var _locReplace = window.location.replace.bind(window.location);
         window.location.replace = function(u) { return _locReplace(patchURL(String(u))); };
+        var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+        if (hrefDesc && hrefDesc.set && hrefDesc.configurable) {
+            Object.defineProperty(Location.prototype, 'href', {
+                configurable: true,
+                enumerable: hrefDesc.enumerable,
+                get: hrefDesc.get,
+                set: function(v) { return hrefDesc.set.call(this, patchURL(String(v))); }
+            });
+        }
     } catch (e) {}
 
     // History only rewrites the official host onto ours. A logged-out visit to
@@ -3060,6 +3062,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A sign-in URL is the logged-out account. Do not proxy it: the official
+	// page navigates the browser to copyspace.ai.
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && copyspaceLogoutPath(path) {
+		reason := "session_expired"
+		if strings.Contains(strings.ToLower(path), "logout") {
+			reason = "user_logout"
+		}
+		serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, reason)
+		return
+	}
+
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
 
@@ -3357,6 +3370,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && copyspaceUpstreamLogout(upstreamResp) {
+		serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
+		return
+	}
+
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -3485,6 +3503,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logUpstream(bodyBytes)
+
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && copyspaceLoggedOutHTML(bodyBytes) {
+			serveCopyspaceLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
+			return
+		}
 
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
