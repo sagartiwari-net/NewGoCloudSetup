@@ -2518,6 +2518,31 @@ func slimIncomingCookies(r *http.Request) []string {
 	return dropped
 }
 
+func cramlyShrinkCookies(w http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	if strings.HasSuffix(origin, ".gt4rents.com") || origin == "https://gt4rents.com" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Vary", "Origin")
+	}
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	// Wipes every cookie for this host, including Path=/dashboard names that a
+	// smaller /api request never sees. Those are what make /dashboard a 400.
+	w.Header().Set("Clear-Site-Data", `"cookies", "clientHints"`)
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	cfg := loadConfig()
+	if dropped := slimIncomingCookies(r); len(dropped) > 0 {
+		expireCramlyCookies(w, r, dropped, cfg)
+	}
+	log.Printf("[COOKIE] shrink jar bytes=%d path=%s", len(r.Header.Get("Cookie")), r.URL.Path)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func cramlyExpireJar(r *http.Request) bool {
 	p := r.URL.Path
 	if p == "/api/device-bind" || p == "/access" || strings.HasPrefix(p, "/access/") {
@@ -3082,6 +3107,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if kLower == "strict-transport-security" {
 			continue
 		} // Strip HSTS to prevent HTTPS upgrades
+		if kLower == "accept-ch" || kLower == "critical-ch" {
+			continue
+		} // Client hints on the next document push Cloudflare over its header limit (400).
 		if kLower == "content-security-policy" || kLower == "content-security-policy-report-only" {
 			continue
 		} // CDN JS ships script-src 'none'; would break execution behind our domain
@@ -3364,8 +3392,8 @@ func main() {
 	mux.HandleFunc("/api/rotate-session", withCORS(rotateSessionHandler))
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
+	mux.HandleFunc("/__tm_shrink", cramlyShrinkCookies)
 	mux.HandleFunc("/api/device-bind", func(w http.ResponseWriter, r *http.Request) {
-		slimIncomingCookies(r)
 		deviceBindHandler(w, r)
 	})
 	mux.HandleFunc("/__tm_access_denied", serveAccessDeniedHTML)
@@ -3423,8 +3451,12 @@ func main() {
 		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		rawCookieLen := len(r.Header.Get("Cookie"))
 		if dropped := slimIncomingCookies(r); len(dropped) > 0 && cramlyExpireJar(r) {
 			expireCramlyCookies(w, r, dropped, cfg)
+		}
+		if r.URL.Path == "/api/device-bind" && rawCookieLen > 8192 {
+			w.Header().Set("Clear-Site-Data", `"cookies", "clientHints"`)
 		}
 		mux.ServeHTTP(w, r)
 	})

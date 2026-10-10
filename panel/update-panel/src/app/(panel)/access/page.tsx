@@ -79,6 +79,12 @@ export default function AccessPage() {
       setResult({ allowed: false, error: opened.error || "Access denied" })
       return
     }
+    try {
+      const toolOrigin = new URL(opened.open_url).origin
+      await fetch(toolOrigin + "/__tm_shrink", { method: "POST", credentials: "include", mode: "cors" })
+    } catch {
+      // The browser still applies Set-Cookie / Clear-Site-Data when the response arrives.
+    }
     const popup = window.open(opened.open_url, "_blank")
     if (!popup) {
       setResult({ allowed: false, error: "The browser blocked the new tab. Allow pop-ups for this site and try again." })
