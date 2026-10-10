@@ -2615,35 +2615,16 @@ func patcherScript(cfg Config) string {
         window.location.replace = function(u) { return _locReplace(patchURL(String(u))); };
     } catch (e) {}
 
-    // ── History API: rewrite absolute target URLs + block restricted paths ──
-    function isBlocked(path) {
-        var clean = path.split('?')[0].replace(/\/$/, '');
-        for (var i = 0; i < BLOCKED.length; i++) {
-            var b = String(BLOCKED[i] || '').replace(/\/$/, '');
-            if (!b) continue;
-            if (clean === b || clean.startsWith(b+'/')) return true;
-        }
-        return false;
-    }
-    function stayOrHome() {
-        var here = (window.location.pathname || '/').replace(/\/$/, '') || '/';
-        var home = String(HOME || '/').replace(/\/$/, '') || '/';
-        if (here !== home) window.location.href = HOME;
-    }
+    // History only rewrites the official host onto ours. A logged-out visit to
+    // sign-in must stay there — bouncing it to HOME reloaded the tab.
     var _push = history.pushState.bind(history);
     history.pushState = function(state, title, url) {
-        if (typeof url === 'string') {
-            url = patchURL(url);
-            try { var p = new URL(url, O); if (isBlocked(p.pathname)) { stayOrHome(); return; } } catch(e) {}
-        }
+        if (typeof url === 'string') url = patchURL(url);
         return _push(state, title, url);
     };
     var _replace = history.replaceState.bind(history);
     history.replaceState = function(state, title, url) {
-        if (typeof url === 'string') {
-            url = patchURL(url);
-            try { var p = new URL(url, O); if (isBlocked(p.pathname)) { stayOrHome(); return; } } catch(e) {}
-        }
+        if (typeof url === 'string') url = patchURL(url);
         return _replace(state, title, url);
     };
 })();
@@ -2981,22 +2962,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── 2. Check blocked paths ────────────────────────────────────────────────────
-	if isBlockedPath(path, cfg) {
-		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
-		if dbConnected {
-			_, _ = db.Exec(
-				"INSERT INTO ahrefs_violations_logs (website_id, username, client_ip, attempted_path) VALUES (?,?,?,?)",
-				currentWebsiteID, currentUser, realClientIP(r), path,
-			)
-		}
-		if cfg.HomePath != "" {
-			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
-		} else {
-			http.Redirect(w, r, "/", http.StatusFound)
-		}
-		return
-	}
+	// Logged-out CopySpace answers / with a redirect to the sign-in page.
+	// Sending that page back to / made the browser reload forever, so these
+	// paths are proxied like any other page.
 
 	// ── 2b. Serve cached static assets (skip upstream TLS) ───────────────────────
 	if ent := getStaticCached(r.Method, path); ent != nil {
@@ -3423,7 +3391,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if kLower == "x-frame-options" {
 			continue
 		}
-		if kLower == "location" {
+		if kLower == "location" || kLower == "link" {
 			for _, v := range vv {
 				newLoc := rewriteWoorankHostURL(v, publicBase)
 				for _, pair := range locationPairs {
