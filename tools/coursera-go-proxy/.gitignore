@@ -4,3 +4,4 @@ config.json
 config.json.bak
 .DS_Store
 *.log
+cdn-cache/
