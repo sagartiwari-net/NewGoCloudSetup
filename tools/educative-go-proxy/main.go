@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -82,8 +82,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -155,9 +155,9 @@ var (
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
-		PublicHost:             "gpt.yourdomain.com",
+		TargetURL:              "https://www.educative.io",
+		CDNURL:                 "https://www.educative.io",
+		PublicHost:             "educative.gt4rents.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
 		MySQLPort:              "3306",
@@ -167,10 +167,10 @@ var (
 		SecretKey:              "your_secret_key_here",
 		SessionDurationMinutes: 120,
 		MemberAreaURL:          "https://members.yourdomain.com/",
-		ToolName:               "Tool",
+		ToolName:               "Educative",
 		CreditLabel:            "Credits",
 		ExportLabel:            "Exports",
-		HomePath:               "/",
+		HomePath:               "/learn/home",
 		CountedPaths:           []string{},
 		CountedPrefixes:        []string{},
 		BlockedPaths:           []string{},
@@ -876,7 +876,9 @@ func cookieValueFromHeader(header, name string) string {
 
 // buildEducativeSessionInjectHTML hydrates client-readable auth cookies BEFORE
 // Educative's inline head script runs:
-//   const loggedIn = document.cookie.includes('logged_in');
+//
+//	const loggedIn = document.cookie.includes('logged_in');
+//
 // Without this, localhost shows "Log In" / "Join for free" even when upstream
 // flask-auth works. HttpOnly flask-auth / flask-session stay upstream-only.
 func buildEducativeSessionInjectHTML(cookieHeader string) string {
