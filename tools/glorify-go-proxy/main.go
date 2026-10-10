@@ -1198,6 +1198,38 @@ func buildGlorifySessionInjectHTML(cookieHeader string) string {
 </script>`
 }
 
+func glorifyLoginWatchHTML() string {
+	return `<script data-tm-gl-login="1">
+(function(){
+  function loginPath(p){
+    p = String(p || "").toLowerCase();
+    return p.indexOf("/login") !== -1 || p.indexOf("/sign-in") !== -1 || p.indexOf("/signup") !== -1 || p.indexOf("/sign-up") !== -1 || p.indexOf("/logout") !== -1 || p.indexOf("/forgot-password") !== -1;
+  }
+  function go(){
+    try {
+      if (window.__tmLogoutGo) return;
+      if (!loginPath(location.pathname)) return;
+      window.__tmLogoutGo = true;
+      var q = location.search || "";
+      q += (q ? "&" : "?") + "_tm=" + Date.now();
+      location.replace(location.pathname + q);
+    } catch (e) {}
+  }
+  go();
+  ["pushState","replaceState"].forEach(function(name){
+    var orig = history[name];
+    if (!orig) return;
+    history[name] = function(){
+      var ret = orig.apply(this, arguments);
+      go();
+      return ret;
+    };
+  });
+  window.addEventListener("popstate", go);
+})();
+</script>`
+}
+
 // buildGlorifyEarlyInjectHTML must run as the first script in <head>.
 // Glorify's dependencies.js redirects any hostname that does not contain
 // "flexclip" / "smartvideomaker" to https://www.glorify.com.
@@ -3801,7 +3833,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		setBrowserGlorifyAuthCookies(w, accountCookieStr)
 		// Host spoof MUST be first in <head> — dependencies.js redirects off
 		// non-flexclip hostnames before our late </head> patcher runs.
-		earlyInject := buildGlorifyEarlyInjectHTML(cfg) + buildGlorifySessionInjectHTML(accountCookieStr)
+		earlyInject := ""
+		if usesPanelAccountMode(cfg) {
+			earlyInject = glorifyLoginWatchHTML()
+		}
+		earlyInject += buildGlorifyEarlyInjectHTML(cfg) + buildGlorifySessionInjectHTML(accountCookieStr)
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
