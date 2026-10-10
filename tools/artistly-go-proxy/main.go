@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -82,8 +82,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -878,16 +878,15 @@ func xsrfTokenFromCookie(cookieHeader string) string {
 	return ""
 }
 
-// ensureArtistlyCsrf sets X-XSRF-TOKEN from the URL-decoded XSRF-TOKEN cookie when missing.
-// Laravel AJAX/mutating requests return 419 without it.
+// ensureArtistlyCsrf sets X-XSRF-TOKEN from the account XSRF-TOKEN cookie.
+// Always overwrite. Laravel prefers a stale browser X-CSRF-TOKEN over
+// X-XSRF-TOKEN, and that mismatch is the 419 PAGE EXPIRED page.
 func ensureArtistlyCsrf(upstreamReq *http.Request, cookieHeader string) {
-	if strings.TrimSpace(upstreamReq.Header.Get("X-XSRF-TOKEN")) != "" {
-		return
-	}
 	switch upstreamReq.Method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
 		return
 	}
+	upstreamReq.Header.Del("X-CSRF-TOKEN")
 	token := xsrfTokenFromCookie(cookieHeader)
 	if token == "" {
 		token = xsrfTokenFromCookie(upstreamReq.Header.Get("Cookie"))
@@ -2963,7 +2962,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
-	if isBlockedPath(path, cfg) {
+	// Login/logout is a dead session in panel mode: swap + Analytics Logouts,
+	// handled after the account is loaded. Other blocked paths still bounce home.
+	if isBlockedPath(path, cfg) && !(usesPanelAccountMode(cfg) && artistlyLogoutPath(r)) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
 		if dbConnected {
 			_, _ = db.Exec(
@@ -3059,6 +3060,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && artistlyLogoutPath(r) {
+		reason := "session_expired"
+		low := strings.ToLower(path)
+		if strings.Contains(low, "logout") || strings.Contains(low, "sign-out") || strings.Contains(low, "signout") {
+			reason = "user_logout"
+		}
+		serveArtistlyLogout(w, r, cfg, activeAcc, sessionToken, reason)
+		return
 	}
 
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
@@ -3358,6 +3369,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && !isCacheableStaticPath(path) && artistlyUpstreamLogout(upstreamResp) {
+		reason := "session_expired"
+		if upstreamResp.StatusCode == 419 {
+			reason = "page_expired"
+		}
+		serveArtistlyLogout(w, r, cfg, activeAcc, sessionToken, reason)
+		return
+	}
+
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -3464,6 +3484,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(upstreamResp.StatusCode)
 			return
 		}
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && artistlyWantsDocument(r) && artistlyLoggedOutHTML(bodyBytes) {
+			serveArtistlyLogout(w, r, cfg, activeAcc, sessionToken, "session_expired")
+			return
+		}
 		logUpstream(bodyBytes)
 
 		// Cache api token/uid from page payload for later /api/v2 calls
@@ -3490,6 +3514,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) {
+			home := cfg.HomePath
+			if home == "" {
+				home = "/ai/ai-image-designer"
+			}
+			injectStr += artistlyReloadScript(home)
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
@@ -3521,6 +3552,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
 			logUpstream(bodyBytes)
+			if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && strings.Contains(contentType, "application/json") && artistlyUnauthenticatedJSON(upstreamResp.StatusCode, bodyBytes) {
+				serveArtistlyLogout(w, r, cfg, activeAcc, sessionToken, "api_unauthorized")
+				return
+			}
 			pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 			bodyBytes = rewriteBody(bodyBytes, pairs)
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)

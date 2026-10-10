@@ -57,8 +57,23 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "worker", "sharedworker":
 		return true
+	}
+	if r == nil || r.URL == nil {
+		return false
+	}
+	p := strings.ToLower(r.URL.Path)
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	if strings.HasPrefix(p, "/_build/") {
+		return true
+	}
+	for _, ext := range []string{".js", ".mjs", ".css", ".map", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
 	}
 	return false
 }
@@ -229,7 +244,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -502,7 +516,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())
