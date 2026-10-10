@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -781,6 +781,71 @@ func filterEssentialCookies(cookieHeader string) string {
 		}
 	}
 	return strings.Join(kept, "; ")
+}
+
+// keepBrowserCookie is the only state the browser must send back.
+// Account session + CSRF stay on the server; a fat jar makes nginx/Apache refuse the request.
+func keepBrowserCookie(name string) bool {
+	nl := strings.ToLower(strings.TrimSpace(name))
+	return nl == "ct_session" || strings.HasPrefix(nl, "tm_")
+}
+
+// slimBrowserCookies drops everything except ct_session / tm_* and returns names to expire.
+func slimBrowserCookies(r *http.Request) []string {
+	raw := r.Header.Get("Cookie")
+	if raw == "" {
+		return nil
+	}
+	var kept []string
+	var dropped []string
+	for _, part := range strings.Split(raw, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name := part
+		if eq := strings.Index(part, "="); eq >= 0 {
+			name = strings.TrimSpace(part[:eq])
+		}
+		if keepBrowserCookie(name) {
+			kept = append(kept, part)
+			continue
+		}
+		if name != "" && name != part {
+			dropped = append(dropped, name)
+		}
+	}
+	if len(dropped) == 0 {
+		return nil
+	}
+	slim := strings.Join(kept, "; ")
+	log.Printf("[COOKIE] slimmed browser Cookie %d → %d bytes path=%s", len(raw), len(slim), r.URL.Path)
+	if slim == "" {
+		r.Header.Del("Cookie")
+	} else {
+		r.Header.Set("Cookie", slim)
+	}
+	return dropped
+}
+
+func expireDroppedCookies(w http.ResponseWriter, r *http.Request, names []string, cfg Config) {
+	seen := map[string]bool{}
+	for _, name := range names {
+		nl := strings.ToLower(strings.TrimSpace(name))
+		if nl == "" || seen[nl] || keepBrowserCookie(nl) {
+			continue
+		}
+		seen[nl] = true
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			Expires:  time.Unix(0, 0),
+			MaxAge:   -1,
+			Secure:   cookieSecure(r, cfg),
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
 }
 
 var metaCsrfRe = regexp.MustCompile(`(?i)<meta\s+name="csrf-token"\s+content="([^"]+)"`)
@@ -2120,7 +2185,7 @@ func buildChromeHTTPClient() *http.Client {
 
 var httpClient = buildChromeHTTPClient()
 
-const proxyBuildTag = "closerscopy-v7"
+const proxyBuildTag = "closerscopy-v8"
 
 // ── CLOUDFLARE BYPASS (challenge scripts break on proxy hostname) ─────────────
 
@@ -2275,6 +2340,13 @@ func patcherScript(cfg Config) string {
 
 	return fmt.Sprintf(`<script>
 (function() {
+    try {
+      document.cookie.split(';').forEach(function(part) {
+        var name = (part.split('=')[0] || '').trim();
+        if (!name || name === 'ct_session' || name.indexOf('tm_') === 0) return;
+        document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+      });
+    } catch (e) {}
     var T = '%s', C = '%s', O = window.location.origin;
     var HOME = '%s';
     var BLOCKED = [%s];
@@ -3049,7 +3121,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Copy headers (skip Content-Length — recalc from buffered body)
 	for k, vv := range r.Header {
-		if strings.EqualFold(k, "Content-Length") {
+		if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, "Cookie") {
 			continue
 		}
 		for _, v := range vv {
@@ -3066,17 +3138,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		accountCookieStr = dropCookieNames(accountCookieStr, "XSRF-TOKEN")
 	}
 	accountCookieStr = applyDynamicCookies(accountCookieStr)
-	clientCookies := stripSensitiveCookies(r.Header.Get("Cookie"), cfg)
-	// Local/cookie-file mode: never forward browser cookies (digen/stripe/intercom on localhost leak → CSRF break)
-	if usesCookieFileMode(cfg) {
-		clientCookies = ""
-	}
-	if accountCookieStr != "" {
-		if clientCookies != "" {
-			clientCookies += "; "
-		}
-		clientCookies += accountCookieStr
-	}
+	// Never forward the browser jar. nginx already rejects a fat Cookie, and Apache
+	// (LimitRequestFieldSize 8k) returns 400 if analytics/XSRF leftovers are appended.
+	clientCookies := accountCookieStr
 	// Only inject premium cookies when upstream is the target tool domain (not third-party CDNs)
 	hostWithoutPort := upstreamURL.Host
 	if h, _, err := net.SplitHostPort(upstreamURL.Host); err == nil {
@@ -3089,8 +3153,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			upstreamReq.Header.Set("Cookie", clientCookies)
 		}
 		injectUpstreamCsrf(upstreamReq, r, cfg)
-	} else {
-		upstreamReq.Header.Del("Cookie")
 	}
 
 	// Anti-recloud: same premium account cookie from multiple /16 subnets (PHP mirror + real users)
@@ -3466,6 +3528,9 @@ func main() {
 	// ── Security middleware wrapper ───────────────────────────────────────────────
 	secureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg := loadConfig()
+		if dropped := slimBrowserCookies(r); len(dropped) > 0 {
+			expireDroppedCookies(w, r, dropped, cfg)
+		}
 		// Production only: nginx may forward X-Forwarded-Proto:http for plain HTTP clients → redirect to HTTPS.
 		// Skip on localhost / public_scheme=http — proxy listens HTTP-only; redirect causes ERR_SSL_PROTOCOL_ERROR.
 		if r.Header.Get("X-Forwarded-Proto") == "http" && !isLocalDev(cfg) && strings.EqualFold(cfg.PublicScheme, "https") {
@@ -3482,11 +3547,12 @@ func main() {
 	addr := ":" + cfg.Port
 	log.Printf("✅ Generic Tool Proxy listening on %s", addr)
 	server := &http.Server{
-		Addr:         addr,
-		Handler:      secureHandler,
-		ReadTimeout:  120 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  180 * time.Second,
+		Addr:           addr,
+		Handler:        secureHandler,
+		ReadTimeout:    120 * time.Second,
+		WriteTimeout:   120 * time.Second,
+		IdleTimeout:    180 * time.Second,
+		MaxHeaderBytes: 4 << 20, // 4MB — accept the jar nginx forwards, then slim it
 	}
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("[SERVER] Fatal: %v", err)
