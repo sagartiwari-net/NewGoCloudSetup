@@ -1499,7 +1499,7 @@ func isCacheableStaticPath(path string) bool {
 		p = p[:i]
 	}
 	p = strings.ToLower(p)
-	if strings.HasPrefix(p, "/wp-content/") || strings.HasPrefix(p, "/wp-includes/") || strings.HasPrefix(p, "/dist/") || strings.HasPrefix(p, "/img/") {
+	if strings.HasPrefix(p, "/assets/") || strings.HasPrefix(p, "/wp-content/") || strings.HasPrefix(p, "/wp-includes/") || strings.HasPrefix(p, "/dist/") || strings.HasPrefix(p, "/img/") {
 		return true
 	}
 	for _, ext := range []string{".js", ".css", ".woff2", ".woff", ".ttf", ".eot", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".map"} {
@@ -1524,12 +1524,20 @@ func getStaticCached(method, path string) *staticCacheEntry {
 			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path))
 		}
 		if !ok {
+			if disk := loadDiskStatic(method, path); disk != nil {
+				staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+				return disk
+			}
 			return nil
 		}
 	}
 	ent := v.(*staticCacheEntry)
 	if time.Now().After(ent.expires) {
 		staticAssetCache.Delete(staticCacheKey(http.MethodGet, path))
+		if disk := loadDiskStatic(method, path); disk != nil {
+			staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+			return disk
+		}
 		return nil
 	}
 	return ent
@@ -1551,6 +1559,7 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	storeDiskStatic(method, path, status, contentType, encoding, cp)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
@@ -4732,6 +4741,7 @@ func main() {
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
 	warmCFCookies(cfg)
+	startCDNCacheSweep()
 
 	mux := http.NewServeMux()
 

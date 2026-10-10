@@ -38,6 +38,7 @@
   "extra_cdn_domains": [
     "https://api.fish.audio",
     "https://public-platform.r2.fish.audio",
+    "https://platform.r2.fish.audio",
     "https://js.stripe.com",
     "https://m.stripe.com",
     "https://api.stripe.com",
