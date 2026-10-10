@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -17,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -86,8 +86,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -558,12 +558,13 @@ func startDailyResetCron() {
 // ── ACCOUNT SYSTEM ────────────────────────────────────────────────────────────
 
 type ToolAccount struct {
-	ID        int
-	Name      string
-	Cookie    string
-	UserAgent string
-	Proxy     string
-	ShowLimit bool
+	ID          int
+	Name        string
+	Cookie      string
+	SessionBlob string
+	UserAgent   string
+	Proxy       string
+	ShowLimit   bool
 }
 
 func selectActiveAccount() (ToolAccount, error) {
@@ -771,6 +772,98 @@ func parseCookieFromDB(raw string) string {
 		return raw
 	}
 	return cookieEntriesToHeader(cookies)
+}
+
+// Fish Audio reads localStorage "token" (then a cookie of the same name) and
+// sends it as Authorization. A GoAuto export often has that token and no
+// Cookie header, which used to look like an empty account.
+func fishLocalStorageJSON(raw string) string {
+	keep := map[string]string{}
+	add := func(k, v string) {
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k == "" || v == "" || v == "null" || v == "undefined" {
+			return
+		}
+		switch k {
+		case "token", "active_team_id", "active_workspace_id":
+			keep[k] = v
+		}
+	}
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "{") {
+		var wrap struct {
+			Token   string `json:"token"`
+			Storage struct {
+				LocalStorage map[string]interface{} `json:"localStorage"`
+			} `json:"storage"`
+			LocalStorage  map[string]interface{} `json:"localStorage"`
+			LocalStorage2 map[string]interface{} `json:"local_storage"`
+			Cookies       []browserCookieEntry   `json:"cookies"`
+		}
+		if err := json.Unmarshal([]byte(trimmed), &wrap); err == nil {
+			add("token", wrap.Token)
+			for _, m := range []map[string]interface{}{wrap.Storage.LocalStorage, wrap.LocalStorage, wrap.LocalStorage2} {
+				for k, v := range m {
+					add(k, fishStringValue(v))
+				}
+			}
+			for _, c := range wrap.Cookies {
+				add(c.Name, c.Value)
+			}
+		}
+	}
+	for _, part := range strings.Split(trimmed, ";") {
+		part = strings.TrimSpace(part)
+		eq := strings.Index(part, "=")
+		if eq <= 0 {
+			continue
+		}
+		add(part[:eq], part[eq+1:])
+	}
+	if keep["token"] == "" && trimmed != "" && !strings.ContainsAny(trimmed, " \t\r\n{};") && len(trimmed) >= 20 {
+		add("token", trimmed)
+	}
+	if keep["token"] == "" {
+		return ""
+	}
+	b, err := json.Marshal(keep)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func fishStringValue(v interface{}) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case nil:
+		return ""
+	default:
+		b, err := json.Marshal(t)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
+}
+
+func fishAcceptAccountCookie(raw string) (string, error) {
+	parsed := strings.TrimSpace(parseCookieFromDB(raw))
+	if parsed != "" {
+		return parsed, nil
+	}
+	ls := fishLocalStorageJSON(raw)
+	if ls == "" {
+		return "", fmt.Errorf("mapped account cookie is empty")
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(ls), &m); err != nil || strings.TrimSpace(m["token"]) == "" {
+		return "", fmt.Errorf("mapped account cookie is empty")
+	}
+	log.Printf("[PANEL] Fish Audio login is a localStorage token, not a cookie header")
+	return "token=" + m["token"], nil
 }
 
 func localStorageJSONFromFile(path string) string {
@@ -4324,8 +4417,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
 		}
 
-		// SYNTX auth is localStorage auth_token. Must run before the app boots.
-		if ls := buildSyntxLocalStorageInject(localStorageJSONFromFile(cfg.CookieFile)); ls != "" {
+		// Fish Audio auth is localStorage "token". Must run before the app boots.
+		lsSource := ""
+		if usesPanelAccountMode(cfg) {
+			lsSource = fishLocalStorageJSON(activeAcc.SessionBlob)
+			if lsSource == "" {
+				lsSource = fishLocalStorageJSON(activeAcc.Cookie)
+			}
+		} else {
+			lsSource = localStorageJSONFromFile(cfg.CookieFile)
+		}
+		if ls := buildSyntxLocalStorageInject(lsSource); ls != "" {
 			if loc := regexp.MustCompile(`(?i)<head[^>]*>`).FindIndex(bodyBytes); loc != nil {
 				out := make([]byte, 0, len(bodyBytes)+len(ls)+8)
 				out = append(out, bodyBytes[:loc[1]]...)
