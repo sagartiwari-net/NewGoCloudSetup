@@ -3973,7 +3973,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
-		injectStr += `<style>#authenticated-info-menu{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>`
+		injectStr += `<style>#authenticated-info-menu,button[data-e2e="header-profile"],.css-xr6jag:has(button[data-e2e="header-profile"]){display:none!important;visibility:hidden!important;pointer-events:none!important}</style>`
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
