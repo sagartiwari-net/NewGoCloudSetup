@@ -787,7 +787,7 @@ func filterEssentialCookies(cookieHeader string) string {
 // Account session + CSRF stay on the server; a fat jar makes nginx/Apache refuse the request.
 func keepBrowserCookie(name string) bool {
 	nl := strings.ToLower(strings.TrimSpace(name))
-	return nl == "ct_session" || strings.HasPrefix(nl, "tm_")
+	return nl == "ct_session" || nl == "xsrf-token" || strings.HasPrefix(nl, "tm_")
 }
 
 // slimBrowserCookies drops everything except ct_session / tm_* and returns names to expire.
@@ -929,14 +929,52 @@ func injectUpstreamCsrf(upstreamReq *http.Request, r *http.Request, cfg Config) 
 	if csrf == "" {
 		csrf = r.Header.Get("X-Csrf-Token")
 	}
-	// Prefer server-side token: browser inline jQuery headers are often stale vs rotated session.
-	if serverCsrf != "" && (usesCookieFileMode(cfg) || csrf == "") {
+	// XHR setRequestHeader appends, so a second write arrives as "token, token" and Laravel 419s.
+	if i := strings.LastIndex(csrf, ","); i >= 0 {
+		csrf = strings.TrimSpace(csrf[i+1:])
+	}
+	if serverCsrf != "" && (usesCookieFileMode(cfg) || csrf == "" || strings.Contains(r.Header.Get("X-CSRF-TOKEN"), ",")) {
 		csrf = serverCsrf
 	}
 	if csrf != "" {
 		upstreamReq.Header.Set("X-CSRF-TOKEN", csrf)
-		upstreamReq.Header.Set("X-XSRF-TOKEN", csrf)
 	}
+	// X-XSRF-TOKEN must be the encrypted cookie, never the plain meta token.
+	upstreamReq.Header.Del("X-XSRF-TOKEN")
+	if v, ok := dynamicUpstreamCookies.Load("xsrf-token"); ok {
+		raw := v.(string)
+		if dec, err := url.QueryUnescape(raw); err == nil && dec != "" {
+			raw = dec
+		}
+		upstreamReq.Header.Set("X-XSRF-TOKEN", raw)
+	}
+}
+
+var formTokenRe = regexp.MustCompile(`(^|&)_token=[^&]*`)
+var jsonTokenRe = regexp.MustCompile(`"_token"\s*:\s*"[^"]*"`)
+var multipartTokenRe = regexp.MustCompile(`(?s)(name="_token"\r\n\r\n).*?(\r\n)`)
+
+// syncPostCsrfToken keeps a form _token aligned with the session. Laravel checks it before the header.
+func syncPostCsrfToken(body []byte, contentType string) []byte {
+	v, ok := dynamicUpstreamCookies.Load("csrf-plain")
+	if !ok || len(body) == 0 {
+		return body
+	}
+	token, _ := v.(string)
+	if token == "" {
+		return body
+	}
+	ct := strings.ToLower(contentType)
+	if strings.Contains(ct, "application/json") {
+		return jsonTokenRe.ReplaceAll(body, []byte(`"_token":"`+token+`"`))
+	}
+	if strings.Contains(ct, "multipart/form-data") {
+		return multipartTokenRe.ReplaceAll(body, []byte("${1}"+token+"${2}"))
+	}
+	if strings.Contains(ct, "application/x-www-form-urlencoded") || bytes.Contains(body, []byte("_token=")) {
+		return formTokenRe.ReplaceAll(body, []byte("${1}_token="+url.QueryEscape(token)))
+	}
+	return body
 }
 
 // dropCookieNames removes stale static CSRF from cookie.txt (dynamic Set-Cookie is source of truth).
@@ -2355,7 +2393,7 @@ func patcherScript(cfg Config) string {
     try {
       document.cookie.split(';').forEach(function(part) {
         var name = (part.split('=')[0] || '').trim();
-        if (!name || name === 'ct_session' || name.indexOf('tm_') === 0) return;
+        if (!name || name === 'ct_session' || name.toLowerCase() === 'xsrf-token' || name.indexOf('tm_') === 0) return;
         document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
       });
     } catch (e) {}
@@ -2404,11 +2442,9 @@ func patcherScript(cfg Config) string {
     }
 
     // Laravel CSRF — proxy blocks upstream Set-Cookie; inject token on POST/AJAX
-    function getCsrfToken() {
+	function getCsrfToken() {
         var m = document.querySelector('meta[name="csrf-token"]');
         if (m && m.content) return m.content;
-        var match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
-        if (match) { try { return decodeURIComponent(match[1]); } catch(e) {} }
         return '';
     }
     function applyCsrfToHeaders(h) {
@@ -2416,13 +2452,11 @@ func patcherScript(cfg Config) string {
         if (!t) return h;
         if (h instanceof Headers) {
             if (!h.has('X-CSRF-TOKEN')) h.set('X-CSRF-TOKEN', t);
-            if (!h.has('X-XSRF-TOKEN')) h.set('X-XSRF-TOKEN', t);
             if (!h.has('X-Requested-With')) h.set('X-Requested-With', 'XMLHttpRequest');
             return h;
         }
         h = h ? Object.assign({}, h) : {};
         if (!h['X-CSRF-TOKEN']) h['X-CSRF-TOKEN'] = t;
-        if (!h['X-XSRF-TOKEN']) h['X-XSRF-TOKEN'] = t;
         if (!h['X-Requested-With']) h['X-Requested-With'] = 'XMLHttpRequest';
         return h;
     }
@@ -2430,18 +2464,23 @@ func patcherScript(cfg Config) string {
     // ── XHR patch ──
     var xo = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(m, u) {
+        this.__tmHdr = {};
         return xo.apply(this, [m, patchURL(u)].concat(Array.prototype.slice.call(arguments, 2)));
     };
-    // ClosersCopy uses X-CSRF-TOKEN (meta csrf-token), not only Laravel X-XSRF-TOKEN
+    var xset = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+        this.__tmHdr = this.__tmHdr || {};
+        this.__tmHdr[String(name).toLowerCase()] = 1;
+        return xset.apply(this, arguments);
+    };
+    // ClosersCopy uses X-CSRF-TOKEN (meta csrf-token). Setting it twice joins the values and Laravel returns 419.
     var xsend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = function(body) {
         try {
             var t = getCsrfToken();
-            if (t) {
-                this.setRequestHeader('X-CSRF-TOKEN', t);
-                this.setRequestHeader('X-XSRF-TOKEN', t);
-                this.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-            }
+            var h = this.__tmHdr || {};
+            if (t && !h['x-csrf-token']) this.setRequestHeader('X-CSRF-TOKEN', t);
+            if (!h['x-requested-with']) this.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
         } catch(e) {}
         return xsend.apply(this, arguments);
     };
@@ -2454,7 +2493,6 @@ func patcherScript(cfg Config) string {
             if (!t) return;
             options.headers = options.headers || {};
             options.headers['X-CSRF-TOKEN'] = t;
-            options.headers['X-XSRF-TOKEN'] = t;
             options.headers['X-Requested-With'] = options.headers['X-Requested-With'] || 'XMLHttpRequest';
         });
         return true;
@@ -3129,6 +3167,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil && (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch) {
 		bodyBytes, readErr := io.ReadAll(r.Body)
 		if readErr == nil {
+			bodyBytes = syncPostCsrfToken(bodyBytes, r.Header.Get("Content-Type"))
 			bodyReader = bytes.NewReader(bodyBytes)
 		}
 	}
