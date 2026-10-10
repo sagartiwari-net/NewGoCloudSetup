@@ -10,7 +10,7 @@
   "credit_label": "Credits",
   "home_path": "/learn/home",
   "cookie_domain_suffix": "educative.io",
-  "inject_css": "div.logged-in[class*=\"Header_loggedInGroup\"]{display:none!important}",
+  "inject_css": "div.logged-in[class*=\"Header_loggedInGroup\"],div.logged-out[class*=\"Header_loggedOutGroup\"]{display:none!important}",
   "counted_paths": [],
   "counted_prefixes": [],
   "blocked_paths": [
