@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -172,10 +172,8 @@ func main() {
 			isSessionDomain := targetHost == "digen.ai" || strings.HasSuffix(targetHost, ".digen.ai")
 			if isSessionDomain && resolvedCookie != "" {
 				req.Header.Set("Cookie", resolvedCookie)
-				log.Printf("[COOKIE] Forwarding to upstream (%s): %s", targetHost, resolvedCookie)
 			} else {
 				req.Header.Del("Cookie")
-				log.Printf("[COOKIE] No cookies forwarded for host: %s", targetHost)
 			}
 
 			// Spoof headers to look like a real browser
@@ -342,6 +340,7 @@ func main() {
 			if err != nil {
 				return err
 			}
+			logDigenUse(resp, bodyBytes)
 
 			// Detect limit/free in body content or status code
 			if db != nil && resp.Request != nil && detectDigenLimitOrFree(resp.Request.URL.Path, resp.StatusCode, string(bodyBytes)) {
