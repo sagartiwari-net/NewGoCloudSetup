@@ -148,7 +148,6 @@ Verified on an access link. Each tool is listed once.
 Built with the batch. Not verified on an access link yet.
 
 - [ ] `airbrush` (:5181)
-- [ ] `artistly` (:4821)
 - [ ] `closerscopy` (:5241)
 - [ ] `copyspace` (:4741)
 - [ ] `cramly` (:4841)
@@ -187,6 +186,7 @@ Built with the batch. Not verified on an access link yet.
 
 Opened on the proxy. Leave these until the note below is cleared.
 
+- [ ] `artistly` (:4821) — **Parked** (2026-10-10). `https://app.artistly.ai`, home `/ai/ai-image-designer`. The shell opens, then scripts are still requested from the official host (`app.artistly.ai/build/assets`, CORS, 0 kB, initiator `about:client`). The same files later 200 from the proxy. Already tried: host rewrite in HTML/JS, and rewriting the `Link` preload header (`ce3b4aa`). A real login page switches accounts or shows contact-admin; status stays unchanged. Leave until later.
 - [ ] `branalyzer` (:5081) — **Parked** (home loads). Be Curious still shows the snack “Introduce any valid URL or domain” on `branalyzer.gt4rents.com`. The same patch (`59905db`) worked locally. Resume: compare the server `main.js` patch and searchText/DOM with local, wipe `cdn-cache`, hard-refresh.
 - [ ] `chatbotapp` (:5061) — **Parked** (home and chats list OK). `POST /api/v2/chat` still returns 4002 `x_token header is required` (`91f9ad8` inject). Resume: confirm the panel GoAuto account has IndexedDB `stsTokenManager`, and check `[CHATBOT] api auth OK` in `app.log`.
 - [ ] `copywritely` (:4521) — **In progress** (2026-10-08). Target `https://copywritely.com`, home `/tools/`. Sign-in popup (`login_popup`) is treated as logout: Analytics Logouts, one account switch, then contact-admin. Status stays unchanged. Still open: confirm POST `/tools/copywritely/*` and the highlighter worker (`/wp-content/.../js`, `.map`) are not blocked by `device_required`.
