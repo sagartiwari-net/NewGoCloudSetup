@@ -109,6 +109,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `answerthepublic` (:4931) — **HTTPS OK** (2026-10-07): panel access + disk CDN cache (`60c3335`)
 - [x] `cgpt` — ChatGPT (:5151) — **HTTPS OK** (panel access-link). Prefer **ChatGPT 1** (ID:65). ChatGPT 2 cookies are flaky (`no_access_token` / login wall) — refresh that account in the panel when free.
 - [x] `clud` — Claude AI (:5171) — **HTTPS OK** (`claude-v32-name`): Proxy Manager + bootstrap decompress + user-menu hide + panel username on footer
+- [x] `closerscopy` (:5241) — **HTTPS OK** (2026-10-10): `www.closerscopy.com`, home `/dashboard`. Fat browser cookie is slimmed so the header limit is not hit. Sign-in switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only `.dropdown-menu[aria-labelledby="navbarDropdown"]`; the toggle stays and shows the panel username. Editor `/editor/save` keeps the CSRF token so text stays after refresh.
 - [x] `cnva` — Canva (:4501) — **HTTPS OK** (2026-10-07): panel access-link working
 - [x] `coursera` (:4701) — **HTTPS OK** (2026-10-10): `www.coursera.org`, home `/organizations/reliance-family`. `X-Forwarded-Host` is not forwarded (CloudFront 403). Header Log In (`header-login-button`) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only `#authenticated-info-menu` and `button[data-e2e="header-profile"]`. Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
 - [x] `envt` — Envato (:5261) — Download count OK on HTTP; re-verify after SSL
@@ -148,7 +149,6 @@ Verified on an access link. Each tool is listed once.
 Built with the batch. Not verified on an access link yet.
 
 - [ ] `airbrush` (:5181)
-- [ ] `closerscopy` (:5241)
 - [ ] `copyspace` (:4741)
 - [ ] `cramly` (:4841)
 - [ ] `creattie` (:4861)
