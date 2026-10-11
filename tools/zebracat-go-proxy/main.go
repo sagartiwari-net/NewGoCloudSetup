@@ -2504,12 +2504,6 @@ func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]s
 		addPair("https://"+targetParsed.Host, publicBase)
 		addPair("http://"+targetParsed.Host, publicBase)
 	}
-	// The video editor is a second SPA. Its project URL is /{id}, so it must
-	// stay on this origin instead of /extra-cdn-N/{id}, which hides the id.
-	if strings.Contains(strings.ToLower(cfg.TargetURL), "zebracat.ai") {
-		addPair("https://editor.zebracat.ai", publicBase)
-		addPair("http://editor.zebracat.ai", publicBase)
-	}
 	if cdnParsed != nil && (targetParsed == nil || cdnParsed.Host != targetParsed.Host) {
 		addPair("https://"+cdnParsed.Host, publicBase+"/cdn-proxy")
 		addPair("http://"+cdnParsed.Host, publicBase+"/cdn-proxy")
@@ -2895,8 +2889,6 @@ func patcherScript(cfg Config) string {
         u = u.split('http://coda.grammarly.com').join(O);
         u = u.split('wss://coda.grammarly.com').join(WS_O);
         u = u.split('ws://coda.grammarly.com').join(WS_O);
-        u = u.split('https://editor.zebracat.ai').join(O);
-        u = u.split('http://editor.zebracat.ai').join(O);
         u = u.replace(/(https?:)?\/\/([a-z0-9.-]+\.digitaloceanspaces\.com)(?::\d+)?(?=\/|$)/gi, function(match, proto, host) {
             return O + '/ext-host/' + host;
         });
@@ -3855,13 +3847,25 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamURL.Host = targetParsed.Host
 	zebracatEditor := false
 	if strings.Contains(strings.ToLower(cfg.TargetURL), "zebracat.ai") {
-		// Old editor links landed on /extra-cdn-1/{projectId} and the editor
-		// reads the id from the first path segment, so the page stayed blank.
+		// The editor only loads a project on its own host. Serving /1119893
+		// on the proxy returns 403 from the project API.
 		if m := zebracatExtraProjectPath.FindStringSubmatch(path); m != nil {
-			http.Redirect(w, r, "/"+m[1]+r.URL.RequestURI()[len(path):], http.StatusFound)
+			dest := "https://editor.zebracat.ai/" + m[1]
+			if r.URL.RawQuery != "" {
+				dest += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, dest, http.StatusFound)
 			return
 		}
-		if zebracatProjectPath.MatchString(path) || strings.HasPrefix(path, "/data/") || zebracatEditorReferer(r) {
+		if zebracatProjectPath.MatchString(path) {
+			dest := "https://editor.zebracat.ai" + path
+			if r.URL.RawQuery != "" {
+				dest += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, dest, http.StatusFound)
+			return
+		}
+		if strings.HasPrefix(path, "/data/") || zebracatEditorReferer(r) {
 			upstreamURL.Scheme = "https"
 			upstreamURL.Host = "editor.zebracat.ai"
 			zebracatEditor = true
