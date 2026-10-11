@@ -2518,6 +2518,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if ent := getStaticCached(r.Method, requestCachePath(r)); ent != nil {
+		serveStaticCached(w, r, ent)
+		return
+	}
+
 	// ── 3. Get active account for this session ────────────────────────────────────
 	sessionToken := ""
 	if c, err := r.Cookie("ct_session"); err == nil {
@@ -3095,6 +3100,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
 			}
+			if strings.Contains(contentType, "text/css") {
+				putStaticCached(r.Method, requestCachePath(r), upstreamResp.StatusCode, contentType, "", bodyBytes)
+			}
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
 			return
@@ -3102,6 +3110,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 11. Pass through everything else ─────────────────────────────────────────
+	if isCacheableStaticPath(requestCachePath(r)) && upstreamResp.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(upstreamResp.Body)
+		if err == nil {
+			ce := upstreamResp.Header.Get("Content-Encoding")
+			putStaticCached(r.Method, requestCachePath(r), upstreamResp.StatusCode, contentType, ce, body)
+			if ce != "" {
+				w.Header().Set("Content-Encoding", ce)
+			}
+			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+			w.WriteHeader(upstreamResp.StatusCode)
+			_, _ = w.Write(body)
+			return
+		}
+	}
 	if shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
@@ -3198,6 +3220,7 @@ func main() {
 	startDailyResetCron()
 	logIndexedDBSession(cfg.CookieFile)
 	warmCFCookies(cfg)
+	startCDNCacheSweep()
 
 	mux := http.NewServeMux()
 
