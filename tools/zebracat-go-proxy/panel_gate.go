@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -9,6 +8,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +33,6 @@ var (
 	panelDBErr  error
 	panelSess   sync.Map
 )
-
 
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
@@ -285,7 +284,14 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		seen = clientIP
 	}
 	recordPanelLogin(db, domain, username, sessionToken, seen, r.UserAgent(), sessionExpiry, accID)
+	// Host-only cookie would not be sent to editor-zebracat.gt4rents.com.
 	http.SetCookie(w, &http.Cookie{
+		Name:   "ct_session",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
+	sessCookie := &http.Cookie{
 		Name:     "ct_session",
 		Value:    sessionToken,
 		Path:     "/",
@@ -293,7 +299,11 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		HttpOnly: true,
 		Secure:   cookieSecure(r, cfg),
 		SameSite: http.SameSiteLaxMode,
-	})
+	}
+	if strings.HasSuffix(strings.ToLower(cfg.PublicHost), ".gt4rents.com") {
+		sessCookie.Domain = ".gt4rents.com"
+	}
+	http.SetCookie(w, sessCookie)
 	log.Printf("[PANEL] access granted user=%s product=%s", username, productID)
 	renderPanelLoadingPage(w, cfg)
 }
@@ -418,7 +428,6 @@ func toolDisplayName(cfg Config) string {
 	return name
 }
 
-
 func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
 		writeLightCard(w, http.StatusBadGateway, lightCard{
@@ -515,7 +524,6 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 </body>
 </html>`, html.EscapeString(card.Title), spinClass, html.EscapeString(card.Heading), card.Message, badge, footer, redirect)
 }
-
 
 func cookieSecure(r *http.Request, cfg Config) bool {
 	// Pre-SSL: overlays use public_scheme=http. Never mark cookies Secure or CF X-Forwarded-Proto=https drops them on http:// pages.

@@ -1326,10 +1326,13 @@ func patchZebracatEditorJS(body []byte) []byte {
 	// The editor logo uses this helper. Localhost is not in its host list,
 	// so it falls through to https://studio.zebracat.ai/.
 	dashOld := []byte(`function getDashboardUrlForCurrentDomain(){if(typeof window>"u")return DEFAULT_DASHBOARD_URL;const A=window.location.hostname.toLowerCase();return`)
-	dashNeu := []byte(`function getDashboardUrlForCurrentDomain(){if(typeof window>"u")return DEFAULT_DASHBOARD_URL;const A=window.location.hostname.toLowerCase();if(A==="localhost"||A==="127.0.0.1")return window.location.origin+"/";return`)
+	dashNeu := []byte(`function getDashboardUrlForCurrentDomain(){if(typeof window>"u")return DEFAULT_DASHBOARD_URL;const A=window.location.hostname.toLowerCase();if(A==="localhost"||A==="127.0.0.1"||A==="editor-zebracat.gt4rents.com")return "https://zebracat.gt4rents.com/";return`)
 	if bytes.Contains(body, dashOld) {
 		body = bytes.ReplaceAll(body, dashOld, dashNeu)
 	}
+	// The editor only treats its own host as logged-in. Keep that check, but
+	// on our mapped host, not the official editor.zebracat.ai.
+	body = bytes.ReplaceAll(body, []byte("editor.zebracat.ai"), []byte("editor-zebracat.gt4rents.com"))
 	return body
 }
 
@@ -1337,6 +1340,24 @@ var (
 	zebracatProjectPath      = regexp.MustCompile(`^/\d+/?$`)
 	zebracatExtraProjectPath = regexp.MustCompile(`^/extra-cdn-\d+/(\d+)/?$`)
 )
+
+const zebracatEditorPublicHost = "editor-zebracat.gt4rents.com"
+
+func zebracatRequestHost(r *http.Request) string {
+	h := r.Host
+	if xf := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); xf != "" {
+		h = strings.TrimSpace(strings.Split(xf, ",")[0])
+	}
+	h = strings.ToLower(strings.TrimSpace(h))
+	if i := strings.Index(h, ":"); i >= 0 {
+		h = h[:i]
+	}
+	return h
+}
+
+func zebracatOnEditorHost(r *http.Request) bool {
+	return zebracatRequestHost(r) == zebracatEditorPublicHost
+}
 
 func zebracatEditorReferer(r *http.Request) bool {
 	ref := r.Referer()
@@ -2539,6 +2560,13 @@ func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]s
 		addPair("wss://coda.grammarly.com", wsBase)
 		addPair("ws://coda.grammarly.com", wsBase)
 	}
+	if strings.Contains(strings.ToLower(cfg.TargetURL), "zebracat.ai") {
+		editorBase := publicScheme + "://" + zebracatEditorPublicHost
+		addPair("https://editor.zebracat.ai", editorBase)
+		addPair("http://editor.zebracat.ai", editorBase)
+		addPair("wss://editor.zebracat.ai", "wss://"+zebracatEditorPublicHost)
+		addPair("ws://editor.zebracat.ai", "wss://"+zebracatEditorPublicHost)
+	}
 	return pairs
 }
 
@@ -2906,7 +2934,16 @@ func patcherScript(cfg Config) string {
                 u = u.split(from).join(O + to);
             }
         }
-        u = u.replace('https://'+T, O).replace('http://'+T, O);
+        if (T.indexOf('zebracat.ai') !== -1) {
+            u = u.split('https://editor.zebracat.ai').join('https://editor-zebracat.gt4rents.com');
+            u = u.split('http://editor.zebracat.ai').join('https://editor-zebracat.gt4rents.com');
+            u = u.split('wss://editor.zebracat.ai').join('wss://editor-zebracat.gt4rents.com');
+            u = u.split('ws://editor.zebracat.ai').join('wss://editor-zebracat.gt4rents.com');
+            u = u.split('https://'+T).join('https://zebracat.gt4rents.com');
+            u = u.split('http://'+T).join('https://zebracat.gt4rents.com');
+        } else {
+            u = u.replace('https://'+T, O).replace('http://'+T, O);
+        }
         if (C && C !== T) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
         // Dynamic chunk-composing hosts (any TLD / mangled IP-derived host)
         if (CHUNK_COMPOSE) {
@@ -2976,6 +3013,16 @@ func patcherScript(cfg Config) string {
     // ── XHR patch ──
     var xo = XMLHttpRequest.prototype.open;
     var xs = XMLHttpRequest.prototype.send;
+    var xh = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+        if (String(name).toLowerCase() === 'authorization') this.__tmAuth = true;
+        return xh.apply(this, arguments);
+    };
+    function zebracatToken() {
+        var m = document.cookie.match(/(?:^|; )token=([^;]*)/);
+        if (!m || !m[1] || m[1] === 'null') return '';
+        try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
+    }
     XMLHttpRequest.prototype.open = function(m, u) {
         this.__canvaNoise = isNoiseURL(u);
         this.__canvaURL = String(u || '');
@@ -2995,6 +3042,10 @@ func patcherScript(cfg Config) string {
         }
         var args = arguments;
         var xhr = this;
+        if (T.indexOf('zebracat.ai') !== -1 && !xhr.__tmAuth && /\/extra-cdn-0\//.test(xhr.__canvaURL || '')) {
+            var zeTok = zebracatToken();
+            if (zeTok) { try { xhr.setRequestHeader('Authorization', 'Bearer ' + zeTok); } catch (e) {} }
+        }
         if (!shouldRetry429(xhr.__canvaURL)) {
             return xs.apply(xhr, args);
         }
@@ -3033,6 +3084,16 @@ func patcherScript(cfg Config) string {
         }
         if (typeof inp === 'string') inp = patchURL(inp);
         else if (inp instanceof Request) inp = new Request(patchURL(inp.url), inp);
+        if (T.indexOf('zebracat.ai') !== -1) {
+            var zeURL = typeof inp === 'string' ? inp : (inp && inp.url) || '';
+            var zeTok = zebracatToken();
+            if (zeTok && zeURL.indexOf('/extra-cdn-0/') !== -1) {
+                init = init ? Object.assign({}, init) : {};
+                var zeH = new Headers(init.headers || {});
+                if (!zeH.has('Authorization')) zeH.set('Authorization', 'Bearer ' + zeTok);
+                init.headers = zeH;
+            }
+        }
         var finalURL = typeof inp === 'string' ? inp : (inp && inp.url) || urlStr;
         var doFetch = function() { return fo(inp, init); };
         var runner = shouldRetry429(finalURL) ? function() { return ajaxSlot(doFetch); } : doFetch;
@@ -3847,25 +3908,27 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamURL.Host = targetParsed.Host
 	zebracatEditor := false
 	if strings.Contains(strings.ToLower(cfg.TargetURL), "zebracat.ai") {
-		// The editor only loads a project on its own host. Serving /1119893
-		// on the proxy returns 403 from the project API.
-		if m := zebracatExtraProjectPath.FindStringSubmatch(path); m != nil {
-			dest := "https://editor.zebracat.ai/" + m[1]
+		// editor.zebracat.ai is mapped to editor-zebracat.gt4rents.com.
+		// The project stays on our domain. The browser is not sent to the official editor.
+		if zebracatOnEditorHost(r) {
+			upstreamURL.Scheme = "https"
+			upstreamURL.Host = "editor.zebracat.ai"
+			zebracatEditor = true
+		} else if m := zebracatExtraProjectPath.FindStringSubmatch(path); m != nil {
+			dest := "https://" + zebracatEditorPublicHost + "/" + m[1]
 			if r.URL.RawQuery != "" {
 				dest += "?" + r.URL.RawQuery
 			}
 			http.Redirect(w, r, dest, http.StatusFound)
 			return
-		}
-		if zebracatProjectPath.MatchString(path) {
-			dest := "https://editor.zebracat.ai" + path
+		} else if zebracatProjectPath.MatchString(path) {
+			dest := "https://" + zebracatEditorPublicHost + path
 			if r.URL.RawQuery != "" {
 				dest += "?" + r.URL.RawQuery
 			}
 			http.Redirect(w, r, dest, http.StatusFound)
 			return
-		}
-		if strings.HasPrefix(path, "/data/") || zebracatEditorReferer(r) {
+		} else if strings.HasPrefix(path, "/data/") || zebracatEditorReferer(r) {
 			upstreamURL.Scheme = "https"
 			upstreamURL.Host = "editor.zebracat.ai"
 			zebracatEditor = true
@@ -4206,7 +4269,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		upstreamReq.Header.Set("Referer", targetBase+"/")
 	}
-	if upstreamReq.Host == "editor.zebracat.ai" {
+	if upstreamReq.Host == "editor.zebracat.ai" || (zebracatOnEditorHost(r) && isExtraCDN) {
 		upstreamReq.Header.Set("Origin", "https://editor.zebracat.ai")
 		upstreamReq.Header.Set("Referer", "https://editor.zebracat.ai/")
 	}
