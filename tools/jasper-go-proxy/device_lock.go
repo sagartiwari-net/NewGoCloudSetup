@@ -101,6 +101,11 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if browserSubresource(r) {
 		return false
 	}
+	// The browser WebSocket API cannot send X-Device-Fp. Jasper's canvas
+	// (mage.jasper.ai) opens that socket, and blocking it shows "Failed to load Project".
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return false
+	}
 	if fp == "" && proof == "" {
 		// A normal refresh is a document load and cannot send the device headers.
 		// The page script checks this browser's saved proof. Images and files cannot
@@ -229,7 +234,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -502,7 +506,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())

@@ -2301,7 +2301,7 @@ type bufferedConn struct {
 
 func (b *bufferedConn) Read(p []byte) (int, error) { return b.reader.Read(p) }
 
-func proxyWebSocket(w http.ResponseWriter, r *http.Request, upstreamURL url.URL, cookieStr string, userAgent string, cfg Config, accountProxy string) {
+func proxyWebSocket(w http.ResponseWriter, r *http.Request, upstreamURL url.URL, cookieStr string, userAgent string, cfg Config, accountProxy string, bearer string) {
 	upstreamAddr := upstreamURL.Host
 	useTLS := upstreamURL.Scheme == "https" || upstreamURL.Scheme == "wss"
 	if !strings.Contains(upstreamAddr, ":") {
@@ -2353,6 +2353,9 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request, upstreamURL url.URL,
 	}
 	if userAgent != "" {
 		reqBuf.WriteString(fmt.Sprintf("User-Agent: %s\r\n", userAgent))
+	}
+	if bearer != "" {
+		reqBuf.WriteString("Authorization: Bearer " + bearer + "\r\n")
 	}
 	origin := strings.TrimRight(cfg.TargetURL, "/")
 	reqBuf.WriteString(fmt.Sprintf("Origin: %s\r\n", origin))
@@ -2753,15 +2756,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Header.Set("Cookie", accountCookieStr)
 	}
 
-	// ── WebSocket upgrade: hijack and bidirectionally pipe ───────────────────────
-	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		ua := activeAcc.UserAgent
-		if ua == "" {
-			ua = cfg.UserAgent
-		}
-		proxyWebSocket(w, r, upstreamURL, accountCookieStr, ua, cfg, activeAcc.Proxy)
-		return
-	}
 	ua := activeAcc.UserAgent
 	if ua == "" {
 		ua = cfg.UserAgent
@@ -2770,8 +2764,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Header.Set("User-Agent", ua)
 	}
 
-	// Jasper API hosts expect Firebase Bearer when browser hasn't attached it yet
+	// Jasper API hosts expect Firebase Bearer when browser hasn't attached it yet.
+	// The canvas socket needs the same token, and it is decided before the upgrade.
 	firebaseRaw := ""
+	bearer := ""
 	if !staticFast {
 		firebaseRaw = activeAcc.Cookie
 		if usesPanelAccountMode(cfg) && isIndexedDBSession(firebaseRaw) {
@@ -2798,8 +2794,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			strings.Contains(hostL, "copilot.jasper.ai") ||
 			(strings.HasSuffix(hostL, "jasper.ai") && !strings.HasPrefix(path, "/assets/")))
 		if needsBearer && upstreamReq.Header.Get("Authorization") == "" {
+			bearer = tok
 			upstreamReq.Header.Set("Authorization", "Bearer "+tok)
 		}
+	}
+
+	// ── WebSocket upgrade: hijack and bidirectionally pipe ───────────────────────
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		proxyWebSocket(w, r, upstreamURL, accountCookieStr, ua, cfg, activeAcc.Proxy, bearer)
+		return
 	}
 
 	// Set upstream host header
