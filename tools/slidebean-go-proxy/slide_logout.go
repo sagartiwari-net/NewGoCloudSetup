@@ -216,3 +216,8 @@ func slideLoginWatchHTML() string {
 })();
 </script>`
 }
+
+func slideAccountHideHTML() string {
+	const css = `sb-account-dropdown{display:none!important}`
+	return `<style id="tm-slide-hide">` + css + `</style><script>(function(){var css=` + "`" + css + "`" + `;function ensure(){if(document.getElementById("tm-slide-hide"))return;var s=document.createElement("style");s.id="tm-slide-hide";s.textContent=css;(document.head||document.documentElement).appendChild(s);}ensure();setInterval(ensure,1000);})();</script>`
+}
