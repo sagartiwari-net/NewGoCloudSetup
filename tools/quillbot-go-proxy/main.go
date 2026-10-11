@@ -3131,6 +3131,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if usesPanelAccountMode(cfg) && strings.Contains(strings.ToLower(cfg.TargetURL), "jasper.ai") {
 			injectStr += jasperChromeHTML(currentUser)
 		}
+		if usesPanelAccountMode(cfg) && strings.Contains(strings.ToLower(cfg.TargetURL), "quillbot.com") {
+			injectStr += quillbotChromeHTML(currentUser)
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 		}

@@ -75,3 +75,17 @@ func TestGateQuillbotBootHoldsAppScripts(t *testing.T) {
 		t.Fatal("json-ld script should stay")
 	}
 }
+
+func TestQuillbotChromeTargetsExactNodes(t *testing.T) {
+	html := quillbotChromeHTML("sagar")
+	for _, needle := range []string{
+		`.MuiPopover-paper:has([data-testid="logout-option"])`,
+		`p.MuiTypography-bodyMedium`,
+		`div.MuiTypography-subtitleMedium.MuiTypography-noWrap`,
+		`"sagar"`,
+	} {
+		if !strings.Contains(html, needle) {
+			t.Fatalf("missing %s", needle)
+		}
+	}
+}
