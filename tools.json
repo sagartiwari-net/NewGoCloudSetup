@@ -570,6 +570,13 @@
       "subdomain": "gptzero",
       "port": 5301,
       "fqdn": "gptzero.gt4rents.com"
+    },
+    {
+      "tool": "quillbot",
+      "folder": "quillbot-go-proxy",
+      "subdomain": "quillbot",
+      "port": 5311,
+      "fqdn": "quillbot.gt4rents.com"
     }
   ]
 }

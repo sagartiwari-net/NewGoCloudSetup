@@ -128,7 +128,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified
 - [x] `ilovepdf` (:4531) — **HTTPS OK** (2026-10-07): force `www.ilovepdf.com`; HTTP/1.1-only TLS (h2→h1 fallback caused malformed SETTINGS → 502)
 - [x] `imgupscaler` (:5091) — **HTTPS OK** (2026-10-11): `imgupscaler.com`. A logged-out header (Log in and Sign up) switches accounts once or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only the header account menu and the mobile account block (Account, Billing, Sign out).
-- [x] `jasper` (:4511) — **HTTPS OK** (2026-10-11): `app.jasper.ai`. Login is the saved Firebase session, either the GoAuto export or a bare `firebaseLocalStorageDb` dump. Hide only the profile menu (Your Profile, Trash, Help, Logout). The sidebar name and the workspace label are the panel username. Canvas opens through the mage websocket. Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
+- [x] `jasper` (:4511) — **HTTPS OK** (2026-10-11): `app.jasper.ai`. Login is the saved Firebase session, either the GoAuto export or a bare `firebaseLocalStorageDb` dump. Hide only the profile menu (Your Profile, Trash, Help, Logout). The sidebar name and the workspace label are the panel username. Canvas opens through the mage websocket, and generating an article from a topic works. Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
 - [x] `joggai` (:5031) — **HTTPS OK** (2026-10-11): `app.jogg.ai`, home `/home`. A sign-in wall (Welcome to JoggAI) switches accounts once or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only the header account menu and the 24px circular avatar.
 - [x] `junglescout` (:5211) — **HTTPS OK** (2026-10-06): panel access working
 - [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): panel access working
@@ -168,6 +168,7 @@ Verified on an access link. Each tool is listed once.
 
 Built with the batch. Not verified on an access link yet.
 
+- [ ] `quillbot` (:5311) — `https://quillbot.com`. Login is the saved Firebase session, either the GoAuto export or a bare `firebaseLocalStorageDb` dump. Paste that cookie on the panel account. Not verified on an access link yet.
 - [ ] `heliumlearning` (:5221)
 - [ ] `indexification` (:5231)
 - [ ] `merchinformer` (:4651)
