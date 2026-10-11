@@ -29,18 +29,12 @@ func syntxLogoutPath(path string) bool {
 		p = p[:i]
 	}
 	p = strings.TrimSuffix(p, "/")
-	if p == "/__tm/logout" {
-		return true
+	// API routes such as /api/v1/auth/google/login are the login button, not a logged-out page.
+	if strings.Contains(p, "/api/") || strings.HasPrefix(p, "/extra-cdn-") || strings.HasPrefix(p, "/ext-host/") {
+		return false
 	}
-	switch {
-	case strings.Contains(p, "/login"),
-		strings.Contains(p, "/sign-in"),
-		strings.Contains(p, "/signin"),
-		strings.Contains(p, "/signup"),
-		strings.Contains(p, "/sign-up"),
-		strings.Contains(p, "/logout"),
-		strings.Contains(p, "/register"),
-		strings.Contains(p, "/forgot"):
+	switch p {
+	case "/__tm/logout", "/login", "/signin", "/sign-in", "/signup", "/sign-up", "/logout", "/register", "/forgot", "/forgot-password":
 		return true
 	}
 	return false
