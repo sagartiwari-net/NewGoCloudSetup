@@ -528,12 +528,13 @@ func startDailyResetCron() {
 // ── ACCOUNT SYSTEM ────────────────────────────────────────────────────────────
 
 type ToolAccount struct {
-	ID        int
-	Name      string
-	Cookie    string
-	UserAgent string
-	Proxy     string
-	ShowLimit bool
+	ID           int
+	Name         string
+	Cookie       string
+	LocalStorage string
+	UserAgent    string
+	Proxy        string
+	ShowLimit    bool
 }
 
 func selectActiveAccount() (ToolAccount, error) {
@@ -746,6 +747,53 @@ func parseCookieFromDB(raw string) string {
 
 // localStorageJSONFromFile reads a GoAuto dump. referer is optional.
 // Supports {"storage":{"localStorage":{...}}} with or without includedFormats.
+func localStorageJSONFromRaw(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.HasPrefix(raw, "{") {
+		return ""
+	}
+	var wrap struct {
+		LocalStorage map[string]any `json:"localStorage"`
+		Storage      struct {
+			LocalStorage map[string]any `json:"localStorage"`
+		} `json:"storage"`
+	}
+	if err := json.Unmarshal([]byte(raw), &wrap); err != nil {
+		return ""
+	}
+	src := wrap.Storage.LocalStorage
+	if len(src) == 0 {
+		src = wrap.LocalStorage
+	}
+	if len(src) == 0 {
+		return ""
+	}
+	flat := make(map[string]string, len(src))
+	for k, v := range src {
+		if v == nil {
+			continue
+		}
+		switch t := v.(type) {
+		case string:
+			flat[k] = t
+		default:
+			b, err := json.Marshal(t)
+			if err != nil {
+				continue
+			}
+			flat[k] = string(b)
+		}
+	}
+	if len(flat) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(flat)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
 func localStorageJSONFromFile(path string) string {
 	if strings.TrimSpace(path) == "" {
 		return ""
@@ -754,19 +802,7 @@ func localStorageJSONFromFile(path string) string {
 	if err != nil || len(data) == 0 {
 		return ""
 	}
-	var wrap struct {
-		Storage struct {
-			LocalStorage map[string]string `json:"localStorage"`
-		} `json:"storage"`
-	}
-	if err := json.Unmarshal(data, &wrap); err != nil || len(wrap.Storage.LocalStorage) == 0 {
-		return ""
-	}
-	b, err := json.Marshal(wrap.Storage.LocalStorage)
-	if err != nil {
-		return ""
-	}
-	return string(b)
+	return localStorageJSONFromRaw(string(data))
 }
 
 func buildMinvoLocalStorageInject(lsJSON string) string {
@@ -3565,7 +3601,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Minvo auth is localStorage (auth_jwt + cognito token). Must run before the app boots.
-		if ls := buildMinvoLocalStorageInject(localStorageJSONFromFile(cfg.CookieFile)); ls != "" {
+		lsJSON := activeAcc.LocalStorage
+		if lsJSON == "" {
+			lsJSON = localStorageJSONFromFile(cfg.CookieFile)
+		}
+		if ls := buildMinvoLocalStorageInject(lsJSON); ls != "" {
 			if loc := regexp.MustCompile(`(?i)<head[^>]*>`).FindIndex(bodyBytes); loc != nil {
 				out := make([]byte, 0, len(bodyBytes)+len(ls)+8)
 				out = append(out, bodyBytes[:loc[1]]...)

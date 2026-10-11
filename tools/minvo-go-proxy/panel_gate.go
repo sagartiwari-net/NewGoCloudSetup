@@ -375,8 +375,10 @@ func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 		return ToolAccount{}, err
 	}
 	acc.ShowLimit = showLimit == 1
-	acc.Cookie = parseCookieFromDB(acc.Cookie)
-	if strings.TrimSpace(acc.Cookie) == "" {
+	raw := acc.Cookie
+	acc.LocalStorage = localStorageJSONFromRaw(raw)
+	acc.Cookie = parseCookieFromDB(raw)
+	if strings.TrimSpace(acc.Cookie) == "" && acc.LocalStorage == "" {
 		return ToolAccount{}, fmt.Errorf("mapped account cookie is empty")
 	}
 	return acc, nil
