@@ -4,6 +4,10 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Providers } from "@/components/providers"
 import "./globals.css"
 
+// The panel is a login app. A year-long static cache kept the previous
+// HTML, which then asked for chunk files the new build had deleted.
+export const dynamic = "force-dynamic"
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
