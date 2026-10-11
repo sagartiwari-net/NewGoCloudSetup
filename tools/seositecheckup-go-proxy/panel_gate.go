@@ -94,7 +94,7 @@ func openPanelDB(cfg Config) (*sql.DB, error) {
 	panelDBOnce.Do(func() {
 		path := resolvePanelDBPath(cfg)
 		log.Printf("[PANEL] opening Update Panel DB for cookies path=%s", path)
-		panelDB, panelDBErr = sql.Open("sqlite", panelSQLiteDSN(path))
+		panelDB, panelDBErr = sql.Open("mysql", panelMySQLDSN(loadConfig()))
 		if panelDBErr != nil {
 			return
 		}
@@ -648,4 +648,28 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 %s
 </body>
 </html>`, html.EscapeString(card.Title), spinClass, html.EscapeString(card.Heading), card.Message, badge, footer, redirect)
+}
+
+func panelMySQLDSN(cfg Config) string {
+	host := strings.TrimSpace(cfg.MySQLHost)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(cfg.MySQLPort)
+	if port == "" {
+		port = "3306"
+	}
+	user := strings.TrimSpace(cfg.MySQLUser)
+	if user == "" {
+		user = "gt4rents"
+	}
+	name := strings.TrimSpace(cfg.MySQLDB)
+	if name == "" {
+		name = "gt4rents"
+	}
+	pass := cfg.MySQLPassword
+	if pass == "" {
+		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
+	}
+	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

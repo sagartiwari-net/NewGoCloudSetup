@@ -188,7 +188,7 @@ func ensureResellers(db *sql.DB) {
 			if err != nil {
 				continue
 			}
-			_, _ = db.Exec(`INSERT OR IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
+			_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
 			ownSites = append(ownSites, websiteID)
 		}
 		for _, websiteID := range ownSites {
@@ -214,6 +214,6 @@ func attachRoute(db *sql.DB, websiteID int, destIDs []int) {
 		routeID, _ = res.LastInsertId()
 	}
 	for _, destID := range destIDs {
-		_, _ = db.Exec(`INSERT OR IGNORE INTO telegram_route_chats (route_id, destination_id) VALUES (?,?)`, routeID, destID)
+		_, _ = db.Exec(`INSERT IGNORE INTO telegram_route_chats (route_id, destination_id) VALUES (?,?)`, routeID, destID)
 	}
 }

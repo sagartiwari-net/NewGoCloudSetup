@@ -43,7 +43,15 @@ fi
 
 cd "${PANEL}"
 # TOOL_PUBLIC_SCHEME from mysql.env (http now; https after SSL) for access-link URLs
-nohup env PANEL_API_ADDR="${ADDR}" TOOL_PUBLIC_SCHEME="${TOOL_PUBLIC_SCHEME:-http}" ./panel-api >>"${LOG}" 2>&1 &
+nohup env \
+  PANEL_API_ADDR="${ADDR}" \
+  TOOL_PUBLIC_SCHEME="${TOOL_PUBLIC_SCHEME:-http}" \
+  GT4RENTS_MYSQL_PASSWORD="${GT4RENTS_MYSQL_PASSWORD:-}" \
+  GT4RENTS_MYSQL_HOST="${GT4RENTS_MYSQL_HOST:-127.0.0.1}" \
+  GT4RENTS_MYSQL_PORT="${GT4RENTS_MYSQL_PORT:-3306}" \
+  GT4RENTS_MYSQL_USER="${GT4RENTS_MYSQL_USER:-gt4rents}" \
+  GT4RENTS_MYSQL_DB="${GT4RENTS_MYSQL_DB:-gt4rents}" \
+  ./panel-api >>"${LOG}" 2>&1 &
 echo $! >"${PIDF}"
 sleep 1
 if ! kill -0 "$(cat "${PIDF}")" 2>/dev/null; then

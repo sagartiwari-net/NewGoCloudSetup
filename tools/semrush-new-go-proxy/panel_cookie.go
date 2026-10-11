@@ -52,8 +52,7 @@ func semrushPanelDBPath() string {
 func openSemrushPanel() (*sql.DB, error) {
 	semrushPanelOnce.Do(func() {
 		semrushPanelPath = semrushPanelDBPath()
-		dsn := panelSQLiteDSN(semrushPanelPath)
-		semrushPanel, semrushPanelErr = sql.Open("sqlite", dsn)
+		semrushPanel, semrushPanelErr = sql.Open("mysql", panelMySQLDSN(loadConfig()))
 		if semrushPanelErr == nil {
 			semrushPanel.SetMaxOpenConns(8)
 			semrushPanelErr = semrushPanel.Ping()
@@ -97,4 +96,28 @@ func panelSemrushCookie(publicHost string) string {
 	}
 	semrushPanelLogMu.Unlock()
 	return header
+}
+
+func panelMySQLDSN(cfg Config) string {
+	host := strings.TrimSpace(cfg.MySQLHost)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(cfg.MySQLPort)
+	if port == "" {
+		port = "3306"
+	}
+	user := strings.TrimSpace(cfg.MySQLUser)
+	if user == "" {
+		user = "gt4rents"
+	}
+	name := strings.TrimSpace(cfg.MySQLDB)
+	if name == "" {
+		name = "gt4rents"
+	}
+	pass := cfg.MySQLPassword
+	if pass == "" {
+		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
+	}
+	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

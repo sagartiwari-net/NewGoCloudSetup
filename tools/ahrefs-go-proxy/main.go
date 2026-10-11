@@ -267,6 +267,10 @@ func initDB(cfg Config) {
 	log.Printf("[DB] Connected to MySQL successfully! Database: %s ✅", cfg.MySQLDB)
 
 	// Auto-create tables if they don't exist
+	if strings.TrimSpace(cfg.PanelDB) != "" {
+		log.Printf("[DB] panel mode: skip legacy ahrefs_* table create")
+		return
+	}
 	tables := []string{
 		`CREATE TABLE IF NOT EXISTS ahrefs_accounts (
 			id INT AUTO_INCREMENT PRIMARY KEY,

@@ -338,13 +338,13 @@ func semrushRecordCredit(r *http.Request) {
 		id, _ := res.LastInsertId()
 		userID = int(id)
 	}
-	res, err := db.Exec(`UPDATE user_meters SET used = used + 1 WHERE user_id=? AND key='credits'`, userID)
+	res, err := db.Exec(`UPDATE user_meters SET used = used + 1 WHERE user_id=? AND "key"='credits'`, userID)
 	changed := int64(0)
 	if err == nil && res != nil {
 		changed, _ = res.RowsAffected()
 	}
 	if err != nil || changed == 0 {
-		_, _ = db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
+		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 			userID, "credits", "Credits", 1, 1, limit)
 	}
 	log.Printf("[LIMITS] credits +1 user=%s action=%s", user, hit.action)

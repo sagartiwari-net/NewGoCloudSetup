@@ -84,7 +84,7 @@ func panelDBPath() string {
 func openEnvatoPanel() (*sql.DB, error) {
 	envatoPanelOnce.Do(func() {
 		path := panelDBPath()
-		envatoPanel, envatoPanelErr = sql.Open("sqlite", panelSQLiteDSN(path))
+		envatoPanel, envatoPanelErr = sql.Open("mysql", panelMySQLDSN(loadConfig()))
 		if envatoPanelErr == nil {
 			envatoPanel.SetMaxOpenConns(1)
 			envatoPanelErr = envatoPanel.Ping()
@@ -869,7 +869,7 @@ func repeatAccessReason(db *sql.DB, username string, maxGapMinutes, hours, minOp
 
 func panelSettingInt(db *sql.DB, key string, fallback int) int {
 	var raw string
-	if err := db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&raw); err != nil {
+	if err := db.QueryRow(`SELECT value FROM settings WHERE "key"=?`, key).Scan(&raw); err != nil {
 		return fallback
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(raw))
@@ -1456,18 +1456,18 @@ func bumpEnvatoMeter(username string, view envatoLimitView) int {
 		id, _ := res.LastInsertId()
 		userID = int(id)
 	}
-	res, err := db.Exec(`UPDATE user_meters SET used = used + 1 WHERE user_id=? AND key='download'`, userID)
+	res, err := db.Exec(`UPDATE user_meters SET used = used + 1 WHERE user_id=? AND "key"='download'`, userID)
 	changed := int64(0)
 	if err == nil && res != nil {
 		changed, _ = res.RowsAffected()
 	}
 	if err != nil || changed == 0 {
-		_, _ = db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
+		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 			userID, "download", view.label, 1, view.used+1, view.limit)
 		return view.used + 1
 	}
 	var used int
-	_ = db.QueryRow(`SELECT used FROM user_meters WHERE user_id=? AND key='download'`, userID).Scan(&used)
+	_ = db.QueryRow(`SELECT used FROM user_meters WHERE user_id=? AND "key"='download'`, userID).Scan(&used)
 	return used
 }
 
@@ -1498,13 +1498,13 @@ func syncEnvatoPanelUser(username string, view envatoLimitView) {
 		limit = 10
 	}
 	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM user_meters WHERE user_id=? AND key='download'`, userID).Scan(&n)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM user_meters WHERE user_id=? AND "key"='download'`, userID).Scan(&n)
 	if n == 0 {
-		_, _ = db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
+		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 			userID, "download", "Download", 1, view.used, limit)
 		return
 	}
-	_, _ = db.Exec(`UPDATE user_meters SET used=?, "limit"=?, label='Download' WHERE user_id=? AND key='download' AND is_custom=0`, view.used, limit, userID)
+	_, _ = db.Exec(`UPDATE user_meters SET used=?, "limit"=?, label='Download' WHERE user_id=? AND "key"='download' AND is_custom=0`, view.used, limit, userID)
 }
 
 func envatoLimitWidgetScript() string {
@@ -1655,4 +1655,28 @@ func envatoLimitWidgetScript() string {
     setInterval(function(){ if (window.__tmDenied) return; updateBadge(); }, 4000);
 })();
 </script>`
+}
+
+func panelMySQLDSN(cfg Config) string {
+	host := strings.TrimSpace(cfg.MySQLHost)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(cfg.MySQLPort)
+	if port == "" {
+		port = "3306"
+	}
+	user := strings.TrimSpace(cfg.MySQLUser)
+	if user == "" {
+		user = "gt4rents"
+	}
+	name := strings.TrimSpace(cfg.MySQLDB)
+	if name == "" {
+		name = "gt4rents"
+	}
+	pass := cfg.MySQLPassword
+	if pass == "" {
+		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
+	}
+	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

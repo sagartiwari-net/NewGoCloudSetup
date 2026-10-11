@@ -388,14 +388,14 @@ func ahrefsSaveUsage(username string, hit ahrefsLimitHit) {
 		id, _ := res.LastInsertId()
 		userID = int(id)
 	}
-	res, err := db.Exec(`UPDATE user_meters SET used = used + ? WHERE user_id=? AND key=?`, hit.amount, userID, hit.key)
+	res, err := db.Exec(`UPDATE user_meters SET used = used + ? WHERE user_id=? AND "key"=?`, hit.amount, userID, hit.key)
 	changed := int64(0)
 	if err == nil && res != nil {
 		changed, _ = res.RowsAffected()
 	}
 	if err != nil || changed == 0 {
 		view, _, _ := ahrefsMeterView(username, hit.key, 0, hit.reset)
-		_, _ = db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
+		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 			userID, hit.key, hit.label, hit.reset, view.used+hit.amount, view.limit)
 	}
 	log.Printf("[LIMITS] %s +%d user=%s action=%s", hit.key, hit.amount, username, hit.action)

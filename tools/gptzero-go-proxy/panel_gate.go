@@ -61,7 +61,7 @@ func usesPanelAccountMode(cfg Config) bool {
 
 func openPanelDB(cfg Config) (*sql.DB, error) {
 	panelDBOnce.Do(func() {
-		panelDB, panelDBErr = sql.Open("sqlite", panelSQLiteDSN(cfg.PanelDB))
+		panelDB, panelDBErr = sql.Open("mysql", panelMySQLDSN(cfg))
 		if panelDBErr != nil {
 			return
 		}
@@ -537,4 +537,28 @@ func cookieSecure(r *http.Request, cfg Config) bool {
 		return true
 	}
 	return strings.EqualFold(cfg.PublicScheme, "https")
+}
+
+func panelMySQLDSN(cfg Config) string {
+	host := strings.TrimSpace(cfg.MySQLHost)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(cfg.MySQLPort)
+	if port == "" {
+		port = "3306"
+	}
+	user := strings.TrimSpace(cfg.MySQLUser)
+	if user == "" {
+		user = "gt4rents"
+	}
+	name := strings.TrimSpace(cfg.MySQLDB)
+	if name == "" {
+		name = "gt4rents"
+	}
+	pass := cfg.MySQLPassword
+	if pass == "" {
+		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
+	}
+	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

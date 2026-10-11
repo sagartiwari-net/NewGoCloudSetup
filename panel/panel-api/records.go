@@ -104,7 +104,7 @@ func (s *server) refreshLimits() {
 		fresh := time.Now().UTC().Format(time.RFC3339)
 		for _, key := range keys {
 			limit := user.defaults[key]
-			_, _ = s.db.Exec(`UPDATE user_meters SET "limit"=?, is_custom=0, used=0, period_start=? WHERE user_id=? AND key=?`, limit, fresh, user.id, key)
+			_, _ = s.db.Exec(`UPDATE user_meters SET "limit"=?, is_custom=0, used=0, period_start=? WHERE user_id=? AND "key"=?`, limit, fresh, user.id, key)
 		}
 		_, _ = s.db.Exec(`UPDATE user_meters SET used=0, period_start=? WHERE user_id=? AND is_custom=0`, fresh, user.id)
 		_, _ = s.db.Exec(`UPDATE panel_users SET custom_limit_expire_at=NULL WHERE id=?`, user.id)
@@ -236,7 +236,7 @@ func (s *server) userJSON(id int) map[string]any {
 	if err != nil {
 		return nil
 	}
-	rows, err := s.db.Query(`SELECT key, label, reset_days, used, "limit", is_custom FROM user_meters WHERE user_id=? ORDER BY id`, id)
+	rows, err := s.db.Query(`SELECT "key", label, reset_days, used, "limit", is_custom FROM user_meters WHERE user_id=? ORDER BY id`, id)
 	meters := []any{}
 	if err == nil {
 		for rows.Next() {
@@ -497,7 +497,7 @@ func (s *server) syncToolLimits(toolID int, previous, next []limitDef) {
 			}
 			continue
 		}
-		_, _ = s.db.Exec(`UPDATE user_meters SET label=?, reset_days=? WHERE key=? AND user_id IN (SELECT u.id FROM panel_users u JOIN websites w ON w.id=u.website_id WHERE w.tool_id=?)`,
+		_, _ = s.db.Exec(`UPDATE user_meters SET label=?, reset_days=? WHERE "key"=? AND user_id IN (SELECT u.id FROM panel_users u JOIN websites w ON w.id=u.website_id WHERE w.tool_id=?)`,
 			def.Label, def.ResetDays, def.Key, toolID)
 	}
 }
@@ -516,11 +516,11 @@ func (s *server) ensureDefaultMeter(websiteID int, def limitDef, limit int) {
 	rows.Close()
 	for _, id := range ids {
 		var n int
-		_ = s.db.QueryRow(`SELECT COUNT(*) FROM user_meters WHERE user_id=? AND key=?`, id, def.Key).Scan(&n)
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM user_meters WHERE user_id=? AND "key"=?`, id, def.Key).Scan(&n)
 		if n > 0 {
 			continue
 		}
-		_, _ = s.db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,0,?,0)`,
+		_, _ = s.db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,0,?,0)`,
 			id, def.Key, def.Label, def.ResetDays, limit)
 	}
 }
@@ -566,7 +566,7 @@ func (s *server) syncWebsiteLimits(websiteID int, defaults map[string]int) {
 		if limit < -1 {
 			continue
 		}
-		_, _ = s.db.Exec(`UPDATE user_meters SET "limit"=? WHERE key=? AND is_custom=0 AND user_id IN (SELECT id FROM panel_users WHERE website_id=?)`,
+		_, _ = s.db.Exec(`UPDATE user_meters SET "limit"=? WHERE "key"=? AND is_custom=0 AND user_id IN (SELECT id FROM panel_users WHERE website_id=?)`,
 			limit, key, websiteID)
 		if def, ok := known[key]; ok {
 			s.ensureDefaultMeter(websiteID, def, limit)
@@ -658,7 +658,7 @@ func (s *server) saveUser(w http.ResponseWriter, r *http.Request) {
 		if meter.Limit != defaults[meter.Key] || expire != nil {
 			custom = 1
 		}
-		_, _ = tx.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,?)`,
+		_, _ = tx.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,?)`,
 			userID, meter.Key, meta.Label, meta.Days, meter.Used, meter.Limit, custom)
 	}
 	if err := tx.Commit(); err != nil {
@@ -1393,7 +1393,7 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 		_, _ = tx.Exec(`DELETE FROM operator_websites WHERE operator_id=?`, id)
 	}
 	for _, websiteID := range body.Sites {
-		_, _ = tx.Exec(`INSERT OR IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, id, websiteID)
+		_, _ = tx.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, id, websiteID)
 	}
 	if err := tx.Commit(); err != nil {
 		writeErr(w, 500, err.Error())
@@ -1788,9 +1788,9 @@ func (s *server) saveSpamRule(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Use numbers of at least 1")
 		return
 	}
-	_, _ = s.db.Exec(`INSERT INTO settings (key, value) VALUES ('spam_window', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(body.Window))
-	_, _ = s.db.Exec(`INSERT INTO settings (key, value) VALUES ('spam_opens', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(body.Opens))
-	_, _ = s.db.Exec(`INSERT INTO settings (key, value) VALUES ('spam_ips', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(body.IPs))
+	_, _ = s.db.Exec(`INSERT INTO settings ("key", value) VALUES ('spam_window', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, strconv.Itoa(body.Window))
+	_, _ = s.db.Exec(`INSERT INTO settings ("key", value) VALUES ('spam_opens', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, strconv.Itoa(body.Opens))
+	_, _ = s.db.Exec(`INSERT INTO settings ("key", value) VALUES ('spam_ips', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, strconv.Itoa(body.IPs))
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -1903,7 +1903,7 @@ func (s *server) recordLogout(websiteID int, username, ip, reason string) {
 	status := "sent"
 	minutes := 60
 	var raw string
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='repeat_minutes'`).Scan(&raw)
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='repeat_minutes'`).Scan(&raw)
 	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
 		minutes = n
 	}
@@ -1915,8 +1915,8 @@ func (s *server) recordLogout(websiteID int, username, ip, reason string) {
 		}
 	}
 	var token, tmpl string
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='bot_token'`).Scan(&token)
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='logout_template'`).Scan(&tmpl)
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='bot_token'`).Scan(&token)
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='logout_template'`).Scan(&tmpl)
 	if tmpl == "" {
 		tmpl = "{tool} logged out for {username} on {website} at {time}."
 	}

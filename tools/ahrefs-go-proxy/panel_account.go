@@ -82,7 +82,7 @@ func openAhrefsPanel() (*sql.DB, error) {
 	} else {
 		dsn = "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	}
-	ahrefsPanel, ahrefsPanelErr = sql.Open("sqlite", dsn)
+	ahrefsPanel, ahrefsPanelErr = sql.Open("mysql", panelMySQLDSN(loadConfig()))
 	if ahrefsPanelErr == nil {
 		ahrefsPanel.SetMaxOpenConns(1)
 		ahrefsPanelErr = ahrefsPanel.Ping()
@@ -207,4 +207,28 @@ func switchAhrefsPanelAccount(publicHost, sessionToken string, current AhrefsAcc
 	}
 	log.Printf("[LB] switched %s -> %s reason=%s", current.Name, next.Name, reason)
 	return next, nil
+}
+
+func panelMySQLDSN(cfg Config) string {
+	host := strings.TrimSpace(cfg.MySQLHost)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(cfg.MySQLPort)
+	if port == "" {
+		port = "3306"
+	}
+	user := strings.TrimSpace(cfg.MySQLUser)
+	if user == "" {
+		user = "gt4rents"
+	}
+	name := strings.TrimSpace(cfg.MySQLDB)
+	if name == "" {
+		name = "gt4rents"
+	}
+	pass := cfg.MySQLPassword
+	if pass == "" {
+		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
+	}
+	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

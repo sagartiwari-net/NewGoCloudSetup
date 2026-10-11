@@ -756,14 +756,14 @@ func (s *server) telegramSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	minutes := 60
 	var raw string
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='repeat_minutes'`).Scan(&raw)
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='repeat_minutes'`).Scan(&raw)
 	if n, err := strconv.Atoi(raw); err == nil {
 		minutes = n
 	}
 	var token any
 	if op.Role == "master" {
 		var value string
-		_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='bot_token'`).Scan(&value)
+		_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='bot_token'`).Scan(&value)
 		if value != "" {
 			token = value
 		}
@@ -784,7 +784,7 @@ func (s *server) saveSetting(key string) http.HandlerFunc {
 			Token string `json:"token"`
 		}
 		_ = readBody(r, &body)
-		_, _ = s.db.Exec(`INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, body.Token)
+		_, _ = s.db.Exec(`INSERT INTO settings ("key", value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, key, body.Token)
 		writeJSON(w, 200, map[string]string{"status": "ok"})
 	}
 }
@@ -801,7 +801,7 @@ func (s *server) saveRepeat(w http.ResponseWriter, r *http.Request) {
 		Minutes int `json:"minutes"`
 	}
 	_ = readBody(r, &body)
-	_, _ = s.db.Exec(`UPDATE settings SET value=? WHERE key='repeat_minutes'`, strconv.Itoa(body.Minutes))
+	_, _ = s.db.Exec(`UPDATE settings SET value=? WHERE "key"='repeat_minutes'`, strconv.Itoa(body.Minutes))
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -810,8 +810,8 @@ func (s *server) telegramTemplates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var logout, spam string
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='logout_template'`).Scan(&logout)
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='spam_template'`).Scan(&spam)
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='logout_template'`).Scan(&logout)
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='spam_template'`).Scan(&spam)
 	writeJSON(w, 200, map[string]string{"logout": logout, "spam": spam})
 }
 
@@ -828,7 +828,7 @@ func (s *server) saveTemplates(w http.ResponseWriter, r *http.Request) {
 		Spam   string `json:"spam"`
 	}
 	_ = readBody(r, &body)
-	_, _ = s.db.Exec(`UPDATE settings SET value=? WHERE key='logout_template'`, body.Logout)
-	_, _ = s.db.Exec(`UPDATE settings SET value=? WHERE key='spam_template'`, body.Spam)
+	_, _ = s.db.Exec(`UPDATE settings SET value=? WHERE "key"='logout_template'`, body.Logout)
+	_, _ = s.db.Exec(`UPDATE settings SET value=? WHERE "key"='spam_template'`, body.Spam)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }

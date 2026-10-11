@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "modernc.org/sqlite"
 )
 
@@ -20,6 +22,9 @@ import (
 var schemaFS embed.FS
 
 func openDB(path string) *sql.DB {
+	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) != "" {
+		return openMySQL()
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		log.Fatal(err)
 	}
@@ -88,6 +93,46 @@ func openDB(path string) *sql.DB {
 	return db
 }
 
+// openMySQL uses the phpMyAdmin database (gt4rents). Tables are already copied
+// from panel.db, so this does not run the SQLite schema.
+func openMySQL() *sql.DB {
+	host := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_HOST"))
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PORT"))
+	if port == "" {
+		port = "3306"
+	}
+	user := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_USER"))
+	if user == "" {
+		user = "gt4rents"
+	}
+	name := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_DB"))
+	if name == "" {
+		name = "gt4rents"
+	}
+	dsn := url.UserPassword(user, os.Getenv("GT4RENTS_MYSQL_PASSWORD")).String() +
+		"@tcp(" + host + ":" + port + ")/" + name +
+		"?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	if err := db.Ping(); err != nil {
+		log.Fatalf("[DB] MySQL ping failed: %v", err)
+	}
+	log.Printf("[DB] panel API using MySQL %s/%s", host, name)
+	seed(db)
+	ensureQuillbot(db)
+	ensureResellers(db)
+	ensureAccessAlertSettings(db)
+	return db
+}
+
 func hashPassword(password string) string {
 	sum := sha256.Sum256([]byte(password))
 	return hex.EncodeToString(sum[:])
@@ -104,13 +149,13 @@ func ensureAccessAlertSettings(db *sql.DB) {
 		{"access_repeat_opens", "4"},
 	}
 	for _, pair := range defaults {
-		_, _ = db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`, pair[0], pair[1])
+		_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value=value`, pair[0], pair[1])
 	}
 }
 
 func settingInt(db *sql.DB, key string, fallback int) int {
 	var raw string
-	if err := db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&raw); err != nil {
+	if err := db.QueryRow(`SELECT value FROM settings WHERE "key"=?`, key).Scan(&raw); err != nil {
 		return fallback
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(raw))
@@ -121,7 +166,7 @@ func settingInt(db *sql.DB, key string, fallback int) int {
 }
 
 func saveSettingValue(db *sql.DB, key string, value int) {
-	_, _ = db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, strconv.Itoa(value))
+	_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, key, strconv.Itoa(value))
 }
 
 func seed(db *sql.DB) {
@@ -133,7 +178,7 @@ func seed(db *sql.DB) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = db.Exec(`INSERT INTO operators (username, password_hash, role, status) VALUES (?,?,?,?)`,
 		"master", hashPassword("toolsmandi"), "master", "active")
-	_, _ = db.Exec(`INSERT INTO settings (key, value) VALUES ('bot_token', ''), ('repeat_minutes', '60'),
+	_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES ('bot_token', ''), ('repeat_minutes', '60'),
 		('logout_template', '{tool}: {from} logged out. Switched {username} to {to} on {website} at {time}. {reason}'),
 		('spam_template', '{username} may be sharing {tool}. {count} opens in the window from {ip}. {reason} at {time}.'),
 		('spam_window', '10'), ('spam_opens', '8'), ('spam_ips', '2')`)

@@ -623,7 +623,7 @@ func semrushRepeatReason(db *sql.DB, username string, maxGapMinutes, hours, minO
 
 func semrushSettingInt(db *sql.DB, key string, fallback int) int {
 	var raw string
-	if err := db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&raw); err != nil {
+	if err := db.QueryRow(`SELECT value FROM settings WHERE "key"=?`, key).Scan(&raw); err != nil {
 		return fallback
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(raw))

@@ -64,7 +64,7 @@ func usesPanelAccountMode(cfg Config) bool {
 
 func openPanelDB(cfg Config) (*sql.DB, error) {
 	panelDBOnce.Do(func() {
-		panelDB, panelDBErr = sql.Open("sqlite", panelSQLiteDSN(cfg.PanelDB))
+		panelDB, panelDBErr = sql.Open("mysql", panelMySQLDSN(cfg))
 		if panelDBErr != nil {
 			return
 		}
@@ -505,7 +505,7 @@ func notifyPanelSwitch(cfg Config, note panelSwitchNote) {
 	}
 	minutes := 60
 	var raw string
-	_ = db.QueryRow(`SELECT value FROM settings WHERE key='repeat_minutes'`).Scan(&raw)
+	_ = db.QueryRow(`SELECT value FROM settings WHERE "key"='repeat_minutes'`).Scan(&raw)
 	if n, convErr := strconv.Atoi(raw); convErr == nil && n > 0 {
 		minutes = n
 	}
@@ -517,8 +517,8 @@ func notifyPanelSwitch(cfg Config, note panelSwitchNote) {
 		status = "skipped"
 	}
 	var token, tmpl string
-	_ = db.QueryRow(`SELECT value FROM settings WHERE key='bot_token'`).Scan(&token)
-	_ = db.QueryRow(`SELECT value FROM settings WHERE key='logout_template'`).Scan(&tmpl)
+	_ = db.QueryRow(`SELECT value FROM settings WHERE "key"='bot_token'`).Scan(&token)
+	_ = db.QueryRow(`SELECT value FROM settings WHERE "key"='logout_template'`).Scan(&tmpl)
 	if strings.TrimSpace(tmpl) == "" || tmpl == "{tool} logged out for {username} on {website} at {time}." {
 		tmpl = "{tool}: {from} logged out. Switched {username} to {to} on {website} at {time}. {reason}"
 	}
@@ -715,4 +715,28 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 %s
 </body>
 </html>`, html.EscapeString(card.Title), spinClass, html.EscapeString(card.Heading), card.Message, badge, footer, redirect)
+}
+
+func panelMySQLDSN(cfg Config) string {
+	host := strings.TrimSpace(cfg.MySQLHost)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(cfg.MySQLPort)
+	if port == "" {
+		port = "3306"
+	}
+	user := strings.TrimSpace(cfg.MySQLUser)
+	if user == "" {
+		user = "gt4rents"
+	}
+	name := strings.TrimSpace(cfg.MySQLDB)
+	if name == "" {
+		name = "gt4rents"
+	}
+	pass := cfg.MySQLPassword
+	if pass == "" {
+		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
+	}
+	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

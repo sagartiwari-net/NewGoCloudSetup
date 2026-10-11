@@ -304,17 +304,17 @@ func panelCreditsChargeAmount(username, path string, amount int) {
 		}
 		id, _ := res.LastInsertId()
 		state.userID = int(id)
-		_, _ = db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom, period_start) VALUES (?,?,?,?,?,?,0,?)`,
+		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom, period_start) VALUES (?,?,?,?,?,?,0,?)`,
 			state.userID, gzMeterKey, gzMeterLabel, state.resetDays, amount, state.limit, start)
 	} else {
-		res, err := db.Exec(`UPDATE user_meters SET used = used + ?, period_start=CASE WHEN period_start='' OR period_start<? THEN ? ELSE period_start END WHERE user_id=? AND key=?`,
+		res, err := db.Exec(`UPDATE user_meters SET used = used + ?, period_start=CASE WHEN period_start='' OR period_start<? THEN ? ELSE period_start END WHERE user_id=? AND "key"=?`,
 			amount, start, start, state.userID, gzMeterKey)
 		changed := int64(0)
 		if err == nil && res != nil {
 			changed, _ = res.RowsAffected()
 		}
 		if err != nil || changed == 0 {
-			_, _ = db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom, period_start) VALUES (?,?,?,?,?,?,0,?)`,
+			_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom, period_start) VALUES (?,?,?,?,?,?,0,?)`,
 				state.userID, gzMeterKey, gzMeterLabel, state.resetDays, state.used+amount, state.limit, start)
 		}
 	}

@@ -142,16 +142,16 @@ func panelCreditsCharge(username, path string) {
 		}
 		id, _ := res.LastInsertId()
 		state.userID = int(id)
-		_, _ = db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
+		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 			state.userID, "credits", "Credits", state.resetDays, state.used+1, state.limit)
 	} else {
-		res, err := db.Exec(`UPDATE user_meters SET used = used + 1 WHERE user_id=? AND key='credits'`, state.userID)
+		res, err := db.Exec(`UPDATE user_meters SET used = used + 1 WHERE user_id=? AND "key"='credits'`, state.userID)
 		changed := int64(0)
 		if err == nil && res != nil {
 			changed, _ = res.RowsAffected()
 		}
 		if err != nil || changed == 0 {
-			_, _ = db.Exec(`INSERT INTO user_meters (user_id, key, label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
+			_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 				state.userID, "credits", "Credits", state.resetDays, state.used+1, state.limit)
 		}
 	}
