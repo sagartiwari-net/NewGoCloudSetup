@@ -3835,9 +3835,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			processed = rewriteURLsOnly(processed, proxyRoot, cfg)
 		}
 		bodyOut := []byte(processed)
-		if cdnCacheKey(r) != "" && resp.StatusCode == http.StatusOK {
-			w.Header().Set("Cache-Control", "public, max-age=86400")
+		if key := cdnCacheKey(r); key != "" && resp.StatusCode == http.StatusOK {
 			storeCDNCache(r, resp.StatusCode, contentType, bodyOut)
+			if serveDiskCDN(w, r, key) {
+				return
+			}
 		}
 		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(resp.StatusCode)
@@ -3846,9 +3848,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if ahrefsExportPath(r.URL.Path) {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Del("Expires")
-		} else if cdnCacheKey(r) != "" && resp.StatusCode == http.StatusOK && len(rawBody) <= 20<<20 {
-			w.Header().Set("Cache-Control", "public, max-age=86400")
+		} else if key := cdnCacheKey(r); key != "" && resp.StatusCode == http.StatusOK && len(rawBody) <= 20<<20 {
 			storeCDNCache(r, resp.StatusCode, contentType, rawBody)
+			if serveDiskCDN(w, r, key) {
+				return
+			}
 		}
 		w.WriteHeader(resp.StatusCode)
 		n, _ := io.Copy(w, bytes.NewReader(rawBody))
@@ -3941,8 +3945,8 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      handler,
+		Addr:    addr,
+		Handler: handler,
 		// Ahrefs via SOCKS can exceed 90s on first dashboard HTML; short WriteTimeout
 		// closes the conn mid-response → nginx shows its own 502 page.
 		ReadTimeout:  180 * time.Second,
