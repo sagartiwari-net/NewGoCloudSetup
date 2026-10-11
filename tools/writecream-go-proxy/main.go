@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -17,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -86,8 +86,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -4414,6 +4414,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "writecream.com") {
+			injectStr += writecreamAccountHideHTML()
+		}
 		if strings.Contains(strings.ToLower(cfg.TargetURL), "speechify.com") {
 			injectStr = `<script data-tm-speechify-title="1">(function(){var bad=/something went wrong/i;function apply(v){return bad.test(String(v||""))?"Speechify":v;}try{var d=Object.getOwnPropertyDescriptor(Document.prototype,"title");if(d&&d.set){Object.defineProperty(Document.prototype,"title",{configurable:true,enumerable:d.enumerable,get:function(){return d.get.call(this);},set:function(v){return d.set.call(this,apply(v));}});}}catch(e){}if(bad.test(document.title))document.title="Speechify";})();</script>` + injectStr
 		}
