@@ -153,6 +153,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `shortform` (:4771) — **HTTPS OK** (2026-10-08): `www.shortform.com`. Logout (API 401, logout click, `/app/login`) writes Analytics Logouts, swaps to another active account, or shows contact-admin. Account status stays unchanged.
 - [x] `similarweb` (:5071) — **HTTPS OK** (2026-10-07): live working; CDN disk cache `cdn-cache/` (72h)
 - [x] `sketchgenius` (:4781) — **HTTPS OK** (2026-10-07): panel username on nav; dropdown blocked; login/`Unauthenticated` → panel `logged_out` + switch/contact-admin (failover verified)
+- [x] `slidebean` (:5021) — **HTTPS OK** (2026-10-11): `app.slidebean.com`, home `/templates`. A sign-in page (`/signin`, Welcome Back) switches accounts once or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only `sb-account-dropdown` (avatar and chevron).
 - [x] `smrs` — Semrush (:5141) — **HTTPS OK** (mixed-content https rewrite + panel account swap; proxy optional)
 - [x] `spyfu` (:4941) — **HTTPS OK** (2026-10-10): `www.spyfu.com`. Hide only `.sf-account` (header account chip). Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
 - [x] `storybase` (:4551) — **HTTPS OK** (2026-10-07): `www.storybase.com`, HTTP/1.1 ALPN (was 502/`chatgpt.com`); `#profile-widget` hidden (Settings/Billing/Logout + sidebar avatar/name)
@@ -168,7 +169,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `jasper` (:4511)
 - [ ] `merchinformer` (:4651)
 - [ ] `seobuddy` (:5131)
-- [ ] `slidebean` (:5021)
 - [ ] `speechify` (:5011)
 - [ ] `storyblocks` (:4971)
 - [ ] `syntx` (:4981)
