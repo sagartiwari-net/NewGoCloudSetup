@@ -2118,6 +2118,12 @@ func stripSubresourceIntegrity(body []byte) []byte {
 
 // ── CLIENT-SIDE PATCHER SCRIPT ────────────────────────────────────────────────
 
+// screpyAccountHideHTML hides only the sidebar account row (avatar, name, Free badge).
+func screpyAccountHideHTML() string {
+	const css = `div.border-t.border-sidebar-border:has(button[data-sidebar="menu-button"][data-size="lg"] span[data-slot="avatar"]){display:none!important}`
+	return `<style id="tm-screpy-hide">` + css + `</style><script>(function(){var css=` + "`" + css + "`" + `;function ensure(){if(document.getElementById("tm-screpy-hide"))return;var s=document.createElement("style");s.id="tm-screpy-hide";s.textContent=css;(document.head||document.documentElement).appendChild(s);}ensure();setInterval(ensure,1000);})();</script>`
+}
+
 func patcherScript(cfg Config) string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
@@ -3444,7 +3450,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg) + screpyAccountHideHTML()
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
