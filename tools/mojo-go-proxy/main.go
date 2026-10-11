@@ -891,6 +891,7 @@ func doUpstreamWith429Retry(req *http.Request, cookieStr string) (*http.Response
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			if attempt < 2 && isTransientNetErr(err) {
+				httpClient.CloseIdleConnections()
 				log.Printf("[PROXY] transient upstream %s (attempt %d/3): %v", req.URL.Path, attempt+1, err)
 				time.Sleep(time.Duration(attempt+1) * 400 * time.Millisecond)
 				continue
@@ -1586,6 +1587,20 @@ type contextKey string
 
 const proxyContextKey contextKey = "account_proxy"
 
+// dialPreferIPv4 skips the server's IPv6 path. Fastly closes those writes (EOF).
+func dialPreferIPv4(ctx context.Context, addr string) (net.Conn, error) {
+	d := &net.Dialer{Timeout: 20 * time.Second}
+	conn, err4 := d.DialContext(ctx, "tcp4", addr)
+	if err4 == nil {
+		return conn, nil
+	}
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err == nil {
+		return conn, nil
+	}
+	return nil, fmt.Errorf("TCP dial: %w", err4)
+}
+
 func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 	return dialChromeALPN(ctx, addr, nil) // default Chrome ALPN (h2, http/1.1)
 }
@@ -1613,16 +1628,17 @@ func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTL
 			return nil, fmt.Errorf("proxy dial %s: %w", px.Host, err)
 		}
 	} else {
-		tcpConn, err = (&net.Dialer{Timeout: 20 * time.Second}).DialContext(ctx, "tcp", addr)
+		tcpConn, err = dialPreferIPv4(ctx, addr)
 		if err != nil {
-			return nil, fmt.Errorf("TCP dial: %w", err)
+			return nil, err
 		}
 	}
 
 	cfg := &utls.Config{ServerName: host, InsecureSkipVerify: false}
 	var uConn *utls.UConn
+	helloID := utls.HelloChrome_133
 	if len(nextProtos) > 0 {
-		spec, specErr := utls.UTLSIdToSpec(utls.HelloChrome_120)
+		spec, specErr := utls.UTLSIdToSpec(helloID)
 		if specErr != nil {
 			tcpConn.Close()
 			return nil, fmt.Errorf("uTLS spec: %w", specErr)
@@ -1639,7 +1655,7 @@ func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTL
 			return nil, fmt.Errorf("uTLS preset: %w", err)
 		}
 	} else {
-		uConn = utls.UClient(tcpConn, cfg, utls.HelloChrome_120)
+		uConn = utls.UClient(tcpConn, cfg, helloID)
 	}
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		tcpConn.Close()
@@ -1674,9 +1690,10 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func buildChromeHTTPClient() *http.Client {
-	dialTLS := func(ctx context.Context, network, addr string) (net.Conn, error) { return dialChrome(ctx, addr) }
 	h1 := &http.Transport{
-		DialTLSContext: dialTLS, MaxIdleConns: 200, MaxIdleConnsPerHost: 32,
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialChromeHTTP1(ctx, addr)
+		}, MaxIdleConns: 200, MaxIdleConnsPerHost: 32,
 		IdleConnTimeout: 120 * time.Second, TLSHandshakeTimeout: 15 * time.Second,
 		DisableCompression: false, ForceAttemptHTTP2: false,
 		ResponseHeaderTimeout: 60 * time.Second,
