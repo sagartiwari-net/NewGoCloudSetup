@@ -150,4 +150,13 @@ func TestExtraCDNRootQueryUsesStreamHost(t *testing.T) {
 	if !digitsOnly("1791723916000") || digitsOnly("") || digitsOnly("12ms") {
 		t.Fatal("digitsOnly")
 	}
+	if got := string(forceChangeTimestampJSON([]byte(`{"changeTimestamp":null,"title":"a"}`), "1791723916000")); got != `{"changeTimestamp":"1791723916000","title":"a"}` {
+		t.Fatalf("null timestamp = %s", got)
+	}
+	if got := string(forceChangeTimestampJSON([]byte(`{"changeTimestamp":1791723916000}`), "1791723916000")); got != `{"changeTimestamp":"1791723916000"}` {
+		t.Fatalf("numeric timestamp = %s", got)
+	}
+	if got := string(forceChangeTimestampJSON([]byte(`{"changeTimestamp":"1791723916000","n":1}`), "1")); !strings.Contains(got, `"n":1`) {
+		t.Fatalf("valid timestamp rewritten: %s", got)
+	}
 }

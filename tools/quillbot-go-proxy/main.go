@@ -922,6 +922,52 @@ func doUpstreamWith429Retry(req *http.Request, cookieStr string) (*http.Response
 	return lastResp, nil
 }
 
+func forceChangeTimestampJSON(body []byte, ts string) []byte {
+	key := []byte(`"changeTimestamp"`)
+	i := bytes.Index(body, key)
+	if i < 0 {
+		return body
+	}
+	j := i + len(key)
+	for j < len(body) && (body[j] == ' ' || body[j] == '\t' || body[j] == '\n' || body[j] == '\r') {
+		j++
+	}
+	if j >= len(body) || body[j] != ':' {
+		return body
+	}
+	j++
+	for j < len(body) && (body[j] == ' ' || body[j] == '\t' || body[j] == '\n' || body[j] == '\r') {
+		j++
+	}
+	end := j
+	if end < len(body) && body[end] == '"' {
+		end++
+		for end < len(body) && body[end] != '"' {
+			if body[end] == '\\' && end+1 < len(body) {
+				end += 2
+				continue
+			}
+			end++
+		}
+		if end < len(body) && body[end] == '"' {
+			end++
+		}
+		if end >= j+2 && digitsOnly(string(body[j+1:end-1])) {
+			return body
+		}
+	} else {
+		for end < len(body) && body[end] != ',' && body[end] != '}' && body[end] != ']' {
+			end++
+		}
+	}
+	repl := []byte(`"` + ts + `"`)
+	out := make([]byte, 0, len(body)+len(repl))
+	out = append(out, body[:j]...)
+	out = append(out, repl...)
+	out = append(out, body[end:]...)
+	return out
+}
+
 func digitsOnly(s string) bool {
 	if s == "" {
 		return false
@@ -2080,6 +2126,13 @@ func patcherScript(cfg Config) string {
         }
         var args = arguments;
         var xhr = this;
+        try {
+            if (/\/api\/docupine\//.test(String(xhr.__canvaURL || ''))) {
+                var ts = String(Date.now());
+                xhr.setRequestHeader('changeTimestamp', ts);
+                xhr.setRequestHeader('change-timestamp', ts);
+            }
+        } catch (e) {}
         if (!shouldRetry429(xhr.__canvaURL)) {
             return xs.apply(xhr, args);
         }
@@ -2121,6 +2174,13 @@ func patcherScript(cfg Config) string {
         var finalURL = typeof inp === 'string' ? inp : (inp && inp.url) || urlStr;
         init = init || {};
         try {
+          if (/\/api\/docupine\//.test(finalURL)) {
+            var hts = new Headers(init.headers || (inp && inp.headers) || {});
+            var tsNow = String(Date.now());
+            if (!/^\d+$/.test(hts.get('changeTimestamp') || '')) hts.set('changeTimestamp', tsNow);
+            if (!/^\d+$/.test(hts.get('change-timestamp') || '')) hts.set('change-timestamp', tsNow);
+            init = Object.assign({}, init, { headers: hts });
+          }
           // Only Jasper product APIs — never Google Identity (idToken is in body)
           if (window.__TM_FIREBASE_ACCESS_TOKEN &&
               /\/extra-cdn-\d+\//i.test(finalURL) &&
@@ -2932,16 +2992,33 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
 	}
 
-	// docupine rejects the request unless this header is digits and the
-	// name is exactly changeTimestamp. Go's canonical form is Changetimestamp,
-	// which their validator treats as missing, so /docs/new retries forever.
-	if strings.Contains(path, "/api/docupine/") || upstreamReq.Header.Get("Changetimestamp") != "" {
+	// docupine save fails with "Couldn't save changes" unless changeTimestamp
+	// is a digit string. The editor omits it. Their API accepts either the
+	// camelCase header or the hyphenated one, and the same field in JSON.
+	if strings.Contains(path, "/api/docupine/") && r.Method != http.MethodGet && r.Method != http.MethodHead {
 		ts := strings.TrimSpace(upstreamReq.Header.Get("Changetimestamp"))
+		if !digitsOnly(ts) {
+			ts = strings.TrimSpace(upstreamReq.Header.Get("Change-Timestamp"))
+		}
 		if !digitsOnly(ts) {
 			log.Printf("[QUILLBOT] changeTimestamp invalid path=%s had=%q", path, ts)
 			ts = strconv.FormatInt(time.Now().UnixMilli(), 10)
 		}
 		setExactHeader(upstreamReq.Header, "changeTimestamp", ts)
+		upstreamReq.Header.Set("Change-Timestamp", ts)
+		if upstreamReq.Body != nil {
+			raw, err := io.ReadAll(upstreamReq.Body)
+			upstreamReq.Body.Close()
+			if err == nil {
+				raw = forceChangeTimestampJSON(raw, ts)
+				upstreamReq.Body = io.NopCloser(bytes.NewReader(raw))
+				upstreamReq.ContentLength = int64(len(raw))
+				upstreamReq.GetBody = func() (io.ReadCloser, error) {
+					return io.NopCloser(bytes.NewReader(raw)), nil
+				}
+				upstreamReq.Header.Set("Content-Length", strconv.Itoa(len(raw)))
+			}
+		}
 	}
 
 	// Remove proxy headers
