@@ -132,10 +132,14 @@ Verified on an access link. Each tool is listed once.
 - [x] `linkedinlearning` (:4571) — **HTTPS OK** (2026-10-08): `www.linkedin.com/learning/`, HTTP/1.1. Disk cache `cdn-cache/` (72h). Video/audio streamed with Range. Hide only `li[data-live-test-me-menu]` (Me). Guest home (Start free trial / Sign in) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts.
 - [x] `mgfc` — Magnific (:5121) — **HTTPS OK** (2026-10-06): `mgfc.gt4rents.com` (Safe Browsing rename from `magnific`) + disk CDN cache (`e62a9ad`). `/photos` redirects to `/people-emotions` (direct `/photos` can still hit WAF).
 - [x] `minvo` (:4871) — **HTTPS OK** (2026-10-11): `app.minvo.pro`, home `/84368/episodes`. Login is `localStorage` (`auth_jwt`), not a browser cookie. The access link is token-only.
+- [x] `mojo` (:4881) — **HTTPS OK** (2026-10-11): `app.mojo.video`. Login is the saved Firebase session. Upstream uses IPv4 so Fastly does not close the connection.
 - [x] `piktochart` (:4541) — **HTTPS OK** (2026-10-08): `create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” switches accounts or shows contact-admin; status stays unchanged. Hide only `#usersettings-dropdown`. `Digitavision` → `ToolsMandi`. Disk cache `cdn-cache/` (72h).
+- [x] `pixlr` (:4901) — **HTTPS OK** (2026-10-11): `pixlr.com`.
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): panel access working
+- [x] `ppspy` (:4961) — **HTTPS OK** (2026-10-11): `app.ppspy.com`, home `/dashboard`.
 - [x] `prezi` (:4751) — **HTTPS OK** (2026-10-08): panel username + UserDropdown blocked; Craft CDN/API device soft-allow (was stuck on “Laying out the canvas”)
 - [x] `refs` — Ahrefs (:5291) — HTTP access-link LIVE
+- [x] `rivalflow` (:4811) — **HTTPS OK** (2026-10-11): `app.rivalflow.com`, home `/actionflow`.
 - [x] `scribd` (:4791) — **HTTPS OK** (2026-10-07): live working on `scribd.gt4rents.com`
 - [x] `searchatlas` (:4711) — **HTTPS OK** (2026-10-09): `dashboard.searchatlas.com`. Huge browser cookie is slimmed to `ct_session` so device bind keeps working. User button stays; the account menu (Settings, Billing, Logout) does not open, and the label is the panel username. Payment-failed banner is hidden. Dashboard `/api/countries` stays on the dashboard host. Agent websocket is allowed through the device gate. UI sounds (`.wav`) are allowed. Disk cache `cdn-cache/` (72h) for hashed JS, fonts, images, and short sounds.
 - [x] `selleramp` (:5161) — **HTTPS OK** (2026-10-07): panel access, search `/sas/lookup`, `__tm_s` keepalive + static bypass + device-lock (cookie-copy → Access Denied)
@@ -162,10 +166,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `jasper` (:4511)
 - [ ] `joggai` (:5031)
 - [ ] `merchinformer` (:4651)
-- [ ] `mojo` (:4881)
-- [ ] `pixlr` (:4901)
-- [ ] `ppspy` (:4961)
-- [ ] `rivalflow` (:4811)
 - [ ] `screpy` (:4721)
 - [ ] `seobuddy` (:5131)
 - [ ] `slidebean` (:5021)

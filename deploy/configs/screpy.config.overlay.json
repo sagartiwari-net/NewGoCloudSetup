@@ -1,7 +1,29 @@
 {
   "port": "4721",
   "public_host": "screpy.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://app.screpy.com",
+  "cdn_url": "https://app.screpy.com",
+  "tool_name": "Screpy",
+  "cookie_domain_suffix": "screpy.com",
+  "home_path": "/dashboard",
+  "extra_cdn_domains": [
+    "https://www.screpy.com",
+    "https://screpy.com",
+    "https://api.screpy.com",
+    "https://cdn.screpy.com",
+    "https://fonts.googleapis.com",
+    "https://fonts.gstatic.com",
+    "https://js.stripe.com",
+    "https://m.stripe.com",
+    "https://api.stripe.com",
+    "https://app.chatwoot.com",
+    "https://chatwoot.com",
+    "https://www.clarity.ms",
+    "https://scripts.clarity.ms",
+    "https://static.cloudflareinsights.com",
+    "https://challenges.cloudflare.com"
+  ],
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -9,6 +31,5 @@
   "mysql_port": "3306",
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
-  "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "mysql_db": "gt4rents"
 }
