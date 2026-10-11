@@ -196,6 +196,11 @@ func finishSyntxUpstreamLogout(w http.ResponseWriter, r *http.Request, resp *htt
 	serveSyntxLogout(w, r, cfg, acc, sessionToken, "session_expired")
 }
 
+func syntxAccountHideHTML() string {
+	const css = `div.el-dropdown.dropdown-menu:has(> .dropdown-menu__arrow-container[aria-label="Profile"][role="button"]){display:none!important}`
+	return `<style id="tm-syntx-hide">` + css + `</style><script>(function(){var css=` + "`" + css + "`" + `;function ensure(){if(document.getElementById("tm-syntx-hide"))return;var s=document.createElement("style");s.id="tm-syntx-hide";s.textContent=css;(document.head||document.documentElement).appendChild(s);}ensure();setInterval(ensure,1000);})();</script>`
+}
+
 func syntxLoginWatchHTML() string {
 	// /login is swallowed by the page patcher (isAuthWall). Hop to a path it allows.
 	return `<script data-tm-syntx-login="1">

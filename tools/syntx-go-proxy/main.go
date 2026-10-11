@@ -1437,10 +1437,10 @@ func isCacheableStaticPath(path string) bool {
 		p = p[:i]
 	}
 	p = strings.ToLower(p)
-	if strings.HasPrefix(p, "/wp-content/") || strings.HasPrefix(p, "/wp-includes/") || strings.HasPrefix(p, "/dist/") || strings.HasPrefix(p, "/img/") {
+	if strings.HasPrefix(p, "/wp-content/") || strings.HasPrefix(p, "/wp-includes/") || strings.HasPrefix(p, "/dist/") || strings.HasPrefix(p, "/img/") || strings.Contains(p, "/assets/") || strings.Contains(p, "/fonts/") {
 		return true
 	}
-	for _, ext := range []string{".js", ".css", ".woff2", ".woff", ".ttf", ".eot", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".map"} {
+	for _, ext := range []string{".js", ".css", ".wasm", ".woff2", ".woff", ".ttf", ".eot", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".map"} {
 		if strings.HasSuffix(p, ext) {
 			return true
 		}
@@ -1455,40 +1455,42 @@ func getStaticCached(method, path string) *staticCacheEntry {
 	if !isCacheableStaticPath(path) {
 		return nil
 	}
-	v, ok := staticAssetCache.Load(staticCacheKey(method, path))
-	if !ok {
-		// HEAD can reuse GET cache
-		if method == http.MethodHead {
-			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path))
+	key := staticCacheKey(http.MethodGet, path)
+	if v, ok := staticAssetCache.Load(key); ok {
+		ent := v.(*staticCacheEntry)
+		if time.Now().Before(ent.expires) {
+			return ent
 		}
-		if !ok {
-			return nil
-		}
+		staticAssetCache.Delete(key)
 	}
-	ent := v.(*staticCacheEntry)
-	if time.Now().After(ent.expires) {
-		staticAssetCache.Delete(staticCacheKey(http.MethodGet, path))
-		return nil
+	if disk := loadDiskStatic(path); disk != nil {
+		staticAssetCache.Store(key, disk)
+		return disk
 	}
-	return ent
+	return nil
 }
 
 func putStaticCached(method, path string, status int, contentType, encoding string, body []byte) {
 	if method != http.MethodGet || status != 200 || !isCacheableStaticPath(path) {
 		return
 	}
-	if len(body) == 0 || len(body) > 8<<20 { // skip empty / >8MB
+	if len(body) == 0 || len(body) > cdnCacheMax {
+		return
+	}
+	ct := strings.ToLower(contentType)
+	if strings.Contains(ct, "text/html") || strings.Contains(ct, "json") || strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") {
 		return
 	}
 	cp := make([]byte, len(body))
 	copy(cp, body)
-	staticAssetCache.Store(staticCacheKey(method, path), &staticCacheEntry{
+	staticAssetCache.Store(staticCacheKey(http.MethodGet, path), &staticCacheEntry{
 		status:      status,
 		contentType: contentType,
 		encoding:    encoding,
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	storeDiskStatic(path, status, contentType, encoding, cp)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
@@ -3664,12 +3666,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 2b. Serve cached static assets (skip upstream TLS) ───────────────────────
-	// SYNTX app.js is patched after download. The warm-up cache is the raw bundle
-	// and would skip that patch, so the auth guard never loads the user.
-	if ent := getStaticCached(r.Method, path); ent != nil &&
-		!(strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") && strings.HasSuffix(strings.ToLower(path), "/app.js")) {
-		serveStaticCached(w, r, ent)
-		return
+	// Raw /app.js must not be served from warm-up. Only the patched copy is stored.
+	if ent := getStaticCached(r.Method, path); ent != nil {
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") && strings.HasSuffix(strings.ToLower(path), "/app.js") && !bytes.Contains(ent.body, []byte("await Fr().getUser()")) && bytes.Contains(ent.body, []byte("await Q5e,e.meta.requiresAuth")) {
+			// unpatched bundle — fall through and patch it
+		} else {
+			serveStaticCached(w, r, ent)
+			return
+		}
 	}
 
 	// ── 3. Get active account for this session ────────────────────────────────────
@@ -4387,8 +4391,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
-		if strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") && usesPanelAccountMode(cfg) {
-			injectStr += syntxLoginWatchHTML()
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") {
+			injectStr += syntxAccountHideHTML()
+			if usesPanelAccountMode(cfg) {
+				injectStr += syntxLoginWatchHTML()
+			}
 		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
@@ -4444,6 +4451,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		bodyBytes = patchSyntxAppJS(bodyBytes)
+		putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", bodyBytes)
 		w.Header().Del("Content-Encoding")
 		w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 		w.WriteHeader(upstreamResp.StatusCode)
@@ -4663,7 +4671,7 @@ func warmStaticAssets(cfg Config, cookieHeader string) {
 			}
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			if resp.StatusCode == 200 {
+			if resp.StatusCode == 200 && !strings.HasSuffix(strings.ToLower(path), "/app.js") {
 				putStaticCached(http.MethodGet, path, 200, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Encoding"), body)
 				mu.Lock()
 				cached++
@@ -4682,6 +4690,7 @@ func main() {
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
+	startCDNCacheSweep()
 	warmCFCookies(cfg)
 
 	mux := http.NewServeMux()
