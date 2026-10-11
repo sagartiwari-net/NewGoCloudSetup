@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -17,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -86,8 +86,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -782,6 +782,26 @@ func parseCookieFromDB(raw string) string {
 	return cookieEntriesToHeader(cookies)
 }
 
+func localStorageJSONFromRaw(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.HasPrefix(raw, "{") {
+		return ""
+	}
+	var wrap struct {
+		Storage struct {
+			LocalStorage map[string]string `json:"localStorage"`
+		} `json:"storage"`
+	}
+	if err := json.Unmarshal([]byte(raw), &wrap); err != nil || len(wrap.Storage.LocalStorage) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(wrap.Storage.LocalStorage)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
 func localStorageJSONFromFile(path string) string {
 	if strings.TrimSpace(path) == "" {
 		return ""
@@ -790,19 +810,7 @@ func localStorageJSONFromFile(path string) string {
 	if err != nil || len(data) == 0 {
 		return ""
 	}
-	var wrap struct {
-		Storage struct {
-			LocalStorage map[string]string `json:"localStorage"`
-		} `json:"storage"`
-	}
-	if err := json.Unmarshal(data, &wrap); err != nil || len(wrap.Storage.LocalStorage) == 0 {
-		return ""
-	}
-	b, err := json.Marshal(wrap.Storage.LocalStorage)
-	if err != nil {
-		return ""
-	}
-	return string(b)
+	return localStorageJSONFromRaw(string(data))
 }
 
 func patchSyntxAppJS(body []byte) []byte {
@@ -4355,8 +4363,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
 		}
 
-		// Chatbot App Firebase session lives in IndexedDB. Restore before the app boots.
-		if idb := buildIndexedDBInjectHTML(ensureFreshFirebaseSession(cfg.CookieFile)); idb != "" {
+		// Firebase session lives in IndexedDB. Prefer the panel GoAuto dump.
+		sessionRaw := ""
+		if usesPanelAccountMode(cfg) && isIndexedDBSession(activeAcc.Cookie) {
+			sessionRaw = ensureFreshFirebaseSessionRaw(activeAcc.Cookie, "")
+			if sessionRaw != "" && sessionRaw != activeAcc.Cookie {
+				persistPanelAccountCookie(cfg, activeAcc.ID, sessionRaw)
+				activeAcc.Cookie = sessionRaw
+			}
+		} else {
+			sessionRaw = ensureFreshFirebaseSession(cfg.CookieFile)
+		}
+		if idb := buildIndexedDBInjectHTML(sessionRaw); idb != "" {
 			if loc := regexp.MustCompile(`(?i)<head[^>]*>`).FindIndex(bodyBytes); loc != nil {
 				out := make([]byte, 0, len(bodyBytes)+len(idb)+8)
 				out = append(out, bodyBytes[:loc[1]]...)
@@ -4372,8 +4390,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// SYNTX auth is localStorage auth_token. Must run before the app boots.
-		if ls := buildSyntxLocalStorageInject(localStorageJSONFromFile(cfg.CookieFile)); ls != "" {
+		lsJSON := ""
+		if usesPanelAccountMode(cfg) {
+			lsJSON = localStorageJSONFromRaw(activeAcc.Cookie)
+		}
+		if lsJSON == "" {
+			lsJSON = localStorageJSONFromFile(cfg.CookieFile)
+		}
+		if ls := buildSyntxLocalStorageInject(lsJSON); ls != "" {
 			if loc := regexp.MustCompile(`(?i)<head[^>]*>`).FindIndex(bodyBytes); loc != nil {
 				out := make([]byte, 0, len(bodyBytes)+len(ls)+8)
 				out = append(out, bodyBytes[:loc[1]]...)

@@ -132,7 +132,10 @@ var (
 // Without this, Cramly injects a stale accessToken → GraphQL 401 →
 // "Something went wrong".
 func ensureFreshFirebaseSession(path string) string {
-	raw := loadSessionFileRaw(path)
+	return ensureFreshFirebaseSessionRaw(loadSessionFileRaw(path), path)
+}
+
+func ensureFreshFirebaseSessionRaw(raw, persistPath string) string {
 	if !isIndexedDBSession(raw) {
 		return raw
 	}
@@ -145,12 +148,13 @@ func ensureFreshFirebaseSession(path string) string {
 
 	firebaseRefreshMu.Lock()
 	defer firebaseRefreshMu.Unlock()
-	// Re-read under lock (another goroutine may have refreshed)
-	raw = loadSessionFileRaw(path)
-	exp = extractFirebaseExpirationMs(raw)
-	nowMs = time.Now().UnixMilli()
-	if exp > nowMs+10*60*1000 {
-		return raw
+	if persistPath != "" {
+		raw = loadSessionFileRaw(persistPath)
+		exp = extractFirebaseExpirationMs(raw)
+		nowMs = time.Now().UnixMilli()
+		if exp > nowMs+10*60*1000 {
+			return raw
+		}
 	}
 	if time.Since(firebaseLastRefresh) < 30*time.Second && exp > nowMs {
 		return raw
@@ -224,9 +228,10 @@ func ensureFreshFirebaseSession(path string) string {
 	if err != nil {
 		return raw
 	}
-	if err := os.WriteFile(path, out, 0644); err != nil {
-		log.Printf("[CHATBOT] refresh: write cookie.txt failed: %v", err)
-		return string(out) // still use in-memory fresh copy
+	if persistPath != "" {
+		if err := os.WriteFile(persistPath, out, 0644); err != nil {
+			log.Printf("[VTB] refresh: write cookie.txt failed: %v", err)
+		}
 	}
 	firebaseLastRefresh = time.Now()
 	log.Printf("[CHATBOT] ✅ Firebase accessToken refreshed (expires in %ds)", expiresIn)

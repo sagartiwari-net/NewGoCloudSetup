@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -9,6 +8,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +33,6 @@ var (
 	panelDBErr  error
 	panelSess   sync.Map
 )
-
 
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
@@ -376,11 +375,29 @@ func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 		return ToolAccount{}, err
 	}
 	acc.ShowLimit = showLimit == 1
-	acc.Cookie = parseCookieFromDB(acc.Cookie)
-	if strings.TrimSpace(acc.Cookie) == "" {
+	// Keep the GoAuto dump. Flattening a Firebase IndexedDB export looks empty
+	// and the access page says no account, even when the login is saved.
+	acc.Cookie = strings.TrimSpace(acc.Cookie)
+	if acc.Cookie == "" {
 		return ToolAccount{}, fmt.Errorf("mapped account cookie is empty")
 	}
+	if parseCookieFromDB(acc.Cookie) == "" && !isIndexedDBSession(acc.Cookie) && localStorageJSONFromRaw(acc.Cookie) == "" {
+		return ToolAccount{}, fmt.Errorf("mapped account cookie has no usable cookies/storage")
+	}
 	return acc, nil
+}
+
+func persistPanelAccountCookie(cfg Config, accountID int, cookie string) {
+	if accountID <= 0 || strings.TrimSpace(cookie) == "" {
+		return
+	}
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return
+	}
+	if _, err := db.Exec(`UPDATE accounts SET cookie=? WHERE id=?`, cookie, accountID); err != nil {
+		log.Printf("[PANEL] persist cookie failed id=%d: %v", accountID, err)
+	}
 }
 
 func recordPanelLogin(db *sql.DB, domain, username, sessionToken, clientIP, userAgent string, expires time.Time, accountID int) {
@@ -417,7 +434,6 @@ func toolDisplayName(cfg Config) string {
 	}
 	return name
 }
-
 
 func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
@@ -515,7 +531,6 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 </body>
 </html>`, html.EscapeString(card.Title), spinClass, html.EscapeString(card.Heading), card.Message, badge, footer, redirect)
 }
-
 
 func cookieSecure(r *http.Request, cfg Config) bool {
 	// Pre-SSL: overlays use public_scheme=http. Never mark cookies Secure or CF X-Forwarded-Proto=https drops them on http:// pages.
