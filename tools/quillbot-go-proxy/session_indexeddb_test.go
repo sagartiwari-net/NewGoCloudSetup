@@ -159,4 +159,7 @@ func TestExtraCDNRootQueryUsesStreamHost(t *testing.T) {
 	if got := string(forceChangeTimestampJSON([]byte(`{"changeTimestamp":"1791723916000","n":1}`), "1")); !strings.Contains(got, `"n":1`) {
 		t.Fatalf("valid timestamp rewritten: %s", got)
 	}
+	if got := string(ensureChangeTimestampJSON([]byte(`{"title":"a"}`), "1791723916000")); got != `{"changeTimestamp":"1791723916000","title":"a"}` {
+		t.Fatalf("missing timestamp = %s", got)
+	}
 }

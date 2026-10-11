@@ -968,6 +968,77 @@ func forceChangeTimestampJSON(body []byte, ts string) []byte {
 	return out
 }
 
+// ensureChangeTimestampJSON makes the top-level changeTimestamp a digit
+// string. Quillbot returns 400 HEADERS_VALIDATION when it is missing, null,
+// or a JSON number.
+func ensureChangeTimestampJSON(body []byte, ts string) []byte {
+	trim := bytes.TrimSpace(body)
+	if len(trim) == 0 || trim[0] != '{' {
+		return body
+	}
+	if !bytes.Contains(body, []byte(`"changeTimestamp"`)) {
+		insert := []byte(`"changeTimestamp":"` + ts + `",`)
+		out := make([]byte, 0, len(body)+len(insert))
+		i := bytes.IndexByte(body, '{')
+		out = append(out, body[:i+1]...)
+		out = append(out, insert...)
+		out = append(out, body[i+1:]...)
+		return out
+	}
+	return forceChangeTimestampJSON(body, ts)
+}
+
+func inflateDocupineBody(h http.Header, raw []byte) ([]byte, string) {
+	enc := strings.ToLower(strings.TrimSpace(h.Get("Content-Encoding")))
+	switch enc {
+	case "gzip":
+		zr, err := gzip.NewReader(bytes.NewReader(raw))
+		if err != nil {
+			return raw, ""
+		}
+		defer zr.Close()
+		out, err := io.ReadAll(zr)
+		if err != nil {
+			return raw, ""
+		}
+		return out, enc
+	case "br":
+		out, err := io.ReadAll(brotli.NewReader(bytes.NewReader(raw)))
+		if err != nil {
+			return raw, ""
+		}
+		return out, enc
+	default:
+		return raw, ""
+	}
+}
+
+func deflateDocupineBody(enc string, raw []byte) []byte {
+	var buf bytes.Buffer
+	switch enc {
+	case "gzip":
+		zw := gzip.NewWriter(&buf)
+		if _, err := zw.Write(raw); err != nil {
+			return raw
+		}
+		if err := zw.Close(); err != nil {
+			return raw
+		}
+		return buf.Bytes()
+	case "br":
+		zw := brotli.NewWriter(&buf)
+		if _, err := zw.Write(raw); err != nil {
+			return raw
+		}
+		if err := zw.Close(); err != nil {
+			return raw
+		}
+		return buf.Bytes()
+	default:
+		return raw
+	}
+}
+
 func digitsOnly(s string) bool {
 	if s == "" {
 		return false
@@ -2107,6 +2178,14 @@ func patcherScript(cfg Config) string {
     // ── XHR patch ──
     var xo = XMLHttpRequest.prototype.open;
     var xs = XMLHttpRequest.prototype.send;
+    var xset = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+        if (/^change-?timestamp$/i.test(String(name || ''))) {
+            this.__tmChangeTs = String(value == null ? '' : value);
+            return;
+        }
+        return xset.apply(this, arguments);
+    };
     XMLHttpRequest.prototype.open = function(m, u) {
         this.__canvaNoise = isNoiseURL(u);
         this.__canvaURL = String(u || '');
@@ -2124,13 +2203,24 @@ func patcherScript(cfg Config) string {
             }, 0);
             return;
         }
-        var args = arguments;
+        var args = [arguments[0]];
         var xhr = this;
         try {
-            if (/\/api\/docupine\//.test(String(xhr.__canvaURL || ''))) {
+            if (/\/api\/docupine\//.test(String(xhr.__canvaURL || '')) && xhr.__canvaMethod !== 'GET' && xhr.__canvaMethod !== 'HEAD') {
                 var ts = String(Date.now());
-                xhr.setRequestHeader('changeTimestamp', ts);
-                xhr.setRequestHeader('change-timestamp', ts);
+                if (/^\d+$/.test(String(xhr.__tmChangeTs || ''))) ts = String(xhr.__tmChangeTs);
+                if (typeof args[0] === 'string' && args[0].charAt(0) === '{') {
+                    try {
+                        var doc = JSON.parse(args[0]);
+                        if (doc && typeof doc === 'object') {
+                            if (typeof doc.changeTimestamp === 'number' && isFinite(doc.changeTimestamp)) ts = String(Math.trunc(doc.changeTimestamp));
+                            else if (typeof doc.changeTimestamp === 'string' && /^\d+$/.test(doc.changeTimestamp)) ts = doc.changeTimestamp;
+                            doc.changeTimestamp = ts;
+                            args[0] = JSON.stringify(doc);
+                        }
+                    } catch (e2) {}
+                }
+                xset.call(xhr, 'changeTimestamp', ts);
             }
         } catch (e) {}
         if (!shouldRetry429(xhr.__canvaURL)) {
@@ -2177,8 +2267,19 @@ func patcherScript(cfg Config) string {
           if (/\/api\/docupine\//.test(finalURL)) {
             var hts = new Headers(init.headers || (inp && inp.headers) || {});
             var tsNow = String(Date.now());
-            if (!/^\d+$/.test(hts.get('changeTimestamp') || '')) hts.set('changeTimestamp', tsNow);
-            if (!/^\d+$/.test(hts.get('change-timestamp') || '')) hts.set('change-timestamp', tsNow);
+            if (/^\d+$/.test(hts.get('changeTimestamp') || '')) tsNow = hts.get('changeTimestamp');
+            if (typeof init.body === 'string' && init.body.charAt(0) === '{') {
+              try {
+                var docb = JSON.parse(init.body);
+                if (docb && typeof docb === 'object') {
+                  if (typeof docb.changeTimestamp === 'number' && isFinite(docb.changeTimestamp)) tsNow = String(Math.trunc(docb.changeTimestamp));
+                  else if (typeof docb.changeTimestamp === 'string' && /^\d+$/.test(docb.changeTimestamp)) tsNow = docb.changeTimestamp;
+                  docb.changeTimestamp = tsNow;
+                  init = Object.assign({}, init, { body: JSON.stringify(docb) });
+                }
+              } catch (e2) {}
+            }
+            hts.set('changeTimestamp', tsNow);
             init = Object.assign({}, init, { headers: hts });
           }
           // Only Jasper product APIs — never Google Identity (idToken is in body)
@@ -2992,31 +3093,48 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
 	}
 
-	// docupine save fails with "Couldn't save changes" unless changeTimestamp
-	// is a digit string. The editor omits it. Their API accepts either the
-	// camelCase header or the hyphenated one, and the same field in JSON.
+	// docupine save returns 400 HEADERS_VALIDATION unless changeTimestamp is one
+	// digit string. A second header is joined into "a, b", which fails that
+	// check. The same field in the JSON body is what they validate when the
+	// browser omits the header.
 	if strings.Contains(path, "/api/docupine/") && r.Method != http.MethodGet && r.Method != http.MethodHead {
 		ts := strings.TrimSpace(upstreamReq.Header.Get("Changetimestamp"))
 		if !digitsOnly(ts) {
 			ts = strings.TrimSpace(upstreamReq.Header.Get("Change-Timestamp"))
 		}
 		if !digitsOnly(ts) {
-			log.Printf("[QUILLBOT] changeTimestamp invalid path=%s had=%q", path, ts)
 			ts = strconv.FormatInt(time.Now().UnixMilli(), 10)
 		}
+		for k := range upstreamReq.Header {
+			if strings.EqualFold(k, "changeTimestamp") || strings.EqualFold(k, "change-timestamp") {
+				delete(upstreamReq.Header, k)
+			}
+		}
 		setExactHeader(upstreamReq.Header, "changeTimestamp", ts)
-		upstreamReq.Header.Set("Change-Timestamp", ts)
 		if upstreamReq.Body != nil {
 			raw, err := io.ReadAll(upstreamReq.Body)
 			upstreamReq.Body.Close()
 			if err == nil {
-				raw = forceChangeTimestampJSON(raw, ts)
+				raw, enc := inflateDocupineBody(upstreamReq.Header, raw)
+				bodyKind := "skip"
+				ct := strings.ToLower(upstreamReq.Header.Get("Content-Type"))
+				if strings.Contains(ct, "json") || (len(bytes.TrimSpace(raw)) > 0 && bytes.TrimSpace(raw)[0] == '{') {
+					bodyKind = "missing"
+					if bytes.Contains(raw, []byte(`"changeTimestamp"`)) {
+						bodyKind = "present"
+					}
+					raw = ensureChangeTimestampJSON(raw, ts)
+				}
+				if enc != "" {
+					raw = deflateDocupineBody(enc, raw)
+				}
+				log.Printf("[QUILLBOT] docupine stamp path=%s ts=%s body=%s bytes=%d", path, ts, bodyKind, len(raw))
 				upstreamReq.Body = io.NopCloser(bytes.NewReader(raw))
 				upstreamReq.ContentLength = int64(len(raw))
 				upstreamReq.GetBody = func() (io.ReadCloser, error) {
 					return io.NopCloser(bytes.NewReader(raw)), nil
 				}
-				upstreamReq.Header.Set("Content-Length", strconv.Itoa(len(raw)))
+				upstreamReq.Header.Del("Content-Length")
 			}
 		}
 	}
