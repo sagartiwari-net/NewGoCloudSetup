@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -17,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -86,8 +86,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -3611,7 +3611,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
-	if isBlockedPath(path, cfg) {
+	if isBlockedPath(path, cfg) && !syntxLogoutPath(path) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
 		if dbConnected {
 			_, _ = db.Exec(
@@ -3714,6 +3714,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
+
+	if usesPanelAccountMode(cfg) && syntxLogoutPath(path) {
+		serveSyntxLogout(w, r, cfg, activeAcc, sessionToken, "logged_out")
+		return
+	}
 
 	// ── 5. Build upstream request ─────────────────────────────────────────────────
 	targetParsed, err := url.Parse(cfg.TargetURL)
@@ -4141,6 +4146,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer upstreamResp.Body.Close()
 
+	if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && syntxUpstreamLogout(upstreamResp) {
+		finishSyntxUpstreamLogout(w, r, upstreamResp, cfg, activeAcc, sessionToken)
+		return
+	}
+
 	// A missing country makes this route an IIS 404. Axios rejects that, and
 	// Add Website never clears isValidating. Hand the app the same "not indexed"
 	// payload SpyFu uses for a real domain check.
@@ -4293,6 +4303,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logUpstream(bodyBytes)
 
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && isDocumentNavigation(r) && syntxLoggedOutHTML(bodyBytes) {
+			serveSyntxLogout(w, r, cfg, activeAcc, sessionToken, "logged_out")
+			return
+		}
+
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
 
@@ -4332,6 +4347,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") && usesPanelAccountMode(cfg) {
+			injectStr += syntxLoginWatchHTML()
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
