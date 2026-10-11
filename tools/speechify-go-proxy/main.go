@@ -2785,6 +2785,17 @@ func patcherScript(cfg Config) string {
         if (u.length > 1 && ((u.charAt(0) === '"' && u.charAt(u.length-1) === '"') || (u.charAt(0) === "'" && u.charAt(u.length-1) === "'"))) {
             u = u.substring(1, u.length-1);
         }
+        // proxy.speechify.com fetches the file URL that follows it. Rewriting
+        // that inner host (firestore, appspot, storage) makes the file open fail.
+        if (T && T.indexOf('speechify.com') !== -1) {
+            var extMark = '/ext-host/proxy.speechify.com';
+            var rest = null;
+            var absProxy = u.match(/^(https?:)\/{2,}proxy\.speechify\.com([\s\S]*)$/i);
+            if (absProxy) rest = absProxy[2] || '';
+            else if (u.indexOf(O + extMark) === 0) rest = u.slice((O + extMark).length);
+            else if (u.indexOf(extMark) === 0) rest = u.slice(extMark.length);
+            if (rest !== null) return O + extMark + rest;
+        }
         // WooRank sibling hosts via /ext-host/ (extra CDN list also covers these)
         // New doc lives on coda.grammarly.com — keep it on this origin (/newdoc, /d/).
         var WS_O = O.replace(/^http/, 'ws');
@@ -3832,6 +3843,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		host = strings.ToLower(strings.TrimSpace(host))
+		if host == "proxy.speechify.com" {
+			upPath = restoreSpeechifyProxyTarget(upPath, cfg, r.Host)
+			if upEsc != "" {
+				upEsc = restoreSpeechifyProxyTarget(upEsc, cfg, r.Host)
+			}
+		}
 		suffix := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(cfg.CookieDomainSuffix)), ".")
 		if suffix == "" {
 			suffix = "woorank.com"

@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -194,6 +196,45 @@ func finishSpeechUpstreamLogout(w http.ResponseWriter, r *http.Request, resp *ht
 		io.Copy(io.Discard, resp.Body)
 	}
 	serveSpeechLogout(w, r, cfg, acc, sessionToken, "session_expired")
+}
+
+// restoreSpeechifyProxyTarget puts real hosts back inside a proxy.speechify.com
+// target. The page rewriter turns https://firestore.googleapis.com into
+// /extra-cdn-N, and Speechify's file proxy then rejects that address.
+func restoreSpeechifyProxyTarget(raw string, cfg Config, publicHost string) string {
+	hosts := []string{}
+	addHost := func(h string) {
+		h = strings.TrimSpace(h)
+		if h == "" {
+			return
+		}
+		for _, have := range hosts {
+			if have == h {
+				return
+			}
+		}
+		hosts = append(hosts, h)
+	}
+	addHost(publicHost)
+	addHost(cfg.PublicHost)
+	out := raw
+	for i, extra := range cfg.ExtraCDNDomains {
+		originHost := strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
+		originHost = strings.Split(originHost, "/")[0]
+		if originHost == "" {
+			continue
+		}
+		token := "/extra-cdn-" + strconv.Itoa(i)
+		real := "https://" + originHost
+		for _, h := range hosts {
+			for _, scheme := range []string{"https", "http"} {
+				base := scheme + "://" + h + token
+				out = strings.ReplaceAll(out, base, real)
+				out = strings.ReplaceAll(out, url.QueryEscape(base), url.QueryEscape(real))
+			}
+		}
+	}
+	return out
 }
 
 func speechLoginWatchHTML() string {
