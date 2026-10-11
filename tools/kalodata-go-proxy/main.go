@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -17,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -84,8 +84,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -176,11 +176,11 @@ var (
 	apiCredMu        sync.RWMutex
 	defaultConfig    = Config{
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-		Port:                   "7860",
+		Port:                   "4951",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
-		PublicHost:             "gpt.yourdomain.com",
+		TargetURL:              "https://www.kalodata.com",
+		CDNURL:                 "https://www.kalodata.com",
+		PublicHost:             "kalodata.gt4rents.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
 		MySQLPort:              "3306",
@@ -190,10 +190,11 @@ var (
 		SecretKey:              "your_secret_key_here",
 		SessionDurationMinutes: 120,
 		MemberAreaURL:          "https://members.yourdomain.com/",
-		ToolName:               "Tool",
+		ToolName:               "Kalodata",
 		CreditLabel:            "Credits",
 		ExportLabel:            "Exports",
-		HomePath:               "/",
+		HomePath:               "/explore",
+		CookieDomainSuffix:     "kalodata.com",
 		CountedPaths:           []string{},
 		CountedPrefixes:        []string{},
 		BlockedPaths:           []string{},
@@ -2372,6 +2373,56 @@ func rewriteWoorankHostURL(loc, publicBase string) string {
 	return strings.TrimRight(publicBase, "/") + "/ext-host/" + host + pathPart
 }
 
+// rewriteKalodataOffsite keeps an expired-session jump on this proxy.
+// The app assigns location.href = "https://kalodata.com" when the host is not kalodata.com.
+func rewriteKalodataOffsite(loc, publicBase string) string {
+	u, err := url.Parse(loc)
+	if err != nil || u.Host == "" {
+		return loc
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "kalodata.com" && host != "www.kalodata.com" && host != "m.kalodata.com" {
+		return loc
+	}
+	path := u.RequestURI()
+	if path == "" {
+		path = "/"
+	}
+	return strings.TrimRight(publicBase, "/") + path
+}
+
+func kalodataStayScript() string {
+	return `<script data-tm-kalo-stay="1">
+(function(){
+  var O = location.origin;
+  function stay(u){
+    u = String(u || "");
+    u = u.split("https://kalodata.com").join(O).split("http://kalodata.com").join(O);
+    u = u.split("https://www.kalodata.com").join(O).split("http://www.kalodata.com").join(O);
+    u = u.split("https://m.kalodata.com").join(O).split("http://m.kalodata.com").join(O);
+    return u;
+  }
+  var proto = Location.prototype;
+  try {
+    var d = Object.getOwnPropertyDescriptor(proto, "href");
+    if (d && d.set && d.get) {
+      Object.defineProperty(proto, "href", {
+        configurable: true,
+        enumerable: d.enumerable,
+        get: d.get,
+        set: function(v){ return d.set.call(this, stay(v)); }
+      });
+    }
+  } catch (e) {}
+  try {
+    var assign = proto.assign, replace = proto.replace;
+    proto.assign = function(u){ return assign.call(this, stay(u)); };
+    proto.replace = function(u){ return replace.call(this, stay(u)); };
+  } catch (e) {}
+})();
+</script>`
+}
+
 // rewriteGrammarlyContentHosts sends random CDN hosts through /ext-host/ so a
 // new doc does not try to fetch codacontent.io directly.
 func rewriteGrammarlyContentHosts(body []byte, publicBase string) []byte {
@@ -2595,6 +2646,11 @@ func patcherScript(cfg Config) string {
             }
         }
         u = u.replace('https://'+T, O).replace('http://'+T, O);
+        // The app boots with: if host does not end in kalodata.com, location.href = "https://kalodata.com".
+        // That apex host is not the www target, so the T replace above does not catch it.
+        u = u.split('https://kalodata.com').join(O).split('http://kalodata.com').join(O);
+        u = u.split('https://www.kalodata.com').join(O).split('http://www.kalodata.com').join(O);
+        u = u.split('https://m.kalodata.com').join(O).split('http://m.kalodata.com').join(O);
         if (C && C !== T) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
         // Dynamic chunk-composing hosts (any TLD / mangled IP-derived host)
         if (CHUNK_COMPOSE) {
@@ -3994,6 +4050,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				for _, pair := range locationPairs {
 					newLoc = strings.ReplaceAll(newLoc, pair[0], pair[1])
 				}
+				newLoc = rewriteKalodataOffsite(newLoc, publicBase)
 				w.Header().Add(k, newLoc)
 			}
 			continue
@@ -4087,6 +4144,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("X-Frame-Options")
 		if usesPanelAccountMode(cfg) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
+		}
+
+		// First script in <head>: the app redirects to https://kalodata.com before the later patcher runs.
+		if stay := kalodataStayScript(); stay != "" {
+			if head := regexp.MustCompile(`(?i)<head[^>]*>`).FindIndex(bodyBytes); head != nil {
+				out := make([]byte, 0, len(bodyBytes)+len(stay))
+				out = append(out, bodyBytes[:head[1]]...)
+				out = append(out, []byte(stay)...)
+				out = append(out, bodyBytes[head[1]:]...)
+				bodyBytes = out
+			}
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)

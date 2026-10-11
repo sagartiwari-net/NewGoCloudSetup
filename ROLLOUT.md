@@ -131,6 +131,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): panel access working
 - [x] `linkedinlearning` (:4571) — **HTTPS OK** (2026-10-08): `www.linkedin.com/learning/`, HTTP/1.1. Disk cache `cdn-cache/` (72h). Video/audio streamed with Range. Hide only `li[data-live-test-me-menu]` (Me). Guest home (Start free trial / Sign in) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts.
 - [x] `mgfc` — Magnific (:5121) — **HTTPS OK** (2026-10-06): `mgfc.gt4rents.com` (Safe Browsing rename from `magnific`) + disk CDN cache (`e62a9ad`). `/photos` redirects to `/people-emotions` (direct `/photos` can still hit WAF).
+- [x] `minvo` (:4871) — **HTTPS OK** (2026-10-11): `app.minvo.pro`, home `/84368/episodes`. Login is `localStorage` (`auth_jwt`), not a browser cookie. The access link is token-only.
 - [x] `piktochart` (:4541) — **HTTPS OK** (2026-10-08): `create.piktochart.com`, HTTP/1.1. Sign-in / “session expired” switches accounts or shows contact-admin; status stays unchanged. Hide only `#usersettings-dropdown`. `Digitavision` → `ToolsMandi`. Disk cache `cdn-cache/` (72h).
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): panel access working
 - [x] `prezi` (:4751) — **HTTPS OK** (2026-10-08): panel username + UserDropdown blocked; Craft CDN/API device soft-allow (was stuck on “Laying out the canvas”)
@@ -162,7 +163,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `joggai` (:5031)
 - [ ] `kalodata` (:4951)
 - [ ] `merchinformer` (:4651)
-- [ ] `minvo` (:4871)
 - [ ] `mojo` (:4881)
 - [ ] `pixlr` (:4901)
 - [ ] `ppspy` (:4961)

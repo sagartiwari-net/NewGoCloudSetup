@@ -1,7 +1,25 @@
 {
   "port": "4951",
   "public_host": "kalodata.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://www.kalodata.com",
+  "cdn_url": "https://www.kalodata.com",
+  "tool_name": "Kalodata",
+  "cookie_domain_suffix": "kalodata.com",
+  "home_path": "/explore",
+  "extra_cdn_domains": [
+    "https://d4ewq8axz3ayo.cloudfront.net",
+    "https://d149xzut2sq6e3.cloudfront.net",
+    "https://js.stripe.com",
+    "https://m.stripe.com",
+    "https://api.stripe.com",
+    "https://fonts.googleapis.com",
+    "https://fonts.gstatic.com",
+    "https://www.googletagmanager.com",
+    "https://www.google-analytics.com",
+    "https://static.cloudflareinsights.com",
+    "https://challenges.cloudflare.com"
+  ],
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -9,6 +27,5 @@
   "mysql_port": "3306",
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
-  "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "mysql_db": "gt4rents"
 }
