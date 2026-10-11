@@ -127,6 +127,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `grammarly` (:4911) — **HTTPS OK** (2026-10-06): panel access + disk CDN cache + warm extra-cdn + “connection unstable” banner fixed (`411234d`)
 - [x] `helium10` (:5201) — **HTTPS OK** (2026-10-06): token-only access + panel.db cookies verified
 - [x] `ilovepdf` (:4531) — **HTTPS OK** (2026-10-07): force `www.ilovepdf.com`; HTTP/1.1-only TLS (h2→h1 fallback caused malformed SETTINGS → 502)
+- [x] `imgupscaler` (:5091) — **HTTPS OK** (2026-10-11): `imgupscaler.com`. A logged-out header (Log in and Sign up) switches accounts once or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only the header account menu and the mobile account block (Account, Billing, Sign out).
 - [x] `junglescout` (:5211) — **HTTPS OK** (2026-10-06): panel access working
 - [x] `leonardo` (:4601) — **HTTPS OK** (2026-10-07): panel access working
 - [x] `linkedinlearning` (:4571) — **HTTPS OK** (2026-10-08): `www.linkedin.com/learning/`, HTTP/1.1. Disk cache `cdn-cache/` (72h). Video/audio streamed with Range. Hide only `li[data-live-test-me-menu]` (Me). Guest home (Start free trial / Sign in) switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts.
@@ -162,7 +163,6 @@ Verified on an access link. Each tool is listed once.
 Built with the batch. Not verified on an access link yet.
 
 - [ ] `heliumlearning` (:5221)
-- [ ] `imgupscaler` (:5091)
 - [ ] `indexification` (:5231)
 - [ ] `jasper` (:4511)
 - [ ] `joggai` (:5031)
