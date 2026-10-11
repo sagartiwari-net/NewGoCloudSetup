@@ -201,3 +201,8 @@ func joggLoginWatchHTML() string {
 })();
 </script>`
 }
+
+func joggAccountHideHTML() string {
+	const css = `div.flex.items-center.wrap:has(> .el-dropdown > .el-tooltip__trigger[role="button"][aria-haspopup="menu"]),div.shrink-0.flex.items-center.justify-center.overflow-hidden.ml-8[style*="width: 24px"]:has(> img.object-cover){display:none!important}`
+	return `<style id="tm-jogg-hide">` + css + `</style><script>(function(){var css=` + "`" + css + "`" + `;function ensure(){if(document.getElementById("tm-jogg-hide"))return;var s=document.createElement("style");s.id="tm-jogg-hide";s.textContent=css;(document.head||document.documentElement).appendChild(s);}ensure();setInterval(ensure,1000);})();</script>`
+}

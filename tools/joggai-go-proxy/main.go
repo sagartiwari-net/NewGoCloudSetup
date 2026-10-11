@@ -4471,7 +4471,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Inject our patcher script before </head> (no limit widgets)
-		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg) + joggAccountHideHTML()
 		if usesPanelAccountMode(cfg) {
 			injectStr += joggLoginWatchHTML()
 		}
