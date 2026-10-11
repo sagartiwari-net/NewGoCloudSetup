@@ -2501,6 +2501,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		path == "/extension.zip" ||
 		path == "/__logs" ||
 		path == "/__logs.json" ||
+		path == "/api/qb-logout" ||
+		path == "/__tm_contact_admin" ||
 		path == "/user/logout" {
 		return // These are handled by their own handlers
 	}
@@ -3143,6 +3145,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if idbInject != "" && strings.Contains(strings.ToLower(cfg.TargetURL), "quillbot.com") {
 			bodyBytes = gateQuillbotBoot(bodyBytes)
 		}
+		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && strings.Contains(strings.ToLower(cfg.TargetURL), "quillbot.com") {
+			bodyBytes = injectQuillbotLogoutWatch(bodyBytes, firebaseDisplayName(activeAcc.Cookie))
+		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(upstreamResp.StatusCode)
@@ -3288,6 +3293,8 @@ func main() {
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)
+	mux.HandleFunc("/api/qb-logout", quillbotLogoutHandler)
+	mux.HandleFunc("/__tm_contact_admin", serveQuillbotContactAdmin)
 	mux.HandleFunc("/__tm_access_denied", serveAccessDeniedHTML)
 	mux.HandleFunc("/tm-device-sw.js", serveDeviceSW)
 	mux.HandleFunc("/access", accessHandler)

@@ -16,6 +16,17 @@ func TestIndexedDBBothShapes(t *testing.T) {
 	if extractFirebaseAccessToken(goauto) != "tok" || extractFirebaseAccessToken(bare) != "tok" {
 		t.Fatal("access token not found")
 	}
+	if firebaseDisplayName(goauto) != "" {
+		t.Fatal("fixture has no display name")
+	}
+	named := strings.Replace(goauto, `"apiKey":"AIzaTEST"`, `"apiKey":"AIzaTEST","displayName":"Ada"`, 1)
+	if firebaseDisplayName(named) != "Ada" {
+		t.Fatal("display name")
+	}
+	injHTML := buildIndexedDBInjectHTML(goauto)
+	if !strings.Contains(injHTML, "deleteDatabase") || !strings.Contains(injHTML, "indexedDB.open(dbName, 1)") {
+		t.Fatal("firebase db must be recreated at version 1")
+	}
 	inj := indexedDBJSONForInject(goauto)
 	if !strings.Contains(inj, "firebaseLocalStorageDb") {
 		t.Fatal("inject missing firebase db")

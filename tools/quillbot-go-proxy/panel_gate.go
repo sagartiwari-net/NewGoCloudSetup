@@ -347,6 +347,15 @@ func rememberPanelAccount(sessionToken string, acc ToolAccount) {
 	panelAccMu.Unlock()
 }
 
+func forgetPanelAccount(sessionToken string) {
+	panelAccMu.Lock()
+	if sessionToken == "" || panelAccToken == sessionToken {
+		panelAccCached = ToolAccount{}
+		panelAccToken = ""
+	}
+	panelAccMu.Unlock()
+}
+
 func peekPanelAccount(sessionToken string) (ToolAccount, bool) {
 	panelAccMu.Lock()
 	defer panelAccMu.Unlock()

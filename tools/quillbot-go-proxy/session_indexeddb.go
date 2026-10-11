@@ -86,6 +86,19 @@ func findSTSTokenManager(root map[string]interface{}) (user map[string]interface
 	return nil, nil
 }
 
+func firebaseDisplayName(raw string) string {
+	var root map[string]interface{}
+	if json.Unmarshal([]byte(raw), &root) != nil {
+		return ""
+	}
+	user, _ := findSTSTokenManager(root)
+	if user == nil {
+		return ""
+	}
+	name, _ := user["displayName"].(string)
+	return strings.TrimSpace(name)
+}
+
 func extractFirebaseAccessToken(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -315,29 +328,29 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
         clearTimeout(timer);
         if (err) reject(err); else resolve(db);
       }
-      var req = indexedDB.open(dbName);
-      req.onblocked = function(){ done(new Error('blocked')); };
-      req.onerror = function(){ done(req.error || new Error('open failed')); };
-      req.onsuccess = function() {
-        var db = req.result;
-        if (db.objectStoreNames.contains(storeName)) {
-          done(null, db);
-          return;
-        }
-        var next = db.version + 1;
-        db.close();
-        var req2 = indexedDB.open(dbName, next);
-        req2.onblocked = function(){ done(new Error('blocked')); };
-        req2.onupgradeneeded = function(e2) {
-          var d2 = e2.target.result;
+      function openAtV1() {
+        var req = indexedDB.open(dbName, 1);
+        req.onblocked = function(){ done(new Error('blocked')); };
+        req.onerror = function(){ done(req.error || new Error('open failed')); };
+        req.onupgradeneeded = function(e) {
+          var d2 = e.target.result;
           if (!d2.objectStoreNames.contains(storeName)) {
             if (keyPath) d2.createObjectStore(storeName, { keyPath: keyPath });
-            else d2.createObjectStore(storeName, { autoIncrement: true });
+            else d2.createObjectStore(storeName);
           }
         };
-        req2.onsuccess = function(){ done(null, req2.result); };
-        req2.onerror = function(){ done(req2.error || new Error('upgrade failed')); };
-      };
+        req.onsuccess = function(){ done(null, req.result); };
+      }
+      // Firebase opens this database at version 1. A higher version makes
+      // that open fail and Quillbot paints Log in / Sign up.
+      if (dbName === 'firebaseLocalStorageDb') {
+        var del = indexedDB.deleteDatabase(dbName);
+        del.onblocked = function(){ done(new Error('blocked')); };
+        del.onerror = function(){ openAtV1(); };
+        del.onsuccess = function(){ openAtV1(); };
+        return;
+      }
+      openAtV1();
     });
   }
   function putAll(db, storeName, rows) {
