@@ -3618,6 +3618,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		path == "/user/logout" {
 		return // These are handled by their own handlers
 	}
+	if path == "/ngsw-worker.js" {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte(`self.addEventListener("install",function(){self.skipWaiting()});self.addEventListener("activate",function(e){e.waitUntil(self.registration.unregister())});`))
+		return
+	}
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")

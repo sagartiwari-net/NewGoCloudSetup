@@ -189,13 +189,26 @@ func slideLoginWatchHTML() string {
     try { t = (document.body.innerText || "").replace(/\s+/g, " ").toLowerCase(); } catch (e) {}
     return t.indexOf("welcome back") !== -1 && t.indexOf("let me in") !== -1 && t.indexOf("sign in with google") !== -1;
   }
+  function hop(){
+    location.replace("/signin?_tm=" + Date.now());
+  }
   function go(){
     try {
-      var p = location.pathname || "";
-      if (window.__tmLogoutGo || !loggedOut()) return;
-      if (p.indexOf("/signin") === 0 || p.indexOf("/login") === 0) return;
-      window.__tmLogoutGo = true;
-      location.replace("/signin?_tm=" + Date.now());
+      if (!loggedOut()) return;
+      var last = 0;
+      try { last = parseInt(sessionStorage.getItem("tm_slide_hop") || "0", 10) || 0; } catch (e) {}
+      if (Date.now() - last < 8000) return;
+      try { sessionStorage.setItem("tm_slide_hop", String(Date.now())); } catch (e) {}
+      var sw = navigator.serviceWorker;
+      if (!sw || !sw.getRegistrations) { hop(); return; }
+      sw.getRegistrations().then(function(rs){
+        return Promise.all(rs.map(function(r){
+          var w = r.active || r.waiting || r.installing;
+          var u = (w && w.scriptURL) || "";
+          if (u.indexOf("ngsw") === -1) return;
+          return r.unregister();
+        }));
+      }).then(hop, hop);
     } catch (e) {}
   }
   go();
