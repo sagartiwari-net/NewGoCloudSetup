@@ -173,7 +173,7 @@ func serveWordtuneCookieFailover(w http.ResponseWriter, r *http.Request, cfg Con
 		activeAcc = reloaded
 	}
 
-	// Always mark the dead account logged_out in panel.db so DigitaVision / admin sees it.
+	// Count the dead cookie. Mapped Accounts status stays active; Analytics → Logouts gets the row.
 	if activeAcc.ID > 0 {
 		panelMarkAccountLoggedOut(cfg, activeAcc.ID, reason)
 	}

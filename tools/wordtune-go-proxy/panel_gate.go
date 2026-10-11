@@ -392,24 +392,24 @@ func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
 }
 
-// panelMarkAccountLoggedOut sets panel.db accounts.status = logged_out for DigitaVision / admin.
-// Visible in Panel → Mapped Accounts (Status column).
+// panelMarkAccountLoggedOut counts a logout. Mapped Accounts status stays active.
+// The logout row is written separately to Analytics → Logouts.
 func panelMarkAccountLoggedOut(cfg Config, accountID int, reason string) {
 	if accountID <= 0 {
 		return
 	}
 	db, err := openPanelDB(cfg)
 	if err != nil {
-		log.Printf("[LB] mark logged_out failed id=%d: %v", accountID, err)
+		log.Printf("[LB] logout note failed id=%d: %v", accountID, err)
 		return
 	}
-	res, err := db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, accountID)
+	res, err := db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, accountID)
 	if err != nil {
-		log.Printf("[LB] mark logged_out failed id=%d: %v", accountID, err)
+		log.Printf("[LB] logout note failed id=%d: %v", accountID, err)
 		return
 	}
 	n, _ := res.RowsAffected()
-	log.Printf("[LB] marked logged_out account=%d rows=%d reason=%s", accountID, n, reason)
+	log.Printf("[LB] logout noted, status unchanged account=%d rows=%d reason=%s", accountID, n, reason)
 }
 
 func ensureLogoutEventsTable(db *sql.DB) {

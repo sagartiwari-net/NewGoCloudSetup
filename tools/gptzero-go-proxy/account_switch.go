@@ -139,7 +139,7 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 			`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
 		if err != nil {
 			if currentID > 0 {
-				_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, currentID)
+				_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
 			}
 			var websiteID int
 			_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)

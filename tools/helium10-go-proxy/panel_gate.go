@@ -384,13 +384,13 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 	if err != nil {
 		if currentID > 0 {
-			_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, currentID)
+			_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
 		}
 		tmRecordSwitchLogout(db, websiteID, username, currentName, "(none)", "no_other_active:"+reason)
 		return ToolAccount{}, fmt.Errorf("no other active account")
 	}
 	if currentID > 0 {
-		_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, currentID)
+		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
 	}
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
 	if sessionToken != "" {

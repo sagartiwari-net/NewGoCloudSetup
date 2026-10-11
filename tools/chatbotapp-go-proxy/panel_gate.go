@@ -401,8 +401,8 @@ func panelMarkAccountLoggedOut(cfg Config, accountID int, reason string) {
 	if err != nil {
 		return
 	}
-	_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, accountID)
-	log.Printf("[LB] marked logged_out account=%d reason=%s", accountID, reason)
+	_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, accountID)
+	log.Printf("[LB] logout noted, status unchanged account=%d reason=%s", accountID, reason)
 }
 
 // panelSwitchToOtherAccount pins a different active account.

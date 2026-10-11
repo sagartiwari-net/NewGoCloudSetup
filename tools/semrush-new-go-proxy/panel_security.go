@@ -354,7 +354,7 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 	}
 	if nextID == 0 {
 		if current > 0 {
-			_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, current)
+			_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, current)
 		}
 		if websiteID > 0 {
 			tmRecordSwitchLogout(db, websiteID, username, fromName, "(none)", "no_other_active:semrush_logout")
@@ -364,7 +364,7 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 	}
 	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, nextID, sessionToken)
 	if current > 0 {
-		_, _ = db.Exec(`UPDATE accounts SET status='logged_out', failure_count=failure_count+1 WHERE id=?`, current)
+		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, current)
 	}
 	if websiteID > 0 {
 		tmRecordSwitchLogout(db, websiteID, username, fromName, nextName, "semrush_logout")
