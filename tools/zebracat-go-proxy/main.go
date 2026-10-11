@@ -3700,7 +3700,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
-	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
+	isFavicon := strings.Contains(strings.ToLower(path), "favicon") || path == "/site.webmanifest"
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
 	if authErr != nil && !isFavicon {
 		_, hasSess := r.Cookie("ct_session")
@@ -3778,7 +3778,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		name, sessionErr := panelSessionUsername(r)
 		if sessionErr != nil {
-			if strings.Contains(strings.ToLower(path), "favicon") {
+			if strings.Contains(strings.ToLower(path), "favicon") || path == "/site.webmanifest" {
 				activeAcc = ToolAccount{}
 			} else {
 				renderAccessDeniedPage(w, cfg)

@@ -67,12 +67,22 @@ func zebracatSideRequest(r *http.Request, cfg Config) bool {
 	if !strings.Contains(strings.ToLower(cfg.TargetURL), "zebracat.ai") {
 		return false
 	}
-	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+	p := strings.ToLower(r.URL.Path)
+	if strings.Contains(p, "socket.io") || strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
 		return true
 	}
-	p := strings.ToLower(r.URL.Path)
-	if strings.Contains(p, "socket.io") || strings.HasPrefix(p, "/data/") || p == "/sw.js" || strings.HasSuffix(p, "/sw.js") || p == "/index.html" || strings.HasSuffix(p, ".wasm") || strings.HasSuffix(p, ".svg") || strings.HasSuffix(p, ".ico") {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	// Script, font, and CDN loads cannot send the device header. A service
+	// worker refetch leaves Sec-Fetch-Dest empty, which was reloading the page.
+	if strings.HasPrefix(p, "/assets/") || strings.HasPrefix(p, "/extra-cdn-") || strings.HasPrefix(p, "/ext-host/") || strings.HasPrefix(p, "/data/") || p == "/sw.js" || strings.HasSuffix(p, "/sw.js") || p == "/index.html" || p == "/site.webmanifest" {
 		return true
+	}
+	for _, ext := range []string{".js", ".css", ".wasm", ".map", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".webp", ".gif"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
 	}
 	ref := strings.ToLower(r.Referer())
 	return (p == "/" || p == "/index.html") && strings.Contains(ref, "/sw.js")
