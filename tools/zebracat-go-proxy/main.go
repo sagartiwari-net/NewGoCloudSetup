@@ -1358,7 +1358,8 @@ var (
 	zebracatProjectPath      = regexp.MustCompile(`^/\d+/?$`)
 	zebracatExtraProjectPath = regexp.MustCompile(`^/extra-cdn-\d+/(\d+)/?$`)
 	zebracatEditorPage       = regexp.MustCompile(`^(?:/_editor_)?/\d+/?$`)
-	zebracatEditorAttr       = regexp.MustCompile(`(?i)(\s(?:src|href|content)\s*=\s*)(["'])/(?!/|_editor_|extra-cdn-|ext-host/|cdn-proxy|api/|access(?:[/"']|$)|__tm)`)
+	// Go's regexp is RE2 and rejects lookahead, so the path filter is in code.
+	zebracatEditorAttr = regexp.MustCompile(`(?i)(\s(?:src|href|content)\s*=\s*)(["'])(/[^"']*)`)
 )
 
 const zebracatEditorPrefix = "/_editor_"
@@ -1403,8 +1404,31 @@ func zebracatEditorAssetPath(path string) bool {
 	return false
 }
 
+func zebracatSkipEditorPrefix(path string) bool {
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return true
+	}
+	for _, skip := range []string{"/_editor_", "/extra-cdn-", "/ext-host/", "/cdn-proxy", "/api/", "/access", "/__tm"} {
+		if path == strings.TrimRight(skip, "/") || strings.HasPrefix(path, skip) {
+			return true
+		}
+	}
+	return false
+}
+
 func prefixZebracatEditorHTML(body []byte) []byte {
-	return zebracatEditorAttr.ReplaceAll(body, []byte("${1}${2}/_editor_/"))
+	return zebracatEditorAttr.ReplaceAllFunc(body, func(m []byte) []byte {
+		parts := zebracatEditorAttr.FindSubmatch(m)
+		if len(parts) < 4 || zebracatSkipEditorPrefix(string(parts[3])) {
+			return m
+		}
+		out := make([]byte, 0, len(m)+len(zebracatEditorPrefix))
+		out = append(out, parts[1]...)
+		out = append(out, parts[2]...)
+		out = append(out, zebracatEditorPrefix...)
+		out = append(out, parts[3]...)
+		return out
+	})
 }
 
 func prefixZebracatEditorCSS(body []byte) []byte {
