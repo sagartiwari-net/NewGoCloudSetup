@@ -26,6 +26,13 @@ echo "==> next build (webpack; turbopack was shipping HTML that points at missin
 rm -rf .next
 npm run build
 
+echo "==> static css"
+ls -la .next/static/css
+if ! compgen -G ".next/static/css/*.css" >/dev/null; then
+  echo "panel build produced no CSS files"
+  exit 1
+fi
+
 # Copy app for running with next start from OUT (or run from SRC)
 # Prefer running from SRC after build (.next stays in SRC)
 echo "OK: built ${SRC}/.next"

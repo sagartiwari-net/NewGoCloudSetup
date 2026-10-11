@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // The accounts page died on a missing /_next/static/css file. Inlining
+  // puts the stylesheet in the HTML, so a dropped CSS chunk cannot crash the app.
+  experimental: {
+    inlineCss: true,
+  },
   turbopack: {
     root: process.cwd(),
   },
