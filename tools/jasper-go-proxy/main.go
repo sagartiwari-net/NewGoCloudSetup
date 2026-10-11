@@ -3046,6 +3046,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes = gateJasperModules(bodyBytes)
 
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) && strings.Contains(strings.ToLower(cfg.TargetURL), "jasper.ai") {
+			injectStr += jasperChromeHTML(currentUser)
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 		}
