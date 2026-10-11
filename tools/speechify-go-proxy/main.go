@@ -1418,7 +1418,10 @@ func isCacheableStaticPath(path string) bool {
 	if strings.HasPrefix(p, "/wp-content/") || strings.HasPrefix(p, "/wp-includes/") || strings.HasPrefix(p, "/dist/") || strings.HasPrefix(p, "/img/") {
 		return true
 	}
-	for _, ext := range []string{".js", ".css", ".woff2", ".woff", ".ttf", ".eot", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".map"} {
+	if strings.Contains(p, "/assets/") || strings.Contains(p, "/fonts/") {
+		return true
+	}
+	for _, ext := range []string{".js", ".css", ".wasm", ".woff2", ".woff", ".ttf", ".eot", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".map"} {
 		if strings.HasSuffix(p, ext) {
 			return true
 		}
@@ -1433,40 +1436,42 @@ func getStaticCached(method, path string) *staticCacheEntry {
 	if !isCacheableStaticPath(path) {
 		return nil
 	}
-	v, ok := staticAssetCache.Load(staticCacheKey(method, path))
-	if !ok {
-		// HEAD can reuse GET cache
-		if method == http.MethodHead {
-			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path))
+	key := staticCacheKey(http.MethodGet, path)
+	if v, ok := staticAssetCache.Load(key); ok {
+		ent := v.(*staticCacheEntry)
+		if time.Now().Before(ent.expires) {
+			return ent
 		}
-		if !ok {
-			return nil
-		}
+		staticAssetCache.Delete(key)
 	}
-	ent := v.(*staticCacheEntry)
-	if time.Now().After(ent.expires) {
-		staticAssetCache.Delete(staticCacheKey(http.MethodGet, path))
-		return nil
+	if disk := loadDiskStatic(path); disk != nil {
+		staticAssetCache.Store(key, disk)
+		return disk
 	}
-	return ent
+	return nil
 }
 
 func putStaticCached(method, path string, status int, contentType, encoding string, body []byte) {
 	if method != http.MethodGet || status != 200 || !isCacheableStaticPath(path) {
 		return
 	}
-	if len(body) == 0 || len(body) > 8<<20 { // skip empty / >8MB
+	if len(body) == 0 || len(body) > cdnCacheMax {
+		return
+	}
+	ct := strings.ToLower(contentType)
+	if strings.Contains(ct, "text/html") || strings.Contains(ct, "json") || strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") {
 		return
 	}
 	cp := make([]byte, len(body))
 	copy(cp, body)
-	staticAssetCache.Store(staticCacheKey(method, path), &staticCacheEntry{
+	staticAssetCache.Store(staticCacheKey(http.MethodGet, path), &staticCacheEntry{
 		status:      status,
 		contentType: contentType,
 		encoding:    encoding,
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
+	storeDiskStatic(path, status, contentType, encoding, cp)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
@@ -2785,16 +2790,35 @@ func patcherScript(cfg Config) string {
         if (u.length > 1 && ((u.charAt(0) === '"' && u.charAt(u.length-1) === '"') || (u.charAt(0) === "'" && u.charAt(u.length-1) === "'"))) {
             u = u.substring(1, u.length-1);
         }
-        // proxy.speechify.com fetches the file URL that follows it. Rewriting
-        // that inner host (firestore, appspot, storage) makes the file open fail.
+        // A Speechify file proxy fetches the address in the rest of the URL.
+        // Rewriting that inner host makes Continue and old items return 401.
         if (T && T.indexOf('speechify.com') !== -1) {
-            var extMark = '/ext-host/proxy.speechify.com';
-            var rest = null;
-            var absProxy = u.match(/^(https?:)\/{2,}proxy\.speechify\.com([\s\S]*)$/i);
-            if (absProxy) rest = absProxy[2] || '';
-            else if (u.indexOf(O + extMark) === 0) rest = u.slice((O + extMark).length);
-            else if (u.indexOf(extMark) === 0) rest = u.slice(extMark.length);
-            if (rest !== null) return O + extMark + rest;
+            function speechifyProxyHost(host) {
+                host = String(host || '').toLowerCase();
+                return host.indexOf('proxy') !== -1 && host.indexOf('speechify.com') !== -1 && host !== T && host !== 'app.speechify.com' && host !== 'www.speechify.com';
+            }
+            function restoreInner(rest) {
+                var out = String(rest || '');
+                for (var e = 0; e < EXTRA.length; e++) {
+                    var from = EXTRA[e][0], to = EXTRA[e][1];
+                    if (!from || !to || from.indexOf('http') !== 0) continue;
+                    out = out.split(O + to).join(from);
+                    try { out = out.split(encodeURIComponent(O + to)).join(encodeURIComponent(from)); } catch (e2) {}
+                }
+                return out;
+            }
+            var absProxy = u.match(/^(https?:)\/{2,}([^/?#]+)([\s\S]*)$/i);
+            if (absProxy && speechifyProxyHost(absProxy[2])) {
+                return O + '/ext-host/' + absProxy[2] + restoreInner(absProxy[3] || '');
+            }
+            var extAt = u.indexOf('/ext-host/');
+            if (extAt >= 0) {
+                var after = u.slice(extAt + '/ext-host/'.length);
+                var cut = after.search(/[/?#]/);
+                var eh = cut < 0 ? after : after.slice(0, cut);
+                var er = cut < 0 ? '' : after.slice(cut);
+                if (speechifyProxyHost(eh)) return O + '/ext-host/' + eh + restoreInner(er);
+            }
         }
         // WooRank sibling hosts via /ext-host/ (extra CDN list also covers these)
         // New doc lives on coda.grammarly.com — keep it on this origin (/newdoc, /d/).
@@ -3843,10 +3867,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		host = strings.ToLower(strings.TrimSpace(host))
-		if host == "proxy.speechify.com" {
+		if speechifyFileProxyHost(host) {
 			upPath = restoreSpeechifyProxyTarget(upPath, cfg, r.Host)
 			if upEsc != "" {
 				upEsc = restoreSpeechifyProxyTarget(upEsc, cfg, r.Host)
+			}
+			if upstreamURL.RawQuery != "" {
+				upstreamURL.RawQuery = restoreSpeechifyProxyTarget(upstreamURL.RawQuery, cfg, r.Host)
 			}
 		}
 		suffix := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(cfg.CookieDomainSuffix)), ".")
@@ -4749,6 +4776,7 @@ func main() {
 	initDB(cfg)
 	resolveWebsiteID(cfg.PublicHost)
 	startDailyResetCron()
+	startCDNCacheSweep()
 	warmCFCookies(cfg)
 
 	mux := http.NewServeMux()

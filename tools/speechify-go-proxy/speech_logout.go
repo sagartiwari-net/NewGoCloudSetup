@@ -198,9 +198,14 @@ func finishSpeechUpstreamLogout(w http.ResponseWriter, r *http.Request, resp *ht
 	serveSpeechLogout(w, r, cfg, acc, sessionToken, "session_expired")
 }
 
-// restoreSpeechifyProxyTarget puts real hosts back inside a proxy.speechify.com
-// target. The page rewriter turns https://firestore.googleapis.com into
-// /extra-cdn-N, and Speechify's file proxy then rejects that address.
+func speechifyFileProxyHost(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	return strings.Contains(h, "speechify.com") && strings.Contains(h, "proxy")
+}
+
+// restoreSpeechifyProxyTarget puts real hosts back inside a Speechify file-proxy
+// URL. The page rewriter turns https://firebasestorage.googleapis.com into
+// /extra-cdn-N, and proxy.api.speechify.com then rejects that address.
 func restoreSpeechifyProxyTarget(raw string, cfg Config, publicHost string) string {
 	hosts := []string{}
 	addHost := func(h string) {
