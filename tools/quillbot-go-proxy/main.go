@@ -1723,9 +1723,39 @@ func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]s
 
 func rewriteBody(body []byte, pairs [][2]string) []byte {
 	for _, pair := range pairs {
+		// A bare host such as quillbot.com must not match inside
+		// auth.quillbot.com. Firebase authDomain has to stay on the
+		// real auth host or the saved session never signs in.
+		if !strings.Contains(pair[0], "://") && !strings.Contains(pair[0], "/") {
+			body = replaceUnqualifiedHost(body, pair[0], pair[1])
+			continue
+		}
 		body = bytes.ReplaceAll(body, []byte(pair[0]), []byte(pair[1]))
 	}
 	return body
+}
+
+func replaceUnqualifiedHost(body []byte, host, repl string) []byte {
+	h := []byte(host)
+	r := []byte(repl)
+	if len(h) == 0 {
+		return body
+	}
+	out := make([]byte, 0, len(body))
+	for i := 0; i < len(body); {
+		if bytes.HasPrefix(body[i:], h) && (i == 0 || !isHostChar(body[i-1])) {
+			out = append(out, r...)
+			i += len(h)
+			continue
+		}
+		out = append(out, body[i])
+		i++
+	}
+	return out
+}
+
+func isHostChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_'
 }
 
 // applyTextReplacements runs config.json "replacements" on response bodies
@@ -1868,7 +1898,7 @@ func patcherScript(cfg Config) string {
 	}
 	extraCDNJS.WriteString("]")
 
-	return fmt.Sprintf(`<script>
+	return fmt.Sprintf(`<script data-tm-patcher="1">
 (function() {
     var T = '%s', C = '%s', O = window.location.origin;
     var HOME = '%s';
@@ -3109,6 +3139,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			out = append(out, inj...)
 			out = append(out, bodyBytes[loc[1]:]...)
 			bodyBytes = out
+		}
+		if idbInject != "" && strings.Contains(strings.ToLower(cfg.TargetURL), "quillbot.com") {
+			bodyBytes = gateQuillbotBoot(bodyBytes)
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -266,7 +267,19 @@ func indexedDBJSONForInject(raw string) string {
 	if len(idb) == 0 {
 		return "{}"
 	}
-	b, err := json.Marshal(idb)
+	// Only Firebase databases belong in the page. A GoAuto export also
+	// carries analytics stores and, sometimes, the wrapper keys themselves
+	// (referer, includedFormats) which are not IndexedDB databases.
+	filtered := make(map[string]interface{}, 2)
+	for name, v := range idb {
+		if strings.HasPrefix(name, "firebase") {
+			filtered[name] = v
+		}
+	}
+	if len(filtered) == 0 {
+		return "{}"
+	}
+	b, err := json.Marshal(filtered)
 	if err != nil {
 		return "{}"
 	}
@@ -297,7 +310,7 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
   var TOKEN_TAG = ` + string(tokenTagJS) + `;
   function openStore(dbName, storeName, keyPath) {
     return new Promise(function(resolve, reject) {
-      var timer = setTimeout(function(){ reject(new Error('idb timeout')); }, 2000);
+      var timer = setTimeout(function(){ reject(new Error('idb timeout')); }, 5000);
       function done(err, db) {
         clearTimeout(timer);
         if (err) reject(err); else resolve(db);
@@ -341,13 +354,6 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
       if (ACCESS_TOKEN) {
         try { window.__TM_FIREBASE_ACCESS_TOKEN = ACCESS_TOKEN; } catch (e) {}
       }
-      // Re-inject when access token rotates (stale sessionStorage caused "Something went wrong")
-      try {
-        if (TOKEN_TAG && sessionStorage.getItem('__tm_jasper_idb') === TOKEN_TAG) {
-          console.log('[Quillbot] IndexedDB already warm');
-          return;
-        }
-      } catch (e) {}
       var dbs = IDB_DUMP || {};
       var jobs = [];
       for (var dbName in dbs) {
@@ -360,6 +366,8 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
             if (rows.length && rows[0] && rows[0].fbase_key != null) keyPath = 'fbase_key';
             jobs.push(openStore(dbName, storeName, keyPath).then(function(db){
               return putAll(db, storeName, rows).then(function(){ try { db.close(); } catch (e) {} });
+            }).catch(function(err){
+              console.warn('[Quillbot] IndexedDB store failed', dbName, storeName, err);
             }));
           })(dbName, storeName, stores[storeName] || []);
         }
@@ -405,6 +413,133 @@ func gateJasperModules(html []byte) []byte {
 		return []byte(repl)
 	})
 }
+
+var quillbotScriptRe = regexp.MustCompile(`(?is)<script\b([^>]*)>(.*?)</script>`)
+var quillbotAttrRe = regexp.MustCompile(`(?i)([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))`)
+
+func scriptAttr(attrs, key string) string {
+	for _, m := range quillbotAttrRe.FindAllStringSubmatch(attrs, -1) {
+		if !strings.EqualFold(m[1], key) {
+			continue
+		}
+		if strings.Contains(m[0], `="`) {
+			return m[2]
+		}
+		if strings.Contains(m[0], `='`) {
+			return m[3]
+		}
+		return m[4]
+	}
+	return ""
+}
+
+func scriptHasAttr(attrs, key string) bool {
+	if scriptAttr(attrs, key) != "" {
+		return true
+	}
+	re := regexp.MustCompile(`(?i)(?:^|[\s/])` + regexp.QuoteMeta(key) + `(?:[\s=/>]|$)`)
+	return re.MatchString(attrs)
+}
+
+// gateQuillbotBoot keeps Quillbot's own scripts from running until the
+// Firebase session is in IndexedDB. The site boots from inline scripts, so
+// the Vite-only gate never waits and the app paints logged out.
+func gateQuillbotBoot(page []byte) []byte {
+	if !bytes.Contains(page, []byte(`data-tm-idb-restore`)) || bytes.Contains(page, []byte(`data-tm-idb-replay`)) {
+		return page
+	}
+	page = quillbotScriptRe.ReplaceAllFunc(page, func(m []byte) []byte {
+		sub := quillbotScriptRe.FindSubmatch(m)
+		if len(sub) < 3 {
+			return m
+		}
+		attrs := string(sub[1])
+		if strings.Contains(attrs, "data-tm-") {
+			return m
+		}
+		typ := strings.ToLower(strings.TrimSpace(scriptAttr(attrs, "type")))
+		switch typ {
+		case "application/ld+json", "application/json", "text/template", "text/x-template", "importmap":
+			return m
+		}
+		var b strings.Builder
+		b.WriteString(`<script type="text/tm-hold" data-tm-hold="1"`)
+		if typ != "" {
+			b.WriteString(` data-tm-type="`)
+			b.WriteString(html.EscapeString(typ))
+			b.WriteString(`"`)
+		}
+		src := scriptAttr(attrs, "src")
+		if src != "" {
+			b.WriteString(` data-tm-src="`)
+			b.WriteString(html.EscapeString(src))
+			b.WriteString(`"`)
+		}
+		if scriptHasAttr(attrs, "async") {
+			b.WriteString(` data-tm-async="1"`)
+		}
+		if scriptHasAttr(attrs, "defer") {
+			b.WriteString(` data-tm-defer="1"`)
+		}
+		if scriptHasAttr(attrs, "nomodule") {
+			b.WriteString(` data-tm-nomodule="1"`)
+		}
+		if cross := scriptAttr(attrs, "crossorigin"); cross != "" {
+			b.WriteString(` data-tm-crossorigin="`)
+			b.WriteString(html.EscapeString(cross))
+			b.WriteString(`"`)
+		}
+		b.WriteString(`>`)
+		if src == "" {
+			b.Write(sub[2])
+		}
+		b.WriteString(`</script>`)
+		return []byte(b.String())
+	})
+	replay := []byte(quillbotReplayScript)
+	if i := bytes.LastIndex(bytes.ToLower(page), []byte("</body>")); i >= 0 {
+		out := make([]byte, 0, len(page)+len(replay))
+		out = append(out, page[:i]...)
+		out = append(out, replay...)
+		out = append(out, page[i:]...)
+		return out
+	}
+	return append(page, replay...)
+}
+
+const quillbotReplayScript = `<script data-tm-idb-replay="1">
+(async function(){
+  try {
+    var ready = window.__TM_IDB_READY;
+    if (ready && ready.then) {
+      await Promise.race([ready, new Promise(function(r){ setTimeout(r, 8000); })]);
+    }
+  } catch (e) {}
+  var list = Array.prototype.slice.call(document.querySelectorAll('script[data-tm-hold="1"]'));
+  for (var i = 0; i < list.length; i++) {
+    var old = list[i];
+    if (!old.parentNode) continue;
+    var s = document.createElement('script');
+    var typ = old.getAttribute('data-tm-type');
+    if (typ) s.type = typ;
+    if (old.getAttribute('data-tm-nomodule') === '1') s.noModule = true;
+    var cross = old.getAttribute('data-tm-crossorigin');
+    if (cross) s.crossOrigin = cross;
+    var src = old.getAttribute('data-tm-src');
+    if (src) {
+      if (old.getAttribute('data-tm-async') === '1') s.async = true;
+      s.src = src;
+      old.parentNode.insertBefore(s, old.nextSibling);
+      if (old.getAttribute('data-tm-async') !== '1') {
+        await new Promise(function(res){ s.onload = s.onerror = function(){ res(); }; });
+      }
+    } else {
+      s.text = old.text || old.textContent || '';
+      old.parentNode.insertBefore(s, old.nextSibling);
+    }
+  }
+})();
+</script>`
 
 func loadSessionFileRaw(path string) string {
 	data, err := os.ReadFile(path)
