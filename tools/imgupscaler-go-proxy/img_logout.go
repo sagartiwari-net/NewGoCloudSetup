@@ -201,8 +201,13 @@ func imgLoginWatchHTML() string {
       location.replace(location.pathname + q);
     } catch (e) {}
   }
-  go();
+	go();
   setInterval(go, 1000);
 })();
 </script>`
+}
+
+func imgAccountHideHTML() string {
+	const css = `div.ml-2.flex.items-center.gap-2.border-l.pl-3:has(button[aria-label="Account menu"]),div.mt-4.border-t.pt-4:has(a[href="/account"]):has(a[href="/account?tab=billing"]):has(.lucide-log-out){display:none!important}`
+	return `<style id="tm-img-hide">` + css + `</style><script>(function(){var css=` + "`" + css + "`" + `;function ensure(){if(document.getElementById("tm-img-hide"))return;var s=document.createElement("style");s.id="tm-img-hide";s.textContent=css;(document.head||document.documentElement).appendChild(s);}ensure();setInterval(ensure,1000);})();</script>`
 }
