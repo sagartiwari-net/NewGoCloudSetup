@@ -4405,6 +4405,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 		bodyBytes = rewriteBody(bodyBytes, pairs)
 		bodyBytes = rewriteGrammarlyContentHosts(bodyBytes, publicBase)
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "speechify.com") {
+			bodyBytes = rewriteSpeechifySiblingHosts(bodyBytes, publicBase)
+		}
 		if strings.Contains(strings.ToLower(cfg.TargetURL), "storyblocks.com") {
 			bodyBytes = rewriteStoryblocksWAF(bodyBytes)
 		}
@@ -4481,6 +4484,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 			bodyBytes = rewriteBody(bodyBytes, pairs)
 			bodyBytes = rewriteGrammarlyContentHosts(bodyBytes, publicBase)
+			if strings.Contains(strings.ToLower(cfg.TargetURL), "speechify.com") {
+				bodyBytes = rewriteSpeechifySiblingHosts(bodyBytes, publicBase)
+			}
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
@@ -4528,16 +4534,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		needle := []byte("Object.assign({useFetchStreams:r},s)")
-		if bytes.Contains(decoded, needle) {
-			decoded = bytes.ReplaceAll(decoded, needle, []byte("Object.assign({useFetchStreams:!1},s)"))
+		rewritten := rewriteSpeechifySiblingHosts(decoded, publicBase)
+		if bytes.Contains(rewritten, needle) {
+			rewritten = bytes.ReplaceAll(rewritten, needle, []byte("Object.assign({useFetchStreams:!1},s)"))
 			log.Printf("[SPEECHIFY] Firestore fetch streams disabled in %s", path)
-			putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", decoded)
+		}
+		if !bytes.Equal(rewritten, decoded) {
+			putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", rewritten)
 			w.Header().Del("Content-Encoding")
 			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Set("Content-Length", strconv.Itoa(len(decoded)))
+			w.Header().Set("Content-Length", strconv.Itoa(len(rewritten)))
 			w.Header().Set("X-OCG-Cache", "MISS")
 			w.WriteHeader(upstreamResp.StatusCode)
-			w.Write(decoded)
+			w.Write(rewritten)
 			return
 		}
 		putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, ce, raw)

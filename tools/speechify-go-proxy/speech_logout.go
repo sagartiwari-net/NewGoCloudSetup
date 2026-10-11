@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"html"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -201,6 +203,37 @@ func finishSpeechUpstreamLogout(w http.ResponseWriter, r *http.Request, resp *ht
 func speechifyFileProxyHost(host string) bool {
 	h := strings.ToLower(strings.TrimSpace(host))
 	return strings.Contains(h, "speechify.com") && strings.Contains(h, "proxy")
+}
+
+// speechify sibling hosts (proxy.api, cdn, user-profile) must be fetched on
+// this origin. The PDF worker calls them directly, and they only allow app.speechify.com.
+var speechifyAbsHost = regexp.MustCompile(`(https?:|wss?:)(\\/\\/|//)((?:[a-z0-9-]+\.)+speechify\.com)`)
+
+func rewriteSpeechifySiblingHosts(body []byte, publicBase string) []byte {
+	if len(body) == 0 || !bytes.Contains(body, []byte("speechify.com")) {
+		return body
+	}
+	baseHost := strings.TrimPrefix(strings.TrimPrefix(strings.TrimRight(publicBase, "/"), "https://"), "http://")
+	if baseHost == "" {
+		return body
+	}
+	return speechifyAbsHost.ReplaceAllFunc(body, func(match []byte) []byte {
+		sub := speechifyAbsHost.FindSubmatch(match)
+		if len(sub) < 4 {
+			return match
+		}
+		host := strings.ToLower(string(sub[3]))
+		switch host {
+		case "app.speechify.com", "www.speechify.com", "speechify.com":
+			return match
+		}
+		sep := string(sub[2])
+		path := "/ext-host/" + host
+		if sep == `\/\/` {
+			return []byte(string(sub[1]) + `\/\/` + baseHost + strings.ReplaceAll(path, "/", `\/`))
+		}
+		return []byte(string(sub[1]) + "//" + baseHost + path)
+	})
 }
 
 // restoreSpeechifyProxyTarget puts real hosts back inside a Speechify file-proxy

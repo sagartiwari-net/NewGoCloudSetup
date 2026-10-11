@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	cdnCacheDir = "cdn-cache"
+	cdnCacheDir = "cdn-cache-v2"
 	cdnCacheTTL = 72 * time.Hour
 	cdnCacheMax = 20 << 20
 )
