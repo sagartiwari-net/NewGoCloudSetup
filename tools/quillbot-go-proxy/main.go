@@ -2593,7 +2593,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			currentUser = name
-			if acc, ok := peekPanelAccount(sessionToken); ok {
+			// A document load must read the cookie the panel just saved.
+			// The short memory cache is only for later API calls.
+			if acc, ok := peekPanelAccount(sessionToken); ok && !isDocumentNavigation(r) {
 				activeAcc = acc
 			} else {
 				var panelErr error
@@ -2807,11 +2809,23 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if !staticFast {
 		firebaseRaw = activeAcc.Cookie
 		if usesPanelAccountMode(cfg) && isIndexedDBSession(firebaseRaw) {
+			baseCookie := firebaseRaw
 			firebaseRaw = ensureFreshFirebaseSessionRaw(firebaseRaw, "")
-			if firebaseRaw != "" && firebaseRaw != activeAcc.Cookie {
-				persistPanelAccountCookie(cfg, activeAcc.ID, firebaseRaw)
-				activeAcc.Cookie = firebaseRaw
-				rememberPanelAccount(sessionToken, activeAcc)
+			if firebaseRaw != "" && firebaseRaw != baseCookie {
+				if persistPanelAccountCookie(cfg, activeAcc.ID, baseCookie, firebaseRaw) {
+					activeAcc.Cookie = firebaseRaw
+					rememberPanelAccount(sessionToken, activeAcc)
+				} else if fresh, ferr := loadPanelSessionAccount(cfg, sessionToken); ferr == nil {
+					activeAcc = fresh
+					firebaseRaw = ensureFreshFirebaseSessionRaw(fresh.Cookie, "")
+					if firebaseRaw != fresh.Cookie && persistPanelAccountCookie(cfg, fresh.ID, fresh.Cookie, firebaseRaw) {
+						activeAcc.Cookie = firebaseRaw
+					} else {
+						activeAcc.Cookie = fresh.Cookie
+						firebaseRaw = fresh.Cookie
+					}
+					rememberPanelAccount(sessionToken, activeAcc)
+				}
 			}
 		} else {
 			firebaseRaw = ensureFreshFirebaseSession(cfg.CookieFile)

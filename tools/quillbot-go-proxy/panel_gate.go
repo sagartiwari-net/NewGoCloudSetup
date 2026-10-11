@@ -444,17 +444,27 @@ func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 	return acc, nil
 }
 
-func persistPanelAccountCookie(cfg Config, accountID int, cookie string) {
-	if accountID <= 0 || strings.TrimSpace(cookie) == "" {
-		return
+func persistPanelAccountCookie(cfg Config, accountID int, previous, refreshed string) bool {
+	if accountID <= 0 || strings.TrimSpace(refreshed) == "" || previous == "" || previous == refreshed {
+		return false
 	}
 	db, err := openPanelDB(cfg)
 	if err != nil {
-		return
+		return false
 	}
-	if _, err := db.Exec(`UPDATE accounts SET cookie=? WHERE id=?`, cookie, accountID); err != nil {
+	// A panel save replaces the cookie. Do not write a refreshed older
+	// session back over that new paste.
+	res, err := db.Exec(`UPDATE accounts SET cookie=? WHERE id=? AND cookie=?`, refreshed, accountID, previous)
+	if err != nil {
 		log.Printf("[PANEL] persist cookie failed id=%d: %v", accountID, err)
+		return false
 	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		log.Printf("[PANEL] cookie was updated in the panel, kept the new session id=%d", accountID)
+		return false
+	}
+	return true
 }
 
 func recordPanelLogin(db *sql.DB, domain, username, sessionToken, clientIP, userAgent string, expires time.Time, accountID int) {

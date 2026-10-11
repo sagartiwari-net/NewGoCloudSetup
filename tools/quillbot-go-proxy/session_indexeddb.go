@@ -345,10 +345,20 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
       // that open fail and Quillbot paints Log in / Sign up.
       if (dbName === 'firebaseLocalStorageDb') {
         var del = indexedDB.deleteDatabase(dbName);
-        del.onblocked = function(){ done(new Error('blocked')); };
+        del.onblocked = function(){ openExisting(); };
         del.onerror = function(){ openAtV1(); };
         del.onsuccess = function(){ openAtV1(); };
         return;
+      }
+      function openExisting() {
+        var req = indexedDB.open(dbName);
+        req.onerror = function(){ done(req.error || new Error('open failed')); };
+        req.onsuccess = function(){
+          var db = req.result;
+          if (db.objectStoreNames.contains(storeName)) { done(null, db); return; }
+          db.close();
+          openAtV1();
+        };
       }
       openAtV1();
     });
