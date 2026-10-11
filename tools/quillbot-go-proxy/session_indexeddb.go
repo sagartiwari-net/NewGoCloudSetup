@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -411,6 +412,25 @@ func loadSessionFileRaw(path string) string {
 		return ""
 	}
 	return string(data)
+}
+
+// Quillbot sets cookies on the parent of location.hostname. On
+// quillbot.gt4rents.com that is .gt4rents.com, so the panel request
+// carries them and Chrome shows "This page couldn't load".
+func injectQuillbotCookieScope(body []byte) []byte {
+	const script = `<script data-tm-cookie-scope>(function(){var proto=Document.prototype;var desc=Object.getOwnPropertyDescriptor(proto,"cookie");if(!desc||!desc.set||!desc.get)return;Object.defineProperty(proto,"cookie",{configurable:true,get:function(){return desc.get.call(this);},set:function(v){v=String(v).replace(/;\s*domain=\.?gt4rents\.com/ig,"");return desc.set.call(this,v);}});})();</script>`
+	if bytes.Contains(body, []byte("data-tm-cookie-scope")) {
+		return body
+	}
+	reHead := regexp.MustCompile(`(?i)<head[^>]*>`)
+	if loc := reHead.FindIndex(body); loc != nil {
+		out := make([]byte, 0, len(body)+len(script))
+		out = append(out, body[:loc[1]]...)
+		out = append(out, script...)
+		out = append(out, body[loc[1]:]...)
+		return out
+	}
+	return append([]byte(script), body...)
 }
 
 func logIndexedDBSession(path string) {

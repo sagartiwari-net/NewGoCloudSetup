@@ -3066,6 +3066,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if usesPanelAccountMode(cfg) {
 			bodyBytes = injectDeviceHTML(bodyBytes)
 		}
+		if strings.Contains(strings.ToLower(cfg.TargetURL), "quillbot.com") {
+			bodyBytes = injectQuillbotCookieScope(bodyBytes)
+		}
 
 		// Inject auth restore + URL patcher. IndexedDB must run at START of <head>
 		// so Firebase sees the session before Vite modules boot.
