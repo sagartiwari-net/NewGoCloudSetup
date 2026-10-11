@@ -279,34 +279,34 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
   var TOKEN_TAG = ` + string(tokenTagJS) + `;
   function openStore(dbName, storeName, keyPath) {
     return new Promise(function(resolve, reject) {
-      var req = indexedDB.open(dbName, 1);
-      req.onupgradeneeded = function(e) {
-        var db = e.target.result;
-        if (!db.objectStoreNames.contains(storeName)) {
-          if (keyPath) db.createObjectStore(storeName, { keyPath: keyPath });
-          else db.createObjectStore(storeName, { autoIncrement: true });
-        }
-      };
+      var timer = setTimeout(function(){ reject(new Error('idb timeout')); }, 2000);
+      function done(err, db) {
+        clearTimeout(timer);
+        if (err) reject(err); else resolve(db);
+      }
+      var req = indexedDB.open(dbName);
+      req.onblocked = function(){ done(new Error('blocked')); };
+      req.onerror = function(){ done(req.error || new Error('open failed')); };
       req.onsuccess = function() {
         var db = req.result;
-        if (!db.objectStoreNames.contains(storeName)) {
-          db.close();
-          var v = db.version + 1;
-          var req2 = indexedDB.open(dbName, v);
-          req2.onupgradeneeded = function(e2) {
-            var d2 = e2.target.result;
-            if (!d2.objectStoreNames.contains(storeName)) {
-              if (keyPath) d2.createObjectStore(storeName, { keyPath: keyPath });
-              else d2.createObjectStore(storeName, { autoIncrement: true });
-            }
-          };
-          req2.onsuccess = function(){ resolve(req2.result); };
-          req2.onerror = function(){ reject(req2.error); };
+        if (db.objectStoreNames.contains(storeName)) {
+          done(null, db);
           return;
         }
-        resolve(db);
+        var next = db.version + 1;
+        db.close();
+        var req2 = indexedDB.open(dbName, next);
+        req2.onblocked = function(){ done(new Error('blocked')); };
+        req2.onupgradeneeded = function(e2) {
+          var d2 = e2.target.result;
+          if (!d2.objectStoreNames.contains(storeName)) {
+            if (keyPath) d2.createObjectStore(storeName, { keyPath: keyPath });
+            else d2.createObjectStore(storeName, { autoIncrement: true });
+          }
+        };
+        req2.onsuccess = function(){ done(null, req2.result); };
+        req2.onerror = function(){ done(req2.error || new Error('upgrade failed')); };
       };
-      req.onerror = function(){ reject(req.error); };
     });
   }
   function putAll(db, storeName, rows) {
@@ -372,10 +372,14 @@ func gateJasperModules(html []byte) []byte {
 		src := string(sub[2])
 		repl := fmt.Sprintf(`<script data-tm-module-gate="1">
 (async function(){
-  try { if (window.__TM_IDB_READY) await window.__TM_IDB_READY; } catch (e) {}
+  try {
+    var ready = window.__TM_IDB_READY;
+    if (ready && ready.then) {
+      await Promise.race([ready, new Promise(function(r){ setTimeout(r, 2500); })]);
+    }
+  } catch (e) {}
   var s = document.createElement('script');
   s.type = 'module';
-  s.crossOrigin = '';
   s.src = %q;
   document.head.appendChild(s);
 })();
