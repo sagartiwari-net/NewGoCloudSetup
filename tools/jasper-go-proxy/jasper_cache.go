@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -170,6 +172,48 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 		expires:     time.Now().Add(6 * time.Hour),
 	})
 	storeDiskStatic(path, status, contentType, encoding, cp)
+}
+
+// capBuffer streams to the client immediately and keeps a copy for the disk
+// cache. Crossing the size cap drops the copy and keeps streaming.
+type capBuffer struct {
+	dst  io.Writer
+	buf  bytes.Buffer
+	max  int
+	drop bool
+}
+
+func (c *capBuffer) Write(p []byte) (int, error) {
+	n, err := c.dst.Write(p)
+	if c.drop || n <= 0 {
+		return n, err
+	}
+	if c.buf.Len()+n > c.max {
+		c.drop = true
+		c.buf.Reset()
+		return n, err
+	}
+	c.buf.Write(p[:n])
+	return n, err
+}
+
+func writeStreamCache(w http.ResponseWriter, r *http.Request, body io.Reader, status int, contentType, encoding, cachePath string) {
+	if encoding != "" {
+		w.Header().Set("Content-Encoding", encoding)
+	}
+	w.WriteHeader(status)
+	cw := &capBuffer{dst: w, max: cdnCacheMax}
+	if _, err := io.Copy(cw, body); err != nil {
+		return
+	}
+	if fl, ok := w.(http.Flusher); ok {
+		fl.Flush()
+	}
+	if r.Method != http.MethodGet || status != http.StatusOK || cw.drop || cw.buf.Len() == 0 {
+		return
+	}
+	snapshot := append([]byte(nil), cw.buf.Bytes()...)
+	go putStaticCached(http.MethodGet, cachePath, status, contentType, encoding, snapshot)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {

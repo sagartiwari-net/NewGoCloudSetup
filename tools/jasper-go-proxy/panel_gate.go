@@ -112,7 +112,20 @@ func panelSessionUsername(r *http.Request) (string, error) {
 	return username, nil
 }
 
+var (
+	panelDurMu     sync.Mutex
+	panelDurCached time.Duration
+	panelDurAt     time.Time
+)
+
 func panelSessionDuration() time.Duration {
+	panelDurMu.Lock()
+	if panelDurCached > 0 && time.Since(panelDurAt) < 5*time.Minute {
+		d := panelDurCached
+		panelDurMu.Unlock()
+		return d
+	}
+	panelDurMu.Unlock()
 	cfg := loadConfig()
 	db, err := openPanelDB(cfg)
 	if err != nil {
@@ -123,7 +136,12 @@ func panelSessionDuration() time.Duration {
 	if mins <= 0 {
 		mins = 30
 	}
-	return time.Duration(mins) * time.Minute
+	d := time.Duration(mins) * time.Minute
+	panelDurMu.Lock()
+	panelDurCached = d
+	panelDurAt = time.Now()
+	panelDurMu.Unlock()
+	return d
 }
 
 func extendPanelSession(token string, sess *panelGateSession) {
@@ -310,6 +328,36 @@ const panelAccountSelect = `SELECT a.id, a.name, a.cookie,
 const panelAccountOrder = `ORDER BY CASE WHEN a.last_used_at = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC`
 
 var panelPickMu sync.Mutex
+
+var (
+	panelAccMu     sync.Mutex
+	panelAccCached ToolAccount
+	panelAccToken  string
+	panelAccAt     time.Time
+)
+
+func rememberPanelAccount(sessionToken string, acc ToolAccount) {
+	if sessionToken == "" || acc.Cookie == "" {
+		return
+	}
+	panelAccMu.Lock()
+	panelAccCached = acc
+	panelAccToken = sessionToken
+	panelAccAt = time.Now()
+	panelAccMu.Unlock()
+}
+
+func peekPanelAccount(sessionToken string) (ToolAccount, bool) {
+	panelAccMu.Lock()
+	defer panelAccMu.Unlock()
+	if sessionToken == "" || panelAccToken != sessionToken || panelAccCached.Cookie == "" {
+		return ToolAccount{}, false
+	}
+	if time.Since(panelAccAt) > 2*time.Minute {
+		return ToolAccount{}, false
+	}
+	return panelAccCached, true
+}
 
 // claimPanelAccount picks the least recently used active account and stamps last_used_at.
 // Status is left unchanged. The next login then lands on a different account.

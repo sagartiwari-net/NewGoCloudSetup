@@ -2523,13 +2523,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Hashed JS/CSS/fonts/images do not need the Firebase dump. Parsing that
+	// blob and waiting to buffer the whole file held every browser connection,
+	// so device-bind and the app itself sat pending for over a minute.
+	staticFast := (r.Method == http.MethodGet || r.Method == http.MethodHead) && isCacheableStaticPath(requestCachePath(r))
+
 	// ── 3. Get active account for this session ────────────────────────────────────
 	sessionToken := ""
 	if c, err := r.Cookie("ct_session"); err == nil {
 		sessionToken = c.Value
 	}
 	var activeAcc ToolAccount
-	if usesPanelAccountMode(cfg) {
+	if usesPanelAccountMode(cfg) && staticFast {
+		activeAcc = ToolAccount{UserAgent: cfg.UserAgent}
+	} else if usesPanelAccountMode(cfg) {
 		if sessionToken == "" {
 			if c, cErr := r.Cookie("ct_session"); cErr == nil {
 				sessionToken = c.Value
@@ -2547,12 +2554,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			currentUser = name
-			var panelErr error
-			activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
-			if panelErr != nil {
-				log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
-				renderNoActiveAccountsPage(w, cfg)
-				return
+			if acc, ok := peekPanelAccount(sessionToken); ok {
+				activeAcc = acc
+			} else {
+				var panelErr error
+				activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
+				if panelErr != nil {
+					log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
+					renderNoActiveAccountsPage(w, cfg)
+					return
+				}
+				rememberPanelAccount(sessionToken, activeAcc)
 			}
 		}
 	} else if cfg.BypassAuth || !dbConnected {
@@ -2713,7 +2725,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// IMPORTANT: use ONLY the premium/account cookie for upstream.
 	// Merging the browser Cookie header caused "400 Request Header Or Cookie Too Large"
 	// on sas.selleramp.com nginx and broke CSRF/session → Unauthorized toasts.
-	accountCookieStr := applyLocalCookieOverlay(parseCookieFromDB(activeAcc.Cookie))
+	accountCookieStr := ""
+	if !staticFast {
+		accountCookieStr = applyLocalCookieOverlay(parseCookieFromDB(activeAcc.Cookie))
+	}
 	upstreamReq.Header.Del("Cookie")
 	hostWithoutPort := upstreamURL.Host
 	if h, _, err := net.SplitHostPort(upstreamURL.Host); err == nil {
@@ -2756,15 +2771,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Jasper API hosts expect Firebase Bearer when browser hasn't attached it yet
-	firebaseRaw := activeAcc.Cookie
-	if usesPanelAccountMode(cfg) && isIndexedDBSession(firebaseRaw) {
-		firebaseRaw = ensureFreshFirebaseSessionRaw(firebaseRaw, "")
-		if firebaseRaw != "" && firebaseRaw != activeAcc.Cookie {
-			persistPanelAccountCookie(cfg, activeAcc.ID, firebaseRaw)
-			activeAcc.Cookie = firebaseRaw
+	firebaseRaw := ""
+	if !staticFast {
+		firebaseRaw = activeAcc.Cookie
+		if usesPanelAccountMode(cfg) && isIndexedDBSession(firebaseRaw) {
+			firebaseRaw = ensureFreshFirebaseSessionRaw(firebaseRaw, "")
+			if firebaseRaw != "" && firebaseRaw != activeAcc.Cookie {
+				persistPanelAccountCookie(cfg, activeAcc.ID, firebaseRaw)
+				activeAcc.Cookie = firebaseRaw
+				rememberPanelAccount(sessionToken, activeAcc)
+			}
+		} else {
+			firebaseRaw = ensureFreshFirebaseSession(cfg.CookieFile)
 		}
-	} else {
-		firebaseRaw = ensureFreshFirebaseSession(cfg.CookieFile)
 	}
 	if tok := extractFirebaseAccessToken(firebaseRaw); tok != "" {
 		hostL := strings.ToLower(hostWithoutPort)
@@ -3111,18 +3130,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 11. Pass through everything else ─────────────────────────────────────────
 	if isCacheableStaticPath(requestCachePath(r)) && upstreamResp.StatusCode == http.StatusOK {
-		body, err := io.ReadAll(upstreamResp.Body)
-		if err == nil {
-			ce := upstreamResp.Header.Get("Content-Encoding")
-			putStaticCached(r.Method, requestCachePath(r), upstreamResp.StatusCode, contentType, ce, body)
-			if ce != "" {
-				w.Header().Set("Content-Encoding", ce)
-			}
-			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-			w.WriteHeader(upstreamResp.StatusCode)
-			_, _ = w.Write(body)
-			return
+		if cl := upstreamResp.Header.Get("Content-Length"); cl != "" {
+			w.Header().Set("Content-Length", cl)
 		}
+		writeStreamCache(w, r, upstreamResp.Body, upstreamResp.StatusCode, contentType, upstreamResp.Header.Get("Content-Encoding"), requestCachePath(r))
+		return
 	}
 	if shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 		bodyBytes, err := decompressBody(upstreamResp)
