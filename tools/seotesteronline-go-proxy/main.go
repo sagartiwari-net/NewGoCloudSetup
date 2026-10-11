@@ -1200,7 +1200,7 @@ func putStaticCached(host, method, path string, status int, contentType, encodin
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry, cfg Config) {
-	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Del("Pragma")
 	w.Header().Del("Expires")
 	if ent.contentType != "" {
@@ -1224,7 +1224,7 @@ func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheE
 
 func setStaticCacheControl(resp *http.Response, path string) {
 	if isCacheableStaticPath(path) {
-		resp.Header.Set("Cache-Control", "public, max-age=86400, immutable")
+		resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
 		resp.Header.Del("Pragma")
 		resp.Header.Del("Expires")
 		resp.Header.Set("X-OCG-Cache", "MISS")

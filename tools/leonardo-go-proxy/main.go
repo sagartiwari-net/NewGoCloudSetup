@@ -1004,9 +1004,9 @@ func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 		if strings.HasPrefix(lower, "/_next/static/") ||
 			strings.Contains(lower, "/static/") ||
 			strings.HasSuffix(lower, ".woff2") || strings.HasSuffix(lower, ".woff") {
-			w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
-			w.Header().Set("Cache-Control", "public, max-age=86400")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		w.Header().Del("Pragma")
 		w.Header().Del("Expires")

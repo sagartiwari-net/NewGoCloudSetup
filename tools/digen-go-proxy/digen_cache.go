@@ -119,7 +119,7 @@ func serveDigenCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEn
 	if ent.encoding != "" {
 		w.Header().Set("Content-Encoding", ent.encoding)
 	}
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("X-OCG-Cache", "HIT")
 	w.Header().Set("Content-Length", strconv.Itoa(len(ent.body)))
 	w.WriteHeader(ent.status)

@@ -188,7 +188,7 @@ func serveDiskCDN(w http.ResponseWriter, key string) bool {
 	if meta.ContentType != "" {
 		w.Header().Set("Content-Type", meta.ContentType)
 	}
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Del("Pragma")
 	w.Header().Del("Expires")
 	w.Header().Set("X-Proxy-Cache", "HIT")

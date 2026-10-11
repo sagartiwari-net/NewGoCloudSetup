@@ -1423,7 +1423,7 @@ func isCacheableStaticPath(path string) bool {
 
 func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	if isSimilarCDNPath(path) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Del("Pragma")
 		w.Header().Del("Expires")
 		return

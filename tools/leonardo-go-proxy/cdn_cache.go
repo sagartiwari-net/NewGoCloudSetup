@@ -404,9 +404,9 @@ func serveDiskCDN(w http.ResponseWriter, r *http.Request, key string) bool {
 	// Match setProxyCacheHeaders: long browser TTL on disk hits.
 	lowerKey := strings.ToLower(key)
 	if strings.Contains(lowerKey, "/_next/static/") || strings.Contains(lowerKey, "/static/") {
-		w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	w.Header().Del("Pragma")
 	w.Header().Del("Expires")

@@ -165,7 +165,7 @@ func passthroughStaticResponse(w http.ResponseWriter, upstreamResp *http.Respons
 	if cc := upstreamResp.Header.Get("Cache-Control"); cc != "" {
 		w.Header().Set("Cache-Control", cc)
 	} else {
-		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	w.WriteHeader(upstreamResp.StatusCode)
 	_, _ = io.Copy(w, upstreamResp.Body)

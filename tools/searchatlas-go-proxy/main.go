@@ -1219,7 +1219,7 @@ func newReverseProxy(target *url.URL, cfg Config, getSession func() string) *htt
 		}
 		relaxResponseHeaders(resp, cfg)
 		if key := staticCacheKeyFrom(resp.Request); key != "" && resp.StatusCode == http.StatusOK {
-			resp.Header.Set("Cache-Control", "public, max-age=86400")
+			resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
 			resp.Header.Del("Pragma")
 			resp.Header.Del("Expires")
 			putStaticCached(key, ct, resp.StatusCode, plain)

@@ -217,7 +217,7 @@ func writeStreamCache(w http.ResponseWriter, r *http.Request, body io.Reader, st
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
-	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Del("Pragma")
 	w.Header().Del("Expires")
 	if ent.contentType != "" {

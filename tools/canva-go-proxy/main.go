@@ -2979,7 +2979,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		!strings.Contains(strings.ToLower(contentType), "json") &&
 		!strings.Contains(strings.ToLower(upstreamResp.Header.Get("Content-Disposition")), "attachment")
 	if canBrowserCache {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Del("Pragma")
 		w.Header().Del("Expires")
 	} else {

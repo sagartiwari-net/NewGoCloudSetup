@@ -1931,7 +1931,7 @@ func main() {
 				cdnCacheKeyFromUpstream(resp.Request) != "" &&
 				!strings.Contains(contentTypeLower, "text/html") &&
 				!strings.Contains(contentTypeLower, "json") {
-				resp.Header.Set("Cache-Control", "public, max-age=86400")
+				resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
 				storeCDNCache(resp.Request, resp.StatusCode, contentType, modifiedBytes)
 			}
 		} else if resp.StatusCode == http.StatusOK && resp.Request != nil &&
@@ -1941,7 +1941,7 @@ func main() {
 			if err == nil {
 				resp.Body.Close()
 				if len(bodyBytes) > 0 && len(bodyBytes) <= cdnCacheMax {
-					resp.Header.Set("Cache-Control", "public, max-age=86400")
+					resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
 					storeCDNCache(resp.Request, resp.StatusCode, contentType, bodyBytes)
 				}
 				resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))

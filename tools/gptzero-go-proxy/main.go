@@ -1067,7 +1067,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if storedCDN {
-		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Set("X-Proxy-Cache", "MISS")
 	}
 	w.WriteHeader(resp.StatusCode)

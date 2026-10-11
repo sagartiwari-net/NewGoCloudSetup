@@ -257,7 +257,7 @@ func serveDiskCDN(w http.ResponseWriter, r *http.Request, key string) bool {
 		w.Header().Set("Content-Encoding", meta.Encoding)
 	}
 	// Browser + edge: cache static assets for a day (disk TTL is longer).
-	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Del("Pragma")
 	w.Header().Del("Expires")
 	w.Header().Set("X-Proxy-Cache", "HIT")

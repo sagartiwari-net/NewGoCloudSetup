@@ -128,9 +128,9 @@ func setErankCDNBrowserCache(w http.ResponseWriter, path string) {
 	if strings.Contains(lower, "/static/") ||
 		strings.HasSuffix(lower, ".woff2") || strings.HasSuffix(lower, ".woff") ||
 		strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".css") {
-		w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	w.Header().Del("Pragma")
 	w.Header().Del("Expires")

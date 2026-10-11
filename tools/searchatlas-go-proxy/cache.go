@@ -205,7 +205,7 @@ func putStaticCached(path, contentType string, status int, body []byte) {
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	if ent.contentType != "" {
 		w.Header().Set("Content-Type", ent.contentType)
 	}

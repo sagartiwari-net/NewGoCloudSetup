@@ -200,9 +200,9 @@ func setGrammarlyCDNBrowserCache(w http.ResponseWriter, path string) {
 		strings.HasSuffix(lower, ".woff2") || strings.HasSuffix(lower, ".woff") ||
 		strings.Contains(lower, "/static/") || strings.Contains(lower, "/assets/") ||
 		strings.HasPrefix(lower, "/extra-cdn-") || strings.HasPrefix(lower, "/cdn-proxy/") {
-		w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	w.Header().Del("Pragma")
 	w.Header().Del("Expires")

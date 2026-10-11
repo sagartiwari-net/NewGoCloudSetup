@@ -2600,7 +2600,7 @@ func main() {
 				cdnCacheKeyFromUpstream(resp.Request) != "" &&
 				!strings.Contains(strings.ToLower(resp.Header.Get("Content-Disposition")), "attachment") {
 				// Public CDN: allow cache even when CF sets __cf_bm Set-Cookie.
-				resp.Header.Set("Cache-Control", "public, max-age=86400")
+				resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
 				resp.Header.Del("Pragma")
 				resp.Header.Del("Expires")
 				storeCDNCache(resp.Request, resp.StatusCode, contentType, modifiedBytes)
@@ -2612,7 +2612,7 @@ func main() {
 			if err == nil {
 				resp.Body.Close()
 				if len(bodyBytes) > 0 {
-					resp.Header.Set("Cache-Control", "public, max-age=86400")
+					resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
 					resp.Header.Del("Pragma")
 					resp.Header.Del("Expires")
 					storeCDNCache(resp.Request, resp.StatusCode, contentType, bodyBytes)

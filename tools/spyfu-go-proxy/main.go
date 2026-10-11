@@ -1259,7 +1259,7 @@ func putStaticCached(method, path string, status int, contentType, encoding stri
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Del("Pragma")
 	w.Header().Del("Expires")
 	if ent.contentType != "" {
@@ -1278,7 +1278,7 @@ func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheE
 
 func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	if isCacheableStaticPath(path) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Del("Pragma")
 		w.Header().Del("Expires")
 		return

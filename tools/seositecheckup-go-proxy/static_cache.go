@@ -121,7 +121,7 @@ func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheE
 
 func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	if isCacheableStaticPath(path) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Del("Pragma")
 		w.Header().Del("Expires")
 		return
@@ -129,7 +129,7 @@ func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	ct := strings.ToLower(contentType)
 	if strings.Contains(ct, "javascript") || strings.Contains(ct, "text/css") ||
 		strings.Contains(ct, "font/") || strings.Contains(ct, "image/") {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Del("Pragma")
 		w.Header().Del("Expires")
 		return

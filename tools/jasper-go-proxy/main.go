@@ -2986,7 +2986,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		strings.HasSuffix(path, ".png") || strings.HasSuffix(path, ".svg") ||
 		strings.HasSuffix(path, ".ico")
 	if isStaticAsset && !strings.HasPrefix(path, "/extra-cdn-") {
-		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Del("Pragma")
 		w.Header().Del("Expires")
 	} else {
