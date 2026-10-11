@@ -57,10 +57,12 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "worker", "sharedworker", "audioworklet", "video", "audio":
 		return true
 	}
-	return false
+	// Nutrient loads the PDF engine with fetch(), so Dest is empty and the
+	// device headers are missing. Those files are not the session.
+	return isCacheableStaticPath(r.URL.Path)
 }
 
 func isDocumentNavigation(r *http.Request) bool {
@@ -229,7 +231,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -502,7 +503,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())
