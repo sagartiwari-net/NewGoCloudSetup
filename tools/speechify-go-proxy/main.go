@@ -3694,10 +3694,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 2b. Serve cached static assets (skip upstream TLS) ───────────────────────
 	// SYNTX app.js is patched after download. The warm-up cache is the raw bundle
 	// and would skip that patch, so the auth guard never loads the user.
-	if ent := getStaticCached(r.Method, path); ent != nil &&
-		!(strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") && strings.HasSuffix(strings.ToLower(path), "/app.js")) {
-		serveStaticCached(w, r, ent)
-		return
+	if r.Header.Get("Range") == "" {
+		if ent := getStaticCached(r.Method, path); ent != nil &&
+			!(strings.Contains(strings.ToLower(cfg.TargetURL), "syntx.ai") && strings.HasSuffix(strings.ToLower(path), "/app.js")) {
+			serveStaticCached(w, r, ent)
+			return
+		}
 	}
 
 	// ── 3. Get active account for this session ────────────────────────────────────
@@ -3993,9 +3995,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Header.Del("Content-Length")
 		upstreamReq.Header.Del("Transfer-Encoding")
 	}
-	// Only encodings we can decompress (gzip/br/zstd). Prefer no zstd from origin.
+	// A PDF viewer asks for byte ranges. Gzip on that request makes the pages stay blank.
 	upstreamReq.Header.Del("Accept-Encoding")
-	upstreamReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	if r.Header.Get("Range") != "" {
+		upstreamReq.Header.Set("Accept-Encoding", "identity")
+	} else {
+		upstreamReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	}
 
 	// SellerAmp /api/v2 needs X-UID + X-API-TOKEN. Browser sometimes omits them
 	// (session hydrate race) → 401 Unauthorized toasts. Inject from cached HTML.

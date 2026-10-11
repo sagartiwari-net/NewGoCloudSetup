@@ -60,9 +60,28 @@ func browserSubresource(r *http.Request) bool {
 	case "image", "style", "font", "script", "worker", "sharedworker", "audioworklet", "video", "audio":
 		return true
 	}
-	// Nutrient loads the PDF engine with fetch(), so Dest is empty and the
-	// device headers are missing. Those files are not the session.
+	// Nutrient's worker fetches the PDF and its engine with an empty destination
+	// and no device header. Same-origin file routes are not the session API.
+	if speechifyFileFetch(r) {
+		return true
+	}
 	return isCacheableStaticPath(r.URL.Path)
+}
+
+func speechifyFileFetch(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	p := r.URL.Path
+	if !(strings.HasPrefix(p, "/extra-cdn-") || strings.HasPrefix(p, "/ext-host/") || strings.Contains(p, "/assets/")) {
+		return false
+	}
+	switch strings.ToLower(r.Header.Get("Sec-Fetch-Site")) {
+	case "same-origin", "same-site", "none":
+		return true
+	default:
+		return false
+	}
 }
 
 func isDocumentNavigation(r *http.Request) bool {
