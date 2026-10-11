@@ -169,13 +169,11 @@ Built with the batch. Not verified on an access link yet.
 
 - [ ] `heliumlearning` (:5221)
 - [ ] `indexification` (:5231)
-- [ ] `jasper` (:4511)
 - [ ] `merchinformer` (:4651)
 - [ ] `seobuddy` (:5131)
 - [ ] `storyblocks` (:4971)
 - [ ] `ubersuggest` (:5281)
 - [ ] `uncensoredchat` (:4891)
-- [ ] `zebracat` (:5111)
 - [ ] `zikaanalytics` (:5251)
 
 ### Tried — still an issue
@@ -195,6 +193,7 @@ Opened on the proxy. Leave these until the note below is cleared.
 - [ ] `scite` (:4761) — **In progress** (2026-10-08). “Max challenge attempts” because `/api/auth/api_token` was blocked by the device gate (no JWT) and the WAF cookie domain was `scite.ai` instead of the proxy host. Soft-allow for `/api` + `/extra-cdn` is pushed, and the browser `aws-waf-token` is kept. Not confirmed on the live site after that.
 - [ ] `speechify` (:5011) — **Parked** (2026-10-11). `https://app.speechify.com`. Home and web items open. A sign-in page switches accounts or shows contact-admin. Status stays unchanged. Analytics → Logouts. PDF pages stay gray: the viewer asks `proxy.api.speechify.com` for the file, and that request never reaches this proxy. Leave until later.
 - [ ] `vistacreate` (:4581) — **Parked** (2026-10-08). ChatGPT target was fixed: `https://create.vista.com`, home `/home/`. Cloudflare still stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `create.vista.com` (Ray ID on the error). Chrome HTTP/2 and allowing `/cdn-cgi/` did not clear it.
+- [ ] `zebracat` (:5111) — **Parked** (2026-10-11). `https://studio.zebracat.ai`, editor `https://editor.zebracat.ai` mounted at `/_editor_/{projectId}` on `zebracat.gt4rents.com`. The project still does not finish loading (API 403, then the editor path). Leave until later.
 - [ ] `zonguru` (:4691) — **Parked** (2026-10-07). Dashboard widgets still say “error loading your data” while official `my.zonguru.com` shows zeros. Panel access and device-bind are OK. Proxy log shows only `/signalr/hubs` and `/api/device-bind` — `/api/dashboard/*` never reaches the Go process. Local curl through the proxy: `POST /api/dashboard/EssentialBusinessData` → 200 zeros when `FbaToken` is set. Already tried: DigitaVision rewrite off JSON/emails, `baseUrl`/cookieDomain rewrite, device soft-allow and skip gate on `/api`, Angular `$http`/XHR re-hook. Next: in DevTools, see whether tile calls go to `zonguru.gt4rents.com` or `my.zonguru.com` (CORS), and why Angular never fires `/api/dashboard/*` on the proxy (SignalR hubs / `lib-bundle`). Cookie is GoAuto `localStorage` `token`+`me` (account ZonGuru 1).
 
 > **2026-10-05 token-only:** Panel open links are `/access?token=` only (no `user=`).  

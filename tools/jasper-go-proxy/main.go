@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -82,8 +82,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: find/replace text in HTML + JSON responses (and live DOM).
@@ -122,8 +122,8 @@ var (
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
+		TargetURL:              "https://app.jasper.ai",
+		CDNURL:                 "https://cdn.jasper.ai",
 		PublicHost:             "gpt.yourdomain.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
@@ -134,7 +134,8 @@ var (
 		SecretKey:              "your_secret_key_here",
 		SessionDurationMinutes: 120,
 		MemberAreaURL:          "https://members.yourdomain.com/",
-		ToolName:               "Tool",
+		ToolName:               "Jasper",
+		CookieDomainSuffix:     "jasper.ai",
 		CreditLabel:            "Credits",
 		ExportLabel:            "Exports",
 		HomePath:               "/",
@@ -226,11 +227,35 @@ func loadConfig() Config {
 	if cfg.CookieFile == "" {
 		cfg.CookieFile = defaultConfig.CookieFile
 	}
-	if cfg.TargetURL == "" {
+	if cfg.TargetURL == "" || strings.Contains(strings.ToLower(cfg.TargetURL), "chatgpt.com") {
 		cfg.TargetURL = defaultConfig.TargetURL
 	}
-	if cfg.CDNURL == "" {
+	if cfg.CDNURL == "" || strings.Contains(strings.ToLower(cfg.CDNURL), "oaistatic.com") {
 		cfg.CDNURL = defaultConfig.CDNURL
+	}
+	if cfg.ToolName == "" || cfg.ToolName == "Tool" {
+		cfg.ToolName = defaultConfig.ToolName
+	}
+	if cfg.CookieDomainSuffix == "" {
+		cfg.CookieDomainSuffix = defaultConfig.CookieDomainSuffix
+	}
+	if len(cfg.ExtraCDNDomains) == 0 {
+		cfg.ExtraCDNDomains = []string{
+			"https://cdn.jasper.ai",
+			"https://i.jasper.ai",
+			"https://sage.jasper.ai",
+			"https://mage.jasper.ai",
+			"https://secure.jasper.ai",
+			"https://copilot.jasper.ai",
+			"https://og.jasper.ai",
+			"https://t.jasper.ai",
+			"https://universal-sidebar.jasper.ai",
+			"https://identitytoolkit.googleapis.com",
+			"https://securetoken.googleapis.com",
+			"https://www.googleapis.com",
+			"https://firestore.googleapis.com",
+			"https://firebaseinstallations.googleapis.com",
+		}
 	}
 	if cfg.PublicScheme == "" {
 		cfg.PublicScheme = "https"
@@ -2738,7 +2763,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Jasper API hosts expect Firebase Bearer when browser hasn't attached it yet
-	if tok := extractFirebaseAccessToken(ensureFreshFirebaseSession(cfg.CookieFile)); tok != "" {
+	firebaseRaw := activeAcc.Cookie
+	if usesPanelAccountMode(cfg) && isIndexedDBSession(firebaseRaw) {
+		firebaseRaw = ensureFreshFirebaseSessionRaw(firebaseRaw, "")
+		if firebaseRaw != "" && firebaseRaw != activeAcc.Cookie {
+			persistPanelAccountCookie(cfg, activeAcc.ID, firebaseRaw)
+			activeAcc.Cookie = firebaseRaw
+		}
+	} else {
+		firebaseRaw = ensureFreshFirebaseSession(cfg.CookieFile)
+	}
+	if tok := extractFirebaseAccessToken(firebaseRaw); tok != "" {
 		hostL := strings.ToLower(hostWithoutPort)
 		// Never attach Bearer to Google Identity Toolkit / token endpoints —
 		// they use idToken in JSON body; Authorization breaks them (401).
@@ -3013,7 +3048,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject auth restore + URL patcher. IndexedDB must run at START of <head>
 		// so Firebase sees the session before Vite modules boot.
-		sessionRaw := ensureFreshFirebaseSession(cfg.CookieFile)
+		sessionRaw := ""
+		if usesPanelAccountMode(cfg) && isIndexedDBSession(activeAcc.Cookie) {
+			sessionRaw = activeAcc.Cookie
+		} else {
+			sessionRaw = ensureFreshFirebaseSession(cfg.CookieFile)
+		}
 		idbInject := buildIndexedDBInjectHTML(sessionRaw)
 		bodyBytes = gateJasperModules(bodyBytes)
 
