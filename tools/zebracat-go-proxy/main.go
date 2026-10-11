@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -17,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -86,8 +86,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -1334,9 +1334,21 @@ func patchZebracatEditorJS(body []byte) []byte {
 }
 
 var (
-	zebracatProjectPath     = regexp.MustCompile(`^/\d+/?$`)
+	zebracatProjectPath      = regexp.MustCompile(`^/\d+/?$`)
 	zebracatExtraProjectPath = regexp.MustCompile(`^/extra-cdn-\d+/(\d+)/?$`)
 )
+
+func zebracatEditorReferer(r *http.Request) bool {
+	ref := r.Referer()
+	if ref == "" {
+		return false
+	}
+	u, err := url.Parse(ref)
+	if err != nil {
+		return false
+	}
+	return zebracatProjectPath.MatchString(u.Path)
+}
 
 func setZebracatBrowserCookies(w http.ResponseWriter, cookieHeader string) {
 	// The SPA reads token / refreshToken / tokenExp from document.cookie.
@@ -2488,7 +2500,7 @@ func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]s
 	addPair("http://selleramp.com/extension", publicBase+"/ext-install")
 	addPair("https://www.selleramp.com/extension", publicBase+"/ext-install")
 	addPair("http://www.selleramp.com/extension", publicBase+"/ext-install")
-		if targetParsed != nil {
+	if targetParsed != nil {
 		addPair("https://"+targetParsed.Host, publicBase)
 		addPair("http://"+targetParsed.Host, publicBase)
 	}
@@ -3849,7 +3861,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/"+m[1]+r.URL.RequestURI()[len(path):], http.StatusFound)
 			return
 		}
-		if zebracatProjectPath.MatchString(path) || strings.HasPrefix(path, "/data/") {
+		if zebracatProjectPath.MatchString(path) || strings.HasPrefix(path, "/data/") || zebracatEditorReferer(r) {
 			upstreamURL.Scheme = "https"
 			upstreamURL.Host = "editor.zebracat.ai"
 			zebracatEditor = true
@@ -4190,6 +4202,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		upstreamReq.Header.Set("Referer", targetBase+"/")
 	}
+	if upstreamReq.Host == "editor.zebracat.ai" {
+		upstreamReq.Header.Set("Origin", "https://editor.zebracat.ai")
+		upstreamReq.Header.Set("Referer", "https://editor.zebracat.ai/")
+	}
 	if upstreamURL.Host == "coda.grammarly.com" {
 		upstreamReq.Header.Set("Origin", "https://coda.grammarly.com")
 		upstreamReq.Header.Set("Referer", "https://coda.grammarly.com/")
@@ -4223,7 +4239,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			HasAPI:  r.Header.Get("X-API-TOKEN") != "",
 			CookieN: countCookieNames(accountCookieStr),
 		})
-		if dbConnected {
+		if dbConnected && !usesPanelAccountMode(cfg) && !strings.Contains(err.Error(), "context canceled") {
 			activeAcc, _ = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "upstream_connection_error")
 		}
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)

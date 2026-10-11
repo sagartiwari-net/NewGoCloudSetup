@@ -160,6 +160,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `syntx` (:4981) — **HTTPS OK** (2026-10-11): `syntx.ai`, home `/video/runway`. Login is `localStorage` `auth_token`. The sign-in wall (Telegram, Google, E-Mail) switches accounts once or shows contact-admin. Status stays unchanged. Analytics → Logouts. Hide only the Profile dropdown. Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images.
 - [x] `videotoblog` (:5041) — **HTTPS OK** (2026-10-11): `videotoblog.ai`, home `/articles`. Login is the saved Firebase session.
 - [x] `wordtune` (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts
+- [x] `writecream` (:5051) — **HTTPS OK** (2026-10-11): `app.writecream.com`, home `/dashboard`. Hide only the header account menu (avatar, name, Lifetime Subscription, and Logout).
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible, panel.db cookies + overview
 
 ### Not started
@@ -174,7 +175,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `storyblocks` (:4971)
 - [ ] `ubersuggest` (:5281)
 - [ ] `uncensoredchat` (:4891)
-- [ ] `writecream` (:5051)
 - [ ] `zebracat` (:5111)
 - [ ] `zikaanalytics` (:5251)
 

@@ -57,10 +57,25 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "worker", "sharedworker", "audioworklet", "serviceworker":
 		return true
 	}
 	return false
+}
+
+func zebracatSideRequest(r *http.Request, cfg Config) bool {
+	if !strings.Contains(strings.ToLower(cfg.TargetURL), "zebracat.ai") {
+		return false
+	}
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return true
+	}
+	p := strings.ToLower(r.URL.Path)
+	if strings.Contains(p, "socket.io") || strings.HasPrefix(p, "/data/") || p == "/sw.js" || strings.HasSuffix(p, "/sw.js") || p == "/index.html" || strings.HasSuffix(p, ".wasm") || strings.HasSuffix(p, ".svg") || strings.HasSuffix(p, ".ico") {
+		return true
+	}
+	ref := strings.ToLower(r.Referer())
+	return (p == "/" || p == "/index.html") && strings.Contains(ref, "/sw.js")
 }
 
 func isDocumentNavigation(r *http.Request) bool {
@@ -105,7 +120,7 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		// A normal refresh is a document load and cannot send the device headers.
 		// The page script checks this browser's saved proof. Images and files cannot
 		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
+		if isDocumentNavigation(r) || zebracatSideRequest(r, cfg) {
 			return false
 		}
 		log.Printf("[DEVICE] required path=%s", r.URL.Path)
@@ -229,7 +244,6 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEVICE] proof stored")
 	fmt.Fprintf(w, `{"status":"ok"}`)
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -502,7 +516,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())
