@@ -27,17 +27,34 @@ func isIndexedDBSession(raw string) bool {
 	if raw == "" || !strings.HasPrefix(raw, "{") {
 		return false
 	}
-	var probe struct {
-		IndexedDB json.RawMessage `json:"indexedDB"`
-	}
-	if json.Unmarshal([]byte(raw), &probe) != nil {
+	var root map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &root) != nil {
 		return false
 	}
-	return len(probe.IndexedDB) > 2
+	if idb, ok := root["indexedDB"]; ok && len(idb) > 2 && string(idb) != "null" {
+		return true
+	}
+	if fb, ok := root["firebaseLocalStorageDb"]; ok && len(fb) > 2 && string(fb) != "null" {
+		return true
+	}
+	return false
+}
+
+// indexedDBObject accepts both saved shapes:
+// the GoAuto export {"referer","indexedDB":{...}} and a bare dump
+// {"firebaseLocalStorageDb":{...},"firebase-heartbeat-database":{...}}.
+func indexedDBObject(root map[string]interface{}) map[string]interface{} {
+	if idb, ok := root["indexedDB"].(map[string]interface{}); ok && len(idb) > 0 {
+		return idb
+	}
+	if _, ok := root["firebaseLocalStorageDb"]; ok {
+		return root
+	}
+	return nil
 }
 
 func findSTSTokenManager(root map[string]interface{}) (user map[string]interface{}, stm map[string]interface{}) {
-	idb, _ := root["indexedDB"].(map[string]interface{})
+	idb := indexedDBObject(root)
 	if idb == nil {
 		return nil, nil
 	}
@@ -240,15 +257,15 @@ func ensureFreshFirebaseSessionRaw(raw, persistPath string) string {
 
 func indexedDBJSONForInject(raw string) string {
 	raw = strings.TrimSpace(raw)
-	var exp goAutoIndexedDBExport
-	if json.Unmarshal([]byte(raw), &exp) != nil || len(exp.IndexedDB) < 3 {
+	var root map[string]interface{}
+	if json.Unmarshal([]byte(raw), &root) != nil {
 		return "{}"
 	}
-	var compact json.RawMessage
-	if json.Unmarshal(exp.IndexedDB, &compact) != nil {
+	idb := indexedDBObject(root)
+	if len(idb) == 0 {
 		return "{}"
 	}
-	b, err := json.Marshal(compact)
+	b, err := json.Marshal(idb)
 	if err != nil {
 		return "{}"
 	}
