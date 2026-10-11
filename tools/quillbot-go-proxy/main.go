@@ -908,7 +908,11 @@ func doUpstreamWith429Retry(req *http.Request, cookieStr string) (*http.Response
 		if err != nil {
 			return nil, err
 		}
-		absorbUpstreamSetCookies(resp.Header)
+		// A Cloudflare challenge rotates __cf_bm. Saving that cookie
+		// makes the next real page load fail the clearance check.
+		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusForbidden {
+			absorbUpstreamSetCookies(resp.Header)
+		}
 		if resp.StatusCode != http.StatusTooManyRequests {
 			return resp, nil
 		}
@@ -916,6 +920,47 @@ func doUpstreamWith429Retry(req *http.Request, cookieStr string) (*http.Response
 		log.Printf("[PROXY] 429 from upstream %s (attempt %d/3)", req.URL.Path, attempt+1)
 	}
 	return lastResp, nil
+}
+
+func matchExtraCDN(path, escaped string, domains []string) (index int, upPath, rawPath string, ok bool) {
+	for i := range domains {
+		base := fmt.Sprintf("/extra-cdn-%d", i)
+		prefix := base + "/"
+		if path == base {
+			return i, "/", "", true
+		}
+		if !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		up := "/" + strings.TrimPrefix(path, prefix)
+		raw := "/" + strings.TrimPrefix(escaped, prefix)
+		if raw == up {
+			raw = ""
+		}
+		return i, up, raw, true
+	}
+	return -1, "", "", false
+}
+
+func cloudflareChallenge(status int, h http.Header, body []byte) bool {
+	if status != http.StatusTooManyRequests && status != http.StatusForbidden && status != http.StatusServiceUnavailable {
+		return false
+	}
+	if h.Get("Cf-Mitigated") != "" {
+		return true
+	}
+	b := bytes.ToLower(body)
+	return bytes.Contains(b, []byte("just a moment")) ||
+		bytes.Contains(b, []byte("cf-browser-verification")) ||
+		bytes.Contains(b, []byte("performing security verification"))
+}
+
+func writeQuillbotRetryPage(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", "4")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="4"><title>Loading</title></head><body style="font-family:sans-serif;background:#f7faf7;color:#14221b;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0"><p>Loading Quillbot…</p><script>setTimeout(function(){location.reload()},4000)</script></body></html>`))
 }
 
 func stripSensitiveCookies(cookieHeader string, cfg Config) string {
@@ -1952,6 +1997,9 @@ func patcherScript(cfg Config) string {
         u = u.replace('https://'+T, O).replace('http://'+T, O);
         if (C) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
         for (var e=0; e<EXTRA.length; e++) u = u.replace(EXTRA[e][0], O+EXTRA[e][1]);
+        // wss://stream.quillbot.com?anonId has no slash before the query.
+        // /extra-cdn-4?anonId was sent to quillbot.com and Cloudflare answered 429.
+        u = u.replace(/(\/extra-cdn-\d+)\?/g, '$1/?');
         // Dynamic chunk-composing hosts (any TLD / mangled IP-derived host)
         if (CHUNK_COMPOSE) {
             u = u.replace(/https?:\/\/chunk-composing\.[^/]+/g, O + CHUNK_COMPOSE);
@@ -2697,29 +2745,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Handle Extra CDN routes
 	isExtraCDN := false
 	extraCDNIndex := -1
-	for i, extra := range cfg.ExtraCDNDomains {
-		prefix := fmt.Sprintf("/extra-cdn-%d/", i)
-		if strings.HasPrefix(path, prefix) {
-			extraClean := strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
-			upstreamURL.Scheme = "https"
-			if strings.HasPrefix(extra, "http://") {
-				upstreamURL.Scheme = "http"
-			}
-			upstreamURL.Host = strings.Split(extraClean, "/")[0]
-			rawUp := "/" + strings.TrimPrefix(escapedPath, prefix)
-			upstreamURL.Path = "/" + strings.TrimPrefix(path, prefix)
-			if rawUp != upstreamURL.Path {
-				upstreamURL.RawPath = rawUp
-			} else {
-				upstreamURL.RawPath = ""
-			}
-			isExtraCDN = true
-			extraCDNIndex = i
-			break
+	if idx, upPath, rawPath, ok := matchExtraCDN(path, escapedPath, cfg.ExtraCDNDomains); ok {
+		extra := cfg.ExtraCDNDomains[idx]
+		extraClean := strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
+		upstreamURL.Scheme = "https"
+		if strings.HasPrefix(extra, "http://") {
+			upstreamURL.Scheme = "http"
 		}
+		upstreamURL.Host = strings.Split(extraClean, "/")[0]
+		upstreamURL.Path = upPath
+		upstreamURL.RawPath = rawPath
+		isExtraCDN = true
+		extraCDNIndex = idx
 	}
 
 	// Build request from EscapedPath+RawQuery so encoding survives NewRequest parse.
@@ -2846,9 +2885,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			strings.HasPrefix(hostL, "auth.")
 		needsBearer := !isGoogleAuth && !staticHost && strings.HasSuffix(hostL, "quillbot.com") &&
 			!strings.HasPrefix(path, "/rebrand/")
-		if needsBearer && upstreamReq.Header.Get("Authorization") == "" {
+		if needsBearer {
+			// The browser may still be holding the token from the last page.
+			// AI Detector checks useridtoken and rejects that stale value.
 			bearer = tok
 			upstreamReq.Header.Set("Authorization", "Bearer "+tok)
+			upstreamReq.Header.Set("Useridtoken", tok)
 		}
 	}
 
@@ -3091,6 +3133,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logUpstream(bodyBytes)
+		if cloudflareChallenge(upstreamResp.StatusCode, upstreamResp.Header, bodyBytes) && isDocumentNavigation(r) {
+			writeQuillbotRetryPage(w)
+			return
+		}
 
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)

@@ -197,7 +197,11 @@ func injectQuillbotLogoutWatch(body []byte, displayName string) []byte {
   setTimeout(function(){
     var text = '';
     try { text = document.body ? (document.body.innerText || '') : ''; } catch (e) {}
+    if (!text || text.length < 80) return;
+    if (text.indexOf('Just a moment') !== -1 || text.indexOf('Performing security verification') !== -1) return;
     if (NAME && text.indexOf(NAME) !== -1) return;
+    var uiOut = text.indexOf('Log in / Sign up') !== -1;
+    if (!uiOut) return;
     var req;
     try { req = indexedDB.open('firebaseLocalStorageDb'); } catch (e) { send(); return; }
     var timer = setTimeout(function(){}, 2000);
@@ -221,10 +225,11 @@ func injectQuillbotLogoutWatch(body []byte, displayName string) []byte {
           if (v && v.stsTokenManager && v.stsTokenManager.accessToken) ok = true;
         }
         try { db.close(); } catch (e) {}
+        if (ok) return;
         var now = '';
         try { now = document.body ? (document.body.innerText || '') : ''; } catch (e2) {}
         if (NAME && now.indexOf(NAME) !== -1) return;
-        if (!ok) send();
+        if (now.indexOf('Log in / Sign up') !== -1) send();
       };
     };
   }, 10000);

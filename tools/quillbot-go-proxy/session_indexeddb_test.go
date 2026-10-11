@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -104,10 +105,37 @@ func TestQuillbotSharedAssetsSkipDeviceGate(t *testing.T) {
 		t.Fatal("shared assets should use the static path")
 	}
 	watch := string(injectQuillbotLogoutWatch([]byte("<html><body></body></html>"), "Sahana"))
-	if strings.Contains(watch, "Log in / Sign up") {
-		t.Fatal("logged-out marketing text must not count as a logout")
+	if !strings.Contains(watch, "Log in / Sign up") || !strings.Contains(watch, "Just a moment") {
+		t.Fatal("logout watch should ignore a blank page and a cloudflare challenge")
 	}
-	if !strings.Contains(watch, "if (!ok) send();") {
-		t.Fatal("logout watch should fire only when the firebase token is gone")
+	if !strings.Contains(watch, "if (!uiOut) return;") {
+		t.Fatal("logout watch should require the logged-out screen")
+	}
+}
+
+func TestExtraCDNRootQueryUsesStreamHost(t *testing.T) {
+	domains := []string{
+		"https://assets.quillbot.com",
+		"https://libs.quillbot.com",
+		"https://media.quillbot.com",
+		"https://auth.quillbot.com",
+		"https://stream.quillbot.com",
+	}
+	idx, up, raw, ok := matchExtraCDN("/extra-cdn-4", "/extra-cdn-4", domains)
+	if !ok || idx != 4 || up != "/" || raw != "" {
+		t.Fatalf("root socket route = %d %q %q %v", idx, up, raw, ok)
+	}
+	idx, up, _, ok = matchExtraCDN("/extra-cdn-4/api/ws/fallback/event", "/extra-cdn-4/api/ws/fallback/event", domains)
+	if !ok || idx != 4 || up != "/api/ws/fallback/event" {
+		t.Fatalf("fallback route = %d %q %v", idx, up, ok)
+	}
+	if _, _, _, ok = matchExtraCDN("/api/ai-detector/limit", "/api/ai-detector/limit", domains); ok {
+		t.Fatal("api path must stay on quillbot.com")
+	}
+	if !cloudflareChallenge(429, http.Header{}, []byte("<title>Just a moment...</title>")) {
+		t.Fatal("cloudflare challenge should be detected")
+	}
+	if cloudflareChallenge(200, http.Header{}, []byte("<title>Just a moment...</title>")) {
+		t.Fatal("a normal page must not be treated as a challenge")
 	}
 }
