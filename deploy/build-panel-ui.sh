@@ -22,7 +22,8 @@ if [[ ! -d node_modules ]]; then
   npm install
 fi
 
-echo "==> next build"
+echo "==> next build (webpack; turbopack was shipping HTML that points at missing chunks)"
+rm -rf .next
 npm run build
 
 # Copy app for running with next start from OUT (or run from SRC)
