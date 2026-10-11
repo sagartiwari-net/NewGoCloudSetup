@@ -89,3 +89,25 @@ func TestQuillbotChromeTargetsExactNodes(t *testing.T) {
 		}
 	}
 }
+
+func TestQuillbotSharedAssetsSkipDeviceGate(t *testing.T) {
+	if !quillbotSharedAsset("/locales/prod/6ac89c65d6f02f60086a7e93/en/Global") {
+		t.Fatal("locale json should be shared")
+	}
+	if !quillbotSharedAsset("/rebrand/manifest.json") {
+		t.Fatal("rebrand manifest should be shared")
+	}
+	if quillbotSharedAsset("/api/auth/session") {
+		t.Fatal("account api must stay gated")
+	}
+	if !isCacheableStaticPath("/locales/prod/x/en/Global") || !isCacheableStaticPath("/rebrand/manifest.json") {
+		t.Fatal("shared assets should use the static path")
+	}
+	watch := string(injectQuillbotLogoutWatch([]byte("<html><body></body></html>"), "Sahana"))
+	if strings.Contains(watch, "Log in / Sign up") {
+		t.Fatal("logged-out marketing text must not count as a logout")
+	}
+	if !strings.Contains(watch, "if (!ok) send();") {
+		t.Fatal("logout watch should fire only when the firebase token is gone")
+	}
+}

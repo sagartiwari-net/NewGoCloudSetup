@@ -198,11 +198,10 @@ func injectQuillbotLogoutWatch(body []byte, displayName string) []byte {
     var text = '';
     try { text = document.body ? (document.body.innerText || '') : ''; } catch (e) {}
     if (NAME && text.indexOf(NAME) !== -1) return;
-    var uiOut = text.indexOf('Log in / Sign up') !== -1;
     var req;
-    try { req = indexedDB.open('firebaseLocalStorageDb'); } catch (e) { if (uiOut) send(); return; }
-    var timer = setTimeout(function(){ if (uiOut) send(); }, 2000);
-    req.onerror = function(){ clearTimeout(timer); if (uiOut) send(); };
+    try { req = indexedDB.open('firebaseLocalStorageDb'); } catch (e) { send(); return; }
+    var timer = setTimeout(function(){}, 2000);
+    req.onerror = function(){ clearTimeout(timer); send(); };
     req.onsuccess = function(){
       clearTimeout(timer);
       var db = req.result;
@@ -213,7 +212,7 @@ func injectQuillbotLogoutWatch(body []byte, displayName string) []byte {
       }
       var tx = db.transaction('firebaseLocalStorage', 'readonly');
       var g = tx.objectStore('firebaseLocalStorage').getAll();
-      g.onerror = function(){ try { db.close(); } catch (e) {} if (uiOut) send(); };
+      g.onerror = function(){ try { db.close(); } catch (e) {} send(); };
       g.onsuccess = function(){
         var ok = false;
         var rows = g.result || [];
@@ -225,7 +224,7 @@ func injectQuillbotLogoutWatch(body []byte, displayName string) []byte {
         var now = '';
         try { now = document.body ? (document.body.innerText || '') : ''; } catch (e2) {}
         if (NAME && now.indexOf(NAME) !== -1) return;
-        if (!ok || now.indexOf('Log in / Sign up') !== -1) send();
+        if (!ok) send();
       };
     };
   }, 10000);

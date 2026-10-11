@@ -63,6 +63,17 @@ func browserSubresource(r *http.Request) bool {
 	return false
 }
 
+// quillbotSharedAsset is public app data. The browser fetches it without
+// the device headers, and sometimes without ct_session. A 401 here makes
+// AI Detector and a refresh paint the logged-out homepage.
+func quillbotSharedAsset(path string) bool {
+	p := strings.ToLower(path)
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	return strings.HasPrefix(p, "/locales/") || strings.HasPrefix(p, "/rebrand/")
+}
+
 func isDocumentNavigation(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
@@ -98,7 +109,7 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if fp == storedFp && proof == storedProof {
 		return false
 	}
-	if browserSubresource(r) {
+	if browserSubresource(r) || quillbotSharedAsset(r.URL.Path) {
 		return false
 	}
 	// The browser WebSocket API cannot send X-Device-Fp. Quillbot's editor

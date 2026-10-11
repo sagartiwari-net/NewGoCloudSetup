@@ -2509,8 +2509,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
 	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
+	publicAsset := quillbotSharedAsset(path)
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
-	if authErr != nil && !isFavicon {
+	if authErr != nil && !isFavicon && !publicAsset {
 		_, hasSess := r.Cookie("ct_session")
 		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v",
 			path, r.Host, authErr, currentWebsiteID, hasSess == nil)

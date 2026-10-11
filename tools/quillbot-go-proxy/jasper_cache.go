@@ -58,6 +58,9 @@ func isCacheableStaticPath(path string) bool {
 	if strings.HasPrefix(p, "/api/") || strings.HasPrefix(p, "/access") {
 		return false
 	}
+	if strings.HasPrefix(p, "/locales/") || strings.HasPrefix(p, "/rebrand/") {
+		return true
+	}
 	if strings.Contains(p, "/assets/") || strings.HasPrefix(p, "/images/") || strings.Contains(p, "/fonts/") {
 		return true
 	}
