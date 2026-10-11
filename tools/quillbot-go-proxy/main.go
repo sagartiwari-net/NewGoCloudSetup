@@ -922,6 +922,28 @@ func doUpstreamWith429Retry(req *http.Request, cookieStr string) (*http.Response
 	return lastResp, nil
 }
 
+func digitsOnly(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// setExactHeader writes the header name as given. Header.Set would turn
+// changeTimestamp into Changetimestamp, and Quillbot then returns 400.
+func setExactHeader(h http.Header, name, value string) {
+	canon := http.CanonicalHeaderKey(name)
+	if canon != name {
+		delete(h, canon)
+	}
+	h[name] = []string{value}
+}
+
 func matchExtraCDN(path, escaped string, domains []string) (index int, upPath, rawPath string, ok bool) {
 	for i := range domains {
 		base := fmt.Sprintf("/extra-cdn-%d", i)
@@ -2888,9 +2910,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if needsBearer {
 			// The browser may still be holding the token from the last page.
 			// AI Detector checks useridtoken and rejects that stale value.
+			// Go would send Useridtoken. Quillbot reads the exact name.
 			bearer = tok
 			upstreamReq.Header.Set("Authorization", "Bearer "+tok)
-			upstreamReq.Header.Set("Useridtoken", tok)
+			setExactHeader(upstreamReq.Header, "useridtoken", tok)
 		}
 	}
 
@@ -2907,6 +2930,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	} else if isExtraCDN && extraCDNIndex >= 0 {
 		extraClean := strings.TrimPrefix(strings.TrimPrefix(cfg.ExtraCDNDomains[extraCDNIndex], "https://"), "http://")
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
+	}
+
+	// docupine rejects the request unless this header is digits and the
+	// name is exactly changeTimestamp. Go's canonical form is Changetimestamp,
+	// which their validator treats as missing, so /docs/new retries forever.
+	if strings.Contains(path, "/api/docupine/") || upstreamReq.Header.Get("Changetimestamp") != "" {
+		ts := strings.TrimSpace(upstreamReq.Header.Get("Changetimestamp"))
+		if !digitsOnly(ts) {
+			log.Printf("[QUILLBOT] changeTimestamp invalid path=%s had=%q", path, ts)
+			ts = strconv.FormatInt(time.Now().UnixMilli(), 10)
+		}
+		setExactHeader(upstreamReq.Header, "changeTimestamp", ts)
 	}
 
 	// Remove proxy headers
@@ -3208,9 +3243,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if idbInject != "" && strings.Contains(strings.ToLower(cfg.TargetURL), "quillbot.com") {
 			bodyBytes = gateQuillbotBoot(bodyBytes)
-		}
-		if usesPanelAccountMode(cfg) && activeAcc.ID > 0 && strings.Contains(strings.ToLower(cfg.TargetURL), "quillbot.com") {
-			bodyBytes = injectQuillbotLogoutWatch(bodyBytes, firebaseDisplayName(activeAcc.Cookie))
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

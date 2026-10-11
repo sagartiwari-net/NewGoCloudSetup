@@ -138,4 +138,16 @@ func TestExtraCDNRootQueryUsesStreamHost(t *testing.T) {
 	if cloudflareChallenge(200, http.Header{}, []byte("<title>Just a moment...</title>")) {
 		t.Fatal("a normal page must not be treated as a challenge")
 	}
+	h := http.Header{}
+	h.Set("Changetimestamp", "nope")
+	setExactHeader(h, "changeTimestamp", "1791723916000")
+	if _, ok := h["Changetimestamp"]; ok {
+		t.Fatal("canonical changeTimestamp must not be forwarded")
+	}
+	if got := h["changeTimestamp"]; len(got) != 1 || got[0] != "1791723916000" {
+		t.Fatalf("exact header = %#v", h)
+	}
+	if !digitsOnly("1791723916000") || digitsOnly("") || digitsOnly("12ms") {
+		t.Fatal("digitsOnly")
+	}
 }
