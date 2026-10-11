@@ -68,6 +68,11 @@ func zebracatSideRequest(r *http.Request, cfg Config) bool {
 		return false
 	}
 	p := strings.ToLower(r.URL.Path)
+	if p == "/_editor_" {
+		p = "/"
+	} else if strings.HasPrefix(p, "/_editor_/") {
+		p = strings.TrimPrefix(p, "/_editor_")
+	}
 	if strings.Contains(p, "socket.io") || strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
 		return true
 	}
@@ -299,28 +304,12 @@ function tmWatch(fp, proof) {
     }).catch(function () {});
   }, 2000);
 }
-function tmShareCookie(name, value) {
-  var base = "; Path=/; Max-Age=604800; SameSite=Lax";
-  if (location.hostname.endsWith(".gt4rents.com")) base += "; Domain=.gt4rents.com";
-  document.cookie = name + "=" + encodeURIComponent(value) + base;
-}
-function tmReadCookie(name) {
-  var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
-  return m ? decodeURIComponent(m[1]) : "";
-}
 (function () {
   try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}
   var proof = "";
   var fp = "";
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   try { fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || ""; } catch (e) {}
-  if (!proof) proof = tmReadCookie("tm_ze_proof");
-  if (!fp) fp = tmReadCookie("tm_ze_fp");
-  if (proof) {
-    try { localStorage.setItem("` + deviceProofKey + `", proof); } catch (e) {}
-    if (fp) { try { localStorage.setItem("tm_device_fp", fp); sessionStorage.setItem("tm_device_fp", fp); } catch (e2) {} }
-    try { tmShareCookie("tm_ze_proof", proof); if (fp) tmShareCookie("tm_ze_fp", fp); } catch (e3) {}
-  }
   if (!proof) {
     fetch("/api/device-bind", {
       method: "POST",
@@ -343,10 +332,8 @@ function tmReadCookie(name) {
       });
     };
   }
-  var fpReady = fp ? Promise.resolve(fp) : tmFingerprint();
-  fpReady.then(function (fp) {
+  tmFingerprint().then(function (fp) {
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
-    try { tmShareCookie("tm_ze_proof", proof); tmShareCookie("tm_ze_fp", fp); } catch (e1) {}
     return tmStore(fp, proof).then(function () {
       return fetch("/api/device-bind", {
         method: "POST",
