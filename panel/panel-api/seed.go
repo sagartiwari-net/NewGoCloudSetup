@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"log"
 	"strconv"
 )
@@ -106,6 +107,40 @@ var localTools = []seedTool{
 	{"digen", "Digen", "5271", "video", credits},
 	{"ubersuggest", "Ubersuggest", "5281", "seo", creditsExports},
 	{"ahrefs", "Ahrefs", "5291", "seo", creditsExports},
+	{"quillbot", "QuillBot", "5311", "ai", credits},
+}
+
+// Existing panel databases are not re-seeded. Insert QuillBot once so the
+// Access tool list can open quillbot.gt4rents.com.
+func ensureQuillbot(db *sql.DB) {
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('quillbot.gt4rents.com', '127.0.0.1:5311')`).Scan(&n)
+	if n > 0 {
+		return
+	}
+	limits, _ := json.Marshal(credits)
+	var toolID int64
+	err := db.QueryRow(`SELECT id FROM tools WHERE name=?`, "QuillBot").Scan(&toolID)
+	if err != nil {
+		res, insErr := db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES (?,?,?)`, "QuillBot", "ai", string(limits))
+		if insErr != nil {
+			log.Printf("quillbot tool: %v", insErr)
+			return
+		}
+		toolID, _ = res.LastInsertId()
+	}
+	defaults, _ := json.Marshal(map[string]int{"credits": 100})
+	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
+		VALUES (?,?,?,?,120,?,1)`, toolID, "QuillBot", "quillbot.gt4rents.com", "secret_quillbot", string(defaults))
+	if err != nil {
+		log.Printf("quillbot website: %v", err)
+		return
+	}
+	websiteID, _ := res.LastInsertId()
+	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "QuillBot", `["5311"]`)
+	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
+		websiteID, "QuillBot 1", "", "active", "Paste the Firebase session JSON into this cookie.")
+	log.Printf("added QuillBot website %d at quillbot.gt4rents.com", websiteID)
 }
 
 func ensureResellers(db *sql.DB) {

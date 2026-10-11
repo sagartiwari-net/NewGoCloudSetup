@@ -82,6 +82,7 @@ func openDB(path string) *sql.DB {
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_logout_events_created ON logout_events(created_at)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_logout_events_website ON logout_events(website_id, created_at)`)
 	seed(db)
+	ensureQuillbot(db)
 	ensureResellers(db)
 	ensureAccessAlertSettings(db)
 	return db
