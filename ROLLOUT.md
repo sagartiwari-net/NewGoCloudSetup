@@ -161,7 +161,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `indexification` (:5231)
 - [ ] `jasper` (:4511)
 - [ ] `joggai` (:5031)
-- [ ] `kalodata` (:4951)
 - [ ] `merchinformer` (:4651)
 - [ ] `mojo` (:4881)
 - [ ] `pixlr` (:4901)
@@ -192,6 +191,7 @@ Opened on the proxy. Leave these until the note below is cleared.
 - [ ] `creattie` (:4861) — **Parked** (2026-10-10). Target `https://creattie.com`. Cloudflare stops the proxy: “Performing security verification”, then “Unable to connect to the website” (Ray ID `a48581119662aa5`). Same class of block as VistaCreate and Perplexity. Leave until later.
 - [ ] `flaticon` (:4921) — **Parked** (2026-10-07). Blank page / refresh loop was fixed. Freepik/Akamai WAF still returns 403 on this server, including with a proxy. Retry later with fresh cookies on the same residential proxy IP, or another proxy.
 - [ ] `grok` (:4831) — **Parked** (2026-10-10). Target `https://grok.com`. Cloudflare blocks this server: “Sorry, you have been blocked” / “You are unable to access grok.com”. Same class of block as VistaCreate, Perplexity, and Creattie. Leave until later.
+- [ ] `kalodata` (:4951) — **Parked** (2026-10-11). Target `https://www.kalodata.com`, home `/explore`. The app still sends the browser to `https://kalodata.com` (`/kalodata\.com$/.test(location.host)`). Page-script hooks and rewriting that line in the bundle did not stop the live redirect. Leave until later.
 - [ ] `perplexity` (:5101) — **Parked** (2026-10-09). Cloudflare stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `www.perplexity.ai`. Same class of block as VistaCreate. Leave until later.
 - [ ] `scite` (:4761) — **In progress** (2026-10-08). “Max challenge attempts” because `/api/auth/api_token` was blocked by the device gate (no JWT) and the WAF cookie domain was `scite.ai` instead of the proxy host. Soft-allow for `/api` + `/extra-cdn` is pushed, and the browser `aws-waf-token` is kept. Not confirmed on the live site after that.
 - [ ] `vistacreate` (:4581) — **Parked** (2026-10-08). ChatGPT target was fixed: `https://create.vista.com`, home `/home/`. Cloudflare still stops the proxy: “Performing security verification”, then “Unable to connect to the website” for `create.vista.com` (Ray ID on the error). Chrome HTTP/2 and allowing `/cdn-cgi/` did not clear it.

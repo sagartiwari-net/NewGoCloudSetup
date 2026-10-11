@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -83,8 +83,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: find/replace text in HTML + JSON responses (and live DOM).
@@ -121,11 +121,11 @@ var (
 	apiCredMu        sync.RWMutex
 	defaultConfig    = Config{
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-		Port:                   "7860",
+		Port:                   "4881",
 		CookieFile:             "cookie.txt",
-		TargetURL:              "https://chatgpt.com",
-		CDNURL:                 "https://cdn.oaistatic.com",
-		PublicHost:             "gpt.yourdomain.com",
+		TargetURL:              "https://app.mojo.video",
+		CDNURL:                 "https://app.mojo.video",
+		PublicHost:             "mojo.gt4rents.com",
 		PublicScheme:           "https",
 		MySQLHost:              "127.0.0.1",
 		MySQLPort:              "3306",
@@ -135,10 +135,11 @@ var (
 		SecretKey:              "your_secret_key_here",
 		SessionDurationMinutes: 120,
 		MemberAreaURL:          "https://members.yourdomain.com/",
-		ToolName:               "Tool",
+		ToolName:               "Mojo",
 		CreditLabel:            "Credits",
 		ExportLabel:            "Exports",
 		HomePath:               "/",
+		CookieDomainSuffix:     "mojo.video",
 		CountedPaths:           []string{},
 		CountedPrefixes:        []string{},
 		BlockedPaths:           []string{},
@@ -654,6 +655,17 @@ func parseCookieFromDB(raw string) string {
 		return ""
 	}
 	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "{") {
+		var wrap struct {
+			Cookies json.RawMessage `json:"cookies"`
+		}
+		if json.Unmarshal([]byte(trimmed), &wrap) == nil && len(wrap.Cookies) > 2 {
+			if s := parseCookieFromDB(string(wrap.Cookies)); s != "" {
+				return s
+			}
+		}
+		return ""
+	}
 	if !strings.HasPrefix(trimmed, "[") {
 		// Also dedupe name=value; name=value header strings
 		return dedupeCookieHeader(raw)
@@ -3050,7 +3062,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject auth restore + URL patcher. IndexedDB must run at START of <head>
 		// so Firebase sees the session before Vite modules boot.
-		sessionRaw := ensureFreshFirebaseSession(cfg.CookieFile)
+		// Prefer the panel GoAuto dump. cookie.txt is only the local fallback.
+		sessionRaw := ""
+		if usesPanelAccountMode(cfg) && isIndexedDBSession(activeAcc.Cookie) {
+			sessionRaw = ensureFreshFirebaseSessionRaw(activeAcc.Cookie, "")
+			if sessionRaw != "" && sessionRaw != activeAcc.Cookie {
+				persistPanelAccountCookie(cfg, activeAcc.ID, sessionRaw)
+				activeAcc.Cookie = sessionRaw
+			}
+		} else {
+			sessionRaw = ensureFreshFirebaseSession(cfg.CookieFile)
+		}
 		idbInject := buildIndexedDBInjectHTML(sessionRaw)
 		bodyBytes = gateCramlyModules(bodyBytes)
 

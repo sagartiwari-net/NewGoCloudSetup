@@ -119,7 +119,7 @@ func extractFirebaseAPIKey(raw string, user map[string]interface{}) string {
 	if m := re.FindString(raw); m != "" {
 		return m
 	}
-	return "AIzaSyC9z3MVVzFN8J9jQ6zNFIyb4Q2hQQv_8pQ" // Cramly web app default
+	return ""
 }
 
 var (
@@ -132,7 +132,10 @@ var (
 // Without this, Cramly injects a stale accessToken → GraphQL 401 →
 // "Something went wrong".
 func ensureFreshFirebaseSession(path string) string {
-	raw := loadSessionFileRaw(path)
+	return ensureFreshFirebaseSessionRaw(loadSessionFileRaw(path), path)
+}
+
+func ensureFreshFirebaseSessionRaw(raw, persistPath string) string {
 	if !isIndexedDBSession(raw) {
 		return raw
 	}
@@ -145,12 +148,13 @@ func ensureFreshFirebaseSession(path string) string {
 
 	firebaseRefreshMu.Lock()
 	defer firebaseRefreshMu.Unlock()
-	// Re-read under lock (another goroutine may have refreshed)
-	raw = loadSessionFileRaw(path)
-	exp = extractFirebaseExpirationMs(raw)
-	nowMs = time.Now().UnixMilli()
-	if exp > nowMs+10*60*1000 {
-		return raw
+	if persistPath != "" {
+		raw = loadSessionFileRaw(persistPath)
+		exp = extractFirebaseExpirationMs(raw)
+		nowMs = time.Now().UnixMilli()
+		if exp > nowMs+10*60*1000 {
+			return raw
+		}
 	}
 	if time.Since(firebaseLastRefresh) < 30*time.Second && exp > nowMs {
 		return raw
@@ -172,6 +176,10 @@ func ensureFreshFirebaseSession(path string) string {
 		return raw
 	}
 	apiKey := extractFirebaseAPIKey(raw, user)
+	if apiKey == "" {
+		log.Printf("[MOJO] refresh: no Firebase apiKey in the saved session")
+		return raw
+	}
 
 	form := url.Values{}
 	form.Set("grant_type", "refresh_token")
@@ -224,9 +232,10 @@ func ensureFreshFirebaseSession(path string) string {
 	if err != nil {
 		return raw
 	}
-	if err := os.WriteFile(path, out, 0644); err != nil {
-		log.Printf("[MOJO] refresh: write cookie.txt failed: %v", err)
-		return string(out) // still use in-memory fresh copy
+	if persistPath != "" {
+		if err := os.WriteFile(persistPath, out, 0644); err != nil {
+			log.Printf("[MOJO] refresh: write cookie.txt failed: %v", err)
+		}
 	}
 	firebaseLastRefresh = time.Now()
 	log.Printf("[MOJO] ✅ Firebase accessToken refreshed (expires in %ds)", expiresIn)

@@ -1,7 +1,26 @@
 {
   "port": "4881",
   "public_host": "mojo.gt4rents.com",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://app.mojo.video",
+  "cdn_url": "https://app.mojo.video",
+  "tool_name": "Mojo",
+  "cookie_domain_suffix": "mojo.video",
+  "home_path": "/",
+  "extra_cdn_domains": [
+    "https://www.mojo.video",
+    "https://mojo.video",
+    "https://api.mojo.video",
+    "https://identitytoolkit.googleapis.com",
+    "https://securetoken.googleapis.com",
+    "https://www.googleapis.com",
+    "https://firestore.googleapis.com",
+    "https://firebaseinstallations.googleapis.com",
+    "https://firebase.googleapis.com",
+    "https://firebaseremoteconfig.googleapis.com",
+    "https://content-firebaseappcheck.googleapis.com",
+    "https://fcmregistrations.googleapis.com"
+  ],
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -9,6 +28,5 @@
   "mysql_port": "3306",
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
-  "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "mysql_db": "gt4rents"
 }
