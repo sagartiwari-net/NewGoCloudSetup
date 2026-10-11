@@ -2391,6 +2391,17 @@ func rewriteKalodataOffsite(loc, publicBase string) string {
 	return strings.TrimRight(publicBase, "/") + path
 }
 
+// stripKalodataHostJail removes the boot check that sends every non-kalodata.com
+// host to https://kalodata.com. Location.prototype hooks do not catch that write.
+func stripKalodataHostJail(body []byte) []byte {
+	const from = `window.location.href="https://kalodata.com"`
+	const to = `window.location.href=location.origin`
+	if !bytes.Contains(body, []byte(from)) {
+		return body
+	}
+	return bytes.ReplaceAll(body, []byte(from), []byte(to))
+}
+
 func kalodataStayScript() string {
 	return `<script data-tm-kalo-stay="1">
 (function(){
@@ -3928,6 +3939,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	upstreamResp, err := doUpstreamWith429Retry(upstreamReq, accountCookieStr)
 	if err != nil {
+		if strings.Contains(err.Error(), "context canceled") {
+			return
+		}
 		log.Printf("[PROXY] Upstream request failed for user '%s' path '%s': %v", currentUser, path, err)
 		if strings.Contains(err.Error(), "proxy dial") {
 			renderProxyProblem(w, r)
@@ -4201,6 +4215,27 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
+			return
+		}
+	}
+
+	// The app bundle assigns location.href = "https://kalodata.com" unless the
+	// host already ends in kalodata.com. Rewrite that line before the browser runs it.
+	isJS := strings.Contains(strings.ToLower(contentType), "javascript") || strings.HasSuffix(strings.ToLower(path), ".js")
+	if isJS {
+		bodyBytes, err := decompressBody(upstreamResp)
+		if err == nil {
+			patched := stripKalodataHostJail(bodyBytes)
+			if !bytes.Equal(patched, bodyBytes) {
+				log.Printf("[KALO] removed official-site redirect in %s", path)
+			}
+			w.Header().Del("Content-Encoding")
+			w.Header().Set("Content-Length", strconv.Itoa(len(patched)))
+			if isCacheableStaticPath(path) && upstreamResp.StatusCode == 200 {
+				putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", patched)
+			}
+			w.WriteHeader(upstreamResp.StatusCode)
+			w.Write(patched)
 			return
 		}
 	}
