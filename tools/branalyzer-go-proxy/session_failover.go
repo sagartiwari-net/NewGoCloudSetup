@@ -148,10 +148,10 @@ func branInvalidateAuthProbe(acc ToolAccount) {
 func renderBranContactAdminPage(w http.ResponseWriter, cfg Config) {
 	_ = cfg
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Account unavailable",
-		Heading: "Account unavailable",
-		Message: "Contact to Admin/Provider to fix it ASAP",
-		Footer:  "Branalyzer session logged out — cookie update needed",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "Branalyzer is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 

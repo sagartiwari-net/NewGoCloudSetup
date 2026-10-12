@@ -77,10 +77,10 @@ func sgLooksLoggedOut(path string, body []byte, location string) (bool, string) 
 
 func renderSgContactAdmin(w http.ResponseWriter, cfg Config, reason string) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Account logged out",
-		Heading: "Account logged out",
-		Message: "SketchGenius account logged out (" + html.EscapeString(tmSanitizeReason(reason)) + "). Contact Admin/Provider to fix it ASAP.",
-		Footer:  "Update the cookie in the panel, set status Active, then open a new access link",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "This tool is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 

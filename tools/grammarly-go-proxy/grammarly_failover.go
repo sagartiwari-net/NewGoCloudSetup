@@ -86,16 +86,12 @@ func truncateForLog(s string, n int) string {
 }
 
 func renderGrammarlyContactAdminPage(w http.ResponseWriter, cfg Config, reason string) {
-	_ = cfg
-	msg := "Contact to Admin/Provider to fix it ASAP"
-	if reason != "" {
-		msg = "Grammarly cookie/session failed (" + html.EscapeString(reason) + "). Contact to Admin/Provider to fix it ASAP"
-	}
+	_, _ = cfg, reason
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Account unavailable",
-		Heading: "Account unavailable",
-		Message: msg,
-		Footer:  "Update the mapped Grammarly cookie in the panel, then open a new access link",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "Grammarly is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 

@@ -241,9 +241,9 @@ func renderGPTZeroSwitchingPage(w http.ResponseWriter, cfg Config, nextName stri
 
 func renderGPTZeroLoggedOutPage(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusOK, lightCard{
-		Title:   "Account logged out",
-		Heading: "Account logged out",
-		Message: "Account logged out. Contact the admin.",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "GPTZero is temporarily unavailable. Please try again in a few minutes.",
 	})
 }
 
@@ -273,7 +273,7 @@ func writeGPTZeroSwapResponse(w http.ResponseWriter, r *http.Request, cfg Config
 	w.Header().Set("X-TM-Account-Switch", "1")
 	w.Header().Set("Access-Control-Expose-Headers", "X-TM-Account-Switch")
 	w.WriteHeader(http.StatusUnauthorized)
-	_, _ = w.Write([]byte(`{"error":"account_logged_out","message":"Account logged out. Contact the admin."}`))
+	_, _ = w.Write([]byte(`{"error":"account_logged_out","message":"GPTZero is temporarily unavailable. Please try again in a few minutes."}`))
 	return true
 }
 

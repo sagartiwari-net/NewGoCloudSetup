@@ -1670,8 +1670,8 @@ func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "All mapped <span class=\"brand\">" + name + "</span> accounts are currently undergoing maintenance. Please try again in a few minutes.",
-		Footer:  "No active account is available right now",
+		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 
@@ -3102,8 +3102,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		writeLightCard(w, http.StatusOK, lightCard{
 			Title:   "Contact admin",
 			Heading: "Contact admin",
-			Message: "The <span class=\"brand\">" + name + "</span> session ended and no other account is available. Contact Admin/Provider.",
-			Footer:  "Saved in panel Analytics → Logouts. Account status was not changed.",
+			Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+			Footer:  "Open this tool again from your access link",
 		})
 		return
 	}

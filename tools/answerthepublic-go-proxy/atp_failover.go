@@ -202,16 +202,12 @@ func atpProbeUsersMe(cfg Config, acc ToolAccount, cookieHeader string) bool {
 }
 
 func serveATPInvalidCookie(w http.ResponseWriter, home, accountName string) {
-	msg := "This account cookie is not logged in (API returns Unauthorized). Export a fresh cookie from a logged-in AnswerThePublic browser tab and paste it in the panel."
-	if accountName != "" {
-		msg = "Account <span class=\"brand\">" + html.EscapeString(accountName) + "</span> cookie is not logged in (API 401). Export a fresh cookie from a logged-in AnswerThePublic tab and update it in the panel."
-	}
+	_ = accountName
 	writeLightCard(w, http.StatusOK, lightCard{
-		Title:       "Cookie invalid",
-		Heading:     "Cookie invalid",
-		Message:     msg,
-		Badge:       "Waiting for a working cookie",
-		Footer:      "After saving a new cookie in the panel, this page retries automatically",
+		Title:       "Temporarily Unavailable",
+		Heading:     "Temporarily Unavailable",
+		Message:     "AnswerThePublic is temporarily unavailable. Please try again in a few minutes.",
+		Footer:      "Open this tool again from your access link",
 		Spin:        true,
 		ExtraScript: atpWaitingRetryScript(home, 15000),
 	})

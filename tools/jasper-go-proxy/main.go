@@ -1384,8 +1384,8 @@ func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "All mapped <span class=\"brand\">" + name + "</span> accounts are currently undergoing maintenance. Please try again in a few minutes.",
-		Footer:  "No active account is available right now",
+		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 

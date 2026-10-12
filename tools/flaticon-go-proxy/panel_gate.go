@@ -488,10 +488,10 @@ func flaticonWAFCleanupScript() string {
 func flaticonWAFNeedsProxyCard(cfg Config) lightCard {
 	name := html.EscapeString(toolDisplayName(cfg))
 	return lightCard{
-		Title:       "Proxy required",
-		Heading:     "Proxy required",
-		Message:     "<span class=\"brand\">" + name + "</span> is blocked by Flaticon's <b>security filter</b> on this server IP (Hetzner). Assign a <b>Proxy Manager</b> residential proxy on the Flaticon account in the panel (same as Magnific / Claude / Envato), then open a <b>new access link</b>.",
-		Footer:      "Cookie refresh alone will not clear datacenter IP blocks",
+		Title:       "Temporarily Unavailable",
+		Heading:     "Temporarily Unavailable",
+		Message:     "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Footer:      "Open this tool again from your access link",
 		ExtraScript: flaticonWAFCleanupScript(),
 	}
 }
@@ -503,11 +503,11 @@ func flaticonWAFRetryCard(cfg Config) lightCard {
 	}
 	name := html.EscapeString(toolDisplayName(cfg))
 	return lightCard{
-		Title:   "Still blocked",
-		Heading: "Security filter…",
-		Message: "<span class=\"brand\">" + name + "</span> is still stuck on Flaticon <b>security filter</b> even with a proxy. Retrying automatically. If this loops, refresh Flaticon cookies on the same Proxy Manager IP or try another residential proxy.",
-		Badge:   "Retrying…",
-		Footer:  "Flaticon security filter rejected this IP/session",
+		Title:   "Switching account",
+		Heading: "Switching account",
+		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Badge:   "Trying one account at a time",
+		Footer:  "This keeps trying until an account is available",
 		Spin:    true,
 		ExtraScript: `<script>(function(){
   var home=` + fmt.Sprintf("%q", home) + `;
@@ -515,8 +515,8 @@ func flaticonWAFRetryCard(cfg Config) lightCard {
   if(n>=6){
     try{sessionStorage.removeItem('tm_fi_waf_retry');}catch(e){}
     var t=document.querySelector('h1'); var m=document.querySelector('.msg');
-    if(t) t.textContent='Still blocked';
-    if(m) m.textContent='Refresh Flaticon cookies on the proxy IP, or assign a different residential proxy.';
+    if(t) t.textContent='Temporarily Unavailable';
+    if(m) m.textContent='Flaticon is temporarily unavailable. Please try again in a few minutes.';
     return;
   }
   try{sessionStorage.setItem('tm_fi_waf_retry', String(n+1));}catch(e){}

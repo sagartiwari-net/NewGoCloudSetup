@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -30,10 +30,10 @@ import (
 
 	"github.com/andybalholm/brotli"
 	_ "github.com/go-sql-driver/mysql"
-	proxysec "toolsmandi.com/proxy-security"
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
+	proxysec "toolsmandi.com/proxy-security"
 )
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
@@ -41,68 +41,68 @@ import (
 // Config holds all runtime-configurable settings loaded from config.json.
 // Hot-reloadable: file is re-read on every request if it has changed.
 type Config struct {
-	Port                   string   `json:"port"`
-	TargetURL              string   `json:"target_url"`
-	CDNURL                 string   `json:"cdn_url"`
-	PublicHost             string   `json:"public_host"`
-	PublicScheme           string   `json:"public_scheme"`
-	MySQLHost              string   `json:"mysql_host"`
-	MySQLPort              string   `json:"mysql_port"`
-	MySQLUser              string   `json:"mysql_user"`
-	MySQLPassword          string   `json:"mysql_password"`
-	MySQLDB                string   `json:"mysql_db"`
-	SecretKey              string   `json:"secret_key"`
-	SessionDurationMinutes int      `json:"session_duration_minutes"`
-	MemberAreaURL          string   `json:"member_area_url"`
+	Port                   string `json:"port"`
+	TargetURL              string `json:"target_url"`
+	CDNURL                 string `json:"cdn_url"`
+	PublicHost             string `json:"public_host"`
+	PublicScheme           string `json:"public_scheme"`
+	MySQLHost              string `json:"mysql_host"`
+	MySQLPort              string `json:"mysql_port"`
+	MySQLUser              string `json:"mysql_user"`
+	MySQLPassword          string `json:"mysql_password"`
+	MySQLDB                string `json:"mysql_db"`
+	SecretKey              string `json:"secret_key"`
+	SessionDurationMinutes int    `json:"session_duration_minutes"`
+	MemberAreaURL          string `json:"member_area_url"`
 	// ── Generic tool settings ──
-	ToolName               string   `json:"tool_name"`
-	CreditLabel            string   `json:"credit_label"`
-	ExportLabel            string   `json:"export_label"`
-	HomePath               string   `json:"home_path"`
+	ToolName    string `json:"tool_name"`
+	CreditLabel string `json:"credit_label"`
+	ExportLabel string `json:"export_label"`
+	HomePath    string `json:"home_path"`
 	// CountedPaths: exact API paths that consume 1 credit each
-	CountedPaths           []string `json:"counted_paths"`
+	CountedPaths []string `json:"counted_paths"`
 	// CountedPrefixes: path prefixes that consume 1 credit (e.g. "/dashboard/")
-	CountedPrefixes        []string `json:"counted_prefixes"`
+	CountedPrefixes []string `json:"counted_prefixes"`
 	// BlockedPaths: exact paths to block (account/billing/settings pages)
-	BlockedPaths           []string `json:"blocked_paths"`
+	BlockedPaths []string `json:"blocked_paths"`
 	// BlockedPrefixes: path prefixes to block
-	BlockedPrefixes        []string `json:"blocked_prefixes"`
+	BlockedPrefixes []string `json:"blocked_prefixes"`
 	// ExtraCDNDomains: additional domains to rewrite in HTML responses
-	ExtraCDNDomains        []string `json:"extra_cdn_domains"`
+	ExtraCDNDomains []string `json:"extra_cdn_domains"`
 	// SensitiveCookies: cookie names to strip from user's browser (prevent hijack)
-	SensitiveCookies       []string `json:"sensitive_cookies"`
+	SensitiveCookies []string `json:"sensitive_cookies"`
 	// WatchdogTriggers: client-side text patterns that trigger account rotation
-	WatchdogTriggers       []string `json:"watchdog_triggers"`
+	WatchdogTriggers []string `json:"watchdog_triggers"`
 	// DisableExportTracking: set true for tools that don't have CSV export (ChatGPT, etc.)
-	DisableExportTracking  bool     `json:"disable_export_tracking"`
+	DisableExportTracking bool `json:"disable_export_tracking"`
 	// UserAgent override
-	UserAgent              string   `json:"user_agent"`
+	UserAgent string `json:"user_agent"`
 	// CookieFile: path to cookie.txt file (legacy, optional)
-	CookieFile             string   `json:"cookie_file"`
+	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
 	PanelDB string `json:"panel_db"`
 	// WebsiteID pins panel/MySQL website id (17 = seositecheckup.gt4rents.com).
 	WebsiteID int `json:"website_id"`
 	// IamFile: localStorage IAM JSON for JWT-auth SPAs (e.g. SEO Site Checkup ssc.iam)
-	IamFile                string   `json:"iam_file"`
-	IamStorageKey          string   `json:"iam_storage_key"`
+	IamFile       string `json:"iam_file"`
+	IamStorageKey string `json:"iam_storage_key"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
-	BypassAuth             bool     `json:"bypass_auth"`
+	BypassAuth bool `json:"bypass_auth"`
 	// UseDatabase: when false, skip MySQL — local dev with cookie.txt only
-	UseDatabase            bool     `json:"use_database"`
+	UseDatabase bool `json:"use_database"`
 	// CloudflareBypass: stub /cdn-cgi challenge JS on proxy host
-	CloudflareBypass       bool     `json:"cloudflare_bypass"`
+	CloudflareBypass bool `json:"cloudflare_bypass"`
 	// InjectCSS: raw CSS injected into every HTML response (e.g. hide account menu)
-	InjectCSS              string   `json:"inject_css"`
+	InjectCSS string `json:"inject_css"`
 	// Replacements: find/replace pairs for HTML + JSON + live DOM text
 	// Example: [{"search":"DigitaVision","replace":"ToolsMandi"}]
-	Replacements           []ReplacementPair `json:"replacements"`
+	Replacements []ReplacementPair `json:"replacements"`
 	// LogoutDetection: config-driven rules to detect premium account logout
-	LogoutDetection        LogoutDetectionConfig `json:"logout_detection"`
+	LogoutDetection LogoutDetectionConfig `json:"logout_detection"`
 	// Automation: external webhook to re-login / refresh cookies when logout detected
-	Automation             AutomationConfig      `json:"automation"`
+	Automation AutomationConfig `json:"automation"`
 	// SessionSecurity: anti-sharing layers (see security.md)
-	SessionSecurity        proxysec.Config `json:"session_security"`
+	SessionSecurity proxysec.Config `json:"session_security"`
 }
 
 // ReplacementPair is one config-driven text substitution.
@@ -145,14 +145,14 @@ func configFile() string {
 }
 
 var (
-	creditHitCache     sync.Map
-	automationStateMu  sync.Mutex
-	currentConfig      Config
-	configModTime      time.Time
+	creditHitCache                sync.Map
+	automationStateMu             sync.Mutex
+	currentConfig                 Config
+	configModTime                 time.Time
 	currentWebsiteID              int  = 1
 	currentWebsiteSecurityEnabled bool = true
 	dbConnected                   bool = false
-	defaultConfig = Config{
+	defaultConfig                      = Config{
 		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
@@ -267,23 +267,57 @@ func loadConfig() Config {
 		return currentConfig
 	}
 	// Fill defaults
-	if cfg.UserAgent == "" { cfg.UserAgent = defaultConfig.UserAgent }
-	if cfg.Port == "" { cfg.Port = defaultConfig.Port }
-	if cfg.CookieFile == "" { cfg.CookieFile = defaultConfig.CookieFile }
-	if cfg.IamFile == "" { cfg.IamFile = defaultConfig.IamFile }
-	if cfg.IamStorageKey == "" { cfg.IamStorageKey = defaultConfig.IamStorageKey }
-	if cfg.TargetURL == "" { cfg.TargetURL = defaultConfig.TargetURL }
-	if cfg.CDNURL == "" { cfg.CDNURL = defaultConfig.CDNURL }
-	if cfg.PublicScheme == "" { cfg.PublicScheme = "https" }
-	if cfg.MySQLHost == "" { cfg.MySQLHost = defaultConfig.MySQLHost }
-	if cfg.MySQLPort == "" { cfg.MySQLPort = defaultConfig.MySQLPort }
-	if cfg.MySQLUser == "" { cfg.MySQLUser = defaultConfig.MySQLUser }
-	if cfg.MySQLDB == "" { cfg.MySQLDB = defaultConfig.MySQLDB }
-	if cfg.SecretKey == "" { cfg.SecretKey = defaultConfig.SecretKey }
-	if cfg.SessionDurationMinutes <= 0 { cfg.SessionDurationMinutes = defaultConfig.SessionDurationMinutes }
-	if cfg.ToolName == "" { cfg.ToolName = defaultConfig.ToolName }
-	if cfg.CreditLabel == "" { cfg.CreditLabel = defaultConfig.CreditLabel }
-	if cfg.HomePath == "" { cfg.HomePath = defaultConfig.HomePath }
+	if cfg.UserAgent == "" {
+		cfg.UserAgent = defaultConfig.UserAgent
+	}
+	if cfg.Port == "" {
+		cfg.Port = defaultConfig.Port
+	}
+	if cfg.CookieFile == "" {
+		cfg.CookieFile = defaultConfig.CookieFile
+	}
+	if cfg.IamFile == "" {
+		cfg.IamFile = defaultConfig.IamFile
+	}
+	if cfg.IamStorageKey == "" {
+		cfg.IamStorageKey = defaultConfig.IamStorageKey
+	}
+	if cfg.TargetURL == "" {
+		cfg.TargetURL = defaultConfig.TargetURL
+	}
+	if cfg.CDNURL == "" {
+		cfg.CDNURL = defaultConfig.CDNURL
+	}
+	if cfg.PublicScheme == "" {
+		cfg.PublicScheme = "https"
+	}
+	if cfg.MySQLHost == "" {
+		cfg.MySQLHost = defaultConfig.MySQLHost
+	}
+	if cfg.MySQLPort == "" {
+		cfg.MySQLPort = defaultConfig.MySQLPort
+	}
+	if cfg.MySQLUser == "" {
+		cfg.MySQLUser = defaultConfig.MySQLUser
+	}
+	if cfg.MySQLDB == "" {
+		cfg.MySQLDB = defaultConfig.MySQLDB
+	}
+	if cfg.SecretKey == "" {
+		cfg.SecretKey = defaultConfig.SecretKey
+	}
+	if cfg.SessionDurationMinutes <= 0 {
+		cfg.SessionDurationMinutes = defaultConfig.SessionDurationMinutes
+	}
+	if cfg.ToolName == "" {
+		cfg.ToolName = defaultConfig.ToolName
+	}
+	if cfg.CreditLabel == "" {
+		cfg.CreditLabel = defaultConfig.CreditLabel
+	}
+	if cfg.HomePath == "" {
+		cfg.HomePath = defaultConfig.HomePath
+	}
 	if cfg.LogoutDetection.Enabled {
 		if cfg.LogoutDetection.OverlayTitle == "" {
 			cfg.LogoutDetection.OverlayTitle = "Session Update"
@@ -496,10 +530,14 @@ func isCountedPath(path string, cfg Config) bool {
 	}
 	path = strings.TrimSuffix(path, "/")
 	for _, p := range cfg.CountedPaths {
-		if path == p { return true }
+		if path == p {
+			return true
+		}
 	}
 	for _, prefix := range cfg.CountedPrefixes {
-		if strings.HasPrefix(path, prefix) { return true }
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
 	}
 	return false
 }
@@ -510,10 +548,14 @@ func isBlockedPath(path string, cfg Config) bool {
 	}
 	path = strings.TrimSuffix(path, "/")
 	for _, p := range cfg.BlockedPaths {
-		if path == p { return true }
+		if path == p {
+			return true
+		}
 	}
 	for _, prefix := range cfg.BlockedPrefixes {
-		if strings.HasPrefix(path, prefix) { return true }
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
 	}
 	return false
 }
@@ -522,7 +564,9 @@ func startDailyResetCron() {
 	go func() {
 		for {
 			loc, err := time.LoadLocation("Asia/Kolkata")
-			if err != nil { loc = time.Local }
+			if err != nil {
+				loc = time.Local
+			}
 			now := time.Now().In(loc)
 			next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, loc)
 			time.Sleep(next.Sub(now))
@@ -540,13 +584,13 @@ func startDailyResetCron() {
 // ── ACCOUNT SYSTEM ────────────────────────────────────────────────────────────
 
 type ToolAccount struct {
-	ID                 int
-	Name               string
-	Cookie             string
-	UserAgent          string
-	Proxy              string
-	ShowLimit          bool
-	AutomationTaskUID  string
+	ID                int
+	Name              string
+	Cookie            string
+	UserAgent         string
+	Proxy             string
+	ShowLimit         bool
+	AutomationTaskUID string
 }
 
 func scanToolAccount(row interface{ Scan(...interface{}) error }) (ToolAccount, error) {
@@ -590,7 +634,9 @@ func getSessionAssignedAccount(sessionToken string) (ToolAccount, bool) {
 
 func autoAssignNextAccount(sessionToken string) (ToolAccount, error) {
 	acc, err := selectActiveAccount()
-	if err != nil { return acc, err }
+	if err != nil {
+		return acc, err
+	}
 	_, _ = db.Exec("UPDATE ahrefs_sessions SET assigned_account_id = ? WHERE session_token = ? AND website_id = ?", acc.ID, sessionToken, currentWebsiteID)
 	log.Printf("[LB] Assigned account '%s' (ID:%d) to session '%s'", acc.Name, acc.ID, sessionToken)
 	return acc, nil
@@ -757,9 +803,13 @@ func sanitizeCookieHeader(s string) string {
 
 func parseCookieFromDB(raw string) string {
 	raw = sanitizeCookieHeader(raw)
-	if raw == "" { return "" }
+	if raw == "" {
+		return ""
+	}
 	trimmed := strings.TrimSpace(raw)
-	if trimmed == "{}" || trimmed == "[]" { return "" }
+	if trimmed == "{}" || trimmed == "[]" {
+		return ""
+	}
 	if bundle, ok := parseSessionBundle(trimmed); ok {
 		if cookieRaw := cookiesRawFromBundle(bundle); cookieRaw != "" {
 			return parseCookieFromDB(cookieRaw)
@@ -781,12 +831,16 @@ func parseCookieFromDB(raw string) string {
 			}
 		}
 	}
-	if !strings.HasPrefix(trimmed, "[") { return raw }
+	if !strings.HasPrefix(trimmed, "[") {
+		return raw
+	}
 	var cookies []struct {
 		Name  string `json:"name"`
 		Value string `json:"value"`
 	}
-	if err := json.Unmarshal([]byte(trimmed), &cookies); err != nil { return raw }
+	if err := json.Unmarshal([]byte(trimmed), &cookies); err != nil {
+		return raw
+	}
 	parts := make([]string, 0, len(cookies))
 	for _, c := range cookies {
 		if c.Name == "" {
@@ -813,7 +867,7 @@ type IamTokens struct {
 
 const sscAuthRefreshURL = "https://7bwzwx5ph1.execute-api.us-east-1.amazonaws.com/prod/auth/refresh"
 
-var cachedIamTokens atomic.Value // stores IamTokens
+var cachedIamTokens atomic.Value      // stores IamTokens
 var requestAccountCookie atomic.Value // stores string — active account cookie from DB per request
 
 func jwtExpUnix(token string) int64 {
@@ -1186,18 +1240,26 @@ func patchSscAppJS(body []byte) []byte {
 }
 
 func stripSensitiveCookies(cookieHeader string, cfg Config) string {
-	if cookieHeader == "" { return "" }
+	if cookieHeader == "" {
+		return ""
+	}
 	sensitiveSet := make(map[string]bool)
-	for _, n := range cfg.SensitiveCookies { sensitiveSet[strings.ToLower(n)] = true }
+	for _, n := range cfg.SensitiveCookies {
+		sensitiveSet[strings.ToLower(n)] = true
+	}
 	sensitiveSet["ct_session"] = true // Always strip our internal session cookie!
 	parts := strings.Split(cookieHeader, ";")
 	var kept []string
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)
-		if trimmed == "" { continue }
+		if trimmed == "" {
+			continue
+		}
 		if eqIdx := strings.Index(trimmed, "="); eqIdx != -1 {
 			name := strings.ToLower(strings.TrimSpace(trimmed[:eqIdx]))
-			if sensitiveSet[name] { continue }
+			if sensitiveSet[name] {
+				continue
+			}
 		}
 		kept = append(kept, trimmed)
 	}
@@ -1208,7 +1270,9 @@ func stripSensitiveCookies(cookieHeader string, cfg Config) string {
 
 func generateOTT() (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil { return "", err }
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
 	return hex.EncodeToString(b), nil
 }
 
@@ -1392,9 +1456,12 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	var productIDs []int
 	for _, v := range payload.ProductIDsRaw {
 		switch n := v.(type) {
-		case float64: productIDs = append(productIDs, int(n))
+		case float64:
+			productIDs = append(productIDs, int(n))
 		case string:
-			if i, err := strconv.Atoi(n); err == nil { productIDs = append(productIDs, i) }
+			if i, err := strconv.Atoi(n); err == nil {
+				productIDs = append(productIDs, i)
+			}
 		}
 	}
 	if payload.Username == "" || payload.ClientIP == "" || payload.Signature == "" {
@@ -1442,10 +1509,15 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 				var allowedPid string
 				if err := rows.Scan(&allowedPid); err == nil {
 					for _, userPid := range productIDs {
-						if strconv.Itoa(userPid) == allowedPid { hasAccess = true; break }
+						if strconv.Itoa(userPid) == allowedPid {
+							hasAccess = true
+							break
+						}
 					}
 				}
-				if hasAccess { break }
+				if hasAccess {
+					break
+				}
 			}
 		}
 		if !hasAccess {
@@ -1472,7 +1544,9 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	if err == sql.ErrNoRows {
 		var defCredits, defExports int
 		err = db.QueryRow("SELECT COALESCE(default_credit_limit,50), COALESCE(default_export_limit,100000) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&defCredits, &defExports)
-		if err != nil { defCredits, defExports = 50, 100000 }
+		if err != nil {
+			defCredits, defExports = 50, 100000
+		}
 		_, err = db.Exec("INSERT INTO ahrefs_users (username, website_id, credit_limit, export_limit) VALUES (?,?,?,?)", payload.Username, currentWebsiteID, defCredits, defExports)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
@@ -1607,7 +1681,9 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 
 	var sessionDuration int
 	err = db.QueryRow("SELECT COALESCE(NULLIF(session_duration, ''), 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
-	if err != nil { sessionDuration = cfg.SessionDurationMinutes }
+	if err != nil {
+		sessionDuration = cfg.SessionDurationMinutes
+	}
 	sessionExpiry := time.Now().Add(time.Duration(sessionDuration) * time.Minute)
 
 	_, err = db.Exec(
@@ -1657,7 +1733,9 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[ACCESS] ✅ Session set for user: %s (secure=%v device=%v)", username, secure, deviceToken != "")
 	homePath := cfg.HomePath
-	if homePath == "" { homePath = "/" }
+	if homePath == "" {
+		homePath = "/"
+	}
 	http.Redirect(w, r, homePath, http.StatusFound)
 }
 
@@ -1687,7 +1765,9 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	var showLimitVal int
 	var assignedAccountID sql.NullInt64
 	err = db.QueryRow("SELECT credit_limit, export_limit FROM ahrefs_users WHERE username = ? AND website_id = ?", currentUser, currentWebsiteID).Scan(&creditLimit, &exportLimit)
-	if err == sql.ErrNoRows { creditLimit, exportLimit = 50, 100000 }
+	if err == sql.ErrNoRows {
+		creditLimit, exportLimit = 50, 100000
+	}
 	var creditUsed int
 	_ = db.QueryRow("SELECT COUNT(*) FROM ahrefs_credit_logs WHERE username = ? AND website_id = ? AND DATE(timestamp) = CURDATE()", currentUser, currentWebsiteID).Scan(&creditUsed)
 	var exportUsed int
@@ -1702,18 +1782,20 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	creditLabel, exportLabel := cfg.CreditLabel, cfg.ExportLabel
-	if creditLabel == "" { creditLabel = "Credits" }
+	if creditLabel == "" {
+		creditLabel = "Credits"
+	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"show_limit":    showLimit,
-		"username":      currentUser,
-		"credit_limit":  creditLimit,
-		"credit_used":   creditUsed,
-		"export_limit":  exportLimit,
-		"export_used":   exportUsed,
-		"credit_label":  creditLabel,
-		"export_label":  exportLabel,
-		"tool_name":     cfg.ToolName,
+		"show_limit":     showLimit,
+		"username":       currentUser,
+		"credit_limit":   creditLimit,
+		"credit_used":    creditUsed,
+		"export_limit":   exportLimit,
+		"export_used":    exportUsed,
+		"credit_label":   creditLabel,
+		"export_label":   exportLabel,
+		"tool_name":      cfg.ToolName,
 		"disable_export": cfg.DisableExportTracking,
 	})
 }
@@ -1745,10 +1827,14 @@ func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	reason := r.URL.Query().Get("reason")
-	if reason == "" { reason = "client-side watchdog trigger" }
+	if reason == "" {
+		reason = "client-side watchdog trigger"
+	}
 	var currentUser string
 	err = db.QueryRow("SELECT username FROM ahrefs_sessions WHERE session_token = ? AND website_id = ?", sessionToken, currentWebsiteID).Scan(&currentUser)
-	if err != nil { currentUser = "unknown" }
+	if err != nil {
+		currentUser = "unknown"
+	}
 	nextAcc, switchErr := switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, reason)
 	if switchErr != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -2124,11 +2210,11 @@ func automationIngestHandler(w http.ResponseWriter, r *http.Request) {
 		accName, payload.AccountID, payload.TaskUID, len(normalized), realClientIP(r))
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":      "ok",
-		"account_id":  payload.AccountID,
+		"status":       "ok",
+		"account_id":   payload.AccountID,
 		"account_name": accName,
-		"bytes_saved": len(normalized),
-		"website_id":  payload.WebsiteID,
+		"bytes_saved":  len(normalized),
+		"website_id":   payload.WebsiteID,
 	})
 }
 
@@ -2225,8 +2311,8 @@ func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "All mapped <span class=\"brand\">" + name + "</span> accounts are currently undergoing maintenance. Please try again in a few minutes.",
-		Footer:  "No active account is available right now",
+		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 
@@ -2250,18 +2336,23 @@ func renderLimitReachedPage(w http.ResponseWriter, limitType string, cfg Config)
 
 // parseProxyString converts any proxy string format to *url.URL.
 // Supported formats:
-//   socks5://user:pass@host:port
-//   http://user:pass@host:port  (or https://)
-//   host:port:user:pass         (shorthand, assumed SOCKS5)
-//   host:port                   (no auth, assumed SOCKS5)
+//
+//	socks5://user:pass@host:port
+//	http://user:pass@host:port  (or https://)
+//	host:port:user:pass         (shorthand, assumed SOCKS5)
+//	host:port                   (no auth, assumed SOCKS5)
 func parseProxyString(s string) *url.URL {
 	s = strings.TrimSpace(s)
-	if s == "" { return nil }
+	if s == "" {
+		return nil
+	}
 
 	// Already has a scheme
 	if strings.Contains(s, "://") {
 		u, err := url.Parse(s)
-		if err != nil { return nil }
+		if err != nil {
+			return nil
+		}
 		scheme := strings.ToLower(u.Scheme)
 		if scheme != "socks5" && scheme != "socks5h" && scheme != "http" && scheme != "https" {
 			log.Printf("[PROXY] Unknown proxy scheme '%s' — skipping", scheme)
@@ -2331,14 +2422,16 @@ func loadProxyFromDB() *url.URL {
 
 func getProxy() *url.URL { return loadProxyFromDB() }
 
-
 // ── PROXY DIALERS ─────────────────────────────────────────────────────────────
 
 func dialThroughProxy(ctx context.Context, targetAddr string, proxyURL *url.URL) (net.Conn, error) {
 	switch strings.ToLower(proxyURL.Scheme) {
-	case "socks5", "socks5h": return dialThroughSocks5(ctx, targetAddr, proxyURL)
-	case "http", "https": return dialThroughHTTPProxy(ctx, targetAddr, proxyURL)
-	default: return nil, fmt.Errorf("unsupported proxy scheme: %s", proxyURL.Scheme)
+	case "socks5", "socks5h":
+		return dialThroughSocks5(ctx, targetAddr, proxyURL)
+	case "http", "https":
+		return dialThroughHTTPProxy(ctx, targetAddr, proxyURL)
+	default:
+		return nil, fmt.Errorf("unsupported proxy scheme: %s", proxyURL.Scheme)
 	}
 }
 
@@ -2349,21 +2442,33 @@ func dialThroughSocks5(ctx context.Context, targetAddr string, proxyURL *url.URL
 		auth = &proxy.Auth{User: proxyURL.User.Username(), Password: pass}
 	}
 	proxyHost := proxyURL.Host
-	if !strings.Contains(proxyHost, ":") { proxyHost += ":1080" }
+	if !strings.Contains(proxyHost, ":") {
+		proxyHost += ":1080"
+	}
 	baseDialer := &net.Dialer{Timeout: 20 * time.Second}
 	socks5Dialer, err := proxy.SOCKS5("tcp", proxyHost, auth, baseDialer)
-	if err != nil { return nil, fmt.Errorf("socks5 dialer init: %w", err) }
-	if cd, ok := socks5Dialer.(proxy.ContextDialer); ok { return cd.DialContext(ctx, "tcp", targetAddr) }
+	if err != nil {
+		return nil, fmt.Errorf("socks5 dialer init: %w", err)
+	}
+	if cd, ok := socks5Dialer.(proxy.ContextDialer); ok {
+		return cd.DialContext(ctx, "tcp", targetAddr)
+	}
 	return socks5Dialer.Dial("tcp", targetAddr)
 }
 
 func dialThroughHTTPProxy(ctx context.Context, targetAddr string, proxyURL *url.URL) (net.Conn, error) {
 	proxyHost := proxyURL.Host
 	if !strings.Contains(proxyHost, ":") {
-		if proxyURL.Scheme == "https" { proxyHost += ":443" } else { proxyHost += ":80" }
+		if proxyURL.Scheme == "https" {
+			proxyHost += ":443"
+		} else {
+			proxyHost += ":80"
+		}
 	}
 	conn, err := (&net.Dialer{Timeout: 20 * time.Second}).DialContext(ctx, "tcp", proxyHost)
-	if err != nil { return nil, fmt.Errorf("connect to HTTP proxy: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("connect to HTTP proxy: %w", err)
+	}
 	connectLine := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", targetAddr, targetAddr)
 	if proxyURL.User != nil {
 		pass, _ := proxyURL.User.Password()
@@ -2371,12 +2476,21 @@ func dialThroughHTTPProxy(ctx context.Context, targetAddr string, proxyURL *url.
 		connectLine += "Proxy-Authorization: Basic " + creds + "\r\n"
 	}
 	connectLine += "\r\n"
-	if _, err := conn.Write([]byte(connectLine)); err != nil { conn.Close(); return nil, err }
+	if _, err := conn.Write([]byte(connectLine)); err != nil {
+		conn.Close()
+		return nil, err
+	}
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, nil)
-	if err != nil { conn.Close(); return nil, err }
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK { conn.Close(); return nil, fmt.Errorf("HTTP proxy CONNECT refused: %s", resp.Status) }
+	if resp.StatusCode != http.StatusOK {
+		conn.Close()
+		return nil, fmt.Errorf("HTTP proxy CONNECT refused: %s", resp.Status)
+	}
 	return conn, nil
 }
 
@@ -2394,6 +2508,7 @@ func (c *uTLSConn) ConnectionState() tls.ConnectionState {
 }
 
 type contextKey string
+
 const proxyContextKey contextKey = "account_proxy"
 
 func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
@@ -2404,7 +2519,9 @@ func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 	if ctxPx, ok := ctx.Value(proxyContextKey).(string); ok && ctxPx != "" {
 		px = parseProxyString(ctxPx)
 	}
-	if px == nil { px = getProxy() }
+	if px == nil {
+		px = getProxy()
+	}
 	if px != nil {
 		tcpConn, err = dialThroughProxy(ctx, addr, px)
 		if err != nil {
@@ -2412,10 +2529,15 @@ func dialChrome(ctx context.Context, addr string) (*uTLSConn, error) {
 		}
 	} else {
 		tcpConn, err = (&net.Dialer{Timeout: 20 * time.Second}).DialContext(ctx, "tcp", addr)
-		if err != nil { return nil, fmt.Errorf("TCP dial: %w", err) }
+		if err != nil {
+			return nil, fmt.Errorf("TCP dial: %w", err)
+		}
 	}
 	uConn := utls.UClient(tcpConn, &utls.Config{ServerName: host, InsecureSkipVerify: false}, utls.HelloChrome_120)
-	if err := uConn.HandshakeContext(ctx); err != nil { tcpConn.Close(); return nil, fmt.Errorf("uTLS handshake: %w", err) }
+	if err := uConn.HandshakeContext(ctx); err != nil {
+		tcpConn.Close()
+		return nil, fmt.Errorf("uTLS handshake: %w", err)
+	}
 	return &uTLSConn{uConn}, nil
 }
 
@@ -2443,12 +2565,20 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	addr := req.URL.Host
 	if !strings.Contains(addr, ":") {
-		if req.URL.Scheme == "https" { addr += ":443" } else { addr += ":80" }
+		if req.URL.Scheme == "https" {
+			addr += ":443"
+		} else {
+			addr += ":80"
+		}
 	}
 	conn, err := dialChrome(req.Context(), addr)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	proto := conn.ConnectionState().NegotiatedProtocol
-	if proto == "h2" { return rt.h2.RoundTripOpt(req, http2.RoundTripOpt{}) }
+	if proto == "h2" {
+		return rt.h2.RoundTripOpt(req, http2.RoundTripOpt{})
+	}
 	return rt.h1.RoundTrip(req)
 }
 
@@ -2465,8 +2595,8 @@ func buildChromeHTTPClient() *http.Client {
 		}, DisableCompression: false,
 	}
 	return &http.Client{
-		Transport: &roundTripper{h2: h2, h1: h1},
-		Timeout:   120 * time.Second,
+		Transport:     &roundTripper{h2: h2, h1: h1},
+		Timeout:       120 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
 	}
 }
@@ -2662,9 +2792,13 @@ func patcherScript(cfg Config) string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
 	targetHost := ""
-	if targetParsed != nil { targetHost = targetParsed.Host }
+	if targetParsed != nil {
+		targetHost = targetParsed.Host
+	}
 	cdnHost := ""
-	if cdnParsed != nil { cdnHost = cdnParsed.Host }
+	if cdnParsed != nil {
+		cdnHost = cdnParsed.Host
+	}
 
 	// Build JS blocked list from config
 	var blockedListJS strings.Builder
@@ -2675,7 +2809,9 @@ func patcherScript(cfg Config) string {
 		blockedListJS.WriteString(fmt.Sprintf("%q,", p))
 	}
 	homePath := cfg.HomePath
-	if homePath == "" { homePath = "/" }
+	if homePath == "" {
+		homePath = "/"
+	}
 
 	// Build watchdog triggers
 	var triggerChecks strings.Builder
@@ -2887,7 +3023,9 @@ func patcherScript(cfg Config) string {
 		iamTokensJSONForJS(cfg), cfg.IamStorageKey, cfg.IamStorageKey,
 		triggerChecks.String(),
 		func() string {
-			if len(cfg.WatchdogTriggers) > 0 { return "true" }
+			if len(cfg.WatchdogTriggers) > 0 {
+				return "true"
+			}
 			return "false"
 		}(),
 		logoutAutoJS,
@@ -3040,7 +3178,9 @@ func buildLogoutAutomationJS(cfg Config) string {
 }
 
 func min(a, b int) int {
-	if a < b { return a }
+	if a < b {
+		return a
+	}
 	return b
 }
 
@@ -3072,7 +3212,9 @@ func limitOverlayScript() string {
 
 func limitWidgetScript(cfg Config) string {
 	creditLabel := cfg.CreditLabel
-	if creditLabel == "" { creditLabel = "Credits" }
+	if creditLabel == "" {
+		creditLabel = "Credits"
+	}
 	return fmt.Sprintf(`<script>
 (function() {
     var CREDIT_LABEL = '%s';
@@ -3113,7 +3255,9 @@ func decompressBody(resp *http.Response) ([]byte, error) {
 	switch resp.Header.Get("Content-Encoding") {
 	case "gzip":
 		gr, err := gzip.NewReader(resp.Body)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		defer gr.Close()
 		reader = gr
 	case "br":
@@ -3130,13 +3274,18 @@ type bufferedConn struct {
 	net.Conn
 	reader io.Reader
 }
+
 func (b *bufferedConn) Read(p []byte) (int, error) { return b.reader.Read(p) }
 
 func proxyWebSocket(w http.ResponseWriter, r *http.Request, upstreamURL url.URL, cookieStr string, userAgent string, cfg Config, accountProxy string) {
 	upstreamAddr := upstreamURL.Host
 	useTLS := upstreamURL.Scheme == "https" || upstreamURL.Scheme == "wss"
 	if !strings.Contains(upstreamAddr, ":") {
-		if useTLS { upstreamAddr += ":443" } else { upstreamAddr += ":80" }
+		if useTLS {
+			upstreamAddr += ":443"
+		} else {
+			upstreamAddr += ":80"
+		}
 	}
 
 	// Connect to upstream (TLS or plain)
@@ -3169,13 +3318,19 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request, upstreamURL url.URL,
 	reqBuf.WriteString(fmt.Sprintf("Host: %s\r\n", upstreamURL.Host))
 	for k, vv := range r.Header {
 		kl := strings.ToLower(k)
-		if kl == "host" || kl == "cookie" { continue } // override below
+		if kl == "host" || kl == "cookie" {
+			continue
+		} // override below
 		for _, v := range vv {
 			reqBuf.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
 		}
 	}
-	if cookieStr != "" { reqBuf.WriteString(fmt.Sprintf("Cookie: %s\r\n", cookieStr)) }
-	if userAgent != "" { reqBuf.WriteString(fmt.Sprintf("User-Agent: %s\r\n", userAgent)) }
+	if cookieStr != "" {
+		reqBuf.WriteString(fmt.Sprintf("Cookie: %s\r\n", cookieStr))
+	}
+	if userAgent != "" {
+		reqBuf.WriteString(fmt.Sprintf("User-Agent: %s\r\n", userAgent))
+	}
 	reqBuf.WriteString(fmt.Sprintf("Origin: %s\r\n", cfg.TargetURL))
 	reqBuf.WriteString("\r\n")
 
@@ -3216,7 +3371,9 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request, upstreamURL url.URL,
 	var respBuf bytes.Buffer
 	respBuf.WriteString("HTTP/1.1 101 Switching Protocols\r\n")
 	for k, vv := range upstreamResp.Header {
-		for _, v := range vv { respBuf.WriteString(fmt.Sprintf("%s: %s\r\n", k, v)) }
+		for _, v := range vv {
+			respBuf.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
+		}
 	}
 	respBuf.WriteString("\r\n")
 	if _, err = clientConn.Write(respBuf.Bytes()); err != nil {
@@ -3337,7 +3494,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 3. Get active account for this session ────────────────────────────────────
 	sessionToken := ""
-	if c, err := r.Cookie("ct_session"); err == nil { sessionToken = c.Value }
+	if c, err := r.Cookie("ct_session"); err == nil {
+		sessionToken = c.Value
+	}
 	var activeAcc ToolAccount
 	if usesPanelAccountMode(cfg) {
 		if sessionToken == "" {
@@ -3377,7 +3536,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				Path:     "/",
 				Expires:  time.Now().Add(24 * time.Hour),
 				HttpOnly: true,
-				Secure:   isHTTPS, // Only set Secure flag when actually on HTTPS
+				Secure:   isHTTPS,              // Only set Secure flag when actually on HTTPS
 				SameSite: http.SameSiteLaxMode, // Lax allows navigation across subdomains
 			})
 		}
@@ -3504,7 +3663,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Copy headers
 	for k, vv := range r.Header {
-		for _, v := range vv { upstreamReq.Header.Add(k, v) }
+		for _, v := range vv {
+			upstreamReq.Header.Add(k, v)
+		}
 	}
 
 	// Set account cookie and user-agent
@@ -3514,7 +3675,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		clientCookies = ""
 	}
 	if accountCookieStr != "" && !usesCookieFileMode(cfg) {
-		if clientCookies != "" { clientCookies += "; " }
+		if clientCookies != "" {
+			clientCookies += "; "
+		}
 		clientCookies += accountCookieStr
 	}
 	// Only inject premium cookies when upstream is the target tool domain (not third-party CDNs)
@@ -3525,7 +3688,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	targetRoot := targetParsed.Hostname()
 	sendCookies := hostWithoutPort == targetRoot || strings.HasSuffix(hostWithoutPort, "."+targetRoot)
 	if sendCookies {
-		if clientCookies != "" { upstreamReq.Header.Set("Cookie", clientCookies) }
+		if clientCookies != "" {
+			upstreamReq.Header.Set("Cookie", clientCookies)
+		}
 	} else {
 		upstreamReq.Header.Del("Cookie")
 	}
@@ -3546,18 +3711,24 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── WebSocket upgrade: hijack and bidirectionally pipe ───────────────────────
 	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
 		ua := activeAcc.UserAgent
-		if ua == "" { ua = cfg.UserAgent }
+		if ua == "" {
+			ua = cfg.UserAgent
+		}
 		proxyWebSocket(w, r, upstreamURL, clientCookies, ua, cfg, activeAcc.Proxy)
 		return
 	}
 	ua := activeAcc.UserAgent
-	if ua == "" { ua = cfg.UserAgent }
-	if ua != "" { upstreamReq.Header.Set("User-Agent", ua) }
+	if ua == "" {
+		ua = cfg.UserAgent
+	}
+	if ua != "" {
+		upstreamReq.Header.Set("User-Agent", ua)
+	}
 
 	// Set upstream host header
 	upstreamReq.Host = targetParsed.Host
-	if strings.HasPrefix(path, "/cdn-proxy/") && cdnParsed != nil { 
-		upstreamReq.Host = cdnParsed.Host 
+	if strings.HasPrefix(path, "/cdn-proxy/") && cdnParsed != nil {
+		upstreamReq.Host = cdnParsed.Host
 	} else if isExtraCDN && extraCDNIndex >= 0 {
 		extraClean := strings.TrimPrefix(strings.TrimPrefix(cfg.ExtraCDNDomains[extraCDNIndex], "https://"), "http://")
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
@@ -3667,11 +3838,21 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	locationPairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 	for k, vv := range upstreamResp.Header {
 		kLower := strings.ToLower(k)
-		if kLower == "set-cookie" { continue } // Never forward upstream Set-Cookie to browser
-		if kLower == "content-encoding" { continue } // We'll re-encode
-		if kLower == "content-length" { continue } // Will be recalculated
-		if kLower == "transfer-encoding" { continue }
-		if kLower == "strict-transport-security" { continue } // Strip HSTS to prevent HTTPS upgrades
+		if kLower == "set-cookie" {
+			continue
+		} // Never forward upstream Set-Cookie to browser
+		if kLower == "content-encoding" {
+			continue
+		} // We'll re-encode
+		if kLower == "content-length" {
+			continue
+		} // Will be recalculated
+		if kLower == "transfer-encoding" {
+			continue
+		}
+		if kLower == "strict-transport-security" {
+			continue
+		} // Strip HSTS to prevent HTTPS upgrades
 		if kLower == "location" {
 			for _, v := range vv {
 				newLoc := v
@@ -3682,7 +3863,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		for _, v := range vv { w.Header().Add(k, v) }
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
 	}
 
 	// Cache static assets in browser; keep HTML/API uncached
@@ -3700,10 +3883,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := upstreamResp.Body.Read(buf)
 			if n > 0 {
-				if _, werr := w.Write(buf[:n]); werr != nil { break }
-				if canFlush { flusher.Flush() }
+				if _, werr := w.Write(buf[:n]); werr != nil {
+					break
+				}
+				if canFlush {
+					flusher.Flush()
+				}
 			}
-			if err != nil { break }
+			if err != nil {
+				break
+			}
 		}
 		return
 	}
@@ -3839,7 +4028,10 @@ func withCORS(h http.HandlerFunc) http.HandlerFunc {
 		}
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Cookie, Authorization")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		if r.Method == http.MethodOptions { w.WriteHeader(http.StatusOK); return }
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		h(w, r)
 	}
 }
@@ -3928,7 +4120,9 @@ func main() {
 			})
 		}
 		memberAreaURL := cfg.MemberAreaURL
-		if memberAreaURL == "" { memberAreaURL = "/" }
+		if memberAreaURL == "" {
+			memberAreaURL = "/"
+		}
 		http.Redirect(w, r, memberAreaURL, http.StatusFound)
 	})
 

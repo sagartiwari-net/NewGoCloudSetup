@@ -163,10 +163,10 @@ func serveCourseraLogout(w http.ResponseWriter, r *http.Request, cfg Config, acc
 	}
 	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{
-		Title:   "Contact admin",
-		Heading: "Contact admin",
-		Message: "The <span class=\"brand\">" + name + "</span> session ended and no other account is available. Contact Admin/Provider.",
-		Footer:  "Saved in panel Analytics → Logouts. Account status was not changed.",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 

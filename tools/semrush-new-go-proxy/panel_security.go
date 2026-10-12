@@ -398,9 +398,9 @@ func semrushAccountSwapPage(r *http.Request) (string, bool) {
 	if acc, ok := semrushRotatePanelAccount(cfg.PublicHost, token); ok {
 		return semrushSwitchingHTML(r, acc), true
 	}
-	return semrushLightPage("Account logged out", "Account logged out",
-		"Account logged out. Contact the admin.",
-		"", false, ""), false
+	return semrushLightPage("Temporarily Unavailable", "Temporarily Unavailable",
+		"Semrush is temporarily unavailable. Please try again in a few minutes.",
+		`<p class="foot">Open this tool again from your access link</p>`, false, ""), false
 }
 
 var (

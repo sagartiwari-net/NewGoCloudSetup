@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/flate"
@@ -17,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -86,8 +86,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -2152,10 +2152,10 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 	_ = cfg
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Account unavailable",
-		Heading: "Account unavailable",
-		Message: "Contact to Admin/Provider to fix it ASAP",
-		Footer:  "No active Branalyzer cookie/account is available right now",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "Branalyzer is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 

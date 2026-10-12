@@ -566,9 +566,9 @@ func panelAccessDenied(w http.ResponseWriter, cfg Config) {
 
 func panelNoAccounts(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "No active account",
-		Heading: "No active account",
-		Message: "This tool has no mapped account in the panel. Contact Admin/Provider.",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "This tool is temporarily unavailable. Please try again in a few minutes.",
 	})
 }
 

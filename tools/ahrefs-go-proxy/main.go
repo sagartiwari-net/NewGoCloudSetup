@@ -1437,8 +1437,8 @@ func renderNoActiveAccountsPage(w http.ResponseWriter) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "All mapped <span class=\"brand\">Ahrefs</span> accounts are currently undergoing maintenance. Please try again in a few minutes.",
-		Footer:  "No active account is available right now",
+		Message: "<span class=\"brand\">Ahrefs</span> is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 

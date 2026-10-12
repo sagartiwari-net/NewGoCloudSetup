@@ -448,10 +448,10 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 func claudeCFNeedsProxyCard(cfg Config) lightCard {
 	name := html.EscapeString(toolDisplayName(cfg))
 	return lightCard{
-		Title:   "Proxy required",
-		Heading: "Proxy required",
-		Message: "<span class=\"brand\">" + name + "</span> is blocked by Cloudflare on this server IP. Assign a Proxy Manager proxy on the Claude account in the panel (same as Envato), then open a new access link.",
-		Footer:  "HTTPS alone does not clear this challenge",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	}
 }
 
@@ -464,11 +464,11 @@ func claudeCFRetryCard(cfg Config) lightCard {
 	}
 	name := html.EscapeString(toolDisplayName(cfg))
 	return lightCard{
-		Title:   "Retrying Claude",
-		Heading: "Cloudflare check…",
-		Message: "<span class=\"brand\">" + name + "</span> is still blocked upstream. Retrying automatically. If this loops, refresh Claude cookies on the same Proxy Manager IP or try another residential proxy.",
-		Badge:   "Retrying…",
-		Footer:  "Browser CF challenges cannot complete on a proxy hostname",
+		Title:   "Switching account",
+		Heading: "Switching account",
+		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Badge:   "Trying one account at a time",
+		Footer:  "This keeps trying until an account is available",
 		Spin:    true,
 		ExtraScript: `<script>(function(){
   var home=` + fmt.Sprintf("%q", home) + `;
@@ -476,8 +476,8 @@ func claudeCFRetryCard(cfg Config) lightCard {
   if(n>=6){
     try{sessionStorage.removeItem('tm_cf_retry');}catch(e){}
     var t=document.querySelector('h1'); var m=document.querySelector('.msg');
-    if(t) t.textContent='Still blocked';
-    if(m) m.innerHTML='Cloudflare is still blocking this proxy/cookies for Claude. Update <b>cf_clearance</b> cookies while on the assigned Proxy Manager IP, or switch to another residential proxy.';
+    if(t) t.textContent='Temporarily Unavailable';
+    if(m) m.textContent='Claude is temporarily unavailable. Please try again in a few minutes.';
     var p=document.querySelector('.pill'); if(p) p.remove();
     return;
   }

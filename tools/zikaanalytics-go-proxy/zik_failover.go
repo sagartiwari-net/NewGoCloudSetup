@@ -132,25 +132,12 @@ func zikAuthDiag(cookieRaw string) (bearerOK bool, sessionOK bool, expired bool)
 }
 
 func serveZikCookieExpired(w http.ResponseWriter, cfg Config, currentUser, accountName, reason string) {
-	log.Printf("[FAILOVER] STOP login-loop user=%s account=%s reason=%s — contact admin / refresh cookie", currentUser, accountName, reason)
-	acc := html.EscapeString(strings.TrimSpace(accountName))
-	if acc == "" {
-		acc = "mapped account"
-	}
-	msg := "The Zik account"
-	if acc != "mapped account" {
-		msg += " (<b>" + acc + "</b>)"
-	}
-	msg += " session is dead for research tools (Unauthorized — please log in again). " +
-		"<b>Admin:</b> open Zik in a real browser, export fresh GoAuto cookies (cookies + localStorage), " +
-		"paste into the panel account, then open a <b>new</b> access link."
+	log.Printf("[FAILOVER] STOP login-loop user=%s account=%s reason=%s", currentUser, accountName, reason)
 	writeLightCard(w, http.StatusOK, lightCard{
-		Title:   "Contact Admin",
-		Heading: "Zik cookies need refresh",
-		Message: msg,
-		Badge:   "Dashboard may look OK — research APIs rejected",
-		Footer:  "This page will not auto-refresh",
-		Spin:    false,
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "Zik Analytics is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 
@@ -182,8 +169,9 @@ func serveZikAccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 				if researchOK {
 					writeLightCard(w, http.StatusOK, lightCard{
 						Title: "Switching account", Heading: "Switching account",
-						Message: "Found a working Zik session. Loading…", Badge: next.Name,
-						Footer: "This page refreshes automatically", Spin: true, Redirect: home,
+						Message: "Account logged out. Switching to another account...",
+						Badge:   "Trying one account at a time",
+						Footer:  "This keeps trying until an account is available", Spin: true, Redirect: home,
 					})
 					return
 				}

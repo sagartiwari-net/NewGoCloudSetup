@@ -130,10 +130,10 @@ func stoLooksDeadAccount(path string, body []byte, location string) (bool, strin
 
 func renderStoContactAdmin(w http.ResponseWriter, cfg Config, reason string) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Account logged out",
-		Heading: "Account logged out",
-		Message: "SEO Tester Online account logged out (" + html.EscapeString(tmSanitizeReason(reason)) + "). Contact Admin/Provider to fix it ASAP.",
-		Footer:  "Update the cookie in the panel, set status Active, then open a new access link",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "This tool is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 
@@ -389,8 +389,8 @@ type stoFOEntry struct {
 }
 
 var (
-	stoFOMu   sync.Mutex
-	stoFOMap  = map[string]stoFOEntry{}
+	stoFOMu  sync.Mutex
+	stoFOMap = map[string]stoFOEntry{}
 )
 
 func stoAlreadySoftRevived(sessionToken, fp string) bool {

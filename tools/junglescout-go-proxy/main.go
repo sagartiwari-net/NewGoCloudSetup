@@ -889,10 +889,10 @@ func firstNonEmpty(vals ...string) string {
 func renderJungleContactAdminPage(w http.ResponseWriter, cfg Config) {
 	_ = cfg
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Account unavailable",
-		Heading: "Account unavailable",
-		Message: "Contact to Admin/Provider to fix it ASAP",
-		Footer:  "Jungle Scout session logged out — cookie update needed",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "Jungle Scout is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 
@@ -2302,7 +2302,8 @@ func extensionRouteScript() string {
 
 // mapOfficialLoginToProxy keeps login.junglescout.com on our host as /login-proxy/...
 // Example: https://login.junglescout.com/?redirectRoute=%2Fdashboard
-//       → http://127.0.0.1:5211/login-proxy/?redirectRoute=%2Fdashboard
+//
+//	→ http://127.0.0.1:5211/login-proxy/?redirectRoute=%2Fdashboard
 func mapOfficialLoginToProxy(loc, publicBase string) string {
 	if publicBase == "" {
 		publicBase = ""
@@ -3976,10 +3977,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Del("Content-Security-Policy")
 			w.Header().Del("Content-Security-Policy-Report-Only")
 			w.Header().Del("X-Frame-Options")
-		localDev := isLocalDevHost(cfg)
-		if usesPanelAccountMode(cfg) && !localDev {
-			bodyBytes = injectDeviceHTML(bodyBytes)
-		}
+			localDev := isLocalDevHost(cfg)
+			if usesPanelAccountMode(cfg) && !localDev {
+				bodyBytes = injectDeviceHTML(bodyBytes)
+			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			applySecurityHeaders(w, cfg)
 			w.WriteHeader(upstreamResp.StatusCode)

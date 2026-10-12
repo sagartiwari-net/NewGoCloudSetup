@@ -102,17 +102,12 @@ func wordtuneLooksLoggedOutHTML(path string, body []byte, status int, location s
 }
 
 func renderWordtuneContactAdminPage(w http.ResponseWriter, cfg Config, reason string) {
-	name := html.EscapeString(toolDisplayName(cfg))
-	msg := "Wordtune account logged out. Contact Admin/Provider to fix it ASAP."
-	if reason != "" {
-		msg = "Wordtune account logged out (" + html.EscapeString(reason) + "). Contact Admin/Provider to fix it ASAP."
-	}
-	_ = name
+	_, _ = cfg, reason
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Account logged out",
-		Heading: "Account logged out",
-		Message: msg,
-		Footer:  "Update the Wordtune cookie in the panel, set status Active, then open a new access link",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "Wordtune is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 
