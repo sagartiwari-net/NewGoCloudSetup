@@ -172,10 +172,16 @@ func (s *server) purgeOldRows() {
 		}
 	}
 	week := now.Add(-7 * 24 * time.Hour).Format(time.RFC3339)
-	month := now.Add(-30 * 24 * time.Hour).Format(time.RFC3339)
-	_, _ = s.db.Exec(`DELETE FROM extension_events WHERE created_at < ?`, month)
+	hours48 := now.Add(-48 * time.Hour).Format(time.RFC3339)
+	_, _ = s.db.Exec(`DELETE FROM login_events WHERE logged_in_at < ?`, week)
 	_, _ = s.db.Exec(`DELETE FROM violations WHERE created_at < ?`, week)
 	_, _ = s.db.Exec(`DELETE FROM security_events WHERE created_at < ?`, week)
+	_, _ = s.db.Exec(`DELETE FROM extension_events WHERE created_at < ?`, hours48)
+	_, _ = s.db.Exec(`DELETE FROM switch_events WHERE switched_at < ?`, hours48)
+	_, _ = s.db.Exec(`DELETE FROM logout_events WHERE created_at < ?`, hours48)
+	_, _ = s.db.Exec(`DELETE FROM host_reports WHERE created_at < ?`, hours48)
+	_, _ = s.db.Exec(`DELETE FROM ingest_logs WHERE created_at < ?`, hours48)
+	_, _ = s.db.Exec(`DELETE FROM telegram_deliveries WHERE created_at < ?`, hours48)
 }
 
 func parseTime(value string) (time.Time, bool) {

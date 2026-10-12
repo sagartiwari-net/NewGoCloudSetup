@@ -42,7 +42,7 @@ func (s *server) analyticsSummary(w http.ResponseWriter, r *http.Request) {
 	like := "%" + q + "%"
 
 	loginWhere, loginArgs := s.analyticsScope(op, r, "e.website_id")
-	loginWhere += " AND substr(e.logged_in_at,1,10) >= ?"
+	loginWhere += " AND e.logged_in_at >= ?"
 	loginArgs = append(loginArgs, since)
 	if q != "" {
 		loginWhere += " AND (e.username LIKE ? OR e.client_ip LIKE ?)"
@@ -50,7 +50,7 @@ func (s *server) analyticsSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	extWhere, extArgs := s.analyticsScope(op, r, "e.website_id")
-	extWhere += " AND substr(e.created_at,1,10) >= ?"
+	extWhere += " AND e.created_at >= ?"
 	extArgs = append(extArgs, since)
 	if q != "" {
 		extWhere += " AND (e.username LIKE ? OR e.action LIKE ? OR e.asin LIKE ? OR e.query_text LIKE ?)"
@@ -58,7 +58,7 @@ func (s *server) analyticsSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switchWhere, switchArgs := s.analyticsScope(op, r, "e.website_id")
-	switchWhere += " AND substr(e.switched_at,1,10) >= ?"
+	switchWhere += " AND e.switched_at >= ?"
 	switchArgs = append(switchArgs, since)
 	if q != "" {
 		switchWhere += " AND (e.username LIKE ? OR e.reason LIKE ?)"
@@ -74,12 +74,13 @@ func (s *server) analyticsSummary(w http.ResponseWriter, r *http.Request) {
 	series := []any{}
 	for i := days - 1; i >= 0; i-- {
 		day := time.Now().UTC().AddDate(0, 0, -i).Format("2006-01-02")
-		dayLoginWhere := loginWhere + " AND substr(e.logged_in_at,1,10)=?"
-		dayLoginArgs := append(append([]any{}, loginArgs...), day)
-		dayExtWhere := extWhere + " AND substr(e.created_at,1,10)=?"
-		dayExtArgs := append(append([]any{}, extArgs...), day)
-		daySwitchWhere := switchWhere + " AND substr(e.switched_at,1,10)=?"
-		daySwitchArgs := append(append([]any{}, switchArgs...), day)
+		next := time.Now().UTC().AddDate(0, 0, -i+1).Format("2006-01-02")
+		dayLoginWhere := loginWhere + " AND e.logged_in_at >= ? AND e.logged_in_at < ?"
+		dayLoginArgs := append(append([]any{}, loginArgs...), day, next)
+		dayExtWhere := extWhere + " AND e.created_at >= ? AND e.created_at < ?"
+		dayExtArgs := append(append([]any{}, extArgs...), day, next)
+		daySwitchWhere := switchWhere + " AND e.switched_at >= ? AND e.switched_at < ?"
+		daySwitchArgs := append(append([]any{}, switchArgs...), day, next)
 		var logins, extension, switches int
 		_ = s.db.QueryRow(`SELECT COUNT(*) FROM login_events e WHERE `+dayLoginWhere, dayLoginArgs...).Scan(&logins)
 		_ = s.db.QueryRow(`SELECT COUNT(*) FROM extension_events e WHERE `+dayExtWhere, dayExtArgs...).Scan(&extension)

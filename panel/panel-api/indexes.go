@@ -31,6 +31,12 @@ func ensureScaleIndexes(db *sql.DB) {
 			`CREATE INDEX idx_login_user ON login_events (username(64), website_id, logged_in_at(32))`,
 			`CREATE INDEX idx_ingest_created ON ingest_logs (created_at(32))`,
 			`CREATE INDEX idx_extension_user_time ON extension_events (username(64), created_at(32))`,
+			`CREATE INDEX idx_login_time ON login_events (logged_in_at(32))`,
+			`CREATE INDEX idx_switch_time ON switch_events (switched_at(32))`,
+			`CREATE INDEX idx_logout_time ON logout_events (created_at(32))`,
+			`CREATE INDEX idx_extension_time ON extension_events (created_at(32))`,
+			`CREATE INDEX idx_host_reports_time ON host_reports (created_at(32))`,
+			`CREATE INDEX idx_telegram_time ON telegram_deliveries (created_at(32))`,
 		)
 	} else {
 		stmts = append(stmts,
@@ -47,6 +53,12 @@ func ensureScaleIndexes(db *sql.DB) {
 			`CREATE INDEX idx_login_user ON login_events (username, website_id, logged_in_at)`,
 			`CREATE INDEX idx_ingest_created ON ingest_logs (created_at)`,
 			`CREATE INDEX idx_extension_user_time ON extension_events (username, created_at)`,
+			`CREATE INDEX idx_login_time ON login_events (logged_in_at)`,
+			`CREATE INDEX idx_switch_time ON switch_events (switched_at)`,
+			`CREATE INDEX idx_logout_time ON logout_events (created_at)`,
+			`CREATE INDEX idx_extension_time ON extension_events (created_at)`,
+			`CREATE INDEX idx_host_reports_time ON host_reports (created_at)`,
+			`CREATE INDEX idx_telegram_time ON telegram_deliveries (created_at)`,
 		)
 	}
 	for _, stmt := range stmts {

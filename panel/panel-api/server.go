@@ -342,9 +342,10 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
 	chart := []any{}
 	for i := 6; i >= 0; i-- {
 		day := time.Now().UTC().AddDate(0, 0, -i).Format("2006-01-02")
+		next := time.Now().UTC().AddDate(0, 0, -i+1).Format("2006-01-02")
 		var n int
-		dayArgs := append([]any{day}, loginArgs...)
-		_ = s.db.QueryRow(`SELECT COUNT(*) FROM login_events WHERE substr(logged_in_at,1,10)=? AND `+loginScope, dayArgs...).Scan(&n)
+		dayArgs := append([]any{day, next}, loginArgs...)
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM login_events WHERE logged_in_at >= ? AND logged_in_at < ? AND `+loginScope, dayArgs...).Scan(&n)
 		chart = append(chart, map[string]any{"day": day, "hits": n})
 	}
 	writeJSON(w, 200, map[string]any{
