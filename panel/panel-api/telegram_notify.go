@@ -20,7 +20,7 @@ func (s *server) replayRecentTelegramNotices() {
 	if s.db.QueryRow(`SELECT value FROM settings WHERE "key"='telegram_notice_replay'`).Scan(&flag) == nil && flag == "2" {
 		return
 	}
-	cutoff := time.Now().UTC().Add(-20 * time.Minute).Format(time.RFC3339)
+	cutoff := time.Now().UTC().Add(-45 * time.Minute).Format(time.RFC3339)
 	s.rewindNoticeCursor("telegram_cursor_switch", `SELECT COALESCE(MIN(id), 0) FROM switch_events WHERE switched_at >= ?`, cutoff)
 	s.rewindNoticeCursor("telegram_cursor_logout", `SELECT COALESCE(MIN(id), 0) FROM logout_events WHERE created_at >= ?`, cutoff)
 	s.saveTelegramOffsetValue("telegram_notice_replay", "2")
