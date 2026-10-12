@@ -32,6 +32,7 @@ func main() {
 	if v := strings.TrimSpace(os.Getenv("PANEL_API_ADDR")); v != "" {
 		addr = v
 	}
+	go s.pollTelegramInbox()
 	log.Printf("panel api on http://%s", addr)
 	log.Fatal(http.ListenAndServe(addr, s.withCORS(mux)))
 }
@@ -128,6 +129,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/telegram/destinations", s.deleteDestination)
 	mux.HandleFunc("GET /api/telegram/routes", s.listRoutes)
 	mux.HandleFunc("POST /api/telegram/routes", s.saveRoute)
+	mux.HandleFunc("GET /api/telegram/inbox", s.listTelegramInbox)
 	mux.HandleFunc("GET /api/telegram/deliveries", s.listDeliveries)
 	mux.HandleFunc("DELETE /api/telegram/deliveries", s.clearDeliveries)
 	mux.HandleFunc("GET /api/spam-reports", s.listSpamReports)

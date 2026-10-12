@@ -229,8 +229,17 @@ export type TelegramDelivery = {
   username: string
   event: TelegramEvent
   recipients: Array<{ label: string; chat_id: string }>
-  status: "sent" | "skipped"
+  status: "sent" | "skipped" | "failed"
+  error_text?: string
   created_at: string
+}
+
+export type TelegramInboxRow = {
+  chat_id: string
+  username: string
+  display_name: string
+  last_text: string
+  updated_at: string
 }
 
 export type TelegramTemplates = {

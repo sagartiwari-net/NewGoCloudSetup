@@ -1705,7 +1705,7 @@ func (s *server) listDeliveries(w http.ResponseWriter, r *http.Request) {
 		args = append(args, like, like, like, like)
 	}
 	from := ` FROM telegram_deliveries d JOIN websites w ON w.id=d.website_id WHERE ` + where
-	rows, err := s.db.Query(`SELECT d.id, d.website_id, w.name, w.domain, d.username, d.event, d.recipients_json, d.status, d.created_at`+from+` ORDER BY d.created_at DESC`, args...)
+	rows, err := s.db.Query(`SELECT d.id, d.website_id, w.name, w.domain, d.username, d.event, d.recipients_json, d.status, d.error_text, d.created_at`+from+` ORDER BY d.created_at DESC`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -1721,8 +1721,8 @@ func (s *server) listDeliveries(w http.ResponseWriter, r *http.Request) {
 	}
 	for rows.Next() {
 		var id, website int
-		var name, domain, username, event, raw, status, at string
-		_ = rows.Scan(&id, &website, &name, &domain, &username, &event, &raw, &status, &at)
+		var name, domain, username, event, raw, status, errorText, at string
+		_ = rows.Scan(&id, &website, &name, &domain, &username, &event, &raw, &status, &errorText, &at)
 		recipients := []map[string]any{}
 		_ = json.Unmarshal([]byte(raw), &recipients)
 		names := []string{}
@@ -1738,7 +1738,7 @@ func (s *server) listDeliveries(w http.ResponseWriter, r *http.Request) {
 		}
 		all = append(all, map[string]any{
 			"id": id, "website_id": website, "reseller_names": names, "website_name": name, "website_domain": domain,
-			"username": username, "event": event, "recipients": cleanRecipients(recipients), "status": status, "created_at": at,
+			"username": username, "event": event, "recipients": cleanRecipients(recipients), "status": status, "error_text": errorText, "created_at": at,
 		})
 	}
 	total := len(all)
@@ -1899,7 +1899,7 @@ func (s *server) recordLogout(websiteID int, username, ip, reason string) {
 	var eventsRaw string
 	if s.db.QueryRow(`SELECT id, events_json FROM telegram_routes WHERE website_id=?`, websiteID).Scan(&routeID, &eventsRaw) != nil || !strings.Contains(eventsRaw, "logout") {
 		// Still keep a telegram_deliveries breadcrumb; Analytics Logouts come from logout_events.
-		s.insertDelivery(websiteID, username, "logout", "sent", nil)
+		s.insertDelivery(websiteID, username, "logout", "sent", nil, "")
 		return
 	}
 	rows, err := s.db.Query(`SELECT d.label, d.chat_id, o.username FROM telegram_route_chats c JOIN telegram_destinations d ON d.id=c.destination_id JOIN operators o ON o.id=d.reseller_id WHERE c.route_id=? AND d.enabled=1`, routeID)
@@ -1933,32 +1933,62 @@ func (s *server) recordLogout(websiteID int, username, ip, reason string) {
 		tmpl = "{tool} logged out for {username} on {website} at {time}."
 	}
 	text := strings.NewReplacer("{tool}", tool, "{username}", username, "{website}", website, "{time}", time.Now().UTC().Format(time.RFC3339), "{ip}", ip, "{reason}", reason, "{count}", "", "{from}", "", "{to}", "").Replace(tmpl)
-	if strings.TrimSpace(token) != "" && status == "sent" {
-		for _, rec := range recipients {
-			postTelegram(token, rec["chat_id"], text)
+	errorText := ""
+	if status == "sent" {
+		switch {
+		case strings.TrimSpace(token) == "":
+			status = "failed"
+			errorText = "Bot token is empty"
+		case len(recipients) == 0:
+			status = "failed"
+			errorText = "No enabled chat on this route"
+		default:
+			var failures []string
+			for _, rec := range recipients {
+				if detail := postTelegram(token, rec["chat_id"], text); detail != "" {
+					failures = append(failures, rec["label"]+": "+detail)
+				}
+			}
+			if len(failures) > 0 {
+				status = "failed"
+				errorText = strings.Join(failures, "; ")
+			}
 		}
 	}
-	s.insertDelivery(websiteID, username, "logout", status, recipients)
+	s.insertDelivery(websiteID, username, "logout", status, recipients, errorText)
 }
 
-func (s *server) insertDelivery(websiteID int, username, event, status string, recipients []map[string]string) {
+func (s *server) insertDelivery(websiteID int, username, event, status string, recipients []map[string]string, errorText string) {
 	raw, _ := json.Marshal(recipients)
 	if recipients == nil {
 		raw = []byte("[]")
 	}
-	_, _ = s.db.Exec(`INSERT INTO telegram_deliveries (website_id, username, event, recipients_json, status, created_at) VALUES (?,?,?,?,?,?)`,
-		websiteID, username, event, string(raw), status, time.Now().UTC().Format(time.RFC3339))
+	_, _ = s.db.Exec(`INSERT INTO telegram_deliveries (website_id, username, event, recipients_json, status, error_text, created_at) VALUES (?,?,?,?,?,?,?)`,
+		websiteID, username, event, string(raw), status, errorText, time.Now().UTC().Format(time.RFC3339))
 }
 
-func postTelegram(token, chatID, text string) {
+func postTelegram(token, chatID, text string) string {
 	form := url.Values{}
 	form.Set("chat_id", chatID)
 	form.Set("text", text)
 	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.PostForm("https://api.telegram.org/bot"+token+"/sendMessage", form)
-	if err == nil {
-		resp.Body.Close()
+	if err != nil {
+		return "Could not reach Telegram"
 	}
+	defer resp.Body.Close()
+	var parsed struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&parsed)
+	if parsed.OK {
+		return ""
+	}
+	if parsed.Description != "" {
+		return parsed.Description
+	}
+	return "Telegram rejected the message"
 }
 
 func (s *server) listHostReports(w http.ResponseWriter, r *http.Request) {

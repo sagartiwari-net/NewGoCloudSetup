@@ -23,6 +23,7 @@ import type {
   SwitchEvent,
   TelegramDelivery,
   TelegramDestination,
+  TelegramInboxRow,
   TelegramEvent,
   TelegramRoute,
   TelegramTemplates,
@@ -653,6 +654,11 @@ export async function getTelegramSettings(): Promise<TelegramSettings> {
 
 export async function getTelegramTemplates(): Promise<TelegramTemplates> {
   return api("/api/telegram/templates")
+}
+
+export async function listTelegramInbox(): Promise<TelegramInboxRow[]> {
+  const page = await api<{ items: TelegramInboxRow[] }>("/api/telegram/inbox")
+  return page.items ?? []
 }
 
 export async function listTelegramDestinations(query: {

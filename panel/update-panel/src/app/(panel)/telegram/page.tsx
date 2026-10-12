@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, type RefObject } from "react"
+import { useEffect, useRef, useState, type RefObject } from "react"
 import { PlusIcon } from "lucide-react"
 
 import { useAuth } from "@/components/auth-provider"
@@ -27,6 +27,7 @@ import {
   getTelegramTemplates,
   listAllWebsites,
   listResellerChoices,
+  listTelegramInbox,
   listTelegramDeliveries,
   listTelegramDestinations,
   listTelegramRoutes,
@@ -38,7 +39,7 @@ import {
   type Reseller,
   type TelegramRouteRow,
 } from "@/lib/api/client"
-import type { TelegramDelivery, TelegramDestination, TelegramEvent, TelegramTemplates, Website } from "@/lib/api/types"
+import type { TelegramDelivery, TelegramDestination, TelegramEvent, TelegramInboxRow, TelegramTemplates, Website } from "@/lib/api/types"
 import { formatTime, maskSecret } from "@/lib/format"
 import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
@@ -117,6 +118,7 @@ function ConfigurationTab() {
   )
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<TelegramDestination | null>(null)
+  const [preset, setPreset] = useState<{ label: string; chat_id: string } | null>(null)
   const [pendingDelete, setPendingDelete] = useState<TelegramDestination | null>(null)
   const [deleting, setDeleting] = useState(false)
   const rows = data?.destinations.items ?? []
@@ -142,6 +144,15 @@ function ConfigurationTab() {
     <div className="flex flex-col gap-4">
       {isMaster && data?.settings ? (
         <MasterSettings token={data.settings.botToken ?? ""} minutes={data.settings.repeatMinutes} onSaved={reload} />
+      ) : null}
+      {isMaster ? (
+        <InboxCard
+          onUse={(row) => {
+            setEditing(null)
+            setPreset({ label: row.display_name || row.username || "Telegram", chat_id: row.chat_id })
+            setOpen(true)
+          }}
+        />
       ) : null}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-1 flex-col gap-3 md:flex-row md:items-end">
@@ -175,7 +186,7 @@ function ConfigurationTab() {
             </Field>
           ) : null}
         </div>
-        <Button onClick={() => { setEditing(null); setOpen(true) }}>
+        <Button onClick={() => { setEditing(null); setPreset(null); setOpen(true) }}>
           <PlusIcon data-icon="inline-start" />
           New chat
         </Button>
@@ -205,8 +216,9 @@ function ConfigurationTab() {
       <FormOverlay open={open} onOpenChange={setOpen} title={editing ? "Edit chat" : "New chat"} description="The label is the short name you see in routing.">
         {open ? (
           <ChatForm
-            key={editing?.id ?? "new"}
+            key={editing?.id ?? preset?.chat_id ?? "new"}
             destination={editing}
+            preset={preset}
             resellers={data?.resellers ?? []}
             master={isMaster}
             onDone={async () => {
@@ -286,19 +298,84 @@ function MasterSettings({ token, minutes, onSaved }: { token: string; minutes: n
   )
 }
 
+function InboxCard({ onUse }: { onUse: (row: TelegramInboxRow) => void }) {
+  const [rows, setRows] = useState<TelegramInboxRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    const load = () => {
+      listTelegramInbox()
+        .then((items) => {
+          if (active) setRows(items)
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (active) setLoading(false)
+        })
+    }
+    load()
+    const timer = window.setInterval(load, 8000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  const columns: DataColumn<TelegramInboxRow>[] = [
+    { id: "name", header: "Name", cell: (row) => row.display_name || "—" },
+    { id: "username", header: "Username", cell: (row) => (row.username ? `@${row.username}` : "—") },
+    { id: "chat", header: "Telegram id", cell: (row) => <span className="font-mono">{row.chat_id}</span> },
+    { id: "text", header: "Last message", cell: (row) => row.last_text },
+    { id: "time", header: "Time", cell: (row) => formatTime(row.updated_at) },
+    {
+      id: "use",
+      header: "",
+      cell: (row) => (
+        <Button variant="outline" size="sm" onClick={() => onUse(row)}>
+          Use this id
+        </Button>
+      ),
+    },
+  ]
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>People who messaged the bot</CardTitle>
+        <CardDescription>
+          Ask the reseller to open the bot and press Start. Their Telegram id shows up here. Use that id as the chat id.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DataTable
+          rows={rows}
+          columns={columns}
+          rowKey={(row) => row.chat_id}
+          loading={loading}
+          emptyTitle="No messages yet"
+          emptyDescription="When someone presses Start, their id appears here within a few seconds."
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
 function ChatForm({
   destination,
+  preset,
   resellers,
   master,
   onDone,
 }: {
   destination: TelegramDestination | null
+  preset: { label: string; chat_id: string } | null
   resellers: Reseller[]
   master: boolean
   onDone: () => Promise<void>
 }) {
-  const [label, setLabel] = useState(destination?.label ?? "")
-  const [chatId, setChatId] = useState(destination?.chat_id ?? "")
+  const [label, setLabel] = useState(destination?.label ?? preset?.label ?? "")
+  const [chatId, setChatId] = useState(destination?.chat_id ?? preset?.chat_id ?? "")
   const [resellerId, setResellerId] = useState(destination ? String(destination.reseller_id) : resellers[0] ? String(resellers[0].id) : "")
   const [enabled, setEnabled] = useState(destination?.enabled ?? true)
   const [pending, setPending] = useState(false)
@@ -717,6 +794,7 @@ function SentTab() {
     { id: "event", header: "Event", cell: (row) => row.event },
     { id: "recipients", header: "Recipients", cell: (row) => row.recipients.map((item) => item.label).join(", ") },
     { id: "status", header: "Status", cell: (row) => row.status },
+    { id: "error", header: "Error", cell: (row) => row.error_text || "—" },
     { id: "time", header: "Time", cell: (row) => formatTime(row.created_at) },
   ]
 
@@ -742,7 +820,7 @@ function SentTab() {
           </Field>
           <Field className="md:w-40">
             <FieldLabel htmlFor="sent-status">Status</FieldLabel>
-            <ChoiceSelect id="sent-status" value={status} onValueChange={(value) => { setStatus(value); setPage(1) }} items={[{ label: "All", value: "all" }, { label: "sent", value: "sent" }, { label: "skipped", value: "skipped" }]} />
+            <ChoiceSelect id="sent-status" value={status} onValueChange={(value) => { setStatus(value); setPage(1) }} items={[{ label: "All", value: "all" }, { label: "sent", value: "sent" }, { label: "skipped", value: "skipped" }, { label: "failed", value: "failed" }]} />
           </Field>
           {isMaster ? (
             <Field className="md:w-64">

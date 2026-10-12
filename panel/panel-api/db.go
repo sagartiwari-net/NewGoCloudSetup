@@ -154,6 +154,18 @@ func ensureAccessAlertSettings(db *sql.DB) {
 		_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value=value`, pair[0], pair[1])
 	}
 	ensureScaleIndexes(db)
+	ensureTelegramInbox(db)
+}
+
+func ensureTelegramInbox(db *sql.DB) {
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS telegram_inbox (
+		chat_id VARCHAR(64) PRIMARY KEY,
+		username TEXT NOT NULL,
+		display_name TEXT NOT NULL,
+		last_text TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`)
+	_, _ = db.Exec(`ALTER TABLE telegram_deliveries ADD COLUMN error_text TEXT NOT NULL DEFAULT ''`)
 }
 
 func settingInt(db *sql.DB, key string, fallback int) int {

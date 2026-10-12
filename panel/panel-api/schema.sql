@@ -248,7 +248,16 @@ CREATE TABLE IF NOT EXISTS telegram_deliveries (
   event TEXT NOT NULL,
   recipients_json TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL,
+  error_text TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS telegram_inbox (
+  chat_id VARCHAR(64) PRIMARY KEY,
+  username TEXT NOT NULL DEFAULT '',
+  display_name TEXT NOT NULL DEFAULT '',
+  last_text TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS host_reports (
