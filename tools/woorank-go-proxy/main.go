@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -15,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -82,8 +82,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -559,6 +559,10 @@ func autoAssignNextAccount(sessionToken string) (ToolAccount, error) {
 }
 
 func switchToNextAccount(sessionToken string, currentAccID int, currentAccName, username, reason string) (ToolAccount, error) {
+	cfg := loadConfig()
+	if usesPanelAccountMode(cfg) {
+		return panelSwitchAccount(cfg, sessionToken, currentAccID, currentAccName, username, reason)
+	}
 	var acc ToolAccount
 	var showLimitVal int
 	log.Printf("[LB] Rotating out '%s' (ID:%d) | Trigger: %s", currentAccName, currentAccID, reason)
@@ -1526,6 +1530,44 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
+	cfg := loadConfig()
+	if usesPanelAccountMode(cfg) {
+		cookie, err := r.Cookie("ct_session")
+		if err != nil || cookie.Value == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"unauthorized"}`)
+			return
+		}
+		sessionToken := cookie.Value
+		db, err := openPanelDB(cfg)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":"no_active_accounts"}`)
+			return
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		var assigned int
+		var username string
+		if err = db.QueryRow(`SELECT assigned_account_id, username FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned, &username); err != nil || assigned <= 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":"no_active_accounts"}`)
+			return
+		}
+		var currentName string
+		_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, assigned).Scan(&currentName)
+		reason := strings.TrimSpace(r.URL.Query().Get("reason"))
+		if reason == "" {
+			reason = "client_not_authorized"
+		}
+		nextAcc, switchErr := panelSwitchAccount(cfg, sessionToken, assigned, currentName, username, "html_logout:"+reason)
+		if switchErr != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, `{"error":"no_other_accounts","message":"%v"}`, switchErr)
+			return
+		}
+		fmt.Fprintf(w, `{"status":"ok","switched_to":"%s","id":%d}`, nextAcc.Name, nextAcc.ID)
+		return
+	}
 	if !dbConnected {
 		fmt.Fprint(w, `{"status":"ok","switched_to":"Local Dev","id":1}`)
 		return
@@ -1578,12 +1620,12 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 }
 
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
+	_ = cfg
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "All mapped <span class=\"brand\">" + name + "</span> accounts are currently undergoing maintenance. Please try again in a few minutes.",
-		Footer:  "No active account is available right now",
+		Message: "WooRank is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 
@@ -3430,6 +3472,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logUpstream(bodyBytes)
 
+		if usesPanelAccountMode(cfg) && isDocumentNavigation(r) && sessionToken != "" && activeAcc.ID > 0 && woorankLoggedOutHTML(bodyBytes) {
+			serveWoorankLogoutSwitch(w, cfg, sessionToken, currentUser, activeAcc)
+			return
+		}
+
 		// Cache api token/uid from page payload for later /api/v2 calls
 		captureAPICredentials(bodyBytes)
 
@@ -3455,6 +3502,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := wrankJailBlockScript() + patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) {
+			injectStr += woorankLoginWallWatchScript()
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
