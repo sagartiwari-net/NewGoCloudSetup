@@ -620,25 +620,26 @@ func cookieSecure(r *http.Request, cfg Config) bool {
 }
 
 func panelMySQLDSN(cfg Config) string {
-	host := strings.TrimSpace(cfg.MySQLHost)
+	// Panel data is always MySQL gt4rents. Ignore legacy mysql_user=root / mysql_db from old tool configs.
+	host := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_HOST"))
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	port := strings.TrimSpace(cfg.MySQLPort)
+	port := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PORT"))
 	if port == "" {
 		port = "3306"
 	}
-	user := strings.TrimSpace(cfg.MySQLUser)
+	user := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_USER"))
 	if user == "" {
 		user = "gt4rents"
 	}
-	name := strings.TrimSpace(cfg.MySQLDB)
+	name := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_DB"))
 	if name == "" {
 		name = "gt4rents"
 	}
-	pass := cfg.MySQLPassword
+	pass := os.Getenv("GT4RENTS_MYSQL_PASSWORD")
 	if pass == "" {
-		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
+		pass = cfg.MySQLPassword
 	}
 	return url.UserPassword(user, pass).String() + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }
