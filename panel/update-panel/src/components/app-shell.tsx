@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTheme } from "next-themes"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 
 import { useAuth } from "@/components/auth-provider"
+import { readSession } from "@/lib/api/client"
 import { gsap, prefersReducedMotion, useGSAP } from "@/lib/gsap"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -114,29 +115,37 @@ function isActive(pathname: string, href: string) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { session, ready } = useAuth()
+  const { session } = useAuth()
   const pathname = usePathname()
   const router = useRouter()
+  const [signedOut, setSignedOut] = useState(false)
 
   useEffect(() => {
-    if (!ready) return
-    if (!session) {
-      router.replace("/login")
-      return
-    }
-    if (session.role === "reseller" && masterRoutes.includes(pathname)) {
+    // Read storage here. The first paint can still have an empty session
+    // while localStorage already has the login, and that was sending people
+    // to the sign-in screen on refresh.
+    if (!readSession()) setSignedOut(true)
+  }, [])
+
+  useEffect(() => {
+    if (signedOut) router.replace("/login")
+  }, [signedOut, router])
+
+  useEffect(() => {
+    if (session?.role === "reseller" && masterRoutes.includes(pathname)) {
       router.replace("/")
     }
-  }, [ready, session, pathname, router])
+  }, [session, pathname, router])
 
-  if (!ready || !session) {
-    // Never leave a total blank white screen if client navigation stalls.
+  if (!session) {
     return (
       <div className="flex min-h-svh flex-col items-center justify-center gap-3 bg-background p-6 text-center">
-        <p className="text-sm text-muted-foreground">Redirecting to sign in…</p>
-        <Link href="/login" className="text-sm font-medium text-primary underline underline-offset-4">
-          Open sign in
-        </Link>
+        <p className="text-sm text-muted-foreground">{signedOut ? "Redirecting to sign in…" : "Loading panel…"}</p>
+        {signedOut ? (
+          <Link href="/login" className="text-sm font-medium text-primary underline underline-offset-4">
+            Open sign in
+          </Link>
+        ) : null}
       </div>
     )
   }
@@ -165,13 +174,17 @@ function ShellFrame({
 
   useGSAP(
     () => {
-      if (prefersReducedMotion()) return
-      gsap.from("[data-page]", {
-        autoAlpha: 0,
-        y: 16,
-        duration: 0.35,
-        ease: "power2.out",
-      })
+      const page = motionRef.current?.querySelector("[data-page]")
+      if (!(page instanceof HTMLElement)) return
+      if (prefersReducedMotion()) {
+        gsap.set(page, { autoAlpha: 1, y: 0 })
+        return
+      }
+      gsap.fromTo(
+        page,
+        { autoAlpha: 0, y: 16 },
+        { autoAlpha: 1, y: 0, duration: 0.35, ease: "power2.out", overwrite: true }
+      )
     },
     { scope: motionRef, dependencies: [pathname], revertOnUpdate: true }
   )

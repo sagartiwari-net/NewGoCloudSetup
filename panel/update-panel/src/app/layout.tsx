@@ -31,6 +31,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <body className="min-h-svh bg-background text-foreground" suppressHydrationWarning>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var key="panel-static-reload";function recover(){try{if(sessionStorage.getItem(key)==="1")return;sessionStorage.setItem(key,"1")}catch(e){return}var url=new URL(location.href);url.searchParams.set("__v",String(Date.now()));location.replace(url.toString())}window.addEventListener("error",function(event){var el=event.target;if(!el||el===window)return;var src=el.src||el.href||"";if(src.indexOf("/_next/static/")===-1)return;recover()},true);window.addEventListener("pageshow",function(event){if(event.persisted)recover()})})();`,
+          }}
+        />
         <Providers>{children}</Providers>
       </body>
     </html>
