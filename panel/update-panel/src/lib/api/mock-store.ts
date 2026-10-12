@@ -1481,7 +1481,7 @@ export const mockStore = {
       return `${row.name} ${row.website_name} ${row.description} ${key}`.toLowerCase().includes(needle)
     })
     return pageResult(
-      rows.map((row) => ({ ...row, latest_ingest_status: latestIngestStatus(row.id) })),
+      rows.map((row) => ({ ...row, cookie: "", latest_ingest_status: latestIngestStatus(row.id) })),
       query.page,
       query.pageSize,
     )

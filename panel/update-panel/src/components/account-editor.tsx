@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { deleteAccount, saveAccount } from "@/lib/api/client"
+import { deleteAccount, getAccount, saveAccount } from "@/lib/api/client"
 import type { IngestLog, MappedAccount, ProxyEndpoint, Role, UserAgentProfile, Website } from "@/lib/api/types"
 import { formatTime } from "@/lib/format"
 import { runMutation } from "@/lib/mutate"
@@ -77,6 +77,8 @@ export function AccountEditor({
   const [tab, setTab] = useState("basic")
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [cookieReady, setCookieReady] = useState(!account)
+  const [cookieError, setCookieError] = useState("")
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: account
@@ -111,7 +113,31 @@ export function AccountEditor({
   })
   const errors = form.formState.errors
 
+  useEffect(() => {
+    if (!account) return
+    let cancel = false
+    getAccount(account.id)
+      .then((full) => {
+        if (cancel) return
+        if (!full?.cookie) {
+          setCookieError("Cookie could not be loaded")
+          return
+        }
+        form.setValue("cookie", full.cookie)
+        setCookieReady(true)
+      })
+      .catch(() => {
+        if (!cancel) setCookieError("Cookie could not be loaded")
+      })
+    return () => {
+      cancel = true
+    }
+    // form.setValue is stable for this editor instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id])
+
   async function onSubmit(values: FormValues) {
+    if (account && !cookieReady) return
     // Cookie paste after tool failover must revive — never leave logged_out stuck.
     const nextStatus = values.cookie.trim() && values.status !== "inactive" && values.status !== "blocked" ? "active" : values.status
     const ok = await runMutation(
@@ -180,9 +206,18 @@ export function AccountEditor({
                 control={form.control}
                 name="cookie"
                 render={({ field }) => (
-                  <SecretTextarea id="cookie" value={field.value} onChange={field.onChange} invalid={Boolean(errors.cookie)} />
+                  <SecretTextarea
+                    key={cookieReady ? "ready" : "wait"}
+                    id="cookie"
+                    value={field.value}
+                    onChange={field.onChange}
+                    invalid={Boolean(errors.cookie) || Boolean(cookieError)}
+                  />
                 )}
               />
+              {account && !cookieReady ? (
+                <FieldDescription>{cookieError || "Loading cookie…"}</FieldDescription>
+              ) : null}
               <FieldError errors={[errors.cookie]} />
             </Field>
             <Field data-invalid={Boolean(errors.user_agent) || undefined}>
@@ -321,8 +356,8 @@ export function AccountEditor({
             Delete
           </Button>
         ) : <span />}
-        <Button type="submit" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? <Spinner data-icon="inline-start" /> : null}
+        <Button type="submit" disabled={form.formState.isSubmitting || Boolean(account && !cookieReady)}>
+          {form.formState.isSubmitting || (account && !cookieReady) ? <Spinner data-icon="inline-start" /> : null}
           Save account
         </Button>
         </div>

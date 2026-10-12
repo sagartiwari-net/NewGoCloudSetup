@@ -213,24 +213,49 @@ func (s *server) listAccounts(w http.ResponseWriter, r *http.Request) {
 	var total int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM accounts a JOIN websites w ON w.id=a.website_id WHERE `+where, args...).Scan(&total)
 	args = append(args, size, (page-1)*size)
-	rows, err := s.db.Query(`SELECT a.id FROM accounts a JOIN websites w ON w.id=a.website_id WHERE `+where+` ORDER BY w.name, a.name LIMIT ? OFFSET ?`, args...)
+	// Cookie text stays out of the list. Edit loads one account through GET /api/accounts/{id}.
+	rows, err := s.db.Query(`SELECT a.id, a.website_id, w.name, a.name, a.user_agent_id,
+		CASE WHEN a.user_agent != '' THEN a.user_agent ELSE COALESCE(ua.user_agent, '') END,
+		a.proxy_id,
+		CASE WHEN TRIM(COALESCE(p.endpoint, '')) != '' THEN p.endpoint ELSE a.proxy END,
+		a.status, a.last_used_at, a.failure_count, a.show_limit, a.description,
+		a.automation_task_uid, a.automation_ingest_key, a.cookie_updated_at,
+		COALESCE((SELECT status FROM ingest_logs WHERE account_id=a.id ORDER BY id DESC LIMIT 1), '')
+		FROM accounts a
+		JOIN websites w ON w.id=a.website_id
+		LEFT JOIN user_agents ua ON ua.id=a.user_agent_id
+		LEFT JOIN proxies p ON p.id=a.proxy_id
+		WHERE `+where+` ORDER BY w.name, a.name LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	defer rows.Close()
 	items := []any{}
-	var ids []int
 	for rows.Next() {
-		var id int
-		_ = rows.Scan(&id)
-		ids = append(ids, id)
-	}
-	rows.Close()
-	for _, id := range ids {
-		if item := s.accountByID(id); item != nil {
-			items = append(items, item)
+		var id, websiteID, failure, show int
+		var uaID, proxyID sql.NullInt64
+		var website, name, ua, proxy, status, lastUsed, description, task, ingest, cookieAt, latest string
+		if err := rows.Scan(&id, &websiteID, &website, &name, &uaID, &ua, &proxyID, &proxy, &status, &lastUsed, &failure, &show, &description, &task, &ingest, &cookieAt, &latest); err != nil {
+			writeErr(w, 500, err.Error())
+			return
 		}
+		var uaOut any
+		var proxyOut any
+		if uaID.Valid {
+			uaOut = uaID.Int64
+		}
+		if proxyID.Valid {
+			proxyOut = proxyID.Int64
+		}
+		items = append(items, map[string]any{
+			"id": id, "website_id": websiteID, "website_name": website, "name": name, "cookie": "",
+			"user_agent_id": uaOut, "user_agent": ua, "proxy_id": proxyOut, "proxy": proxy, "status": status,
+			"last_used_at": lastUsed, "failure_count": failure, "show_limit": show == 1, "description": description,
+			"automation_task_uid": task, "automation_ingest_key": ingest, "cookie_updated_at": cookieAt,
+			"latest_ingest_status": latest,
+			"last_status":          latest, "last_time": cookieAt, "last_bytes": 0, "last_error": "",
+		})
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "pageSize": size})
 }
@@ -272,13 +297,19 @@ func (s *server) accountByID(id int) map[string]any {
 }
 
 func (s *server) getAccount(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	id, _ := strconv.Atoi(r.PathValue("id"))
 	item := s.accountByID(id)
 	if item == nil {
 		writeJSON(w, 200, nil)
+		return
+	}
+	websiteID, _ := item["website_id"].(int)
+	if !s.owns(op, websiteID) {
+		writeErr(w, 403, "You cannot manage this account")
 		return
 	}
 	writeJSON(w, 200, item)
