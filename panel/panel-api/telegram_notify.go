@@ -90,7 +90,7 @@ func (s *server) deliverSwitchNotices() {
 		if rows.Scan(&note.id, &note.website, &note.tool, &note.site, &note.username, &note.from, &note.to, &note.reason, &note.at) != nil {
 			continue
 		}
-		s.sendTelegramNotice("switch", "switch_template", "{tool}: {username} switched from {from} to {to} on {website} at {time}. {reason}", note)
+		s.sendTelegramNotice("switch", "switch_template", "{tool} {account} {problem}", note)
 		s.saveTelegramOffsetValue("telegram_cursor_switch", strconv.Itoa(note.id))
 	}
 }
@@ -112,7 +112,7 @@ func (s *server) deliverLogoutNotices() {
 		if rows.Scan(&note.id, &note.website, &note.tool, &note.site, &note.username, &note.from, &note.to, &note.reason, &note.ip, &note.at) != nil {
 			continue
 		}
-		s.sendTelegramNotice("logout", "logout_template", "{tool} logged out for {username} on {website} at {time}.", note)
+		s.sendTelegramNotice("logout", "logout_template", "{tool} {account} {problem}", note)
 		s.saveTelegramOffsetValue("telegram_cursor_logout", strconv.Itoa(note.id))
 	}
 }
@@ -136,7 +136,7 @@ func (s *server) deliverNetworkNotices() {
 			continue
 		}
 		note.kind = networkTypeLabel(note.kind)
-		s.sendTelegramNotice("network", "network_template", "{username} is using {type} on {tool} ({website}). IP {ip}. {org}. {location}. {time}", note)
+		s.sendTelegramNotice("network", "network_template", "{tool} {username} {type} detected", note)
 		s.saveTelegramOffsetValue("telegram_cursor_host", strconv.Itoa(note.id))
 	}
 }
@@ -174,6 +174,49 @@ func (s *server) destinationRecipients(query string, args ...any) []map[string]s
 	return recipients
 }
 
+func accountLabel(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "(none)" {
+		return "account"
+	}
+	parts := strings.Fields(name)
+	last := parts[len(parts)-1]
+	if _, err := strconv.Atoi(last); err == nil {
+		return "Account " + last
+	}
+	return name
+}
+
+func problemLabel(reason string) string {
+	text := strings.ToLower(strings.TrimSpace(reason))
+	switch {
+	case strings.Contains(text, "suspicious"):
+		return "Suspicious Activity Detected"
+	case strings.Contains(text, "cookie") || strings.Contains(text, "sharing"):
+		return "Cookie sharing detected"
+	case strings.Contains(text, "login") || strings.Contains(text, "logout") || strings.Contains(text, "session"):
+		return "is logout"
+	case text == "":
+		return "is logout"
+	default:
+		reason = strings.TrimSpace(reason)
+		if len(reason) > 60 {
+			reason = reason[:60]
+		}
+		return reason
+	}
+}
+
+func (s *server) noticeSentRecently(website int, username, event string, window time.Duration) bool {
+	var last string
+	err := s.db.QueryRow(`SELECT created_at FROM telegram_deliveries WHERE website_id=? AND username=? AND event=? AND status='sent' ORDER BY created_at DESC LIMIT 1`, website, username, event).Scan(&last)
+	if err != nil {
+		return false
+	}
+	parsed, ok := parseTime(last)
+	return ok && time.Since(parsed) < window
+}
+
 func networkTypeLabel(kind string) string {
 	switch kind {
 	case "vpn":
@@ -189,6 +232,9 @@ func networkTypeLabel(kind string) string {
 
 func (s *server) sendTelegramNotice(event, templateKey, fallback string, note telegramNotice) {
 	if note.website == 0 || note.site == "" {
+		return
+	}
+	if event == "logout" && s.noticeSentRecently(note.website, note.username, "switch", 2*time.Minute) {
 		return
 	}
 	recipients, allowed := s.noticeRecipients(note.website, event)
@@ -225,6 +271,8 @@ func (s *server) sendTelegramNotice(event, templateKey, fallback string, note te
 		"{count}", "",
 		"{from}", note.from,
 		"{to}", note.to,
+		"{account}", accountLabel(note.from),
+		"{problem}", problemLabel(note.reason),
 		"{type}", note.kind,
 		"{org}", note.org,
 		"{location}", note.location,

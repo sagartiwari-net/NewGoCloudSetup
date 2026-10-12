@@ -44,16 +44,18 @@ import { formatTime, maskSecret } from "@/lib/format"
 import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
 
-const placeholders = ["{username}", "{tool}", "{website}", "{time}", "{ip}", "{reason}", "{count}", "{from}", "{to}", "{type}", "{org}", "{location}"]
+const placeholders = ["{tool}", "{account}", "{problem}", "{username}", "{type}", "{website}", "{time}", "{ip}", "{reason}", "{from}", "{to}", "{org}", "{location}"]
 const sample: Record<string, string> = {
-  username: "nina",
+  username: "sagar",
   tool: "Ahrefs",
   website: "Ahrefs",
-  from: "Ahrefs 1",
-  to: "Ahrefs 2",
+  account: "Account 2",
+  problem: "is logout",
+  from: "Ahrefs 2",
+  to: "Ahrefs 1",
   time: "27/9/2026, 1:14:00 pm",
   ip: "203.0.113.10",
-  reason: "cookie expired",
+  reason: "opened /user/login",
   count: "8",
   type: "VPN",
   org: "Example Hosting",
@@ -728,8 +730,23 @@ function TemplateCards({
     else setNetwork(next)
   }
 
+  function applyPreset(withUsername: boolean) {
+    const accountLine = withUsername ? "{tool} {account} {problem} ({username})" : "{tool} {account} {problem}"
+    setSwitched(accountLine)
+    setLogout(accountLine)
+    setNetwork("{tool} {username} {type} detected")
+    setSpam("{tool} {username} Cookie sharing detected")
+  }
+
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="flex flex-col gap-3">
+      {master ? (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => applyPreset(false)}>Simple</Button>
+          <Button type="button" variant="outline" onClick={() => applyPreset(true)}>Simple with username</Button>
+        </div>
+      ) : null}
+      <div className="grid gap-3 lg:grid-cols-2">
       <TemplateCard title="Switch" value={switched} master={master} inputRef={switchRef} onChange={setSwitched} onInsert={(token) => insert("switch", token)} />
       <TemplateCard title="Logout" value={logout} master={master} inputRef={logoutRef} onChange={setLogout} onInsert={(token) => insert("logout", token)} />
       <TemplateCard title="VPN / proxy / server" value={network} master={master} inputRef={networkRef} onChange={setNetwork} onInsert={(token) => insert("network", token)} />
@@ -749,6 +766,7 @@ function TemplateCards({
           Save templates
         </Button>
       ) : null}
+      </div>
     </div>
   )
 }

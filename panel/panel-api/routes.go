@@ -874,10 +874,10 @@ func (s *server) telegramTemplates(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='switch_template'`).Scan(&switched)
 	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='network_template'`).Scan(&network)
 	if switched == "" {
-		switched = "{tool}: {username} switched from {from} to {to} on {website} at {time}. {reason}"
+		switched = "{tool} {account} {problem}"
 	}
 	if network == "" {
-		network = "{username} is using {type} on {tool} ({website}). IP {ip}. {org}. {location}. {time}"
+		network = "{tool} {username} {type} detected"
 	}
 	writeJSON(w, 200, map[string]string{"logout": logout, "spam": spam, "switch": switched, "network": network})
 }

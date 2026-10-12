@@ -215,10 +215,10 @@ let botToken = "secret_fake_telegram0001"
 let repeatMinutes = 60
 
 let telegramTemplates: TelegramTemplates = {
-  logout: "{tool} logged out for {username} on {website} at {time}.",
-  spam: "{username} may be sharing {tool}. {count} opens in the window from {ip}. {reason} at {time}.",
-  switch: "{tool}: {username} switched from {from} to {to} on {website} at {time}. {reason}",
-  network: "{username} is using {type} on {tool} ({website}). IP {ip}. {org}. {location}. {time}",
+  logout: "{tool} {account} {problem}",
+  spam: "{tool} {username} Cookie sharing detected",
+  switch: "{tool} {account} {problem}",
+  network: "{tool} {username} {type} detected",
 }
 
 let spamRule: SpamRule = {

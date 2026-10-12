@@ -167,9 +167,19 @@ func ensureTelegramInbox(db *sql.DB) {
 	)`)
 	_, _ = db.Exec(`ALTER TABLE telegram_deliveries ADD COLUMN error_text TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES ('switch_template', ?) ON DUPLICATE KEY UPDATE value=value`,
-		"{tool}: {username} switched from {from} to {to} on {website} at {time}. {reason}")
+		"{tool} {account} {problem}")
 	_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES ('network_template', ?) ON DUPLICATE KEY UPDATE value=value`,
-		"{username} is using {type} on {tool} ({website}). IP {ip}. {org}. {location}. {time}")
+		"{tool} {username} {type} detected")
+	_, _ = db.Exec(`UPDATE settings SET value=? WHERE "key"='switch_template' AND value=?`,
+		"{tool} {account} {problem}", "{tool}: {username} switched from {from} to {to} on {website} at {time}. {reason}")
+	_, _ = db.Exec(`UPDATE settings SET value=? WHERE "key"='logout_template' AND value IN (?, ?)`,
+		"{tool} {account} {problem}",
+		"{tool} logged out for {username} on {website} at {time}.",
+		"{tool}: {from} logged out. Switched {username} to {to} on {website} at {time}. {reason}")
+	_, _ = db.Exec(`UPDATE settings SET value=? WHERE "key"='network_template' AND value=?`,
+		"{tool} {username} {type} detected", "{username} is using {type} on {tool} ({website}). IP {ip}. {org}. {location}. {time}")
+	_, _ = db.Exec(`UPDATE settings SET value=? WHERE "key"='spam_template' AND value=?`,
+		"{tool} {username} Cookie sharing detected", "{username} may be sharing {tool}. {count} opens in the window from {ip}. {reason} at {time}.")
 	ensureTelegramRouteEvents(db)
 }
 
