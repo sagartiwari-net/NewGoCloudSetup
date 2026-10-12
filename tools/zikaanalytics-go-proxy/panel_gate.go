@@ -261,12 +261,12 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	// Probe live Zik research API before issuing a session — soft-dead cookies
-	// still load the dashboard shell but break competitor/product/watchlist tools.
-	acc, accErr := claimHealthyZikAccount(cfg)
+	// A saved cookie is enough to leave the access link. A dead session is
+	// reported after the tool opens, the same way WooRank does.
+	acc, accErr := claimPanelAccount(cfg)
 	if accErr != nil {
-		log.Printf("[PANEL] no healthy Zik account: %v", accErr)
-		serveZikCookieExpired(w, cfg, username, "", "zik_probe:"+accErr.Error())
+		log.Printf("[PANEL] no mapped account: %v", accErr)
+		renderNoActiveAccountsPage(w, cfg)
 		return
 	}
 	accID := acc.ID
