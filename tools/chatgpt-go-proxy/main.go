@@ -1372,6 +1372,11 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
+	cfg := loadConfig()
+	if usesPanelAccountMode(cfg) {
+		rotatePanelSession(w, r, cfg)
+		return
+	}
 	if !dbConnected {
 		fmt.Fprint(w, `{"status":"ok","switched_to":"Local Dev","id":1}`)
 		return
@@ -1403,6 +1408,45 @@ func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 		currentUser = "unknown"
 	}
 	nextAcc, switchErr := switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, reason)
+	if switchErr != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprintf(w, `{"error":"no_other_accounts","message":"%v"}`, switchErr)
+		return
+	}
+	fmt.Fprintf(w, `{"status":"ok","switched_to":"%s","id":%d}`, nextAcc.Name, nextAcc.ID)
+}
+
+// rotatePanelSession switches the live panel account. use_database is false in panel
+// mode, so the legacy ahrefs path above never runs and used to pretend a switch succeeded.
+func rotatePanelSession(w http.ResponseWriter, r *http.Request, cfg Config) {
+	cookie, err := r.Cookie("ct_session")
+	if err != nil || cookie.Value == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"unauthorized"}`)
+		return
+	}
+	sessionToken := cookie.Value
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":"no_active_accounts"}`)
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var assigned int
+	var username string
+	if err = db.QueryRow(`SELECT assigned_account_id, username FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned, &username); err != nil || assigned <= 0 {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":"no_active_accounts"}`)
+		return
+	}
+	var currentName string
+	_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, assigned).Scan(&currentName)
+	reason := strings.TrimSpace(r.URL.Query().Get("reason"))
+	if reason == "" {
+		reason = "client_login_wall"
+	}
+	nextAcc, switchErr := panelSwitchAccount(cfg, sessionToken, assigned, currentName, username, "html_failover:"+reason)
 	if switchErr != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprintf(w, `{"error":"no_other_accounts","message":"%v"}`, switchErr)
@@ -3935,6 +3979,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				headInject = devicePageScript() + headInject
 			}
 			headInject += limitWidgetScript(cfg)
+			bodyInject += panelLoginWallWatchScript()
 		}
 		if !usesCookieFileMode(cfg) {
 			bodyInject += buildDomainCheckJS(cfg) + buildSecurityHeartbeatJS(cfg)

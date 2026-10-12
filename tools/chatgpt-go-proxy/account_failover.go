@@ -29,7 +29,8 @@ func isStrongLogoutReason(reason string) bool {
 	r := strings.ToLower(reason)
 	return strings.HasPrefix(reason, "url_path:") ||
 		strings.Contains(r, "session has expired") ||
-		strings.Contains(r, "please log in again")
+		strings.Contains(r, "please log in again") ||
+		strings.Contains(r, "panel_login_wall")
 }
 
 func chatGPTLoggedInHTML(body []byte) bool {
@@ -37,28 +38,35 @@ func chatGPTLoggedInHTML(body []byte) bool {
 		return false
 	}
 	s := string(body)
-	// Soft marketing strings ("What's on your mind", "Ask anything") ship in logged-out
-	// JS bundles too — they false-positive and serve a shell with no working send button.
-	for _, marker := range []string{
-		"oai-client-auth-info",
-		`"accessToken"`,
-		`"authProvider"`,
-		`"connectionType":"websocket"`,
-	} {
-		if strings.Contains(s, marker) {
-			return true
-		}
+	// The login page's JS also contains the key name "accessToken". Only a real JWT counts.
+	if strings.Contains(s, `"accessToken":"ey`) || strings.Contains(s, `"accessToken": "ey`) {
+		return true
 	}
 	return false
 }
 
-func chatGPTSessionBodyOK(text string) bool {
-	if strings.Contains(text, `"accessToken"`) {
+// chatGPTLoginWallHTML is the logged-out ChatGPT screen ("Log in or sign up").
+// That copy is specific enough that a live chat page does not contain it.
+func chatGPTLoginWallHTML(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	text := strings.ToLower(string(body))
+	if strings.Contains(text, "log in or sign up") {
 		return true
 	}
-	if strings.Contains(text, `"user"`) &&
-		!strings.Contains(text, `"user":null`) &&
-		!strings.Contains(text, `"user": null`) {
+	return strings.Contains(text, "continue with google") && strings.Contains(text, "continue with apple")
+}
+
+func chatGPTSessionBodyOK(text string) bool {
+	// Logged-out JSON is {"accessToken":null,"user":null}. The key name alone is not a session.
+	if chatGPTSessionBodyLoggedOut(text) {
+		return false
+	}
+	if strings.Contains(text, `"accessToken":"`) || strings.Contains(text, `"accessToken": "`) {
+		return true
+	}
+	if strings.Contains(text, `"user":{`) || strings.Contains(text, `"user": {`) {
 		return true
 	}
 	return false
@@ -144,6 +152,9 @@ func probeChatGPTSession(cfg Config, acc ToolAccount) (bool, string) {
 }
 
 func chatGPTLogoutDetected(path string, body []byte, cfg Config) (bool, string) {
+	if chatGPTLoginWallHTML(body) {
+		return true, "panel_login_wall"
+	}
 	loggedInShell := chatGPTLoggedInHTML(body)
 
 	if detected, reason := detectLogout(path, body, cfg); detected {
@@ -233,12 +244,17 @@ func runHTMLAccountFailover(
 	out.ran = true
 	out.bodyBytes = bodyBytes
 
-	// Strong auth markers in HTML → keep serving.
-	if chatGPTLoggedInHTML(bodyBytes) {
+	// The login screen wins over a JS bundle that merely mentions accessToken.
+	loginWall := chatGPTLoginWallHTML(bodyBytes)
+	if !loginWall && chatGPTLoggedInHTML(bodyBytes) {
 		return out
 	}
 
 	detected, reason := chatGPTLogoutDetected(path, bodyBytes, cfg)
+	if loginWall {
+		detected = true
+		reason = "panel_login_wall"
+	}
 
 	// Panel mode: logged-out SPA still looks "open" (composer, no send). Never serve it —
 	// probe the account session and rotate when cookies are dead.
@@ -300,6 +316,57 @@ const accountSwitchRetryScript = `<script>
   setTimeout(function () { window.location.reload(); }, 4000);
 })();
 </script>`
+
+func panelLoginWallWatchScript() string {
+	return `<script>
+(function () {
+  if (window.__tmPanelLoginWatch) return;
+  window.__tmPanelLoginWatch = true;
+  var started = false;
+  function visibleWall() {
+    var text = "";
+    try { text = (document.body && (document.body.innerText || document.body.textContent) || "").toLowerCase(); } catch (e) {}
+    if (text.indexOf("log in or sign up") !== -1) return true;
+    return text.indexOf("continue with google") !== -1 && text.indexOf("continue with apple") !== -1;
+  }
+  function cover(message) {
+    var el = document.getElementById("tm-panel-switch");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "tm-panel-switch";
+      el.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#0b0f19;color:#fff;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:24px;";
+      document.documentElement.appendChild(el);
+    }
+    el.innerHTML = '<div style="max-width:440px;text-align:center"><h1 style="font-size:22px;margin:0 0 12px">Switching account</h1><p style="font-size:15px;line-height:1.5;color:#cbd5e1;margin:0">' + message + "</p></div>";
+  }
+  function arm() {
+    if (started || !visibleWall()) return;
+    started = true;
+    var n = 0;
+    try { n = parseInt(sessionStorage.getItem("tm_acct_try") || "0", 10) || 0; } catch (e) {}
+    n += 1;
+    try { sessionStorage.setItem("tm_acct_try", String(n)); } catch (e) {}
+    if (n >= 3) {
+      cover("Every mapped ChatGPT cookie looks logged out. Open Panel, paste fresh ChatGPT cookies, then open a new access link.");
+      return;
+    }
+    cover("This account is logged out. Switching to the next ChatGPT account...");
+    fetch("/api/rotate-session?reason=client_login_wall", { credentials: "include", cache: "no-store" })
+      .finally(function () { setTimeout(function () { window.location.reload(); }, 700); });
+  }
+  setTimeout(function () {
+    if (!visibleWall()) { try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {} }
+  }, 8000);
+  setTimeout(arm, 1200);
+  var ticks = 0;
+  var timer = setInterval(function () {
+    ticks += 1;
+    if (started || ticks > 20) { clearInterval(timer); return; }
+    arm();
+  }, 1000);
+})();
+</script>`
+}
 
 func writeAccountSwitchPage(w http.ResponseWriter, accountName string) {
 	message := "Account logged out. Switching to another account..."
