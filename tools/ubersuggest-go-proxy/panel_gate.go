@@ -71,6 +71,9 @@ func openPanelDB(cfg Config) (*sql.DB, error) {
 		}
 		panelDB.SetMaxOpenConns(1)
 		panelDBErr = panelDB.Ping()
+		if panelDBErr == nil {
+			log.Printf("[PANEL] account store is MySQL gt4rents")
+		}
 	})
 	return panelDB, panelDBErr
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"html"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -13,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -1204,10 +1204,7 @@ func (crt *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	req.Header.Del("Sec-Ch-Ua-Platform-Version")
 	req.Header.Del("Sec-Ch-Ua-Bitness")
 
-	if marked, px := panelUpstreamProxy(req.Context()); marked && px != "" {
-		return panelProxyTransport().RoundTrip(req)
-	}
-	return crt.Transport.RoundTrip(req)
+	return newChromeRoundTripper().RoundTrip(req)
 }
 
 func main() {
@@ -1295,6 +1292,9 @@ func main() {
 			req.Header.Set("Pragma", "no-cache")
 		}
 		logUberAuthCookies(req.URL.Path, premiumCookies)
+		if strings.Contains(req.URL.Path, "/get_token") {
+			log.Printf("[UBER] get_token route=%s", uberUpstreamRoute(req.Context()))
+		}
 
 		if ref := req.Header.Get("Referer"); ref != "" {
 			replacedRef := strings.ReplaceAll(ref, publicHost, targetHost)
@@ -1421,7 +1421,7 @@ func main() {
 			bodyStr := string(bodyBytes)
 			if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/get_token") {
 				if resp.StatusCode == 403 {
-					log.Printf("[UBER] get_token 403 — session cookie was rejected")
+					log.Printf("[UBER] get_token 403 — %s", uberRejectReason(bodyStr))
 				} else if strings.Contains(bodyStr, "unlogged") {
 					log.Printf("[UBER] get_token returned an unlogged token — id/state were not accepted")
 				}

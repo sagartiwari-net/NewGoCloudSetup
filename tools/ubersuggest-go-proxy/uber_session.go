@@ -119,6 +119,24 @@ func uberSafeCookieValue(v string) string {
 	return b.String()
 }
 
+func uberRejectReason(body string) string {
+	body = strings.TrimSpace(body)
+	var m map[string]any
+	if json.Unmarshal([]byte(body), &m) == nil {
+		for _, key := range []string{"message", "error", "code", "detail"} {
+			text, ok := m[key].(string)
+			if !ok || text == "" || len(text) > 120 || strings.Contains(text, "eyJ") {
+				continue
+			}
+			return key + "=" + text
+		}
+	}
+	if strings.Contains(strings.ToLower(body), "cloudfront") {
+		return "cloudfront blocked this server"
+	}
+	return "session cookie was rejected"
+}
+
 func logUberAuthCookies(path, header string) {
 	if path != "/" && path != "/dashboard" && !strings.Contains(path, "/analyze") && !strings.Contains(path, "/en/") && !strings.Contains(path, "/api/") {
 		return
