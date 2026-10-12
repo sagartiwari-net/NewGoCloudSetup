@@ -23,6 +23,7 @@ export function UserLink({
   return (
     <Link
       href={userReportHref(username, websiteId)}
+      prefetch={false}
       className={cn("text-primary underline underline-offset-4 hover:opacity-90", className)}
       onClick={(event) => event.stopPropagation()}
     >

@@ -19,7 +19,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Spinner } from "@/components/ui/spinner"
 import { useResource } from "@/hooks/use-resource"
-import { assignSession, endSession, listAccounts, listResellers, listSessions, listTools, type Reseller } from "@/lib/api/client"
+import { assignSession, endSession, listAccounts, listResellerChoices, listSessions, listTools, type Reseller } from "@/lib/api/client"
 import type { LiveSession } from "@/lib/api/types"
 import { formatTime } from "@/lib/format"
 import { useListPage } from "@/lib/page-size"
@@ -50,7 +50,7 @@ export default function SessionsPage() {
         }),
         listTools(),
         session?.role === "master"
-          ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+          ? listResellerChoices()
           : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
       ])
       return {

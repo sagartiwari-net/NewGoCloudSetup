@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useResource } from "@/hooks/use-resource"
-import { listAllWebsites, listResellers, listViolations, type Reseller } from "@/lib/api/client"
+import { listAllWebsites, listResellerChoices, listViolations, type Reseller } from "@/lib/api/client"
 import type { Violation } from "@/lib/api/types"
 import { formatTime } from "@/lib/format"
 import { useListPage } from "@/lib/page-size"
@@ -49,7 +49,7 @@ export default function ViolationsPage() {
         }),
         listAllWebsites(),
         session?.role === "master"
-          ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+          ? listResellerChoices()
           : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
       ])
       return { violations, websites, resellers: resellers.items }

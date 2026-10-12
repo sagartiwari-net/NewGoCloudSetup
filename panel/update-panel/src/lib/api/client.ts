@@ -35,6 +35,27 @@ import type {
   Website,
 } from "@/lib/api/types"
 
+const catalogCache = new Map<string, Promise<unknown>>()
+
+function cachedCatalog<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const existing = catalogCache.get(key) as Promise<T> | undefined
+  if (existing) return existing
+  const pending = load().catch((error: unknown) => {
+    catalogCache.delete(key)
+    throw error
+  })
+  catalogCache.set(key, pending)
+  return pending
+}
+
+export function clearCatalogCache(key?: string) {
+  if (!key) {
+    catalogCache.clear()
+    return
+  }
+  catalogCache.delete(key)
+}
+
 export type Session = {
   username: string
   role: Role
@@ -503,12 +524,18 @@ export async function listProxies(query: {
   return api(`/api/proxies${qs(query)}`)
 }
 
+export function listProxyChoices() {
+  return cachedCatalog("proxies", () => listProxies({ page: 1, pageSize: 50, query: "", status: "all" }))
+}
+
 export async function saveProxy(input: ProxyInput): Promise<Ok> {
+  clearCatalogCache("proxies")
   await api("/api/proxies", { method: "POST", body: JSON.stringify(input) })
   return { status: "ok" }
 }
 
 export async function deleteProxy(id: number): Promise<Ok> {
+  clearCatalogCache("proxies")
   await api(`/api/proxies${qs({ id })}`, { method: "DELETE" })
   return { status: "ok" }
 }
@@ -527,12 +554,18 @@ export async function listUserAgents(query: {
   return api(`/api/user-agents${qs(query)}`)
 }
 
+export function listAgentChoices() {
+  return cachedCatalog("agents", () => listUserAgents({ page: 1, pageSize: 50, query: "" }))
+}
+
 export async function saveUserAgent(input: UserAgentInput): Promise<Ok> {
+  clearCatalogCache("agents")
   await api("/api/user-agents", { method: "POST", body: JSON.stringify(input) })
   return { status: "ok" }
 }
 
 export async function deleteUserAgent(id: number): Promise<Ok> {
+  clearCatalogCache("agents")
   await api(`/api/user-agents${qs({ id })}`, { method: "DELETE" })
   return { status: "ok" }
 }
@@ -545,33 +578,38 @@ export async function listWebsites(query: {
   return api(`/api/websites${qs(query)}`)
 }
 
-export async function listAllWebsites(): Promise<Website[]> {
-  const pageSize = 50
-  const first = await listWebsites({ page: 1, pageSize, query: "" })
-  const items = [...first.items]
-  const pages = Math.max(1, Math.ceil(first.total / pageSize))
-  for (let page = 2; page <= pages; page += 1) {
-    const next = await listWebsites({ page, pageSize, query: "" })
-    items.push(...next.items)
-  }
-  return items
+export function listAllWebsites(): Promise<Website[]> {
+  return cachedCatalog("websites", async () => {
+    const pageSize = 50
+    const first = await listWebsites({ page: 1, pageSize, query: "" })
+    const items = [...first.items]
+    const pages = Math.max(1, Math.ceil(first.total / pageSize))
+    for (let page = 2; page <= pages; page += 1) {
+      const next = await listWebsites({ page, pageSize, query: "" })
+      items.push(...next.items)
+    }
+    return items
+  })
 }
 
 export async function saveWebsite(input: WebsiteInput): Promise<Ok> {
+  clearCatalogCache("websites")
   await api("/api/websites", { method: "POST", body: JSON.stringify(input) })
   return { status: "ok" }
 }
 
 export async function deleteWebsite(id: number): Promise<Ok> {
+  clearCatalogCache("websites")
   await api(`/api/websites${qs({ id })}`, { method: "DELETE" })
   return { status: "ok" }
 }
 
-export async function listTools(): Promise<Tool[]> {
-  return api("/api/tools")
+export function listTools(): Promise<Tool[]> {
+  return cachedCatalog("tools", () => api("/api/tools"))
 }
 
 export async function saveTool(input: ToolInput): Promise<Tool> {
+  clearCatalogCache("tools")
   return api("/api/tools", { method: "POST", body: JSON.stringify(input) })
 }
 
@@ -584,12 +622,18 @@ export async function listResellers(query: {
   return api(`/api/resellers${qs(query)}`)
 }
 
+export function listResellerChoices() {
+  return cachedCatalog("resellers", () => listResellers({ page: 1, pageSize: 50, query: "", status: "all" }))
+}
+
 export async function saveReseller(input: ResellerInput): Promise<Ok> {
+  clearCatalogCache("resellers")
   await api("/api/resellers", { method: "POST", body: JSON.stringify(input) })
   return { status: "ok" }
 }
 
 export async function deleteReseller(id: number): Promise<Ok> {
+  clearCatalogCache("resellers")
   await api(`/api/resellers${qs({ id })}`, { method: "DELETE" })
   return { status: "ok" }
 }

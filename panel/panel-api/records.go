@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -138,48 +139,43 @@ func (s *server) refreshLimits() {
 	}
 }
 
+var (
+	purgeMu   sync.Mutex
+	lastPurge time.Time
+)
+
 func (s *server) purgeOldRows() {
+	purgeMu.Lock()
+	if time.Since(lastPurge) < 10*time.Minute {
+		purgeMu.Unlock()
+		return
+	}
+	lastPurge = time.Now()
+	purgeMu.Unlock()
+
 	s.refreshLimits()
 	now := time.Now().UTC()
 	_, _ = s.db.Exec(`DELETE FROM live_sessions WHERE expires_at <= ?`, now.Format(time.RFC3339))
-	rows, err := s.db.Query(`SELECT id, reset_days, timestamp FROM usage_events`)
-	staleUsage := []int{}
+	dayRows, err := s.db.Query(`SELECT DISTINCT reset_days FROM usage_events WHERE reset_days > 0`)
 	if err == nil {
-		for rows.Next() {
-			var id, days int
-			var ts string
-			_ = rows.Scan(&id, &days, &ts)
-			if parsed, ok := parseTime(ts); ok && days > 0 && now.Sub(parsed) >= time.Duration(days)*24*time.Hour {
-				staleUsage = append(staleUsage, id)
+		days := []int{}
+		for dayRows.Next() {
+			var reset int
+			if dayRows.Scan(&reset) == nil && reset > 0 {
+				days = append(days, reset)
 			}
 		}
-		rows.Close()
-	}
-	for _, id := range staleUsage {
-		_, _ = s.db.Exec(`DELETE FROM usage_events WHERE id=?`, id)
-	}
-	cutoff := now.Add(-7 * 24 * time.Hour)
-	extCutoff := now.Add(-30 * 24 * time.Hour).Format(time.RFC3339)
-	_, _ = s.db.Exec(`DELETE FROM extension_events WHERE created_at < ?`, extCutoff)
-	for _, table := range []string{"violations", "security_events"} {
-		scan, err := s.db.Query(`SELECT id, created_at FROM ` + table)
-		if err != nil {
-			continue
-		}
-		stale := []int{}
-		for scan.Next() {
-			var id int
-			var ts string
-			_ = scan.Scan(&id, &ts)
-			if parsed, ok := parseTime(ts); ok && parsed.Before(cutoff) {
-				stale = append(stale, id)
-			}
-		}
-		scan.Close()
-		for _, id := range stale {
-			_, _ = s.db.Exec(`DELETE FROM `+table+` WHERE id=?`, id)
+		dayRows.Close()
+		for _, reset := range days {
+			cutoff := now.Add(-time.Duration(reset) * 24 * time.Hour).Format(time.RFC3339)
+			_, _ = s.db.Exec(`DELETE FROM usage_events WHERE reset_days=? AND timestamp < ?`, reset, cutoff)
 		}
 	}
+	week := now.Add(-7 * 24 * time.Hour).Format(time.RFC3339)
+	month := now.Add(-30 * 24 * time.Hour).Format(time.RFC3339)
+	_, _ = s.db.Exec(`DELETE FROM extension_events WHERE created_at < ?`, month)
+	_, _ = s.db.Exec(`DELETE FROM violations WHERE created_at < ?`, week)
+	_, _ = s.db.Exec(`DELETE FROM security_events WHERE created_at < ?`, week)
 }
 
 func parseTime(value string) (time.Time, bool) {

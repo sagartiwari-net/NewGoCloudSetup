@@ -14,7 +14,7 @@ import { UserLink, userReportHref } from "@/components/user-link"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useResource } from "@/hooks/use-resource"
-import { listDirectoryUsers, listResellers, listTools, type Reseller } from "@/lib/api/client"
+import { listDirectoryUsers, listResellerChoices, listTools, type Reseller } from "@/lib/api/client"
 import type { DirectoryUser } from "@/lib/api/types"
 import { formatTime } from "@/lib/format"
 import { useListPage } from "@/lib/page-size"
@@ -41,7 +41,7 @@ export default function UsersDirectoryPage() {
         }),
         listTools(),
         isMaster
-          ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+          ? listResellerChoices()
           : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
       ])
       return { users, tools, resellers: resellers.items }
@@ -107,6 +107,7 @@ export default function UsersDirectoryPage() {
       cell: (row) => (
         <Link
           href={userReportHref(row.username)}
+          prefetch={false}
           className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
         >
           Open report

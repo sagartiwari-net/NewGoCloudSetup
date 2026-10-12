@@ -3,6 +3,7 @@
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react"
 
 import {
+  clearCatalogCache,
   login,
   logout,
   readSession,
@@ -66,10 +67,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       ready,
       async signIn(username, password) {
+        clearCatalogCache()
         await login(username, password)
         emitSession()
       },
       signOut() {
+        clearCatalogCache()
         void logout().finally(() => emitSession())
       },
       setRole(role) {

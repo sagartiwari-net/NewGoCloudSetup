@@ -22,6 +22,7 @@ export function IpLink({
   return (
     <Link
       href={ipReportHref(value)}
+      prefetch={false}
       className={cn("font-mono text-primary underline underline-offset-4 hover:opacity-90", className)}
       onClick={(event) => event.stopPropagation()}
     >

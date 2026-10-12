@@ -22,6 +22,8 @@ import (
 var schemaFS embed.FS
 
 func openDB(path string) *sql.DB {
+	// Server always sets GT4RENTS_MYSQL_PASSWORD and uses MySQL gt4rents.
+	// The sqlite path is only a local Mac fallback. panel.db is a frozen backup on the server.
 	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) != "" {
 		return openMySQL()
 	}
@@ -93,8 +95,8 @@ func openDB(path string) *sql.DB {
 	return db
 }
 
-// openMySQL uses the phpMyAdmin database (gt4rents). Tables are already copied
-// from panel.db, so this does not run the SQLite schema.
+// openMySQL uses the phpMyAdmin database gt4rents. panel.db is a frozen backup
+// and is not opened. Tables already exist, so this does not run the SQLite schema.
 func openMySQL() *sql.DB {
 	host := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_HOST"))
 	if host == "" {
@@ -151,6 +153,7 @@ func ensureAccessAlertSettings(db *sql.DB) {
 	for _, pair := range defaults {
 		_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value=value`, pair[0], pair[1])
 	}
+	ensureScaleIndexes(db)
 }
 
 func settingInt(db *sql.DB, key string, fallback int) int {

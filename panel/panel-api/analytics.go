@@ -580,12 +580,6 @@ func (s *server) pageUserUsage(w http.ResponseWriter, where string, args []any, 
 }
 
 func (s *server) pageUserSecurity(w http.ResponseWriter, op operator, username string, websiteID, page, size int) {
-	type row struct {
-		at   string
-		item map[string]any
-	}
-	all := []row{}
-
 	vWhere, vArgs := s.scope(op, "v.website_id")
 	vWhere += " AND v.username=?"
 	vArgs = append(vArgs, username)
@@ -593,22 +587,6 @@ func (s *server) pageUserSecurity(w http.ResponseWriter, op operator, username s
 		vWhere += " AND v.website_id=?"
 		vArgs = append(vArgs, websiteID)
 	}
-	if rows, err := s.db.Query(`SELECT v.id, v.website_id, w.name, v.username, v.client_ip, v.reason, v.created_at
-		FROM violations v JOIN websites w ON w.id=v.website_id WHERE `+vWhere+` ORDER BY v.created_at DESC`, vArgs...); err == nil {
-		for rows.Next() {
-			var id, website int
-			var name, user, ip, reason, at string
-			if rows.Scan(&id, &website, &name, &user, &ip, &reason, &at) == nil {
-				all = append(all, row{at: at, item: map[string]any{
-					"kind": "violation", "id": id, "website_id": website, "website_name": name,
-					"username": user, "client_ip": ip, "reason": reason, "event_type": "violation",
-					"attempted_url": "", "details": reason, "user_agent": "", "created_at": at,
-				}})
-			}
-		}
-		rows.Close()
-	}
-
 	sWhere, sArgs := s.scope(op, "e.website_id")
 	sWhere += " AND e.username=?"
 	sArgs = append(sArgs, username)
@@ -616,42 +594,40 @@ func (s *server) pageUserSecurity(w http.ResponseWriter, op operator, username s
 		sWhere += " AND e.website_id=?"
 		sArgs = append(sArgs, websiteID)
 	}
-	if rows, err := s.db.Query(`SELECT e.id, e.website_id, w.name, e.username, e.client_ip, e.event_type, e.attempted_url, e.details, e.user_agent, e.created_at
-		FROM security_events e JOIN websites w ON w.id=e.website_id WHERE `+sWhere+` ORDER BY e.created_at DESC`, sArgs...); err == nil {
-		for rows.Next() {
-			var id, website int
-			var name, user, ip, eventType, url, details, ua, at string
-			if rows.Scan(&id, &website, &name, &user, &ip, &eventType, &url, &details, &ua, &at) == nil {
-				all = append(all, row{at: at, item: map[string]any{
-					"kind": "security", "id": id, "website_id": website, "website_name": name,
-					"username": user, "client_ip": ip, "reason": details, "event_type": eventType,
-					"attempted_url": url, "details": details, "user_agent": ua, "created_at": at,
-				}})
-			}
-		}
-		rows.Close()
-	}
 
-	for i := 0; i < len(all); i++ {
-		for j := i + 1; j < len(all); j++ {
-			if all[j].at > all[i].at {
-				all[i], all[j] = all[j], all[i]
-			}
-		}
-	}
-	total := len(all)
+	var violations, events int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM violations v JOIN websites w ON w.id=v.website_id WHERE `+vWhere, vArgs...).Scan(&violations)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM security_events e JOIN websites w ON w.id=e.website_id WHERE `+sWhere, sArgs...).Scan(&events)
+	total := violations + events
 	page = clampPage(page, size, total)
-	start := (page - 1) * size
-	if start > total {
-		start = total
+
+	args := append(append([]any{}, vArgs...), sArgs...)
+	args = append(args, size, (page-1)*size)
+	rows, err := s.db.Query(`SELECT id, website_id, website_name, username, client_ip, event_type, attempted_url, details, user_agent, created_at, kind FROM (
+		SELECT v.id AS id, v.website_id AS website_id, w.name AS website_name, v.username AS username, v.client_ip AS client_ip,
+			'violation' AS event_type, '' AS attempted_url, v.reason AS details, '' AS user_agent, v.created_at AS created_at, 'violation' AS kind
+		FROM violations v JOIN websites w ON w.id=v.website_id WHERE `+vWhere+`
+		UNION ALL
+		SELECT e.id, e.website_id, w.name, e.username, e.client_ip, e.event_type, e.attempted_url, e.details, e.user_agent, e.created_at, 'security'
+		FROM security_events e JOIN websites w ON w.id=e.website_id WHERE `+sWhere+`
+	) security_rows ORDER BY created_at DESC LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
 	}
-	end := start + size
-	if end > total {
-		end = total
-	}
+	defer rows.Close()
 	items := []any{}
-	for _, row := range all[start:end] {
-		items = append(items, row.item)
+	for rows.Next() {
+		var id, website int
+		var name, user, ip, eventType, url, details, ua, at, kind string
+		if rows.Scan(&id, &website, &name, &user, &ip, &eventType, &url, &details, &ua, &at, &kind) != nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"kind": kind, "id": id, "website_id": website, "website_name": name,
+			"username": user, "client_ip": ip, "reason": details, "event_type": eventType,
+			"attempted_url": url, "details": details, "user_agent": ua, "created_at": at,
+		})
 	}
 	s.writePage(w, page, size, total, items)
 }

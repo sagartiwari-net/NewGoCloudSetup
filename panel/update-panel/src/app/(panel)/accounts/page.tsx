@@ -21,20 +21,14 @@ import {
   assignAccountsProxy,
   assignAccountsUserAgent,
   listAccounts,
-  listIngestLogs,
-  listProxies,
-  listUserAgents,
+  listAgentChoices,
   listAllWebsites,
+  listProxyChoices,
   type AccountListItem,
 } from "@/lib/api/client"
-import type { IngestLog } from "@/lib/api/types"
 import { formatIst } from "@/lib/format"
 import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
-
-function latestFor(logs: IngestLog[], accountId: number) {
-  return logs.find((log) => log.account_id === accountId)
-}
 
 export default function AccountsPage() {
   const { session } = useAuth()
@@ -42,10 +36,16 @@ export default function AccountsPage() {
   const [query, setQuery] = useState("")
   const [websiteFilter, setWebsiteFilter] = useState("all")
   const { page, setPage, pageSize } = useListPage()
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<AccountListItem | null>(null)
+  const [selected, setSelected] = useState<number[]>([])
+  const [bulk, setBulk] = useState<"proxy" | "agent" | null>(null)
+  const [bulkValue, setBulkValue] = useState("")
+  const [applying, setApplying] = useState(false)
   const { data, loading, reload } = useResource(
     `${session?.role ?? "none"}-${page}-${pageSize}-${query}-${websiteFilter}`,
     async () => {
-      const [accounts, websites, proxies, agents, logs] = await Promise.all([
+      const [accounts, websites] = await Promise.all([
         listAccounts({
           page,
           pageSize,
@@ -53,27 +53,16 @@ export default function AccountsPage() {
           websiteId: websiteFilter === "all" ? 0 : Number(websiteFilter),
         }),
         listAllWebsites(),
-        listProxies({ page: 1, pageSize: 50, query: "", status: "all" }),
-        listUserAgents({ page: 1, pageSize: 50, query: "" }),
-        isMaster
-          ? listIngestLogs({ page: 1, pageSize: 50, query: "", websiteId: 0, status: "all", accountId: 0 })
-          : Promise.resolve({ items: [] as IngestLog[], total: 0, page: 1, pageSize: 50 }),
       ])
-      return {
-        accounts,
-        websites,
-        proxies: proxies.items,
-        agents: agents.items,
-        logs: logs.items,
-      }
+      return { accounts, websites }
     },
   )
-  const [open, setOpen] = useState(false)
-  const [editing, setEditing] = useState<AccountListItem | null>(null)
-  const [selected, setSelected] = useState<number[]>([])
-  const [bulk, setBulk] = useState<"proxy" | "agent" | null>(null)
-  const [bulkValue, setBulkValue] = useState("")
-  const [applying, setApplying] = useState(false)
+  const needChoices = open || bulk !== null
+  const { data: choices } = useResource(needChoices ? "account-choices" : "account-choices-off", async () => {
+    if (!needChoices) return { proxies: [], agents: [] }
+    const [proxies, agents] = await Promise.all([listProxyChoices(), listAgentChoices()])
+    return { proxies: proxies.items, agents: agents.items }
+  })
 
   const rows = data?.accounts.items ?? []
   const allChecked = rows.length > 0 && rows.every((row) => selected.includes(row.id))
@@ -240,9 +229,9 @@ export default function AccountsPage() {
             key={editing?.id ?? "new"}
             account={editing}
             websites={data?.websites ?? []}
-            proxies={data?.proxies ?? []}
-            agents={data?.agents ?? []}
-            latestIngest={editing ? latestFor(data?.logs ?? [], editing.id) ?? null : null}
+            proxies={choices?.proxies ?? []}
+            agents={choices?.agents ?? []}
+            latestIngest={null}
             role={session.role}
             onDone={() => {
               setOpen(false)
@@ -268,8 +257,8 @@ export default function AccountsPage() {
               onValueChange={setBulkValue}
               items={
                 bulk === "agent"
-                  ? (data?.agents ?? []).map((agent) => ({ label: agent.name, value: String(agent.id) }))
-                  : (data?.proxies ?? []).map((proxy) => ({ label: proxy.name, value: String(proxy.id) }))
+                  ? (choices?.agents ?? []).map((agent) => ({ label: agent.name, value: String(agent.id) }))
+                  : (choices?.proxies ?? []).map((proxy) => ({ label: proxy.name, value: String(proxy.id) }))
               }
             />
           </Field>

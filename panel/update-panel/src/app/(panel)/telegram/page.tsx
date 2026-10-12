@@ -26,7 +26,7 @@ import {
   getTelegramSettings,
   getTelegramTemplates,
   listAllWebsites,
-  listResellers,
+  listResellerChoices,
   listTelegramDeliveries,
   listTelegramDestinations,
   listTelegramRoutes,
@@ -109,7 +109,7 @@ function ConfigurationTab() {
           resellerId: isMaster && resellerId !== "all" ? Number(resellerId) : 0,
         }),
         isMaster
-          ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+          ? listResellerChoices()
           : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
       ])
       return { settings, destinations, resellers: resellers.items }
@@ -373,7 +373,7 @@ function RoutingTab() {
           resellerId: isMaster && resellerId !== "all" ? Number(resellerId) : 0,
         }),
         isMaster
-          ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+          ? listResellerChoices()
           : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
       ])
       return { routes, resellers: resellers.items }
@@ -481,7 +481,7 @@ function RouteForm({ route, onDone }: { route: TelegramRouteRow | null; onDone: 
       listAllWebsites(),
       listTelegramDestinations({ page: 1, pageSize: 50, query: "", resellerId: 0, allChats: true }),
       session?.role === "master"
-        ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+        ? listResellerChoices()
         : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
     ])
     return { websites, destinations: destinations.items, resellers: resellers.items }
@@ -700,7 +700,7 @@ function SentTab() {
           resellerId: isMaster && resellerId !== "all" ? Number(resellerId) : 0,
         }),
         isMaster
-          ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+          ? listResellerChoices()
           : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
       ])
       return { deliveries, resellers: resellers.items }

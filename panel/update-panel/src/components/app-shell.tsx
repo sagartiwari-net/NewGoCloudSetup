@@ -216,7 +216,7 @@ function ShellFrame({
                           <SidebarMenuButton
                             isActive={isActive(pathname, item.href)}
                             tooltip={item.label}
-                            render={<Link href={item.href} />}
+                            render={<Link href={item.href} prefetch={false} />}
                           >
                             <Icon />
                             <span>{item.label}</span>
@@ -236,7 +236,7 @@ function ShellFrame({
               <SidebarMenuButton
                 isActive={pathname === "/profile"}
                 tooltip="Profile"
-                render={<Link href="/profile" />}
+                render={<Link href="/profile" prefetch={false} />}
               >
                 <UserIcon />
                 <span>Profile</span>
@@ -298,7 +298,7 @@ function ShellFrame({
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               {role === "master" ? (
-                <DropdownMenuItem render={<Link href="/settings" />}>
+                <DropdownMenuItem render={<Link href="/settings" prefetch={false} />}>
                   <SettingsIcon />
                   Settings
                 </DropdownMenuItem>

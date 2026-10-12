@@ -26,7 +26,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useResource } from "@/hooks/use-resource"
 import {
   deleteUser,
-  listResellers,
+  listResellerChoices,
   listTools,
   listUsers,
   listAllWebsites,
@@ -71,7 +71,7 @@ export default function LimitsPage() {
         listAllWebsites(),
         listTools(),
         session?.role === "master"
-          ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+          ? listResellerChoices()
           : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
       ])
       return { users, websites, tools, resellers: resellers.items }

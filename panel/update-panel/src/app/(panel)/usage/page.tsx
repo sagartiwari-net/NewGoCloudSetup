@@ -28,7 +28,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useResource } from "@/hooks/use-resource"
 import {
   listQuota,
-  listResellers,
+  listResellerChoices,
   listTools,
   resetUserUsage,
   type Reseller,
@@ -67,7 +67,7 @@ export default function UsagePage() {
         }),
         listTools(),
         session?.role === "master"
-          ? listResellers({ page: 1, pageSize: 50, query: "", status: "all" })
+          ? listResellerChoices()
           : Promise.resolve({ items: [] as Reseller[], total: 0, page: 1, pageSize: 50 }),
       ])
       return { quota, tools, resellers: resellers.items }
