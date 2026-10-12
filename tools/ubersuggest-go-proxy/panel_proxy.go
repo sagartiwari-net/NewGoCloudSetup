@@ -86,9 +86,12 @@ func applyPanelPremiumCookie(r *http.Request, fileCookie string) string {
 	} else {
 		r.Header.Set("Cookie", strings.Join(kept, "; "))
 	}
-	flat := panelFlattenCookies(panelCookie)
-	*r = *r.WithContext(context.WithValue(r.Context(), panelCookieMemo{}, flat))
-	return flat
+	session := uberSessionCookieHeader(panelCookie)
+	if session == "" {
+		session = panelFlattenCookies(panelCookie)
+	}
+	*r = *r.WithContext(context.WithValue(r.Context(), panelCookieMemo{}, session))
+	return session
 }
 
 func panelMemoCookie(r *http.Request) string {

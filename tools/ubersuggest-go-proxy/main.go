@@ -1283,10 +1283,12 @@ func main() {
 		req.Header.Del("X-Forwarded-Proto")
 
 		premiumCookies := applyPanelPremiumCookie(req, loadCookiesFromFile(cfg.CookiePath))
-		clientCookies := req.Header.Get("Cookie")
-		mergedCookies := mergeCookies(clientCookies, premiumCookies)
-		if mergedCookies != "" {
-			req.Header.Set("Cookie", mergedCookies)
+		if premiumCookies != "" {
+			req.Header.Set("Cookie", premiumCookies)
+		}
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			req.Header.Set("Cache-Control", "no-cache")
+			req.Header.Set("Pragma", "no-cache")
 		}
 		logUberAuthCookies(req.URL.Path, premiumCookies)
 
@@ -1413,6 +1415,9 @@ func main() {
 			resp.Body.Close()
 
 			bodyStr := string(bodyBytes)
+			if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/get_token") && strings.Contains(bodyStr, "unlogged") {
+				log.Printf("[UBER] get_token returned an unlogged token — id/state were not accepted")
+			}
 			proxySchemeHost := proxyScheme + "://" + proxyHost
 
 			bodyStr = strings.ReplaceAll(bodyStr, cfg.TargetURL, proxySchemeHost)

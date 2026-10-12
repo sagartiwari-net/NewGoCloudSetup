@@ -577,9 +577,8 @@ func panelCookieForAccount(raw string) string {
 	if trimmed == "" {
 		return ""
 	}
-	// Ubersuggest login is the id + state cookies. A GoAuto wrap still has to
-	// become a Cookie header; leaving the JSON blob makes upstream see no session.
-	return panelFlattenCookies(trimmed)
+	// Keep the GoAuto JSON. The session header is built later so domain is still known.
+	return trimmed
 }
 
 func panelFlattenCookies(raw string) string {
@@ -605,13 +604,15 @@ func panelFlattenCookies(raw string) string {
 }
 
 type panelCookieEntry struct {
-	name  string
-	value string
+	name   string
+	value  string
+	domain string
 }
 
 type panelJSONCookie struct {
-	Name  string          `json:"name"`
-	Value json.RawMessage `json:"value"`
+	Name   string          `json:"name"`
+	Value  json.RawMessage `json:"value"`
+	Domain string          `json:"domain"`
 }
 
 func (c panelJSONCookie) stringValue() string {
@@ -649,7 +650,7 @@ func panelCookieEntries(raw string) []panelCookieEntry {
 	}
 	out := make([]panelCookieEntry, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, panelCookieEntry{name: row.Name, value: row.stringValue()})
+		out = append(out, panelCookieEntry{name: row.Name, value: row.stringValue(), domain: row.Domain})
 	}
 	return out
 }

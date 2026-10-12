@@ -24,57 +24,124 @@ func uberCookiePairs(header string) map[string]string {
 	return out
 }
 
+func uberSessionName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "id", "state", "ubs-accounts", "ubs-account-count":
+		return true
+	default:
+		return false
+	}
+}
+
+func uberNeilDomain(domain string) bool {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		return true
+	}
+	return strings.Contains(domain, "neilpatel")
+}
+
+// uberSessionCookieHeader keeps the Neil Patel session cookies.
+// A full browser export also contains tracking cookies, and a second cookie
+// with the same name was replacing id/state before they reached the API.
+func uberSessionCookieHeader(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	entries := panelCookieEntries(raw)
+	if len(entries) == 0 && !strings.HasPrefix(raw, "{") && !strings.HasPrefix(raw, "[") {
+		for name, value := range uberCookiePairs(raw) {
+			entries = append(entries, panelCookieEntry{name: name, value: value})
+		}
+	}
+	best := map[string]panelCookieEntry{}
+	var order []string
+	for _, e := range entries {
+		if e.name == "" || e.value == "" || !uberSessionName(e.name) || !uberNeilDomain(e.domain) {
+			continue
+		}
+		prev, ok := best[e.name]
+		if ok && uberNeilDomain(prev.domain) && strings.Contains(strings.ToLower(prev.domain), "neilpatel") && !strings.Contains(strings.ToLower(e.domain), "neilpatel") {
+			continue
+		}
+		if !ok {
+			order = append(order, e.name)
+		}
+		best[e.name] = e
+	}
+	// id and state have to be first. The API rejects the session without them.
+	prefer := []string{"id", "state", "ubs-accounts", "ubs-account-count"}
+	var parts []string
+	seen := map[string]bool{}
+	for _, name := range prefer {
+		if e, ok := best[name]; ok {
+			parts = append(parts, e.name+"="+e.value)
+			seen[name] = true
+		}
+	}
+	for _, name := range order {
+		if seen[name] {
+			continue
+		}
+		parts = append(parts, best[name].name+"="+best[name].value)
+	}
+	return strings.Join(parts, "; ")
+}
+
 func logUberAuthCookies(path, header string) {
-	if path != "/" && path != "/dashboard" && !strings.Contains(path, "/analyze") && !strings.Contains(path, "/en/") {
+	if path != "/" && path != "/dashboard" && !strings.Contains(path, "/analyze") && !strings.Contains(path, "/en/") && !strings.Contains(path, "/api/") {
 		return
 	}
 	pairs := uberCookiePairs(header)
 	_, hasID := pairs["id"]
 	_, hasState := pairs["state"]
-	log.Printf("[UBER] upstream %s cookies=%d id=%v state=%v json=%v", path, len(pairs), hasID, hasState, strings.HasPrefix(strings.TrimSpace(header), "{"))
+	_, hasAccounts := pairs["ubs-accounts"]
+	log.Printf("[UBER] upstream %s id=%v(%d) state=%v(%d) ubs-accounts=%v(%d)", path, hasID, len(pairs["id"]), hasState, len(pairs["state"]), hasAccounts, len(pairs["ubs-accounts"]))
 }
 
 // rewriteUpstreamSetCookies keeps session cookies on the proxy host.
 // Leaving Domain=app.neilpatel.com makes the browser drop them.
+// The raw line is kept so a long state value is not stripped by the cookie parser.
 func rewriteUpstreamSetCookies(resp *http.Response) {
-	cookies := resp.Cookies()
-	if len(cookies) == 0 {
+	raw := resp.Header.Values("Set-Cookie")
+	if len(raw) == 0 {
 		return
 	}
 	resp.Header.Del("Set-Cookie")
-	for _, c := range cookies {
-		if c == nil || c.Name == "" {
-			continue
+	for _, line := range raw {
+		parts := strings.Split(line, ";")
+		kept := []string{parts[0]}
+		for _, p := range parts[1:] {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(p)), "domain=") {
+				continue
+			}
+			kept = append(kept, p)
 		}
-		c.Domain = ""
-		if c.Path == "" {
-			c.Path = "/"
-		}
-		if c.SameSite == http.SameSiteDefaultMode {
-			c.SameSite = http.SameSiteLaxMode
-		}
-		resp.Header.Add("Set-Cookie", c.String())
+		resp.Header.Add("Set-Cookie", strings.Join(kept, ";"))
 	}
 }
 
-// seedUberAuthCookies puts id and state on the browser. The app reads them
-// from document.cookie; sending them only upstream still paints Sign in.
+func uberSetCookieLine(name, value, path string) string {
+	if path == "" {
+		path = "/"
+	}
+	return name + "=" + value + "; Path=" + path + "; Max-Age=604800; SameSite=Lax"
+}
+
+// seedUberAuthCookies puts the session on the browser. /api/get_token stays
+// logged out unless id and state are on the request.
 func seedUberAuthCookies(resp *http.Response, header string) {
 	pairs := uberCookiePairs(header)
-	for _, name := range []string{"id", "state"} {
+	for _, name := range []string{"id", "state", "ubs-accounts", "ubs-account-count"} {
 		value := pairs[name]
-		if value == "" {
+		if value == "" || strings.ContainsAny(value, ";\r\n") {
 			continue
 		}
-		c := &http.Cookie{
-			Name:     name,
-			Value:    value,
-			Path:     "/",
-			MaxAge:   7 * 24 * 3600,
-			SameSite: http.SameSiteLaxMode,
-			HttpOnly: false,
+		resp.Header.Add("Set-Cookie", uberSetCookieLine(name, value, "/"))
+		if name == "ubs-accounts" {
+			resp.Header.Add("Set-Cookie", uberSetCookieLine(name, value, "/api/next/session"))
 		}
-		resp.Header.Add("Set-Cookie", c.String())
 	}
 }
 
