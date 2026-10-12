@@ -11,9 +11,10 @@ const handle = app.getRequestHandler()
 
 // A refresh can still be showing the previous build's HTML. Those script
 // URLs 404, so the page stays on "Redirecting to sign in". Answer the
-// missing file with a one-time reload instead of a 404.
+// missing file with a reload onto ?__v=, which is not the cached document.
+// Already on ?__v= means this build's own file is missing: do not loop.
 const RELOAD =
-  '(function(){try{if(sessionStorage.getItem("panel-static-reload")==="1")return;sessionStorage.setItem("panel-static-reload","1");var u=new URL(location.href);u.searchParams.set("__v",String(Date.now()));location.replace(u.toString())}catch(e){}})();'
+  '(function(){try{var u=new URL(location.href);if(u.searchParams.has("__v"))return;u.searchParams.set("__v",String(Date.now()));location.replace(u.toString())}catch(e){}})();'
 
 function staticFileExists(pathname) {
   let rel = pathname.slice("/_next/static/".length)
@@ -28,6 +29,13 @@ function staticFileExists(pathname) {
 
 app.prepare().then(() => {
   createServer((req, res) => {
+    // Chrome sends "gzip, deflate, br, zstd". Next has a year-long prerender
+    // (x-nextjs-cache: HIT, s-maxage=31536000) stored for that exact header,
+    // and that copy still says "Redirecting to sign in".
+    const encoding = String(req.headers["accept-encoding"] || "")
+    if (encoding.includes("zstd") || encoding.includes("br")) {
+      req.headers["accept-encoding"] = "gzip"
+    }
     const parsed = parse(req.url || "/", true)
     const pathname = parsed.pathname || "/"
     if (pathname.startsWith("/_next/static/") && !staticFileExists(pathname)) {

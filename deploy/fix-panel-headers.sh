@@ -73,6 +73,16 @@ if "If-None-Match" not in t:
         if_modified_since off;""",
     )
 
+# Chrome's document is cached for a year (s-maxage=31536000) under its
+# Accept-Encoding. Do not read or store that cache for the panel UI.
+if "proxy_cache_bypass 1;" not in t:
+    t = t.replace(
+        "proxy_pass http://127.0.0.1:3000;",
+        """proxy_pass http://127.0.0.1:3000;
+        proxy_cache_bypass 1;
+        proxy_no_cache 1;""",
+    )
+
 if t == orig:
     print("panel nginx already accepts large cookies and reloads a stale build")
 else:
