@@ -36,12 +36,25 @@ nohup env PORT="${PORT}" NODE_OPTIONS="--max-http-header-size=524288" npm run st
 echo $! >"${PIDF}"
 echo "OK: panel-ui pid $(cat "${PIDF}") → 127.0.0.1:${PORT} (log ${LOG})"
 
-sleep 2
-if ! curl -sf -o /tmp/panel-boot.html "http://127.0.0.1:${PORT}/accounts"; then
+ready=0
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  if curl -sf -o /tmp/panel-boot.html "http://127.0.0.1:${PORT}/accounts"; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [[ "${ready}" != "1" ]]; then
   echo "panel-ui did not answer on :${PORT}. Last log lines:"
   tail -n 40 "${LOG}" || true
   exit 1
 fi
+stale_code="$(curl -s -o /tmp/panel-stale.js -w '%{http_code}' "http://127.0.0.1:${PORT}/_next/static/chunks/turbopack-missing-panel.js")"
+if [[ "${stale_code}" != "200" ]] || ! grep -q panel-static-reload /tmp/panel-stale.js; then
+  echo "missing static file returned HTTP ${stale_code}, not the reload script"
+  exit 1
+fi
+echo "stale chunk returns a one-time page reload"
 python3 - "${PORT}" <<'PY'
 import re, sys, urllib.request
 port = sys.argv[1]
