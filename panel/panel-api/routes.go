@@ -72,6 +72,34 @@ func (s *server) saveTool(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"id": body.ID, "name": body.Name, "category": body.Category, "limits": jsonRaw(string(raw), []any{})})
 }
 
+func (s *server) listWebsiteOptions(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok {
+		return
+	}
+	where, args := s.scope(op, "w.id")
+	rows, err := s.db.Query(`SELECT w.id, w.tool_id, w.name, w.domain, w.default_limits_json
+		FROM websites w WHERE `+where+` ORDER BY w.name`, args...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	items := []any{}
+	for rows.Next() {
+		var id, toolID int
+		var name, domain, limits string
+		if rows.Scan(&id, &toolID, &name, &domain, &limits) != nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"id": id, "tool_id": toolID, "name": name, "domain": domain,
+			"default_limits": jsonRaw(limits, map[string]int{}),
+		})
+	}
+	writeJSON(w, 200, map[string]any{"items": items})
+}
+
 func (s *server) listWebsites(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
 	if !ok {

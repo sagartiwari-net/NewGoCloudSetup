@@ -67,6 +67,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/dashboard", s.dashboard)
 	mux.HandleFunc("GET /api/tools", s.listTools)
 	mux.HandleFunc("POST /api/tools", s.saveTool)
+	mux.HandleFunc("GET /api/websites/options", s.listWebsiteOptions)
 	mux.HandleFunc("GET /api/websites", s.listWebsites)
 	mux.HandleFunc("POST /api/websites", s.saveWebsite)
 	mux.HandleFunc("DELETE /api/websites", s.deleteWebsite)

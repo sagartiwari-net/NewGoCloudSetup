@@ -580,15 +580,15 @@ export async function listWebsites(query: {
 
 export function listAllWebsites(): Promise<Website[]> {
   return cachedCatalog("websites", async () => {
-    const pageSize = 50
-    const first = await listWebsites({ page: 1, pageSize, query: "" })
-    const items = [...first.items]
-    const pages = Math.max(1, Math.ceil(first.total / pageSize))
-    for (let page = 2; page <= pages; page += 1) {
-      const next = await listWebsites({ page, pageSize, query: "" })
-      items.push(...next.items)
-    }
-    return items
+    const page = await api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> }>(
+      "/api/websites/options",
+    )
+    return (page.items ?? []).map((website) => ({
+      ...website,
+      secret_key: "",
+      session_duration: 0,
+      session_security_enabled: false,
+    }))
   })
 }
 
