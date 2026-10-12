@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -260,6 +261,13 @@ func (s *server) userJSON(id int) map[string]any {
 	}
 }
 
+func jsonArrayCountExpr(column string) string {
+	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) != "" {
+		return `COALESCE(JSON_LENGTH(IF(JSON_VALID(` + column + `), ` + column + `, NULL)), 0)`
+	}
+	return `COALESCE(json_array_length(` + column + `), 0)`
+}
+
 func (s *server) listUsers(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
 	if !ok {
@@ -269,7 +277,9 @@ func (s *server) listUsers(w http.ResponseWriter, r *http.Request) {
 	page, size, _ := pageQuery(r)
 	where, args := s.userWhere(op, r, false)
 	// Limits page: only websites whose tool defines at least one limit.
-	where += ` AND COALESCE(json_array_length(t.limits_json), 0) > 0`
+	// SQLite has json_array_length. MySQL uses JSON_LENGTH, and it errors
+	// on text that is not JSON, which would blank the whole page.
+	where += ` AND ` + jsonArrayCountExpr("t.limits_json") + ` > 0`
 	var total int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM panel_users u JOIN websites w ON w.id=u.website_id JOIN tools t ON t.id=w.tool_id WHERE `+where, args...).Scan(&total)
 	page = clampPage(page, size, total)
@@ -346,13 +356,13 @@ func (s *server) listDirectoryUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type dirRow struct {
-		username   string
-		siteCount  int
-		siteIDs    string
-		siteNames  string
-		toolNames  string
-		statuses   string
-		primaryID  int
+		username  string
+		siteCount int
+		siteIDs   string
+		siteNames string
+		toolNames string
+		statuses  string
+		primaryID int
 	}
 	pending := []dirRow{}
 	names := []string{}
