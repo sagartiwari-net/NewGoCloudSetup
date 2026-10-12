@@ -60,6 +60,19 @@ if len(parts) > 1 and not patched_server and "@panel_stale_chunk" not in t:
     raise SystemExit("panel nginx has no UI location / block")
 t = "server {".join(out)
 
+# 304 made Chrome keep the old HTML and then request files this build deleted.
+if "If-None-Match" not in t:
+    t = t.replace(
+        "proxy_pass http://127.0.0.1:3000;",
+        """proxy_pass http://127.0.0.1:3000;
+        proxy_set_header If-None-Match "";
+        proxy_set_header If-Modified-Since "";
+        proxy_hide_header ETag;
+        proxy_hide_header Last-Modified;
+        etag off;
+        if_modified_since off;""",
+    )
+
 if t == orig:
     print("panel nginx already accepts large cookies and reloads a stale build")
 else:

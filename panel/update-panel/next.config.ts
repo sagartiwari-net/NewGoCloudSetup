@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // A 304 let Chrome keep the previous build's HTML, which then requested
+  // turbopack files this build does not have.
+  generateEtags: false,
   // The accounts page died on a missing /_next/static/css file. Inlining
   // puts the stylesheet in the HTML, so a dropped CSS chunk cannot crash the app.
   experimental: {
