@@ -42,11 +42,13 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var dbUser, clientIP string
-	err = db.QueryRow(`DELETE FROM access_tokens
+	err = db.QueryRow(`SELECT username, COALESCE(client_ip, '') FROM access_tokens
 		WHERE token = ? AND expires_at > ?
-		AND website_id IN (SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?))
-		RETURNING username, COALESCE(client_ip, '')`,
+		AND website_id IN (SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?))`,
 		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost).Scan(&dbUser, &clientIP)
+	if err == nil {
+		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
+	}
 	user := strings.TrimSpace(dbUser)
 	if err != nil || user == "" {
 		log.Printf("[PANEL] token rejected err=%v", err)

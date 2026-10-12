@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"bytes"
 	"crypto/rand"
 	"database/sql"
@@ -12,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,7 +45,6 @@ var (
 	envatoSessions  sync.Map
 	envatoPickMu    sync.Mutex // serializes claim/switch so concurrent Access opens round-robin
 )
-
 
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
@@ -137,10 +136,9 @@ func serveEnvatoPanelAccess(w http.ResponseWriter, r *http.Request, username, to
 		return
 	}
 	var dbUser, clientIP string
-	err = db.QueryRow(`DELETE FROM access_tokens
+	err = db.QueryRow(`SELECT username, COALESCE(client_ip, '') FROM access_tokens
 		WHERE token = ? AND expires_at > ?
-		AND website_id IN (SELECT id FROM websites WHERE domain IN (?, ?))
-		RETURNING username, COALESCE(client_ip, '')`,
+		AND website_id IN (SELECT id FROM websites WHERE domain IN (?, ?))`,
 		token, time.Now().UTC().Format(time.RFC3339), "127.0.0.1:5261", cfg.PublicHost).
 		Scan(&dbUser, &clientIP)
 	username = strings.TrimSpace(dbUser)
@@ -152,6 +150,9 @@ func serveEnvatoPanelAccess(w http.ResponseWriter, r *http.Request, username, to
 	var userStatus string
 	_ = db.QueryRow(`SELECT status FROM panel_users WHERE website_id IN (SELECT id FROM websites WHERE domain IN (?, ?)) AND username=?`,
 		"127.0.0.1:5261", cfg.PublicHost, username).Scan(&userStatus)
+	if err == nil {
+		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
+	}
 	if userStatus == "suspended" {
 		log.Printf("[PANEL] suspended user=%s", username)
 		renderAccessDeniedPage(w)
@@ -1678,5 +1679,5 @@ func panelMySQLDSN(cfg Config) string {
 	if pass == "" {
 		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
 	}
-	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
+	return url.UserPassword(user, pass).String() + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

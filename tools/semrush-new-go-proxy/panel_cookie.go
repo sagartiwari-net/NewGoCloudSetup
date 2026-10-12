@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -119,5 +120,5 @@ func panelMySQLDSN(cfg Config) string {
 	if pass == "" {
 		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
 	}
-	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
+	return url.UserPassword(user, pass).String() + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

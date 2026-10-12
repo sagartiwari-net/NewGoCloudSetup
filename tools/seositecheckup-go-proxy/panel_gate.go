@@ -8,6 +8,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +35,6 @@ var (
 	panelDBErr  error
 	panelSess   sync.Map
 )
-
 
 // canonicalPanelDBPath is the Update Panel database — the only allowed cookie source on server.
 const canonicalPanelDBPath = "/www/wwwroot/gt4rents.com/panel/data/panel.db"
@@ -298,12 +298,11 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, durationMin int
 	// Consume OTT only when website domain matches public_host or request Host.
-	err = db.QueryRow(`DELETE FROM access_tokens
+	err = db.QueryRow(`SELECT username, product_id, COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens
 		WHERE token = ? AND expires_at > ?
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
-		)
-		RETURNING username, product_id, COALESCE(client_ip, ''), expires_at, website_id`,
+		)`,
 		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).
 		Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	if err != nil {
@@ -319,6 +318,9 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	}
 	var domain string
 	err = db.QueryRow(`SELECT domain, COALESCE(session_duration, 120) FROM websites WHERE id = ?`, websiteID).Scan(&domain, &durationMin)
+	if err == nil {
+		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
+	}
 	if err != nil {
 		log.Printf("[PANEL] session_duration lookup failed user=%s wid=%d err=%v", username, websiteID, err)
 		renderAccessDeniedPage(w, cfg)
@@ -552,7 +554,6 @@ func toolDisplayName(cfg Config) string {
 	return name
 }
 
-
 func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
 		writeLightCard(w, http.StatusBadGateway, lightCard{
@@ -671,5 +672,5 @@ func panelMySQLDSN(cfg Config) string {
 	if pass == "" {
 		pass = os.Getenv("GT4RENTS_MYSQL_PASSWORD")
 	}
-	return user + ":" + pass + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
+	return url.UserPassword(user, pass).String() + "@tcp(" + host + ":" + port + ")/" + name + "?charset=utf8mb4&parseTime=false&sql_mode=ANSI_QUOTES"
 }

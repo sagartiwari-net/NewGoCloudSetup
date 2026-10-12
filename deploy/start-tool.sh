@@ -36,10 +36,12 @@ if [[ ! -f "${OUTDIR}/config.json" ]]; then
   exit 1
 fi
 
-# optional mysql env
+# optional mysql env — export so the tool process inherits the password
 if [[ -f "${BASE}/_secrets/mysql.env" ]]; then
   # shellcheck disable=SC1090
+  set -a
   source "${BASE}/_secrets/mysql.env"
+  set +a
 fi
 
 free_port() {
@@ -80,14 +82,21 @@ free_port "${PORT}"
 sleep 1
 
 cd "${OUTDIR}"
-nohup ./app >>"${LOG}" 2>&1 &
+mysql_env=(
+  GT4RENTS_MYSQL_PASSWORD="${GT4RENTS_MYSQL_PASSWORD:-}"
+  GT4RENTS_MYSQL_HOST="${GT4RENTS_MYSQL_HOST:-127.0.0.1}"
+  GT4RENTS_MYSQL_PORT="${GT4RENTS_MYSQL_PORT:-3306}"
+  GT4RENTS_MYSQL_USER="${GT4RENTS_MYSQL_USER:-gt4rents}"
+  GT4RENTS_MYSQL_DB="${GT4RENTS_MYSQL_DB:-gt4rents}"
+)
+nohup env "${mysql_env[@]}" ./app >>"${LOG}" 2>&1 &
 echo $! >"${PIDF}"
 sleep 1
 if ! kill -0 "$(cat "${PIDF}")" 2>/dev/null; then
   # One retry after hard port free (stale bind race)
   free_port "${PORT}"
   sleep 1
-  nohup ./app >>"${LOG}" 2>&1 &
+  nohup env "${mysql_env[@]}" ./app >>"${LOG}" 2>&1 &
   echo $! >"${PIDF}"
   sleep 1
 fi

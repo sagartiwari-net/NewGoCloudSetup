@@ -472,12 +472,14 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, minutes int
-	err = db.QueryRow(`DELETE FROM access_tokens WHERE token=? AND expires_at>?
+	err = db.QueryRow(`SELECT username, product_id, COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens WHERE token=? AND expires_at>?
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)), '127.0.0.1:5141')
-		)
-		RETURNING username, product_id, COALESCE(client_ip, ''), expires_at, website_id`,
+		)`,
 		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
+	if err == nil {
+		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
+	}
 	username := strings.TrimSpace(dbUser)
 	if err != nil || username == "" {
 		log.Printf("[PANEL] token rejected host=%s public_host=%s err=%v", reqHost, cfg.PublicHost, err)
