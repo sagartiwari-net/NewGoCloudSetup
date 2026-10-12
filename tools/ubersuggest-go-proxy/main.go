@@ -1282,7 +1282,11 @@ func main() {
 		req.Header.Del("X-Forwarded-Host")
 		req.Header.Del("X-Forwarded-Proto")
 
-		premiumCookies := applyPanelPremiumCookie(req, loadCookiesFromFile(cfg.CookiePath))
+		fileCookie := ""
+		if strings.TrimSpace(req.Header.Get("X-Panel-Cookie")) == "" {
+			fileCookie = loadCookiesFromFile(cfg.CookiePath)
+		}
+		premiumCookies := applyPanelPremiumCookie(req, fileCookie)
 		if premiumCookies != "" {
 			req.Header.Set("Cookie", premiumCookies)
 		}
@@ -1415,8 +1419,12 @@ func main() {
 			resp.Body.Close()
 
 			bodyStr := string(bodyBytes)
-			if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/get_token") && strings.Contains(bodyStr, "unlogged") {
-				log.Printf("[UBER] get_token returned an unlogged token — id/state were not accepted")
+			if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/get_token") {
+				if resp.StatusCode == 403 {
+					log.Printf("[UBER] get_token 403 — session cookie was rejected")
+				} else if strings.Contains(bodyStr, "unlogged") {
+					log.Printf("[UBER] get_token returned an unlogged token — id/state were not accepted")
+				}
 			}
 			proxySchemeHost := proxyScheme + "://" + proxyHost
 
@@ -1707,7 +1715,11 @@ func main() {
 				bodyStr = string(injectDeviceHTML([]byte(bodyStr)))
 			}
 			if strings.Contains(strings.ToLower(contentType), "text/html") && resp.Request != nil {
-				if script := uberAuthCookieScript(panelMemoCookie(resp.Request)); script != "" {
+				script := uberAuthCookieScript(panelMemoCookie(resp.Request))
+				if usesPanelAccountMode(cfg) {
+					script += uberGuestWatchScript
+				}
+				if script != "" {
 					headIdx := strings.Index(strings.ToLower(bodyStr), "<head>")
 					if headIdx != -1 {
 						bodyStr = bodyStr[:headIdx+6] + script + bodyStr[headIdx+6:]
@@ -1800,6 +1812,14 @@ func main() {
 		// 2. Handle /access
 		if r.URL.Path == "/access" {
 			accessHandler(w, r)
+			return
+		}
+		if r.URL.Path == "/tm-switching" {
+			serveUberAccountSwitch(w, r, cfg, acc)
+			return
+		}
+		if r.URL.Path == "/tm-unavailable" {
+			renderUberUnavailable(w)
 			return
 		}
 

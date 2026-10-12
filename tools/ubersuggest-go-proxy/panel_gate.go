@@ -368,6 +368,39 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 
 // panelSwitchAccount moves this session to the next active account.
 // failure_count goes up. status stays active so the account can be used again later.
+func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentName, username, reason string) (ToolAccount, error) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
+		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
+	var websiteID int
+	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+	if currentID > 0 {
+		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
+	}
+	if err != nil {
+		uberRecordSwitch(db, websiteID, currentID, username, currentName, "(none)", "no_other_active:"+reason, "")
+		return ToolAccount{}, fmt.Errorf("no other active account")
+	}
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+	if sessionToken != "" {
+		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+	}
+	var clientIP string
+	if sessionToken != "" {
+		_ = db.QueryRow(`SELECT client_ip FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&clientIP)
+	}
+	uberRecordSwitch(db, websiteID, currentID, username, currentName, acc.Name, reason, clientIP)
+	log.Printf("[LB] switched '%s' (ID:%d) -> '%s' (ID:%d) reason=%s", currentName, currentID, acc.Name, acc.ID, reason)
+	return acc, nil
+}
+
 func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 	var acc ToolAccount
 	var showLimit int

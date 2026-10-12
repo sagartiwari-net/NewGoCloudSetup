@@ -76,17 +76,47 @@ func uberSessionCookieHeader(raw string) string {
 	seen := map[string]bool{}
 	for _, name := range prefer {
 		if e, ok := best[name]; ok {
-			parts = append(parts, e.name+"="+e.value)
-			seen[name] = true
+			if value := uberSafeCookieValue(e.value); value != "" {
+				parts = append(parts, e.name+"="+value)
+				seen[name] = true
+			}
 		}
 	}
 	for _, name := range order {
 		if seen[name] {
 			continue
 		}
-		parts = append(parts, best[name].name+"="+best[name].value)
+		if value := uberSafeCookieValue(best[name].value); value != "" {
+			parts = append(parts, best[name].name+"="+value)
+		}
 	}
 	return strings.Join(parts, "; ")
+}
+
+// uberSafeCookieValue drops JSON wrapping and encodes bytes that Go's cookie
+// writer deletes and that the API answers with 403.
+func uberSafeCookieValue(v string) string {
+	v = strings.TrimSpace(v)
+	for i := 0; i < 2 && len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"'; i++ {
+		inner := strings.ReplaceAll(v[1:len(v)-1], `\"`, `"`)
+		inner = strings.ReplaceAll(inner, `\\`, `\`)
+		v = inner
+	}
+	var b strings.Builder
+	for i := 0; i < len(v); i++ {
+		switch v[i] {
+		case '"':
+			b.WriteString("%22")
+		case '\\':
+			b.WriteString("%5C")
+		case ';':
+			b.WriteString("%3B")
+		case '\r', '\n':
+		default:
+			b.WriteByte(v[i])
+		}
+	}
+	return b.String()
 }
 
 func logUberAuthCookies(path, header string) {
@@ -134,8 +164,8 @@ func uberSetCookieLine(name, value, path string) string {
 func seedUberAuthCookies(resp *http.Response, header string) {
 	pairs := uberCookiePairs(header)
 	for _, name := range []string{"id", "state", "ubs-accounts", "ubs-account-count"} {
-		value := pairs[name]
-		if value == "" || strings.ContainsAny(value, ";\r\n") {
+		value := uberSafeCookieValue(pairs[name])
+		if value == "" {
 			continue
 		}
 		resp.Header.Add("Set-Cookie", uberSetCookieLine(name, value, "/"))

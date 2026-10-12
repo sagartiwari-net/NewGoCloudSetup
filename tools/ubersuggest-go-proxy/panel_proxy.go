@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -88,7 +89,7 @@ func applyPanelPremiumCookie(r *http.Request, fileCookie string) string {
 	}
 	session := uberSessionCookieHeader(panelCookie)
 	if session == "" {
-		session = panelFlattenCookies(panelCookie)
+		log.Printf("[UBER] account cookie has no usable id/state")
 	}
 	*r = *r.WithContext(context.WithValue(r.Context(), panelCookieMemo{}, session))
 	return session
