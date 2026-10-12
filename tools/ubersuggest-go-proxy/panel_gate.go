@@ -576,10 +576,8 @@ func panelCookieForAccount(raw string) string {
 	if trimmed == "" {
 		return ""
 	}
-	// GoAuto exports keep localStorage. Flattening them would drop the login token.
-	if strings.Contains(trimmed, `"localStorage"`) || strings.Contains(trimmed, `"local_storage"`) || strings.Contains(trimmed, `"includedFormats"`) {
-		return trimmed
-	}
+	// Ubersuggest login is the id + state cookies. A GoAuto wrap still has to
+	// become a Cookie header; leaving the JSON blob makes upstream see no session.
 	return panelFlattenCookies(trimmed)
 }
 

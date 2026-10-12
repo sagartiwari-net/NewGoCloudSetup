@@ -284,6 +284,9 @@ func generateOTT() (string, error) {
 
 // getAuthenticatedUser checks the session cookie against database sessions
 func getAuthenticatedUser(r *http.Request, cfg Config) (string, error) {
+	if usesPanelAccountMode(cfg) {
+		return panelSessionUsername(r)
+	}
 	cookie, err := r.Cookie("ct_session")
 	if err != nil {
 		return "", err

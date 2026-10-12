@@ -85,7 +85,7 @@ func applyPanelPremiumCookie(r *http.Request, fileCookie string) string {
 	} else {
 		r.Header.Set("Cookie", strings.Join(kept, "; "))
 	}
-	return panelCookie
+	return panelFlattenCookies(panelCookie)
 }
 
 func takePanelCookie(r *http.Request) string {
