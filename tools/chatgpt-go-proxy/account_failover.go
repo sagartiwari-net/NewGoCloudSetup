@@ -301,8 +301,14 @@ const accountSwitchRetryScript = `<script>
   var msg = document.querySelector(".msg");
   var title = document.querySelector("h1");
   if (n >= 3) {
-    if (title) title.textContent = "ChatGPT accounts logged out";
-    if (msg) msg.textContent = "Every mapped ChatGPT cookie looks logged out. Open Panel → Accounts → paste fresh ChatGPT cookies, then open a new access link.";
+    if (title) title.textContent = "Temporarily Unavailable";
+    if (msg) msg.textContent = "ChatGPT is temporarily unavailable. Please try again in a few minutes.";
+    var pill = document.querySelector(".pill");
+    if (pill) pill.style.display = "none";
+    var foot = document.querySelector(".foot");
+    if (foot) foot.textContent = "Open this tool again from your access link";
+    var ring = document.querySelector(".ring");
+    if (ring) ring.classList.remove("spin");
     try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}
     return;
   }
@@ -329,15 +335,34 @@ func panelLoginWallWatchScript() string {
     if (text.indexOf("log in or sign up") !== -1) return true;
     return text.indexOf("continue with google") !== -1 && text.indexOf("continue with apple") !== -1;
   }
-  function cover(message) {
+  function cover(mode) {
     var el = document.getElementById("tm-panel-switch");
     if (!el) {
       el = document.createElement("div");
       el.id = "tm-panel-switch";
-      el.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#0b0f19;color:#fff;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:24px;";
+      el.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#eef3f8;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
       document.documentElement.appendChild(el);
     }
-    el.innerHTML = '<div style="max-width:440px;text-align:center"><h1 style="font-size:22px;margin:0 0 12px">Switching account</h1><p style="font-size:15px;line-height:1.5;color:#cbd5e1;margin:0">' + message + "</p></div>";
+    var title = "Switching account";
+    var message = "Account logged out. Switching to another account...";
+    var badge = '<div style="margin:22px auto 0;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid #e6ebf2;border-radius:999px;color:#334155;font-size:14px;background:#fff;"><span style="width:14px;height:14px;border-radius:50%;border:2px solid #dbe4f0;border-top-color:#3b82f6;animation:tmSpin .8s linear infinite;"></span>Trying one account at a time</div>';
+    var footer = "This keeps trying until an account is available";
+    var ringAnim = "animation:tmSpin .9s linear infinite;";
+    if (mode === "unavailable") {
+      title = "Temporarily Unavailable";
+      message = "ChatGPT is temporarily unavailable. Please try again in a few minutes.";
+      badge = "";
+      footer = "Open this tool again from your access link";
+      ringAnim = "";
+    }
+    el.innerHTML = '<style>@keyframes tmSpin{to{transform:rotate(360deg)}}</style>' +
+      '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">' +
+      '<div style="width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center;">' +
+      '<div style="width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);display:grid;place-items:center;' + ringAnim + '"><div style="width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px;">🔒</div></div>' +
+      '<h1 style="font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin:0 0 12px;">' + title + '</h1>' +
+      '<p style="color:#64748b;font-size:15px;line-height:1.55;margin:0;">' + message + '</p>' +
+      badge +
+      '<p style="margin-top:18px;color:#94a3b8;font-size:13px;">' + footer + '</p></div></div>';
   }
   function arm() {
     if (started || !visibleWall()) return;
@@ -347,10 +372,11 @@ func panelLoginWallWatchScript() string {
     n += 1;
     try { sessionStorage.setItem("tm_acct_try", String(n)); } catch (e) {}
     if (n >= 3) {
-      cover("Every mapped ChatGPT cookie looks logged out. Open Panel, paste fresh ChatGPT cookies, then open a new access link.");
+      cover("unavailable");
+      try { sessionStorage.removeItem("tm_acct_try"); } catch (e) {}
       return;
     }
-    cover("This account is logged out. Switching to the next ChatGPT account...");
+    cover("switching");
     fetch("/api/rotate-session?reason=client_login_wall", { credentials: "include", cache: "no-store" })
       .finally(function () { setTimeout(function () { window.location.reload(); }, 700); });
   }

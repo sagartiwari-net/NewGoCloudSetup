@@ -1803,10 +1803,10 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "ChatGPT cookies expired",
-		Heading: "ChatGPT cookies expired",
-		Message: "Every mapped ChatGPT account cookie is logged out. Open Panel → Accounts → paste fresh ChatGPT cookies for this site, then open a <b>new</b> access link.",
-		Footer:  "Proxy is fine — account session needs refresh",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "ChatGPT is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
 	})
 }
 
