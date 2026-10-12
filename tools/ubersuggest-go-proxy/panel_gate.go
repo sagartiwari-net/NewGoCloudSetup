@@ -332,7 +332,7 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
 	log.Printf("[LB] claimed account '%s' (ID:%d) for %s", acc.Name, acc.ID, cfg.PublicHost)
-	return acc, nil
+	return fillAccountProxy(db, acc), nil
 }
 
 // loadPanelSessionAccount uses the account pinned on the live session.
@@ -354,7 +354,7 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
 		if accErr == nil {
-			return acc, nil
+			return fillAccountProxy(db, acc), nil
 		}
 	}
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
@@ -366,7 +366,7 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
 	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
 	log.Printf("[LB] auto-assigned '%s' (ID:%d) to session", acc.Name, acc.ID)
-	return acc, nil
+	return fillAccountProxy(db, acc), nil
 }
 
 // panelSwitchAccount moves this session to the next active account.
@@ -401,7 +401,25 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	}
 	uberRecordSwitch(db, websiteID, currentID, username, currentName, acc.Name, reason, clientIP)
 	log.Printf("[LB] switched '%s' (ID:%d) -> '%s' (ID:%d) reason=%s", currentName, currentID, acc.Name, acc.ID, reason)
-	return acc, nil
+	return fillAccountProxy(db, acc), nil
+}
+
+// fillAccountProxy uses the panel proxy when this account has none.
+// Ubersuggest's API rejects the server IP. The same cookie succeeds through that proxy.
+func fillAccountProxy(db *sql.DB, acc ToolAccount) ToolAccount {
+	if db == nil || strings.TrimSpace(acc.Proxy) != "" {
+		return acc
+	}
+	var endpoint string
+	err := db.QueryRow(`SELECT endpoint FROM proxies WHERE status = 'active' AND TRIM(COALESCE(endpoint, '')) != '' ORDER BY id LIMIT 1`).Scan(&endpoint)
+	if err != nil {
+		return acc
+	}
+	acc.Proxy = strings.TrimSpace(endpoint)
+	if acc.Proxy != "" {
+		log.Printf("[UBER] account %d has no proxy, using the active panel proxy", acc.ID)
+	}
+	return acc
 }
 
 func scanPanelAccount(row *sql.Row) (ToolAccount, error) {

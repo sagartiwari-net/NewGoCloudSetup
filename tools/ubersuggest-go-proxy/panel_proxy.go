@@ -212,6 +212,18 @@ func panelDialThrough(ctx context.Context, addr, rawProxy string) (net.Conn, err
 	}
 }
 
+func uberUpstreamRoute(ctx context.Context) string {
+	_, px := panelUpstreamProxy(ctx)
+	px = strings.TrimSpace(px)
+	if px == "" {
+		return "server-ip"
+	}
+	if u := panelParseProxyURL(px); u != nil && u.Host != "" {
+		return "proxy " + u.Host
+	}
+	return "proxy"
+}
+
 func panelProxyTransport() *http.Transport {
 	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {

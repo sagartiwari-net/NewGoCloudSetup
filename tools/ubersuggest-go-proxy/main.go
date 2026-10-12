@@ -1204,7 +1204,10 @@ func (crt *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	req.Header.Del("Sec-Ch-Ua-Platform-Version")
 	req.Header.Del("Sec-Ch-Ua-Bitness")
 
-	return newChromeRoundTripper().RoundTrip(req)
+	if marked, px := panelUpstreamProxy(req.Context()); marked && px != "" {
+		return panelProxyTransport().RoundTrip(req)
+	}
+	return crt.Transport.RoundTrip(req)
 }
 
 func main() {
