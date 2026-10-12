@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -609,8 +610,20 @@ type panelCookieEntry struct {
 }
 
 type panelJSONCookie struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name  string          `json:"name"`
+	Value json.RawMessage `json:"value"`
+}
+
+func (c panelJSONCookie) stringValue() string {
+	raw := bytes.TrimSpace(c.Value)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	return string(raw)
 }
 
 func panelCookieEntries(raw string) []panelCookieEntry {
@@ -636,7 +649,7 @@ func panelCookieEntries(raw string) []panelCookieEntry {
 	}
 	out := make([]panelCookieEntry, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, panelCookieEntry{name: row.Name, value: row.Value})
+		out = append(out, panelCookieEntry{name: row.Name, value: row.stringValue()})
 	}
 	return out
 }

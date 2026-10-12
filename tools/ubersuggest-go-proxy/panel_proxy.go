@@ -17,6 +17,7 @@ import (
 
 type panelUpstreamKey struct{}
 type panelSessionMemo struct{}
+type panelCookieMemo struct{}
 
 func attachPanelUpstream(r *http.Request, accountProxy string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), panelUpstreamKey{}, strings.TrimSpace(accountProxy)))
@@ -85,7 +86,17 @@ func applyPanelPremiumCookie(r *http.Request, fileCookie string) string {
 	} else {
 		r.Header.Set("Cookie", strings.Join(kept, "; "))
 	}
-	return panelFlattenCookies(panelCookie)
+	flat := panelFlattenCookies(panelCookie)
+	*r = *r.WithContext(context.WithValue(r.Context(), panelCookieMemo{}, flat))
+	return flat
+}
+
+func panelMemoCookie(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	v, _ := r.Context().Value(panelCookieMemo{}).(string)
+	return v
 }
 
 func takePanelCookie(r *http.Request) string {

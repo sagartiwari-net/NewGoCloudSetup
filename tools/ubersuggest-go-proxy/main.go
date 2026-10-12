@@ -1288,6 +1288,7 @@ func main() {
 		if mergedCookies != "" {
 			req.Header.Set("Cookie", mergedCookies)
 		}
+		logUberAuthCookies(req.URL.Path, premiumCookies)
 
 		if ref := req.Header.Get("Referer"); ref != "" {
 			replacedRef := strings.ReplaceAll(ref, publicHost, targetHost)
@@ -1376,9 +1377,9 @@ func main() {
 		}
 		rewriteProxyResponseHeaders(resp, targetHost, targetScheme, proxyHost, proxyScheme)
 
-		for _, cookie := range resp.Cookies() {
-			cookie.Domain = ""
-			cookie.Secure = false
+		rewriteUpstreamSetCookies(resp)
+		if resp.Request != nil {
+			seedUberAuthCookies(resp, panelMemoCookie(resp.Request))
 		}
 
 		contentType := resp.Header.Get("Content-Type")
@@ -1700,7 +1701,31 @@ func main() {
 			if usesPanelAccountMode(cfg) && strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
 				bodyStr = string(injectDeviceHTML([]byte(bodyStr)))
 			}
+			if strings.Contains(strings.ToLower(contentType), "text/html") && resp.Request != nil {
+				if script := uberAuthCookieScript(panelMemoCookie(resp.Request)); script != "" {
+					headIdx := strings.Index(strings.ToLower(bodyStr), "<head>")
+					if headIdx != -1 {
+						bodyStr = bodyStr[:headIdx+6] + script + bodyStr[headIdx+6:]
+					} else {
+						bodyStr = script + bodyStr
+					}
+				}
+			}
 			modifiedBytes := []byte(bodyStr)
+
+			cachePath := ""
+			cacheMethod := ""
+			if resp.Request != nil {
+				cachePath = resp.Request.URL.RequestURI()
+				cacheMethod = resp.Request.Method
+			}
+			if isCacheableStaticPath(cachePath) {
+				resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
+				resp.Header.Del("Pragma")
+				resp.Header.Del("Expires")
+			} else if strings.Contains(strings.ToLower(contentType), "text/html") {
+				resp.Header.Set("Cache-Control", "no-store")
+			}
 
 			if isGzip {
 				var buf bytes.Buffer
@@ -1712,16 +1737,33 @@ func main() {
 				resp.Body = io.NopCloser(&buf)
 				resp.ContentLength = int64(buf.Len())
 				resp.Header.Set("Content-Length", fmt.Sprintf("%d", buf.Len()))
+				putStaticCached(cacheMethod, cachePath, resp.StatusCode, contentType, "gzip", buf.Bytes())
 			} else {
 				resp.Body = io.NopCloser(bytes.NewBuffer(modifiedBytes))
 				resp.ContentLength = int64(len(modifiedBytes))
 				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(modifiedBytes)))
+				putStaticCached(cacheMethod, cachePath, resp.StatusCode, contentType, "", modifiedBytes)
 			}
 			resp.Header.Del("Transfer-Encoding")
+		} else if resp.Request != nil && resp.StatusCode == http.StatusOK && isCacheableStaticPath(resp.Request.URL.RequestURI()) {
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				return err
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(body))
+			resp.ContentLength = int64(len(body))
+			resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+			resp.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
+			resp.Header.Del("Pragma")
+			resp.Header.Del("Expires")
+			putStaticCached(resp.Request.Method, resp.Request.URL.RequestURI(), resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Encoding"), body)
 		}
 
 		return nil
 	}
+
+	startCDNCacheSweep()
 
 	addr := ":" + cfg.Port
 	log.Printf("╔══════════════════════════════════════════════════╗")
@@ -1788,6 +1830,11 @@ func main() {
 
 		debugLog(cfg, "Proxy %s %s rawHost=%s resolved=%s://%s",
 			r.Method, reqPath, r.Host, resolveProxyScheme(r, cfg), resolveProxyHost(r, cfg))
+
+		if ent := getStaticCached(r.Method, r.URL.RequestURI()); ent != nil {
+			serveStaticCached(w, r, ent)
+			return
+		}
 
 		// 5. Proxy the request
 		proxy.ServeHTTP(w, r)
