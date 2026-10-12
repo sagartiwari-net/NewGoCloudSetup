@@ -230,6 +230,23 @@ function ResellerForm({
   })
   const errors = form.formState.errors
   const [selected, setSelected] = useState(reseller?.website_ids ?? [])
+  const [websiteQuery, setWebsiteQuery] = useState("")
+  const shown = websites.filter((website) => {
+    const needle = websiteQuery.trim().toLowerCase()
+    if (!needle) return true
+    return website.name.toLowerCase().includes(needle) || website.domain.toLowerCase().includes(needle)
+  })
+
+  function chooseWebsites(websiteIds: number[]) {
+    setSelected(websiteIds)
+    form.setValue("website_ids", websiteIds, { shouldValidate: true })
+  }
+
+  function selectShown() {
+    const ids = new Set(form.getValues("website_ids"))
+    for (const website of shown) ids.add(website.id)
+    chooseWebsites([...ids])
+  }
 
   async function onSubmit(values: FormValues) {
     const ok = await runMutation(
@@ -283,9 +300,21 @@ function ResellerForm({
         </Field>
         <FieldSet>
           <FieldLegend variant="label">Websites</FieldLegend>
-          <FieldDescription>This reseller can manage only the websites you check.</FieldDescription>
-          <FieldGroup>
-            {websites.map((website) => {
+          <FieldDescription>This reseller can manage only the websites you check. {selected.length} selected.</FieldDescription>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              id="website-search"
+              value={websiteQuery}
+              placeholder="Search websites"
+              className="min-w-40 flex-1"
+              onChange={(event) => setWebsiteQuery(event.target.value)}
+            />
+            <Button type="button" variant="outline" onClick={selectShown} disabled={shown.length === 0}>
+              Select all
+            </Button>
+          </div>
+          <FieldGroup className="max-h-72 overflow-y-auto">
+            {shown.map((website) => {
               const checked = selected.includes(website.id)
               return (
                 <Field key={website.id} orientation="horizontal">
@@ -297,14 +326,14 @@ function ResellerForm({
                       const websiteIds = next
                         ? [...current, website.id]
                         : current.filter((id) => id !== website.id)
-                      setSelected(websiteIds)
-                      form.setValue("website_ids", websiteIds, { shouldValidate: true })
+                      chooseWebsites(websiteIds)
                     }}
                   />
                   <FieldLabel htmlFor={`website-${website.id}`}>{website.name}</FieldLabel>
                 </Field>
               )
             })}
+            {shown.length === 0 ? <p className="text-sm text-muted-foreground">No website matches.</p> : null}
           </FieldGroup>
           <FieldError errors={[errors.website_ids]} />
         </FieldSet>
