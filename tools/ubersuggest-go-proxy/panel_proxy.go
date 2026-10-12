@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
 )
 
@@ -246,11 +247,72 @@ func panelProxyTransport(rawProxy string) *http.Transport {
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 		TLSHandshakeTimeout:   20 * time.Second,
 		ResponseHeaderTimeout: 45 * time.Second,
-		MaxIdleConns:          32,
-		MaxIdleConnsPerHost:   8,
-		MaxConnsPerHost:       8,
+		MaxIdleConns:          64,
+		MaxIdleConnsPerHost:   32,
+		MaxConnsPerHost:       32,
 		IdleConnTimeout:       90 * time.Second,
 	}
 	proxyTransports[rawProxy] = tr
 	return tr
+}
+
+var (
+	proxyH2Mu sync.Mutex
+	proxyH2   = map[string]*http2.Transport{}
+	h2Off     sync.Map
+)
+
+func panelProxyH2(rawProxy string) *http2.Transport {
+	rawProxy = strings.TrimSpace(rawProxy)
+	proxyH2Mu.Lock()
+	defer proxyH2Mu.Unlock()
+	if tr, ok := proxyH2[rawProxy]; ok {
+		return tr
+	}
+	tr := &http2.Transport{
+		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+			rawConn, err := panelDialThrough(ctx, addr, rawProxy)
+			if err != nil {
+				return nil, err
+			}
+			host, _, splitErr := net.SplitHostPort(addr)
+			if splitErr != nil {
+				host = addr
+			}
+			tlsConn := tls.Client(rawConn, &tls.Config{
+				ServerName:         host,
+				NextProtos:         []string{"h2"},
+				InsecureSkipVerify: true,
+			})
+			if err = tlsConn.HandshakeContext(ctx); err != nil {
+				rawConn.Close()
+				return nil, err
+			}
+			return tlsConn, nil
+		},
+	}
+	proxyH2[rawProxy] = tr
+	return tr
+}
+
+func panelProxyRoundTrip(req *http.Request, rawProxy string) (*http.Response, error) {
+	if _, off := h2Off.Load(rawProxy); !off {
+		resp, err := panelProxyH2(rawProxy).RoundTrip(req)
+		if err == nil {
+			return resp, nil
+		}
+		if req.Body == nil || req.GetBody != nil {
+			h2Off.Store(rawProxy, true)
+			log.Printf("[UBER] http2 upstream failed, using http/1.1: %v", err)
+			if req.GetBody != nil {
+				body, bodyErr := req.GetBody()
+				if bodyErr == nil {
+					req.Body = body
+				}
+			}
+			return panelProxyTransport(rawProxy).RoundTrip(req)
+		}
+		return nil, err
+	}
+	return panelProxyTransport(rawProxy).RoundTrip(req)
 }

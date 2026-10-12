@@ -1205,7 +1205,7 @@ func (crt *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	req.Header.Del("Sec-Ch-Ua-Bitness")
 
 	if marked, px := panelUpstreamProxy(req.Context()); marked && px != "" {
-		return panelProxyTransport(px).RoundTrip(req)
+		return panelProxyRoundTrip(req, px)
 	}
 	return crt.Transport.RoundTrip(req)
 }
@@ -1444,9 +1444,13 @@ func main() {
 			bodyStr = applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost, cfg)
 			bodyStr = applyDomainPathMap(bodyStr, proxySchemeHost, proxyWsOrigin(proxyScheme, proxyHost), cfg)
 
-			for _, repl := range cfg.Replacements {
-				if repl.Search != "" {
-					bodyStr = strings.ReplaceAll(bodyStr, repl.Search, repl.Replace)
+			// Branding replacements rewrite neilpatel.com inside RSC and JSON and the page crashes.
+			// Keep them on HTML only. API and flight data stay as the app sent them.
+			if strings.Contains(strings.ToLower(contentType), "text/html") {
+				for _, repl := range cfg.Replacements {
+					if repl.Search != "" {
+						bodyStr = strings.ReplaceAll(bodyStr, repl.Search, repl.Replace)
+					}
 				}
 			}
 			bodyStr = normalizeProxyWebSocketURLs(bodyStr, targetHost, proxyHost, proxyScheme)
