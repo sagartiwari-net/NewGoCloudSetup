@@ -244,6 +244,7 @@ func panelProxyTransport(rawProxy string) *http.Transport {
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return panelDialThrough(ctx, addr, rawProxy)
 		},
+		DisableCompression:    true,
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 		TLSHandshakeTimeout:   20 * time.Second,
 		ResponseHeaderTimeout: 45 * time.Second,
@@ -270,6 +271,7 @@ func panelProxyH2(rawProxy string) *http2.Transport {
 		return tr
 	}
 	tr := &http2.Transport{
+		DisableCompression: true,
 		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
 			rawConn, err := panelDialThrough(ctx, addr, rawProxy)
 			if err != nil {

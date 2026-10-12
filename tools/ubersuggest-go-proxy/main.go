@@ -876,6 +876,56 @@ func normalizeProxyWebSocketURLs(bodyStr, targetHost, proxyHost, proxyScheme str
 	return bodyStr
 }
 
+// readProxyBody reads the upstream body and unwraps every gzip member.
+// A gzip header on already-plain bytes is treated as plain text so the browser
+// is not told to gunzip a flight payload that is not gzip.
+func readProxyBody(resp *http.Response) (plain []byte, wasGzip bool, err error) {
+	raw, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, false, err
+	}
+	magic := len(raw) >= 2 && raw[0] == 0x1f && raw[1] == 0x8b
+	if !magic {
+		if strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+			resp.Header.Del("Content-Encoding")
+		}
+		return raw, false, nil
+	}
+	br := bytes.NewReader(raw)
+	var out bytes.Buffer
+	for {
+		zr, zerr := gzip.NewReader(br)
+		if zerr != nil {
+			if out.Len() == 0 {
+				return nil, true, zerr
+			}
+			break
+		}
+		zr.Multistream(false)
+		_, cerr := io.Copy(&out, zr)
+		zr.Close()
+		if cerr != nil {
+			return nil, true, cerr
+		}
+		if br.Len() == 0 {
+			break
+		}
+	}
+	return out.Bytes(), true, nil
+}
+
+// rewriteFlightHosts rewrites only complete origin tokens inside a Next.js flight body.
+func rewriteFlightHosts(body, targetHost, proxySchemeHost, proxyHost string) string {
+	escProxy := strings.ReplaceAll(proxySchemeHost, "/", `\/`)
+	body = strings.ReplaceAll(body, "https://"+targetHost, proxySchemeHost)
+	body = strings.ReplaceAll(body, "http://"+targetHost, proxySchemeHost)
+	body = strings.ReplaceAll(body, `https:\/\/`+targetHost, escProxy)
+	body = strings.ReplaceAll(body, `http:\/\/`+targetHost, escProxy)
+	body = strings.ReplaceAll(body, "//"+targetHost, "//"+proxyHost)
+	return body
+}
+
 // rewriteProxyResponseHeaders rewrites target host references in response headers (CORS, etc.)
 func rewriteProxyResponseHeaders(resp *http.Response, targetHost, targetScheme, proxyHost, proxyScheme string) {
 	proxySchemeHost := proxyScheme + "://" + proxyHost
@@ -1403,27 +1453,10 @@ func main() {
 			!strings.Contains(contentType, "event-stream")
 
 		if isText {
-			encoding := resp.Header.Get("Content-Encoding")
-			isGzip := strings.EqualFold(encoding, "gzip")
-
-			var reader io.Reader
-			var err error
-			if isGzip {
-				gzipReader, err := gzip.NewReader(resp.Body)
-				if err != nil {
-					return err
-				}
-				defer gzipReader.Close()
-				reader = gzipReader
-			} else {
-				reader = resp.Body
-			}
-
-			bodyBytes, err := io.ReadAll(reader)
+			bodyBytes, wasGzip, err := readProxyBody(resp)
 			if err != nil {
 				return err
 			}
-			resp.Body.Close()
 
 			bodyStr := string(bodyBytes)
 			if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "/get_token") {
@@ -1434,15 +1467,21 @@ func main() {
 				}
 			}
 			proxySchemeHost := proxyScheme + "://" + proxyHost
-
-			bodyStr = strings.ReplaceAll(bodyStr, cfg.TargetURL, proxySchemeHost)
-			bodyStr = strings.ReplaceAll(bodyStr, "https://"+targetHost, proxySchemeHost)
-			bodyStr = strings.ReplaceAll(bodyStr, "http://"+targetHost, proxySchemeHost)
-			bodyStr = strings.ReplaceAll(bodyStr, "//"+targetHost, "//"+proxyHost)
-			bodyStr = strings.ReplaceAll(bodyStr, `\/`+targetHost+`\/`, `\/`+proxyHost+`\/`)
-			bodyStr = strings.ReplaceAll(bodyStr, `/`+targetHost, `/`+proxyHost)
-			bodyStr = applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost, cfg)
-			bodyStr = applyDomainPathMap(bodyStr, proxySchemeHost, proxyWsOrigin(proxyScheme, proxyHost), cfg)
+			isFlight := strings.Contains(strings.ToLower(contentType), "text/x-component")
+			if isFlight {
+				// Flight rows are length-sensitive text. The bare "/host" replace
+				// and a second gzip pass make Next throw and the page shows the error screen.
+				bodyStr = rewriteFlightHosts(bodyStr, targetHost, proxySchemeHost, proxyHost)
+			} else {
+				bodyStr = strings.ReplaceAll(bodyStr, cfg.TargetURL, proxySchemeHost)
+				bodyStr = strings.ReplaceAll(bodyStr, "https://"+targetHost, proxySchemeHost)
+				bodyStr = strings.ReplaceAll(bodyStr, "http://"+targetHost, proxySchemeHost)
+				bodyStr = strings.ReplaceAll(bodyStr, "//"+targetHost, "//"+proxyHost)
+				bodyStr = strings.ReplaceAll(bodyStr, `\/`+targetHost+`\/`, `\/`+proxyHost+`\/`)
+				bodyStr = strings.ReplaceAll(bodyStr, `/`+targetHost, `/`+proxyHost)
+				bodyStr = applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost, cfg)
+				bodyStr = applyDomainPathMap(bodyStr, proxySchemeHost, proxyWsOrigin(proxyScheme, proxyHost), cfg)
+			}
 
 			// Branding replacements rewrite neilpatel.com inside RSC and JSON and the page crashes.
 			// Keep them on HTML only. API and flight data stay as the app sent them.
@@ -1483,7 +1522,9 @@ func main() {
 					warnPath, proxyHost, proxyScheme)
 			}
 
-			bodyStr = integrityRegex.ReplaceAllString(bodyStr, "")
+			if !isFlight {
+				bodyStr = integrityRegex.ReplaceAllString(bodyStr, "")
+			}
 
 			if strings.Contains(contentType, "javascript") {
 				bodyStr = strings.ReplaceAll(bodyStr, ".integrity=", "._ntegrity=")
@@ -1560,20 +1601,11 @@ func main() {
 									const originalUrl = input.url;
 									const proxied = proxyUrl(originalUrl);
 									if (proxied !== originalUrl) {
-										const newRequest = new Request(proxied, {
-											method: input.method,
-											headers: input.headers,
-											body: input.body,
-											mode: input.mode,
-											credentials: input.credentials,
-											cache: input.cache,
-											redirect: input.redirect,
-											referrer: input.referrer,
-											integrity: input.integrity,
-											keepalive: input.keepalive,
-											signal: input.signal
-										});
-										input = newRequest;
+										try {
+											input = new Request(proxied, input);
+										} catch (e) {
+											input = proxied;
+										}
 									}
 								} else if (input instanceof URL) {
 									const urlStr = input.toString();
@@ -1755,14 +1787,27 @@ func main() {
 				resp.Header.Set("Cache-Control", "no-store")
 			}
 
-			if isGzip {
+			if isFlight {
+				// Browser fetch already gunzips. Sending the flight plain avoids a second decode
+				// that leaves Next.js with a broken stream and the global error page.
+				resp.Header.Del("Content-Encoding")
+				resp.Header.Set("Cache-Control", "no-store, no-transform")
+				resp.Body = io.NopCloser(bytes.NewReader(modifiedBytes))
+				resp.ContentLength = int64(len(modifiedBytes))
+				resp.Header.Set("Content-Length", strconv.Itoa(len(modifiedBytes)))
+				flightPath := cachePath
+				if flightPath == "" && resp.Request != nil {
+					flightPath = resp.Request.URL.Path
+				}
+				log.Printf("[UBER] flight %s plain=%d upstream_gzip=%v", flightPath, len(modifiedBytes), wasGzip)
+			} else if wasGzip {
 				var buf bytes.Buffer
 				gzipWriter := gzip.NewWriter(&buf)
 				if _, err := gzipWriter.Write(modifiedBytes); err != nil {
 					return err
 				}
 				gzipWriter.Close()
-				resp.Body = io.NopCloser(&buf)
+				resp.Body = io.NopCloser(bytes.NewReader(buf.Bytes()))
 				resp.ContentLength = int64(buf.Len())
 				resp.Header.Set("Content-Length", fmt.Sprintf("%d", buf.Len()))
 				putStaticCached(cacheMethod, cachePath, resp.StatusCode, contentType, "gzip", buf.Bytes())
