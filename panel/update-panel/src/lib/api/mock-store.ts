@@ -217,6 +217,8 @@ let repeatMinutes = 60
 let telegramTemplates: TelegramTemplates = {
   logout: "{tool} logged out for {username} on {website} at {time}.",
   spam: "{username} may be sharing {tool}. {count} opens in the window from {ip}. {reason} at {time}.",
+  switch: "{tool}: {username} switched from {from} to {to} on {website} at {time}. {reason}",
+  network: "{username} is using {type} on {tool} ({website}). IP {ip}. {org}. {location}. {time}",
 }
 
 let spamRule: SpamRule = {
@@ -2282,8 +2284,10 @@ export const mockStore = {
     assertMaster(operator)
     const logout = input.logout.trim()
     const spam = input.spam.trim()
-    if (!logout || !spam) throw new Error("Both templates are required")
-    telegramTemplates = { logout, spam }
+    const switched = input.switch.trim()
+    const network = input.network.trim()
+    if (!logout || !spam || !switched || !network) throw new Error("All templates are required")
+    telegramTemplates = { logout, spam, switch: switched, network }
     return { ...telegramTemplates }
   },
 
@@ -2347,7 +2351,7 @@ export const mockStore = {
     if (operator.role === "reseller" && !operator.website_ids.includes(website.id)) {
       throw new Error("You cannot manage this website")
     }
-    const events = [...new Set(input.events)].filter((event) => event === "logout" || event === "spam")
+    const events = [...new Set(input.events)].filter((event) => event === "logout" || event === "spam" || event === "switch" || event === "network")
     if (events.length === 0) throw new Error("Choose at least one event")
     if (input.destination_ids.length === 0) throw new Error("Choose at least one chat")
     if (input.destination_ids.some((destinationId) => !telegramDestinations.some((row) => row.id === destinationId))) {

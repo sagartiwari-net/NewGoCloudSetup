@@ -166,6 +166,49 @@ func ensureTelegramInbox(db *sql.DB) {
 		updated_at TEXT NOT NULL
 	)`)
 	_, _ = db.Exec(`ALTER TABLE telegram_deliveries ADD COLUMN error_text TEXT NOT NULL DEFAULT ''`)
+	_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES ('switch_template', ?) ON DUPLICATE KEY UPDATE value=value`,
+		"{tool}: {username} switched from {from} to {to} on {website} at {time}. {reason}")
+	_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES ('network_template', ?) ON DUPLICATE KEY UPDATE value=value`,
+		"{username} is using {type} on {tool} ({website}). IP {ip}. {org}. {location}. {time}")
+	ensureTelegramRouteEvents(db)
+}
+
+func ensureTelegramRouteEvents(db *sql.DB) {
+	rows, err := db.Query(`SELECT id, events_json FROM telegram_routes`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var raw string
+		if rows.Scan(&id, &raw) != nil {
+			continue
+		}
+		var events []string
+		if json.Unmarshal([]byte(raw), &events) != nil {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, event := range events {
+			seen[event] = true
+		}
+		changed := false
+		for _, event := range []string{"switch", "network"} {
+			if !seen[event] {
+				events = append(events, event)
+				changed = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		next, err := json.Marshal(events)
+		if err != nil {
+			continue
+		}
+		_, _ = db.Exec(`UPDATE telegram_routes SET events_json=? WHERE id=?`, string(next), id)
+	}
 }
 
 func settingInt(db *sql.DB, key string, fallback int) int {

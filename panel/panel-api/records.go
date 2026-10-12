@@ -1638,7 +1638,7 @@ func (s *server) saveRoute(w http.ResponseWriter, r *http.Request) {
 	events := []string{}
 	seen := map[string]bool{}
 	for _, event := range body.Events {
-		if (event == "logout" || event == "spam") && !seen[event] {
+		if (event == "logout" || event == "spam" || event == "switch" || event == "network") && !seen[event] {
 			events = append(events, event)
 			seen[event] = true
 		}
@@ -1882,7 +1882,6 @@ func (s *server) useAccount(w http.ResponseWriter, r *http.Request) {
 			toName = "(none)"
 		}
 		s.insertLogoutEvent(websiteID, body.Username, fromName, toName, reason, body.ClientIP)
-		s.recordLogout(websiteID, body.Username, body.ClientIP, reason)
 	}
 	if chosen == 0 {
 		writeJSON(w, 200, map[string]any{"account_id": 0})
@@ -1890,72 +1889,6 @@ func (s *server) useAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = s.db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, chosen)
 	writeJSON(w, 200, map[string]any{"account_id": chosen})
-}
-
-func (s *server) recordLogout(websiteID int, username, ip, reason string) {
-	var tool, website string
-	_ = s.db.QueryRow(`SELECT t.name, w.name FROM websites w JOIN tools t ON t.id=w.tool_id WHERE w.id=?`, websiteID).Scan(&tool, &website)
-	var routeID int
-	var eventsRaw string
-	if s.db.QueryRow(`SELECT id, events_json FROM telegram_routes WHERE website_id=?`, websiteID).Scan(&routeID, &eventsRaw) != nil || !strings.Contains(eventsRaw, "logout") {
-		// Still keep a telegram_deliveries breadcrumb; Analytics Logouts come from logout_events.
-		s.insertDelivery(websiteID, username, "logout", "sent", nil, "")
-		return
-	}
-	rows, err := s.db.Query(`SELECT d.label, d.chat_id, o.username FROM telegram_route_chats c JOIN telegram_destinations d ON d.id=c.destination_id JOIN operators o ON o.id=d.reseller_id WHERE c.route_id=? AND d.enabled=1`, routeID)
-	recipients := []map[string]string{}
-	if err == nil {
-		for rows.Next() {
-			var label, chat, reseller string
-			_ = rows.Scan(&label, &chat, &reseller)
-			recipients = append(recipients, map[string]string{"label": label, "chat_id": chat, "reseller": reseller})
-		}
-		rows.Close()
-	}
-	status := "sent"
-	minutes := 60
-	var raw string
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='repeat_minutes'`).Scan(&raw)
-	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-		minutes = n
-	}
-	var last string
-	err = s.db.QueryRow(`SELECT created_at FROM telegram_deliveries WHERE website_id=? AND username=? AND event='logout' AND status='sent' ORDER BY created_at DESC LIMIT 1`, websiteID, username).Scan(&last)
-	if err == nil {
-		if parsed, ok := parseTime(last); ok && time.Since(parsed) < time.Duration(minutes)*time.Minute {
-			status = "skipped"
-		}
-	}
-	var token, tmpl string
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='bot_token'`).Scan(&token)
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='logout_template'`).Scan(&tmpl)
-	if tmpl == "" {
-		tmpl = "{tool} logged out for {username} on {website} at {time}."
-	}
-	text := strings.NewReplacer("{tool}", tool, "{username}", username, "{website}", website, "{time}", time.Now().UTC().Format(time.RFC3339), "{ip}", ip, "{reason}", reason, "{count}", "", "{from}", "", "{to}", "").Replace(tmpl)
-	errorText := ""
-	if status == "sent" {
-		switch {
-		case strings.TrimSpace(token) == "":
-			status = "failed"
-			errorText = "Bot token is empty"
-		case len(recipients) == 0:
-			status = "failed"
-			errorText = "No enabled chat on this route"
-		default:
-			var failures []string
-			for _, rec := range recipients {
-				if detail := postTelegram(token, rec["chat_id"], text); detail != "" {
-					failures = append(failures, rec["label"]+": "+detail)
-				}
-			}
-			if len(failures) > 0 {
-				status = "failed"
-				errorText = strings.Join(failures, "; ")
-			}
-		}
-	}
-	s.insertDelivery(websiteID, username, "logout", status, recipients, errorText)
 }
 
 func (s *server) insertDelivery(websiteID int, username, event, status string, recipients []map[string]string, errorText string) {

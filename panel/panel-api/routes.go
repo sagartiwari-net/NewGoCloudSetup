@@ -868,10 +868,18 @@ func (s *server) telegramTemplates(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.auth(w, r); !ok {
 		return
 	}
-	var logout, spam string
+	var logout, spam, switched, network string
 	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='logout_template'`).Scan(&logout)
 	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='spam_template'`).Scan(&spam)
-	writeJSON(w, 200, map[string]string{"logout": logout, "spam": spam})
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='switch_template'`).Scan(&switched)
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE "key"='network_template'`).Scan(&network)
+	if switched == "" {
+		switched = "{tool}: {username} switched from {from} to {to} on {website} at {time}. {reason}"
+	}
+	if network == "" {
+		network = "{username} is using {type} on {tool} ({website}). IP {ip}. {org}. {location}. {time}"
+	}
+	writeJSON(w, 200, map[string]string{"logout": logout, "spam": spam, "switch": switched, "network": network})
 }
 
 func (s *server) saveTemplates(w http.ResponseWriter, r *http.Request) {
@@ -883,11 +891,15 @@ func (s *server) saveTemplates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Logout string `json:"logout"`
-		Spam   string `json:"spam"`
+		Logout  string `json:"logout"`
+		Spam    string `json:"spam"`
+		Switch  string `json:"switch"`
+		Network string `json:"network"`
 	}
 	_ = readBody(r, &body)
-	_, _ = s.db.Exec(`UPDATE settings SET value=? WHERE "key"='logout_template'`, body.Logout)
-	_, _ = s.db.Exec(`UPDATE settings SET value=? WHERE "key"='spam_template'`, body.Spam)
+	_, _ = s.db.Exec(`INSERT INTO settings ("key", value) VALUES ('logout_template', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, body.Logout)
+	_, _ = s.db.Exec(`INSERT INTO settings ("key", value) VALUES ('spam_template', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, body.Spam)
+	_, _ = s.db.Exec(`INSERT INTO settings ("key", value) VALUES ('switch_template', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, body.Switch)
+	_, _ = s.db.Exec(`INSERT INTO settings ("key", value) VALUES ('network_template', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)`, body.Network)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }

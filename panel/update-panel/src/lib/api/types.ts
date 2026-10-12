@@ -201,7 +201,7 @@ export type SecurityEvent = {
   created_at: string
 }
 
-export type TelegramEvent = "logout" | "spam"
+export type TelegramEvent = "logout" | "spam" | "switch" | "network"
 
 export type TelegramDestination = {
   id: number
@@ -245,6 +245,8 @@ export type TelegramInboxRow = {
 export type TelegramTemplates = {
   logout: string
   spam: string
+  switch: string
+  network: string
 }
 
 export type AccessAlerts = {

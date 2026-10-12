@@ -44,7 +44,7 @@ import { formatTime, maskSecret } from "@/lib/format"
 import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
 
-const placeholders = ["{username}", "{tool}", "{website}", "{time}", "{ip}", "{reason}", "{count}", "{from}", "{to}"]
+const placeholders = ["{username}", "{tool}", "{website}", "{time}", "{ip}", "{reason}", "{count}", "{from}", "{to}", "{type}", "{org}", "{location}"]
 const sample: Record<string, string> = {
   username: "nina",
   tool: "Ahrefs",
@@ -53,8 +53,11 @@ const sample: Record<string, string> = {
   to: "Ahrefs 2",
   time: "27/9/2026, 1:14:00 pm",
   ip: "203.0.113.10",
-  reason: "8 opens from 2 IPs",
+  reason: "cookie expired",
   count: "8",
+  type: "VPN",
+  org: "Example Hosting",
+  location: "Mumbai, India",
 }
 
 function renderTemplate(template: string) {
@@ -487,7 +490,9 @@ function RoutingTab() {
               }}
               items={[
                 { label: "All", value: "all" },
+                { label: "switch", value: "switch" },
                 { label: "logout", value: "logout" },
+                { label: "VPN / proxy / server", value: "network" },
                 { label: "spam", value: "spam" },
               ]}
             />
@@ -564,7 +569,7 @@ function RouteForm({ route, onDone }: { route: TelegramRouteRow | null; onDone: 
     return { websites, destinations: destinations.items, resellers: resellers.items }
   })
   const [websiteId, setWebsiteId] = useState(route ? String(route.website_id) : "")
-  const [events, setEvents] = useState<TelegramEvent[]>(route?.events ?? ["logout", "spam"])
+  const [events, setEvents] = useState<TelegramEvent[]>(route?.events ?? ["switch", "logout", "network", "spam"])
   const [destinationIds, setDestinationIds] = useState<number[]>(route?.destination_ids ?? [])
   const [pending, setPending] = useState(false)
   const site = Number(websiteId)
@@ -600,6 +605,18 @@ function RouteForm({ route, onDone }: { route: TelegramRouteRow | null; onDone: 
         <FieldLegend>Events</FieldLegend>
         <Field orientation="horizontal">
           <Checkbox
+            id="route-event-switch"
+            checked={events.includes("switch")}
+            onCheckedChange={(next) =>
+              setEvents((current) =>
+                next ? ([...new Set([...current, "switch" as const])] as TelegramEvent[]) : current.filter((item) => item !== "switch"),
+              )
+            }
+          />
+          <FieldLabel htmlFor="route-event-switch">Switch</FieldLabel>
+        </Field>
+        <Field orientation="horizontal">
+          <Checkbox
             id="route-event-logout"
             checked={events.includes("logout")}
             onCheckedChange={(next) =>
@@ -609,6 +626,18 @@ function RouteForm({ route, onDone }: { route: TelegramRouteRow | null; onDone: 
             }
           />
           <FieldLabel htmlFor="route-event-logout">Logout</FieldLabel>
+        </Field>
+        <Field orientation="horizontal">
+          <Checkbox
+            id="route-event-network"
+            checked={events.includes("network")}
+            onCheckedChange={(next) =>
+              setEvents((current) =>
+                next ? ([...new Set([...current, "network" as const])] as TelegramEvent[]) : current.filter((item) => item !== "network"),
+              )
+            }
+          />
+          <FieldLabel htmlFor="route-event-network">VPN / proxy / server</FieldLabel>
         </Field>
         <Field orientation="horizontal">
           <Checkbox
@@ -678,24 +707,32 @@ function TemplateCards({
 }) {
   const [logout, setLogout] = useState(templates.logout)
   const [spam, setSpam] = useState(templates.spam)
+  const [switched, setSwitched] = useState(templates.switch)
+  const [network, setNetwork] = useState(templates.network)
   const [pending, setPending] = useState(false)
   const logoutRef = useRef<HTMLTextAreaElement>(null)
   const spamRef = useRef<HTMLTextAreaElement>(null)
+  const switchRef = useRef<HTMLTextAreaElement>(null)
+  const networkRef = useRef<HTMLTextAreaElement>(null)
 
-  function insert(which: "logout" | "spam", token: string) {
-    const ref = which === "logout" ? logoutRef : spamRef
-    const current = which === "logout" ? logout : spam
-    const element = ref.current
+  function insert(which: "logout" | "spam" | "switch" | "network", token: string) {
+    const refs = { logout: logoutRef, spam: spamRef, switch: switchRef, network: networkRef }
+    const current = { logout, spam, switch: switched, network }[which]
+    const element = refs[which].current
     const start = element?.selectionStart ?? current.length
     const end = element?.selectionEnd ?? current.length
     const next = `${current.slice(0, start)}${token}${current.slice(end)}`
     if (which === "logout") setLogout(next)
-    else setSpam(next)
+    else if (which === "spam") setSpam(next)
+    else if (which === "switch") setSwitched(next)
+    else setNetwork(next)
   }
 
   return (
     <div className="grid gap-3 lg:grid-cols-2">
+      <TemplateCard title="Switch" value={switched} master={master} inputRef={switchRef} onChange={setSwitched} onInsert={(token) => insert("switch", token)} />
       <TemplateCard title="Logout" value={logout} master={master} inputRef={logoutRef} onChange={setLogout} onInsert={(token) => insert("logout", token)} />
+      <TemplateCard title="VPN / proxy / server" value={network} master={master} inputRef={networkRef} onChange={setNetwork} onInsert={(token) => insert("network", token)} />
       <TemplateCard title="Spam report" value={spam} master={master} inputRef={spamRef} onChange={setSpam} onInsert={(token) => insert("spam", token)} />
       {master ? (
         <Button
@@ -703,7 +740,7 @@ function TemplateCards({
           disabled={pending}
           onClick={() => {
             setPending(true)
-            void runMutation(() => saveTelegramTemplates({ logout, spam }), "Templates saved").then((ok) => {
+            void runMutation(() => saveTelegramTemplates({ logout, spam, switch: switched, network }), "Templates saved").then((ok) => {
               setPending(false)
               if (ok) onSaved()
             })
@@ -816,7 +853,7 @@ function SentTab() {
           </Field>
           <Field className="md:w-40">
             <FieldLabel htmlFor="sent-event">Event</FieldLabel>
-            <ChoiceSelect id="sent-event" value={event} onValueChange={(value) => { setEvent(value); setPage(1) }} items={[{ label: "All", value: "all" }, { label: "logout", value: "logout" }, { label: "spam", value: "spam" }]} />
+            <ChoiceSelect id="sent-event" value={event} onValueChange={(value) => { setEvent(value); setPage(1) }} items={[{ label: "All", value: "all" }, { label: "switch", value: "switch" }, { label: "logout", value: "logout" }, { label: "VPN / proxy / server", value: "network" }, { label: "spam", value: "spam" }]} />
           </Field>
           <Field className="md:w-40">
             <FieldLabel htmlFor="sent-status">Status</FieldLabel>
