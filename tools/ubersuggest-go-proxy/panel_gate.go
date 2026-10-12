@@ -417,10 +417,14 @@ func fillAccountProxy(db *sql.DB, acc ToolAccount) ToolAccount {
 	}
 	acc.Proxy = strings.TrimSpace(endpoint)
 	if acc.Proxy != "" {
-		log.Printf("[UBER] account %d has no proxy, using the active panel proxy", acc.ID)
+		if _, loaded := proxyFallbackLogged.LoadOrStore(acc.ID, true); !loaded {
+			log.Printf("[UBER] account %d has no proxy, using the active panel proxy", acc.ID)
+		}
 	}
 	return acc
 }
+
+var proxyFallbackLogged sync.Map
 
 func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 	var acc ToolAccount

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/proxy"
@@ -224,13 +225,32 @@ func uberUpstreamRoute(ctx context.Context) string {
 	return "proxy"
 }
 
-func panelProxyTransport() *http.Transport {
-	return &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return panelDialTCP(ctx, addr)
-		},
-		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
-		TLSHandshakeTimeout: 20 * time.Second,
-		DisableKeepAlives:   true,
+var (
+	proxyTransportMu sync.Mutex
+	proxyTransports  = map[string]*http.Transport{}
+)
+
+// panelProxyTransport reuses connections for one proxy.
+// A fresh dial on every image request was opening dozens of tunnels at once and the proxy answered 502.
+func panelProxyTransport(rawProxy string) *http.Transport {
+	rawProxy = strings.TrimSpace(rawProxy)
+	proxyTransportMu.Lock()
+	defer proxyTransportMu.Unlock()
+	if tr, ok := proxyTransports[rawProxy]; ok {
+		return tr
 	}
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return panelDialThrough(ctx, addr, rawProxy)
+		},
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		TLSHandshakeTimeout:   20 * time.Second,
+		ResponseHeaderTimeout: 45 * time.Second,
+		MaxIdleConns:          32,
+		MaxIdleConnsPerHost:   8,
+		MaxConnsPerHost:       8,
+		IdleConnTimeout:       90 * time.Second,
+	}
+	proxyTransports[rawProxy] = tr
+	return tr
 }

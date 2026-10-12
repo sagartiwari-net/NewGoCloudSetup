@@ -1205,7 +1205,7 @@ func (crt *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	req.Header.Del("Sec-Ch-Ua-Bitness")
 
 	if marked, px := panelUpstreamProxy(req.Context()); marked && px != "" {
-		return panelProxyTransport().RoundTrip(req)
+		return panelProxyTransport(px).RoundTrip(req)
 	}
 	return crt.Transport.RoundTrip(req)
 }
@@ -1248,6 +1248,10 @@ func main() {
 	proxy.Transport = &CustomRoundTripper{Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}}
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		log.Printf("[UBER] upstream error %s %s: %v", r.Method, r.URL.Path, err)
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+	}
 
 	// Proxy Director
 	proxy.Director = func(req *http.Request) {
