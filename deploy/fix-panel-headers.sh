@@ -26,8 +26,42 @@ if "client_header_buffer_size" not in t:
         "server_name panel.gt4rents.com;",
         "server_name panel.gt4rents.com;\n    client_header_buffer_size 512k;\n    large_client_header_buffers 8 512k;",
     )
+snippet = """
+    # Missing /_next/static files are the previous build. Reload the document once.
+    location /_next/static/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Connection "";
+        proxy_intercept_errors on;
+        error_page 404 = @panel_stale_chunk;
+    }
+
+    location @panel_stale_chunk {
+        default_type application/javascript;
+        add_header Cache-Control "no-store" always;
+        return 200 '(function(){try{if(sessionStorage.getItem("panel-static-reload")==="1")return;sessionStorage.setItem("panel-static-reload","1");var u=new URL(location.href);u.searchParams.set("__v",String(Date.now()));location.replace(u.toString())}catch(e){}})();';
+    }
+
+"""
+parts = t.split("server {")
+out = [parts[0]]
+patched_server = False
+for part in parts[1:]:
+    if "location / {" in part and "@panel_stale_chunk" not in part and "127.0.0.1:3000" in part:
+        part = part.replace("location / {", snippet + "    location / {", 1)
+        patched_server = True
+    out.append(part)
+if len(parts) > 1 and not patched_server and "@panel_stale_chunk" not in t:
+    raise SystemExit("panel nginx has no UI location / block")
+t = "server {".join(out)
+
 if t == orig:
-    print("panel nginx already accepts large cookies")
+    print("panel nginx already accepts large cookies and reloads a stale build")
 else:
     p.with_name(p.name + ".bak-headers").write_text(orig)
     p.write_text(t)
