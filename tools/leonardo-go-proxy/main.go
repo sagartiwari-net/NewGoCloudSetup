@@ -1075,7 +1075,7 @@ func sanitizeLeonardoCDNUpstream(req *http.Request, host string) {
 }
 
 // Only absorb short-lived CF edge cookies. Never absorb better-auth / Cognito
-// session tokens — those must come from panel.db Mapped Accounts. Overlaying
+// session tokens — those must come from MySQL gt4rents Mapped Accounts. Overlaying
 // them kept users "logged in" after the panel cookie was replaced.
 var absorbCookieNames = map[string]bool{
 	"__cf_bm": true, "cf_clearance": true, "_cfuvid": true,
@@ -1571,7 +1571,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionToken := hex.EncodeToString(sessionBytes)
 	var sessionDuration int
-	err = db.QueryRow("SELECT COALESCE(session_duration, 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
+	err = db.QueryRow("SELECT COALESCE(NULLIF(session_duration, ''), 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
 	if err != nil {
 		sessionDuration = cfg.SessionDurationMinutes
 	}

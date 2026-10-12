@@ -35,6 +35,7 @@ var (
 	panelSess   sync.Map
 )
 
+// Unused. Live data is MySQL gt4rents via panelMySQLDSN. panel.db is a frozen backup; do not open it.
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -232,7 +233,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, durationMin int
 	// Consume OTT only when website domain matches public_host or request Host.
-	err = db.QueryRow(`SELECT username, product_id, COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens
+	err = db.QueryRow(`SELECT username, COALESCE(product_id, ''), COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens
 		WHERE token = ? AND expires_at > ?
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
@@ -251,16 +252,12 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		return
 	}
 	var domain string
-	err = db.QueryRow(`SELECT domain, COALESCE(session_duration, 120) FROM websites WHERE id = ?`, websiteID).Scan(&domain, &durationMin)
+	err = db.QueryRow(`SELECT domain, COALESCE(NULLIF(session_duration, ''), 120) FROM websites WHERE id = ?`, websiteID).Scan(&domain, &durationMin)
 	if err == nil {
 		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
 	}
 	if err != nil {
 		log.Printf("[PANEL] session_duration lookup failed user=%s wid=%d err=%v", username, websiteID, err)
-		renderAccessDeniedPage(w, cfg)
-		return
-	}
-	if _, err = time.Parse(time.RFC3339, expiresRaw); err != nil {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
@@ -370,7 +367,7 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 }
 
 // panelSwitchAccount moves this session to the next LRU active account.
-// If only one account exists, it reloads that account's cookie from panel.db.
+// If only one account exists, it reloads that account's cookie from MySQL gt4rents. panel.db is a frozen backup.
 func panelSwitchAccount(cfg Config, sessionToken, reason string) (ToolAccount, string, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()

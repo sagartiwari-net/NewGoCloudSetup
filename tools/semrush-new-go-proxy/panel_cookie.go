@@ -20,6 +20,7 @@ var (
 	semrushPanelPath   string
 )
 
+// Unused. Live data is MySQL gt4rents via panelMySQLDSN. panel.db is a frozen backup; do not open it.
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -36,6 +37,8 @@ func panelSQLiteDSN(path string) string {
 	return "file:" + path + q
 }
 
+// semrushPanelDBPath is not the database connection. Live data is MySQL gt4rents.
+// panel.db is a frozen backup; do not open it.
 func semrushPanelDBPath() string {
 	cfg := loadConfig()
 	if p := strings.TrimSpace(cfg.PanelDB); p != "" {

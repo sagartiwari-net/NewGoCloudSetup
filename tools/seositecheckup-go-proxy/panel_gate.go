@@ -69,6 +69,7 @@ func resolvePanelDBPath(cfg Config) string {
 	return path
 }
 
+// Unused. Live data is MySQL gt4rents via panelMySQLDSN. panel.db is a frozen backup; do not open it.
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
 	q := "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
@@ -130,7 +131,7 @@ func pickPanelAccount(db *sql.DB, domain string, excludeID int) (ToolAccount, er
 		acc, err = try(st)
 		if err == nil {
 			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=?`, acc.ID)
-			log.Printf("[PANEL] revived account id=%d name=%q from panel.db (cookie present, was %s)", acc.ID, acc.Name, st)
+			log.Printf("[PANEL] revived account id=%d name=%q from MySQL gt4rents (cookie present, was %s)", acc.ID, acc.Name, st)
 			return acc, nil
 		}
 	}
@@ -298,7 +299,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, durationMin int
 	// Consume OTT only when website domain matches public_host or request Host.
-	err = db.QueryRow(`SELECT username, product_id, COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens
+	err = db.QueryRow(`SELECT username, COALESCE(product_id, ''), COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens
 		WHERE token = ? AND expires_at > ?
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
@@ -317,16 +318,12 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		return
 	}
 	var domain string
-	err = db.QueryRow(`SELECT domain, COALESCE(session_duration, 120) FROM websites WHERE id = ?`, websiteID).Scan(&domain, &durationMin)
+	err = db.QueryRow(`SELECT domain, COALESCE(NULLIF(session_duration, ''), 120) FROM websites WHERE id = ?`, websiteID).Scan(&domain, &durationMin)
 	if err == nil {
 		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
 	}
 	if err != nil {
 		log.Printf("[PANEL] session_duration lookup failed user=%s wid=%d err=%v", username, websiteID, err)
-		renderAccessDeniedPage(w, cfg)
-		return
-	}
-	if _, err = time.Parse(time.RFC3339, expiresRaw); err != nil {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
@@ -399,11 +396,11 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
-	log.Printf("[LB] claimed account '%s' (ID:%d) for %s from panel.db", acc.Name, acc.ID, cfg.PublicHost)
+	log.Printf("[LB] claimed account '%s' (ID:%d) for %s from MySQL gt4rents", acc.Name, acc.ID, cfg.PublicHost)
 	return acc, nil
 }
 
-// loadPanelSessionAccount uses the account pinned on the live session (cookie from panel.db only).
+// loadPanelSessionAccount uses the account pinned on the live session (cookie from MySQL gt4rents only. panel.db is a frozen backup).
 func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
@@ -431,7 +428,7 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	}
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
 	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
-	log.Printf("[LB] auto-assigned '%s' (ID:%d) to session from panel.db", acc.Name, acc.ID)
+	log.Printf("[LB] auto-assigned '%s' (ID:%d) to session from MySQL gt4rents", acc.Name, acc.ID)
 	return acc, nil
 }
 

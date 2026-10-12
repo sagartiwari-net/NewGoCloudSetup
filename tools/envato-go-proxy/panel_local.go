@@ -46,6 +46,7 @@ var (
 	envatoPickMu    sync.Mutex // serializes claim/switch so concurrent Access opens round-robin
 )
 
+// Unused. Live data is MySQL gt4rents via panelMySQLDSN. panel.db is a frozen backup; do not open it.
 func panelSQLiteDSN(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {

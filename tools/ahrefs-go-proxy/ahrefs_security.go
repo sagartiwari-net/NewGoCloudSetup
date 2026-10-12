@@ -94,7 +94,7 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 }
 
 func ahrefsSite(db *sql.DB, publicHost string) (websiteID, minutes int) {
-	_ = db.QueryRow(`SELECT id, COALESCE(session_duration, 120) FROM websites WHERE domain IN ('127.0.0.1:5291', ?) LIMIT 1`, publicHost).Scan(&websiteID, &minutes)
+	_ = db.QueryRow(`SELECT id, COALESCE(NULLIF(session_duration, ''), 120) FROM websites WHERE domain IN ('127.0.0.1:5291', ?) LIMIT 1`, publicHost).Scan(&websiteID, &minutes)
 	return websiteID, minutes
 }
 

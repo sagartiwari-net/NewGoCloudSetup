@@ -48,6 +48,8 @@ func ahrefsPanelSwitchBump(sessionToken string) {
 	}
 }
 
+// ahrefsPanelDBPath is not the database connection. Live data is MySQL gt4rents.
+// panel.db is a frozen backup; do not open it.
 func ahrefsPanelDBPath() string {
 	cfg := loadConfig()
 	if p := strings.TrimSpace(cfg.PanelDB); p != "" {

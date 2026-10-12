@@ -472,7 +472,7 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, minutes int
-	err = db.QueryRow(`SELECT username, product_id, COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens WHERE token=? AND expires_at>?
+	err = db.QueryRow(`SELECT username, COALESCE(product_id, ''), COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens WHERE token=? AND expires_at>?
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)), '127.0.0.1:5141')
 		)`,
@@ -486,7 +486,7 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 		renderSemrushDenied(w)
 		return
 	}
-	err = db.QueryRow(`SELECT COALESCE(session_duration, 30) FROM websites WHERE id=?`, websiteID).Scan(&minutes)
+	err = db.QueryRow(`SELECT COALESCE(NULLIF(session_duration, ''), 30) FROM websites WHERE id=?`, websiteID).Scan(&minutes)
 	if err != nil {
 		renderSemrushDenied(w)
 		return

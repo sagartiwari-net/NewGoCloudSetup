@@ -911,7 +911,7 @@ func ensureCreaitorCsrf(upstreamReq *http.Request, cookieHeader string) {
 
 // Runtime overlay for cookies Canva/CF rotates via Set-Cookie (__cf_bm etc.).
 // cookie.txt alone goes stale → Cloudflare 429 "bad request".
-// IMPORTANT: Wordtune panel-mode cookies come from panel.db accounts.cookie.
+// IMPORTANT: Wordtune panel-mode cookies come from MySQL gt4rents accounts.cookie.
 // When that cookie (or assigned account) changes, overlay MUST be cleared or
 // absorbed GAESA/cf leftovers keep the old login alive after a DB update.
 var (
@@ -1683,7 +1683,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionToken := hex.EncodeToString(sessionBytes)
 	var sessionDuration int
-	err = db.QueryRow("SELECT COALESCE(session_duration, 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
+	err = db.QueryRow("SELECT COALESCE(NULLIF(session_duration, ''), 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
 	if err != nil {
 		sessionDuration = cfg.SessionDurationMinutes
 	}

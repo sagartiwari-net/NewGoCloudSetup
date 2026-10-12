@@ -699,7 +699,7 @@ func forwardUpstreamSetCookies(w http.ResponseWriter, r *http.Request, upstreamR
 func setProxyBrowserAuthCookies(w http.ResponseWriter, r *http.Request, cfg Config, activeAcc ToolAccount) {
 	// Panel mode: NEVER put Mapped Account cookies on the browser.
 	// That bloated Cookie headers → nginx "400 Request Header Or Cookie Too Large".
-	// Upstream auth uses buildUpstreamCookies() from panel.db only.
+	// Upstream auth uses buildUpstreamCookies() from MySQL gt4rents only.
 	if usesPanelAccountMode(cfg) || usesCookieFileMode(cfg) || activeAcc.ID == 0 {
 		return
 	}
@@ -1351,7 +1351,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var sessionDuration int
-	err = db.QueryRow("SELECT COALESCE(session_duration, 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
+	err = db.QueryRow("SELECT COALESCE(NULLIF(session_duration, ''), 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
 	if err != nil {
 		sessionDuration = cfg.SessionDurationMinutes
 	}

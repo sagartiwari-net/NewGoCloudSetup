@@ -1411,7 +1411,7 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionToken := hex.EncodeToString(sessionBytes)
 	var sessionDuration int
-	err = db.QueryRow("SELECT COALESCE(session_duration, 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
+	err = db.QueryRow("SELECT COALESCE(NULLIF(session_duration, ''), 120) FROM ahrefs_websites WHERE id = ?", currentWebsiteID).Scan(&sessionDuration)
 	if err != nil {
 		sessionDuration = cfg.SessionDurationMinutes
 	}
