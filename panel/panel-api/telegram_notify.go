@@ -8,10 +8,30 @@ import (
 )
 
 func (s *server) pollTelegramNotices() {
+	s.replayRecentTelegramNotices()
 	for {
 		s.deliverTelegramNotices()
 		time.Sleep(5 * time.Second)
 	}
+}
+
+func (s *server) replayRecentTelegramNotices() {
+	var flag string
+	if s.db.QueryRow(`SELECT value FROM settings WHERE "key"='telegram_notice_replay'`).Scan(&flag) == nil && flag == "2" {
+		return
+	}
+	cutoff := time.Now().UTC().Add(-20 * time.Minute).Format(time.RFC3339)
+	s.rewindNoticeCursor("telegram_cursor_switch", `SELECT COALESCE(MIN(id), 0) FROM switch_events WHERE switched_at >= ?`, cutoff)
+	s.rewindNoticeCursor("telegram_cursor_logout", `SELECT COALESCE(MIN(id), 0) FROM logout_events WHERE created_at >= ?`, cutoff)
+	s.saveTelegramOffsetValue("telegram_notice_replay", "2")
+}
+
+func (s *server) rewindNoticeCursor(key, query, cutoff string) {
+	var minID int
+	if s.db.QueryRow(query, cutoff).Scan(&minID) != nil || minID <= 0 {
+		return
+	}
+	s.saveTelegramOffsetValue(key, strconv.Itoa(minID-1))
 }
 
 func (s *server) deliverTelegramNotices() {
@@ -121,6 +141,39 @@ func (s *server) deliverNetworkNotices() {
 	}
 }
 
+func (s *server) noticeRecipients(websiteID int, event string) ([]map[string]string, bool) {
+	var routeID int
+	var eventsRaw string
+	if s.db.QueryRow(`SELECT id, events_json FROM telegram_routes WHERE website_id=?`, websiteID).Scan(&routeID, &eventsRaw) == nil {
+		if !strings.Contains(eventsRaw, `"`+event+`"`) {
+			return nil, false
+		}
+		return s.destinationRecipients(`SELECT d.label, d.chat_id, o.username FROM telegram_route_chats c JOIN telegram_destinations d ON d.id=c.destination_id JOIN operators o ON o.id=d.reseller_id WHERE c.route_id=? AND d.enabled=1`, routeID), true
+	}
+	owned := s.destinationRecipients(`SELECT d.label, d.chat_id, o.username FROM telegram_destinations d JOIN operators o ON o.id=d.reseller_id WHERE d.enabled=1 AND d.reseller_id IN (SELECT operator_id FROM operator_websites WHERE website_id=?)`, websiteID)
+	if len(owned) > 0 {
+		return owned, true
+	}
+	return s.destinationRecipients(`SELECT d.label, d.chat_id, o.username FROM telegram_destinations d JOIN operators o ON o.id=d.reseller_id WHERE d.enabled=1`), true
+}
+
+func (s *server) destinationRecipients(query string, args ...any) []map[string]string {
+	recipients := []map[string]string{}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return recipients
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var label, chat, reseller string
+		if rows.Scan(&label, &chat, &reseller) != nil {
+			continue
+		}
+		recipients = append(recipients, map[string]string{"label": label, "chat_id": chat, "reseller": reseller})
+	}
+	return recipients
+}
+
 func networkTypeLabel(kind string) string {
 	switch kind {
 	case "vpn":
@@ -138,23 +191,9 @@ func (s *server) sendTelegramNotice(event, templateKey, fallback string, note te
 	if note.website == 0 || note.site == "" {
 		return
 	}
-	var routeID int
-	var eventsRaw string
-	if s.db.QueryRow(`SELECT id, events_json FROM telegram_routes WHERE website_id=?`, note.website).Scan(&routeID, &eventsRaw) != nil {
+	recipients, allowed := s.noticeRecipients(note.website, event)
+	if !allowed {
 		return
-	}
-	if !strings.Contains(eventsRaw, `"`+event+`"`) {
-		return
-	}
-	rows, err := s.db.Query(`SELECT d.label, d.chat_id, o.username FROM telegram_route_chats c JOIN telegram_destinations d ON d.id=c.destination_id JOIN operators o ON o.id=d.reseller_id WHERE c.route_id=? AND d.enabled=1`, routeID)
-	recipients := []map[string]string{}
-	if err == nil {
-		for rows.Next() {
-			var label, chat, reseller string
-			_ = rows.Scan(&label, &chat, &reseller)
-			recipients = append(recipients, map[string]string{"label": label, "chat_id": chat, "reseller": reseller})
-		}
-		rows.Close()
 	}
 	minutes := 60
 	var raw string
@@ -164,7 +203,7 @@ func (s *server) sendTelegramNotice(event, templateKey, fallback string, note te
 	}
 	status := "sent"
 	var last string
-	err = s.db.QueryRow(`SELECT created_at FROM telegram_deliveries WHERE website_id=? AND username=? AND event=? AND status='sent' ORDER BY created_at DESC LIMIT 1`, note.website, note.username, event).Scan(&last)
+	err := s.db.QueryRow(`SELECT created_at FROM telegram_deliveries WHERE website_id=? AND username=? AND event=? AND status='sent' ORDER BY created_at DESC LIMIT 1`, note.website, note.username, event).Scan(&last)
 	if err == nil {
 		if parsed, ok := parseTime(last); ok && time.Since(parsed) < time.Duration(minutes)*time.Minute {
 			status = "skipped"
