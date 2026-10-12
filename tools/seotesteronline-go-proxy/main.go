@@ -48,6 +48,11 @@ type Config struct {
 	CloudflareBypass bool     `json:"cloudflare_bypass"`
 	PanelDB          string   `json:"panel_db"`
 	HomePath         string   `json:"home_path"`
+	MySQLHost        string   `json:"mysql_host"`
+	MySQLPort        string   `json:"mysql_port"`
+	MySQLUser        string   `json:"mysql_user"`
+	MySQLPassword    string   `json:"mysql_password"`
+	MySQLDB          string   `json:"mysql_db"`
 	// InjectCSS: injected into HTML <head> (e.g. hide workspace selector only).
 	InjectCSS string `json:"inject_css"`
 	// Replacements: DigitaVision→ToolsMandi etc. Applied outside JWTs; brand

@@ -35,6 +35,11 @@ type Config struct {
 	SupabaseURL            string   `json:"supabase_url"`
 	SupabaseKey            string   `json:"supabase_key"`
 	PanelDB                string   `json:"panel_db"`
+	MySQLHost              string   `json:"mysql_host"`
+	MySQLPort              string   `json:"mysql_port"`
+	MySQLUser              string   `json:"mysql_user"`
+	MySQLPassword          string   `json:"mysql_password"`
+	MySQLDB                string   `json:"mysql_db"`
 	BypassAuth             bool     `json:"bypass_auth"`
 	HomePath               string   `json:"home_path"`
 	SessionDurationMinutes int      `json:"session_duration_minutes"`
