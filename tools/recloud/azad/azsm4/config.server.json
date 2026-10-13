@@ -1,0 +1,16 @@
+{
+  "port": "6002",
+  "public_host": "azsm4.gt4rents.com",
+  "public_scheme": "http",
+  "target_url": "https://semrush4.xemrush.site",
+  "home_path": "/analytics/overview/?searchType=domain",
+  "tool_name": "Azad Semrush 4",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30,
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "gt4rents",
+  "mysql_db": "gt4rents"
+}
