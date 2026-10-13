@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/andybalholm/brotli"
+
+	"recloud.dev/cdncache"
 )
 
 var (
@@ -100,43 +102,21 @@ func shouldRewriteBody(contentType string) bool {
 		strings.Contains(ct, "svg")
 }
 
-func setCachePolicy(h http.Header, path, contentType string) {
-	if isCacheableStaticPath(path) {
-		h.Set("Cache-Control", "public, max-age=31536000, immutable")
-		h.Del("Pragma")
-		h.Del("Expires")
-		h.Set("Vary", "Accept-Encoding")
-		return
+func isCacheableStaticPath(path string) bool {
+	p := path
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
 	}
-	h.Set("Cache-Control", "no-store")
-	h.Set("Pragma", "no-cache")
-	_ = contentType
-}
-
-func compressStatic(r *http.Request, body []byte) ([]byte, string) {
-	if len(body) < 256 || !isCacheableStaticPath(r.URL.Path) {
-		return body, ""
+	p = strings.ToLower(p)
+	if strings.HasPrefix(p, "/__static__/") || strings.HasPrefix(p, "/static-semrush-com/") {
+		return true
 	}
-	ae := strings.ToLower(r.Header.Get("Accept-Encoding"))
-	if strings.Contains(ae, "br") {
-		var buf bytes.Buffer
-		w := brotli.NewWriterLevel(&buf, 5)
-		if _, err := w.Write(body); err == nil && w.Close() == nil && buf.Len() > 0 && buf.Len() < len(body) {
-			return buf.Bytes(), "br"
+	for _, ext := range []string{".js", ".css", ".woff2", ".woff", ".ttf", ".eot", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp"} {
+		if strings.HasSuffix(p, ext) {
+			return true
 		}
 	}
-	if strings.Contains(ae, "gzip") {
-		var buf bytes.Buffer
-		w, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
-		if err == nil {
-			_, werr := w.Write(body)
-			cerr := w.Close()
-			if werr == nil && cerr == nil && buf.Len() > 0 && buf.Len() < len(body) {
-				return buf.Bytes(), "gzip"
-			}
-		}
-	}
-	return body, ""
+	return false
 }
 
 func readUpstreamBody(resp *http.Response) ([]byte, error) {
@@ -166,10 +146,12 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	target.RawPath = r.URL.RawPath
 	target.RawQuery = r.URL.RawQuery
 	origin := publicOrigin(r, cfg)
-
-	if cached := getStaticCached(r.URL.RequestURI()); cached != nil && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
-		writeCached(w, r, cached)
+	cdnKey := cdncache.RequestKey(r, isCacheableStaticPath(r.URL.Path))
+	if cdncache.Serve(w, r, cdnKey) {
 		return
+	}
+	if cdnKey != "" {
+		defer cdncache.Complete(cdnKey)
 	}
 
 	var body io.Reader
@@ -237,40 +219,22 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		payload = injectDeviceHTML(payload)
 	}
 
-	if isCacheableStaticPath(r.URL.RequestURI()) && resp.StatusCode == http.StatusOK && r.Method == http.MethodGet {
-		putStaticCached(r.URL.RequestURI(), resp.StatusCode, ct, payload)
+	if cdnKey != "" && resp.StatusCode == http.StatusOK {
+		cdncache.Store(cdnKey, resp.StatusCode, ct, payload)
+		if cdncache.ServeDisk(w, r, cdnKey) {
+			return
+		}
 	}
 
 	h := w.Header()
 	copyResponseHeaders(h, resp.Header, base.Host, origin)
-	setCachePolicy(h, r.URL.Path, ct)
-	out, encoding := compressStatic(r, payload)
-	if encoding != "" {
-		h.Set("Content-Encoding", encoding)
-	} else {
-		h.Del("Content-Encoding")
-	}
+	h.Set("Cache-Control", "no-store")
+	h.Set("Pragma", "no-cache")
+	h.Del("Content-Encoding")
 	h.Del("Content-Length")
 	w.WriteHeader(resp.StatusCode)
 	if r.Method != http.MethodHead {
-		_, _ = w.Write(out)
-	}
-}
-
-func writeCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
-	h := w.Header()
-	if ent.contentType != "" {
-		h.Set("Content-Type", ent.contentType)
-	}
-	setCachePolicy(h, r.URL.Path, ent.contentType)
-	out, encoding := compressStatic(r, ent.body)
-	if encoding != "" {
-		h.Set("Content-Encoding", encoding)
-	}
-	h.Set("X-OCG-Cache", "HIT")
-	w.WriteHeader(ent.status)
-	if r.Method != http.MethodHead {
-		_, _ = w.Write(out)
+		_, _ = w.Write(payload)
 	}
 }
 

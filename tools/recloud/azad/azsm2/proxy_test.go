@@ -2,8 +2,11 @@ package main
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"recloud.dev/cdncache"
 )
 
 func TestRewriteKeepsBrowserOnPublicHost(t *testing.T) {
@@ -27,15 +30,9 @@ func TestStaticCachePolicy(t *testing.T) {
 	if isCacheableStaticPath("/analytics/overview/") {
 		t.Fatal("html path should not cache")
 	}
-	h := make(http.Header)
-	setCachePolicy(h, "/__static__/webpack/app.js", "application/javascript")
-	if !strings.Contains(h.Get("Cache-Control"), "immutable") {
-		t.Fatal("static cache header missing")
-	}
-	h = make(http.Header)
-	setCachePolicy(h, "/analytics/overview/", "text/html")
-	if h.Get("Cache-Control") != "no-store" {
-		t.Fatal("html must be no-store")
+	req := httptest.NewRequest(http.MethodGet, "/analytics/overview/", nil)
+	if cdncache.RequestKey(req, isCacheableStaticPath(req.URL.Path)) != "" {
+		t.Fatal("html path must not be cached")
 	}
 }
 

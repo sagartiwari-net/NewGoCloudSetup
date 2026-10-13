@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"recloud.dev/cdncache"
 )
 
 func main() {
@@ -11,7 +13,8 @@ func main() {
 	if usesPanelAccountMode(cfg) {
 		ensureRecloudSite(cfg)
 	}
-	startCDNCacheSweep()
+	cdncache.ImmutablePrefixes = []string{"/__static__/", "/static-semrush-com/"}
+	cdncache.StartSweep()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handle)
 	addr := ":" + strings.TrimSpace(cfg.Port)
