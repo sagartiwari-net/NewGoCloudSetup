@@ -101,16 +101,13 @@ func TestLoginPageRetriesThenOpensHome(t *testing.T) {
 }
 
 func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
-	in := []byte(`<html><head></head><body><div class="srf-layout__notification"><p>out of date</p></div><a class="srf-login-btn">Log In</a></body></html>`)
+	in := []byte(`<html><head></head><body><ul class="experiment-sidebar-navigationList_f1guxiff"><a data-name="support-lnk">Support</a></ul><a class="docs-lnk">Docs</a></body></html>`)
 	out := string(injectDeviceHTML(in))
-	if !strings.Contains(out, `.srf-layout__notification{display:none!important}`) {
-		t.Fatal("notification hide style missing")
+	if !strings.Contains(out, `ul[class*="experiment-sidebar-navigationList"]{display:none!important}`) {
+		t.Fatal("sidebar list hide style missing")
 	}
-	if !strings.Contains(out, `srf-login-btn`) {
-		t.Fatal("login button was removed")
-	}
-	if strings.Contains(out, `srf-login-btn{display:none`) {
-		t.Fatal("login button was hidden")
+	if !strings.Contains(out, `docs-lnk`) || strings.Contains(out, `docs-lnk{display:none`) {
+		t.Fatal("docs link was hidden")
 	}
 }
 

@@ -187,7 +187,7 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 }
 
 func injectDeviceHTML(body []byte) []byte {
-	script := []byte(devicePageScript() + `<style data-tm-hide-notice>.srf-layout__notification{display:none!important}</style>`)
+	script := []byte(devicePageScript() + `<style data-tm-hide-notice>.srf-layout__notification{display:none!important}ul[class*="experiment-sidebar-navigationList"]{display:none!important}</style>`)
 	if bytes.Contains(body, []byte("data-tm-device")) {
 		return body
 	}

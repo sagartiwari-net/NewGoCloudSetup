@@ -13,7 +13,7 @@ func main() {
 	if usesPanelAccountMode(cfg) {
 		ensureRecloudSite(cfg)
 	}
-	cdncache.ImmutablePrefixes = []string{"/__static__/", "/static-semrush-com/"}
+	cdncache.ImmutablePrefixes = []string{"/__static__/", "/static-semrush-com/", "/assets/"}
 	cdncache.StartSweep()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handle)
