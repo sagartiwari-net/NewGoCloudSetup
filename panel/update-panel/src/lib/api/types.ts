@@ -244,6 +244,7 @@ export type TelegramDelivery = {
   recipients: Array<{ label: string; chat_id: string }>
   status: "sent" | "skipped" | "failed"
   error_text?: string
+  reason?: string
   created_at: string
 }
 

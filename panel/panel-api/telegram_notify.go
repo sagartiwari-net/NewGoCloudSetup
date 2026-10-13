@@ -296,5 +296,9 @@ func (s *server) sendTelegramNotice(event, templateKey, fallback string, note te
 			}
 		}
 	}
-	s.insertDelivery(note.website, note.username, event, status, recipients, errorText)
+	reason := strings.TrimSpace(note.reason)
+	if reason == "" {
+		reason = strings.TrimSpace(note.kind)
+	}
+	s.insertDelivery(note.website, note.username, event, status, recipients, errorText, reason)
 }

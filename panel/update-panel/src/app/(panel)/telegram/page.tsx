@@ -946,6 +946,7 @@ function SentTab() {
     { id: "event", header: "Event", cell: (row) => row.event },
     { id: "recipients", header: "Recipients", cell: (row) => row.recipients.map((item) => item.label).join(", ") },
     { id: "status", header: "Status", cell: (row) => row.status },
+    { id: "reason", header: "Reason", cell: (row) => row.reason || "—" },
     { id: "error", header: "Error", cell: (row) => row.error_text || "—" },
     { id: "time", header: "Time", cell: (row) => formatTime(row.created_at) },
   ]

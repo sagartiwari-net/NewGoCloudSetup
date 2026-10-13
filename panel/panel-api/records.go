@@ -1705,7 +1705,13 @@ func (s *server) listDeliveries(w http.ResponseWriter, r *http.Request) {
 		args = append(args, like, like, like, like)
 	}
 	from := ` FROM telegram_deliveries d JOIN websites w ON w.id=d.website_id WHERE ` + where
-	rows, err := s.db.Query(`SELECT d.id, d.website_id, w.name, w.domain, d.username, d.event, d.recipients_json, d.status, d.error_text, d.created_at`+from+` ORDER BY d.created_at DESC`, args...)
+	rows, err := s.db.Query(`SELECT d.id, d.website_id, w.name, w.domain, d.username, d.event, d.recipients_json, d.status, d.error_text, d.created_at,
+		COALESCE(NULLIF(d.reason, ''),
+			CASE
+				WHEN d.event='switch' THEN (SELECT e.reason FROM switch_events e WHERE e.website_id=d.website_id AND e.username=d.username AND e.switched_at<=d.created_at ORDER BY e.switched_at DESC LIMIT 1)
+				WHEN d.event='logout' THEN (SELECT e.reason FROM logout_events e WHERE e.website_id=d.website_id AND e.username=d.username AND e.created_at<=d.created_at ORDER BY e.created_at DESC LIMIT 1)
+				ELSE ''
+			END) `+from+` ORDER BY d.created_at DESC`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -1721,8 +1727,8 @@ func (s *server) listDeliveries(w http.ResponseWriter, r *http.Request) {
 	}
 	for rows.Next() {
 		var id, website int
-		var name, domain, username, event, raw, status, errorText, at string
-		_ = rows.Scan(&id, &website, &name, &domain, &username, &event, &raw, &status, &errorText, &at)
+		var name, domain, username, event, raw, status, errorText, at, reason string
+		_ = rows.Scan(&id, &website, &name, &domain, &username, &event, &raw, &status, &errorText, &at, &reason)
 		recipients := []map[string]any{}
 		_ = json.Unmarshal([]byte(raw), &recipients)
 		names := []string{}
@@ -1738,7 +1744,7 @@ func (s *server) listDeliveries(w http.ResponseWriter, r *http.Request) {
 		}
 		all = append(all, map[string]any{
 			"id": id, "website_id": website, "reseller_names": names, "website_name": name, "website_domain": domain,
-			"username": username, "event": event, "recipients": cleanRecipients(recipients), "status": status, "error_text": errorText, "created_at": at,
+			"username": username, "event": event, "recipients": cleanRecipients(recipients), "status": status, "error_text": errorText, "reason": reason, "created_at": at,
 		})
 	}
 	total := len(all)
@@ -1891,13 +1897,13 @@ func (s *server) useAccount(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"account_id": chosen})
 }
 
-func (s *server) insertDelivery(websiteID int, username, event, status string, recipients []map[string]string, errorText string) {
+func (s *server) insertDelivery(websiteID int, username, event, status string, recipients []map[string]string, errorText, reason string) {
 	raw, _ := json.Marshal(recipients)
 	if recipients == nil {
 		raw = []byte("[]")
 	}
-	_, _ = s.db.Exec(`INSERT INTO telegram_deliveries (website_id, username, event, recipients_json, status, error_text, created_at) VALUES (?,?,?,?,?,?,?)`,
-		websiteID, username, event, string(raw), status, errorText, time.Now().UTC().Format(time.RFC3339))
+	_, _ = s.db.Exec(`INSERT INTO telegram_deliveries (website_id, username, event, recipients_json, status, error_text, reason, created_at) VALUES (?,?,?,?,?,?,?,?)`,
+		websiteID, username, event, string(raw), status, errorText, reason, time.Now().UTC().Format(time.RFC3339))
 }
 
 func postTelegram(token, chatID, text string) string {
