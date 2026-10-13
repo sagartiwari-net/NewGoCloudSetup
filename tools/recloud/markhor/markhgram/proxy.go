@@ -236,7 +236,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				}
 			}
 		}
-		jar := cookiesForUpstream(acc)
+		jar := cookiesForUpstream(acc, r)
 		var resp *http.Response
 		var payload []byte
 		var ct string

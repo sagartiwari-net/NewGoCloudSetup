@@ -129,6 +129,18 @@ func TestLogoutPath(t *testing.T) {
 	}
 }
 
+func TestBrowserSessionCookiesAreForwarded(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://markhgram.gt4rents.com/gateway/experimentation/properties", nil)
+	req.Header.Set("Cookie", "ct_session=panel-session; grauth=from-browser; csrf_token=tok")
+	got := cookiesForUpstream(ToolAccount{Cookie: "PHPSESSID=session"}, req)
+	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=from-browser") || !strings.Contains(got, "csrf_token=tok") {
+		t.Fatalf("browser session cookies were dropped: %s", got)
+	}
+	if strings.Contains(got, "ct_session") || strings.Contains(got, "panel-session") {
+		t.Fatalf("panel session leaked upstream: %s", got)
+	}
+}
+
 func TestSessionCookieFollowsUpstream(t *testing.T) {
 	got := absorbSetCookies("PHPSESSID=session", http.Header{"Set-Cookie": []string{"grauth=fresh; Path=/; Secure", "csrf_token=tok; Path=/"}})
 	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=fresh") || !strings.Contains(got, "csrf_token=tok") {

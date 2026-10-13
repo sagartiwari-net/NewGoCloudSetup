@@ -253,6 +253,12 @@ function tmReveal() {
   if (lock) lock.remove();
 }
 (function () {
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.register = function () { return Promise.reject(new Error("sw-disabled")); };
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister(); });
+    }).catch(function () {});
+  }
   var proof = "";
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   if (!proof) {
@@ -353,13 +359,19 @@ function tmPatchRequests(fp, proof) {
       var url = typeof input === "string" ? input : (input && input.url) || "";
       var same = false;
       try { same = new URL(url, location.href).origin === location.origin; } catch (e) {}
+      if (same && typeof input !== "string" && input && input.headers && !init) {
+        try {
+          input.headers.set("X-Device-Fp", fp);
+          input.headers.set("X-Device-Proof", proof);
+        } catch (e) {}
+        return origFetch.call(this, input);
+      }
       if (same) {
         init = init || {};
-        var headers = new Headers(init.headers || (typeof input !== "string" && input && input.headers) || undefined);
+        var headers = new Headers(init.headers || undefined);
         if (!headers.get("X-Device-Fp")) headers.set("X-Device-Fp", fp);
         if (!headers.get("X-Device-Proof")) headers.set("X-Device-Proof", proof);
         init.headers = headers;
-        if (typeof input !== "string") return origFetch.call(this, new Request(input, init));
       }
       return origFetch.call(this, input, init);
     };

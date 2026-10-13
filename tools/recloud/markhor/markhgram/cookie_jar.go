@@ -11,16 +11,25 @@ const maxCookieHops = 6
 
 var derivedCookies sync.Map
 
-func cookiesForUpstream(acc ToolAccount) string {
+func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
 	base := strings.TrimSpace(acc.Cookie)
-	if acc.ID == 0 {
+	if acc.ID != 0 {
+		if extra, ok := derivedCookies.Load(acc.ID); ok {
+			base = mergeCookieHeaders(extra.(string), base)
+		}
+	}
+	if r == nil {
 		return base
 	}
-	extra, ok := derivedCookies.Load(acc.ID)
-	if !ok {
-		return base
+	return mergeCookieHeaders(base, browserCookiesForUpstream(r))
+}
+
+func browserCookiesForUpstream(r *http.Request) string {
+	if r == nil {
+		return ""
 	}
-	return mergeCookieHeaders(extra.(string), base)
+	order, vals := parseCookieHeader(r.Header.Get("Cookie"))
+	return serializeCookies(order, vals)
 }
 
 func rememberUpstreamCookies(acc ToolAccount, merged string) {
