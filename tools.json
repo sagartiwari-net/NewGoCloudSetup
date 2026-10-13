@@ -647,6 +647,13 @@
       "subdomain": "markhgram",
       "port": 6103,
       "fqdn": "markhgram.gt4rents.com"
+    },
+    {
+      "tool": "markhquill",
+      "folder": "recloud/markhor/markhquill",
+      "subdomain": "markhquill",
+      "port": 6104,
+      "fqdn": "markhquill.gt4rents.com"
     }
   ]
 }
