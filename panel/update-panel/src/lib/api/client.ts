@@ -727,6 +727,7 @@ export async function saveAutomationJob(input: {
   target_account_id: number
   interval_minutes: number
   enabled: boolean
+  wake_website_ids: number[]
 }): Promise<Ok> {
   await api("/api/automation/jobs", { method: "POST", body: JSON.stringify(input) })
   return { status: "ok" }

@@ -52,6 +52,8 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 	return true, updated, nil
 }
 
+func (Recipe) PortalHost() string { return "markhorseotool.com" }
+
 func (Recipe) Login(ctx context.Context, username, password string) ([]automation.Cookie, error) {
 	client, jar, err := newMarkhorClient(12)
 	if err != nil {

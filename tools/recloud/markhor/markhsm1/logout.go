@@ -56,6 +56,9 @@ func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reas
 	if websiteID == 0 {
 		_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 	}
+	if websiteID > 0 {
+		_, _ = db.Exec(`INSERT INTO automation_signals (website_id, created_at, state) VALUES (?,?,'pending')`, websiteID, now)
+	}
 	ip := ""
 	if r != nil {
 		ip = realClientIP(r)

@@ -54,6 +54,8 @@ func (r *scriptedRecipe) Login(ctx context.Context, username, password string) (
 	}}, nil
 }
 
+func (r *scriptedRecipe) PortalHost() string { return "markhorseotool.com" }
+
 func (r *scriptedRecipe) Capture(ctx context.Context, portal []cookieJSON, upstreamURL string) ([]cookieJSON, error) {
 	if strings.TrimSpace(upstreamURL) == "" {
 		return nil, errAutomationUpstream
@@ -435,5 +437,163 @@ func TestAutomationShareCookieFrom(t *testing.T) {
 	}
 	if !strings.Contains(stored, "portal-session-value") {
 		t.Fatal("failed login wiped storage")
+	}
+}
+
+func TestAutomationNextRunUsesLastRun(t *testing.T) {
+	last := time.Date(2026, 10, 14, 7, 7, 46, 0, time.UTC)
+	saved := last.Add(2 * time.Minute)
+	got := automationNextRun(last.Format(time.RFC3339), 5, saved)
+	want := last.Add(5 * time.Minute)
+	if !got.Equal(want) {
+		t.Fatalf("next = %s, want %s", got, want)
+	}
+
+	late := last.Add(10 * time.Minute)
+	got = automationNextRun(last.Format(time.RFC3339), 5, late)
+	want = late.Add(5 * time.Minute)
+	if !got.Equal(want) {
+		t.Fatalf("overdue next = %s, want %s", got, want)
+	}
+
+	got = automationNextRun("", 5, saved)
+	if !got.Equal(saved.Add(5 * time.Minute)) {
+		t.Fatal("a job with no last run should count from the save")
+	}
+}
+
+func insertMarkhorWebsite(t *testing.T, s *server, name, domain string) int {
+	t.Helper()
+	res, err := s.db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES (?, 'recloud', '[]')`, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolID, _ := res.LastInsertId()
+	res, err = s.db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, kind, upstream_url)
+		VALUES (?, ?, ?, 'secret', 30, '{}', 1, 'recloud', 'https://sm01.markhorseotool.com')`, toolID, name, domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := res.LastInsertId()
+	return int(id)
+}
+
+func TestAutomationLogoutTrigger(t *testing.T) {
+	s, _ := openAutomationTestDB(t)
+	recipe := &scriptedRecipe{liveValue: "live-session-value", portalValue: "portal-session-value", toolValue: "tool-session-value"}
+	useAutomationRecipe(t, recipe)
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	if err := s.replaceAutomationStorage(cred, `[{"name":"session","value":"live-session-value","domain":"markhorseotool.com","path":"/"}]`); err != nil {
+		t.Fatal(err)
+	}
+	first := insertMarkhorWebsite(t, s, "Markhor Semrush", "markhsm1.example")
+	second := insertMarkhorWebsite(t, s, "Markhor Grammarly", "markhgram.example")
+	jobA := insertAutomationJob(t, s, "Markhor Home", cred, first, 0)
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, websiteID := range []int{first, second, first} {
+		if _, err := s.db.Exec(`INSERT INTO automation_signals (website_id, created_at, state) VALUES (?,?,'pending')`, websiteID, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.drainAutomationSignals()
+	var queued string
+	var queuedCount int
+	if err := s.db.QueryRow(`SELECT queued_cause FROM automation_jobs WHERE id=?`, jobA).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if queued != "trigger" {
+		t.Fatalf("queued = %q", queued)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_jobs WHERE credential_id=? AND queued_cause='trigger'`, cred).Scan(&queuedCount); err != nil {
+		t.Fatal(err)
+	}
+	if queuedCount != 1 {
+		t.Fatalf("queued jobs = %d", queuedCount)
+	}
+	var skipped int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_logs WHERE message LIKE 'logout trigger skipped%'`).Scan(&skipped); err != nil {
+		t.Fatal(err)
+	}
+	if skipped != 2 {
+		t.Fatalf("skipped = %d", skipped)
+	}
+	s.startQueuedAutomation()
+	if recipe.loginCount() != 0 {
+		t.Fatalf("logins = %d", recipe.loginCount())
+	}
+	var triggerAt string
+	if err := s.db.QueryRow(`SELECT last_trigger_at FROM automation_jobs WHERE id=?`, jobA).Scan(&triggerAt); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(triggerAt) == "" {
+		t.Fatal("trigger did not stamp the cooldown")
+	}
+	if _, err := s.db.Exec(`INSERT INTO automation_signals (website_id, created_at, state) VALUES (?,?,'pending')`, second, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	s.drainAutomationSignals()
+	if err := s.db.QueryRow(`SELECT queued_cause FROM automation_jobs WHERE id=?`, jobA).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if queued != "" {
+		t.Fatal("a trigger inside 5 minutes was queued")
+	}
+
+	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_trigger_at='', last_run_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339), jobA)
+	if _, err := s.db.Exec(`INSERT INTO automation_signals (website_id, created_at, state) VALUES (?,?,'pending')`, first, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	s.drainAutomationSignals()
+	if err := s.db.QueryRow(`SELECT queued_cause FROM automation_jobs WHERE id=?`, jobA).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if queued != "trigger" {
+		t.Fatal("a manual run should not block the next logout trigger")
+	}
+
+	jobB := insertAutomationJob(t, s, "Markhor Grammarly", cred, second, 0)
+	_, _ = s.db.Exec(`UPDATE automation_jobs SET running=1, queued_cause='' WHERE id=?`, jobA)
+	if _, err := s.db.Exec(`INSERT INTO automation_signals (website_id, created_at, state) VALUES (?,?,'pending')`, second, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO automation_signals (website_id, created_at, state) VALUES (?,?,'pending')`, second, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	s.drainAutomationSignals()
+	if err := s.db.QueryRow(`SELECT queued_cause FROM automation_jobs WHERE id=?`, jobB).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if queued != "trigger" {
+		t.Fatalf("different job queued = %q", queued)
+	}
+	var waiting int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_logs WHERE job_id=? AND message LIKE 'logout trigger waiting%'`, jobB).Scan(&waiting); err != nil {
+		t.Fatal(err)
+	}
+	if waiting != 1 {
+		t.Fatalf("waiting logs = %d", waiting)
+	}
+	_, _ = s.db.Exec(`UPDATE automation_jobs SET running=0, last_trigger_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339), jobA)
+	s.startQueuedAutomation()
+	if err := s.db.QueryRow(`SELECT queued_cause, running FROM automation_jobs WHERE id=?`, jobB).Scan(&queued, new(int)); err != nil {
+		t.Fatal(err)
+	}
+	if queued != "trigger" {
+		t.Fatal("the waiting job started before the 5 minute gap")
+	}
+	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_trigger_at=? WHERE id=?`, time.Now().Add(-6*time.Minute).UTC().Format(time.RFC3339), jobA)
+	s.startQueuedAutomation()
+	if err := s.db.QueryRow(`SELECT queued_cause, last_trigger_at FROM automation_jobs WHERE id=?`, jobB).Scan(&queued, &triggerAt); err != nil {
+		t.Fatal(err)
+	}
+	if queued != "" || strings.TrimSpace(triggerAt) == "" {
+		t.Fatalf("waiting job did not start, queued=%q trigger=%q", queued, triggerAt)
+	}
+	var leaked int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_logs WHERE message LIKE '%' || ? || '%'`, automationFakeCookie).Scan(&leaked); err != nil {
+		t.Fatal(err)
+	}
+	if leaked != 0 {
+		t.Fatal("automation log contains a cookie")
 	}
 }

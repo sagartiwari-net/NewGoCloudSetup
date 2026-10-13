@@ -628,11 +628,16 @@ func liveUpstream(cfg Config) string {
 func renderLoggedOutPage(w http.ResponseWriter, cfg Config) {
 	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusForbidden, lightCard{
-		Title:   "Logged out",
-		Heading: "Logged out",
-		Message: "<span class=\"brand\">" + name + "</span> signed out. Open it again from your access link.",
-		Footer:  "This logout is saved in Analytics",
+		Title:       "Logged out",
+		Heading:     "Signing you in",
+		Message:     "<span class=\"brand\">" + name + "</span> signed out. Signing you in again.",
+		Footer:      "This page checks again in a few seconds",
+		ExtraScript: loggedOutRefreshScript(),
 	})
+}
+
+func loggedOutRefreshScript() string {
+	return `<script>(function(){var k="oneclickgo-relogin",n=0;try{n=Number(sessionStorage.getItem(k)||"0")}catch(e){}if(n>=8)return;try{sessionStorage.setItem(k,String(n+1))}catch(e){}setTimeout(function(){location.reload()},n===0?3000:4000)})();</script>`
 }
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {

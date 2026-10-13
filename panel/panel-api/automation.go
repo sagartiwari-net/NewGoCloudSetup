@@ -172,15 +172,35 @@ func ensureAutomationTables(db *sql.DB) {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_automation_logs_created ON automation_logs(created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_automation_jobs_due ON automation_jobs(enabled, next_run_at)`,
+		`CREATE TABLE IF NOT EXISTS automation_job_sites (
+			job_id INTEGER NOT NULL,
+			website_id INTEGER NOT NULL,
+			PRIMARY KEY (job_id, website_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS automation_signals (
+			id INTEGER PRIMARY KEY,
+			website_id INTEGER NOT NULL,
+			created_at TEXT NOT NULL,
+			state TEXT NOT NULL
+		)`,
 	}
 	for _, statement := range statements {
+		_, _ = db.Exec(statement)
+	}
+	for _, statement := range []string{
+		`ALTER TABLE automation_jobs ADD COLUMN last_trigger_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE automation_jobs ADD COLUMN queued_cause TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE automation_jobs ADD COLUMN running INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE automation_jobs ADD COLUMN run_cause TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE automation_jobs ADD COLUMN wake_website_id INTEGER NOT NULL DEFAULT 0`,
+	} {
 		_, _ = db.Exec(statement)
 	}
 	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) == "" {
 		return
 	}
 	automationMySQLIDs.Do(func() {
-		for _, table := range []string{"automation_credentials", "automation_jobs", "automation_logs"} {
+		for _, table := range []string{"automation_credentials", "automation_jobs", "automation_logs", "automation_signals"} {
 			_, _ = db.Exec(`ALTER TABLE ` + table + ` MODIFY COLUMN id INTEGER NOT NULL AUTO_INCREMENT`)
 		}
 	})
@@ -246,8 +266,10 @@ type automationSite struct {
 
 func (s *server) pollAutomation() {
 	for {
+		s.drainAutomationSignals()
 		s.runDueAutomationJobs()
-		time.Sleep(30 * time.Second)
+		s.startQueuedAutomation()
+		time.Sleep(2 * time.Second)
 	}
 }
 
@@ -300,6 +322,8 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	if !s.claimAutomationJob(job) {
 		return
 	}
+	var wakeWebsiteID int
+	_ = s.db.QueryRow(`SELECT wake_website_id FROM automation_jobs WHERE id=?`, job.ID).Scan(&wakeWebsiteID)
 	site, ok := s.loadAutomationSite(job.TargetWebsiteID)
 	if !ok || strings.TrimSpace(site.Upstream) == "" {
 		s.failAutomation(job, errAutomationUpstream, nil)
@@ -371,6 +395,11 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	s.shareCookieFrom(accountID)
 	message := "wrote cookie to " + strings.TrimSpace(site.Name)
 	s.writeAutomationLog(job, "info", message, append(secrets, raw))
+	if wakeWebsiteID > 0 && wakeWebsiteID != site.ID {
+		if wakeMessage := s.captureAutomationWake(ctx, recipe, job, portal, wakeWebsiteID, secrets); wakeMessage != "" {
+			message = message + "; " + wakeMessage
+		}
+	}
 	s.finishAutomation(job, "ok", message)
 }
 
@@ -389,6 +418,22 @@ func (s *server) automationLogin(ctx context.Context, recipe automation.Recipe, 
 	return cookies, nil
 }
 
+func automationNextRun(lastRun string, interval int, now time.Time) time.Time {
+	if interval < 5 {
+		interval = 5
+	}
+	fromSave := now.Add(time.Duration(interval) * time.Minute)
+	last, err := time.Parse(time.RFC3339, strings.TrimSpace(lastRun))
+	if err != nil {
+		return fromSave
+	}
+	fromLast := last.Add(time.Duration(interval) * time.Minute)
+	if fromLast.Before(now) {
+		return fromSave
+	}
+	return fromLast
+}
+
 func (s *server) claimAutomationJob(job automationJobRow) bool {
 	now := time.Now().UTC()
 	interval := job.IntervalMinutes
@@ -396,9 +441,20 @@ func (s *server) claimAutomationJob(job automationJobRow) bool {
 		interval = 5
 	}
 	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
-	res, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=0, next_run_at=?
-		WHERE id=? AND enabled=1 AND (run_requested=1 OR next_run_at<=?)`,
-		next, job.ID, now.Format(time.RFC3339))
+	var queued string
+	var requested, running int
+	if err := s.db.QueryRow(`SELECT queued_cause, run_requested, running FROM automation_jobs WHERE id=?`, job.ID).Scan(&queued, &requested, &running); err != nil || running == 1 {
+		return false
+	}
+	cause := "schedule"
+	if queued == "trigger" || queued == "manual" {
+		cause = queued
+	} else if requested == 1 {
+		cause = "manual"
+	}
+	res, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=0, queued_cause='', running=1, run_cause=?, next_run_at=?, updated_at=?
+		WHERE id=? AND enabled=1 AND running=0 AND (run_requested=1 OR next_run_at<=? OR queued_cause<>'')`,
+		cause, next, now.Format(time.RFC3339), job.ID, now.Format(time.RFC3339))
 	if err != nil {
 		return false
 	}
@@ -423,8 +479,9 @@ func (s *server) finishAutomation(job automationJobRow, result, reason string) {
 	}
 	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
 	stamp := now.Format(time.RFC3339)
-	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_run_at=?, last_result=?, last_reason=?, next_run_at=?, run_requested=0, updated_at=? WHERE id=?`,
-		stamp, result, reason, next, stamp, job.ID)
+	triggerAt := automationTriggerStamp(s.db, job.ID, stamp)
+	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_run_at=?, last_result=?, last_reason=?, next_run_at=?, run_requested=0, running=0, run_cause='', wake_website_id=0, last_trigger_at=?, updated_at=? WHERE id=?`,
+		stamp, result, reason, next, triggerAt, stamp, job.ID)
 	log.Printf("[automation] job %d %s: %s", job.ID, result, reason)
 }
 
@@ -446,8 +503,9 @@ func (s *server) failAutomation(job automationJobRow, err error, secrets []strin
 	}
 	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
 	stamp := now.Format(time.RFC3339)
-	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_run_at=?, last_result='failed', last_reason=?, next_run_at=?, run_requested=0, updated_at=? WHERE id=?`,
-		stamp, reason, next, stamp, job.ID)
+	triggerAt := automationTriggerStamp(s.db, job.ID, stamp)
+	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_run_at=?, last_result='failed', last_reason=?, next_run_at=?, run_requested=0, running=0, run_cause='', wake_website_id=0, last_trigger_at=?, updated_at=? WHERE id=?`,
+		stamp, reason, next, triggerAt, stamp, job.ID)
 	log.Printf("[automation] job %d failed: %s", job.ID, reason)
 }
 
@@ -860,6 +918,7 @@ func (s *server) listAutomationJobs(w http.ResponseWriter, r *http.Request) {
 			"credential_id": credID, "credential_name": credName,
 			"target_website_id": websiteID, "target_label": websiteChoiceLabel(siteName, domain),
 			"target_account_id": accountID, "target_account_name": accountName,
+			"wake_website_ids": s.automationWakeIDs(id),
 			"interval_minutes": interval, "enabled": enabled == 1,
 			"last_run_at": lastRun, "last_result": lastResult, "last_reason": lastReason, "next_run_at": nextRun,
 		})
@@ -881,6 +940,7 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 		TargetAccountID int    `json:"target_account_id"`
 		IntervalMinutes int    `json:"interval_minutes"`
 		Enabled         bool   `json:"enabled"`
+		WakeWebsiteIDs  []int  `json:"wake_website_ids"`
 	}
 	if err := readBody(r, &body); err != nil {
 		writeErr(w, 400, "Invalid body")
@@ -931,32 +991,34 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 	stamp := now.Format(time.RFC3339)
 	if body.ID == 0 {
 		next := now.Add(time.Duration(body.IntervalMinutes) * time.Minute).Format(time.RFC3339)
-		if _, err := s.db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at)
+		res, err := s.db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at)
 			VALUES (?,?,?,?,?,?,?,0,?,'','','',?,?)`,
-			body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, stamp); err != nil {
+			body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, stamp)
+		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		newID, _ := res.LastInsertId()
+		s.saveAutomationWakeSites(int(newID), body.TargetWebsiteID, body.WakeWebsiteIDs)
 		writeJSON(w, 200, map[string]string{"status": "ok"})
 		return
 	}
 	var prevInterval int
-	var prevNext string
-	if err := s.db.QueryRow(`SELECT interval_minutes, next_run_at FROM automation_jobs WHERE id=?`, body.ID).Scan(&prevInterval, &prevNext); err != nil {
+	var prevNext, lastRun string
+	if err := s.db.QueryRow(`SELECT interval_minutes, next_run_at, last_run_at FROM automation_jobs WHERE id=?`, body.ID).Scan(&prevInterval, &prevNext, &lastRun); err != nil {
 		writeErr(w, 404, "Job not found")
 		return
 	}
 	next := prevNext
 	if prevInterval != body.IntervalMinutes {
-		if strings.TrimSpace(prevNext) == "" || prevNext > stamp {
-			next = now.Add(time.Duration(body.IntervalMinutes) * time.Minute).Format(time.RFC3339)
-		}
+		next = automationNextRun(lastRun, body.IntervalMinutes, now).Format(time.RFC3339)
 	}
 	if _, err := s.db.Exec(`UPDATE automation_jobs SET name=?, provider=?, credential_id=?, target_website_id=?, target_account_id=?, interval_minutes=?, enabled=?, next_run_at=?, updated_at=? WHERE id=?`,
 		body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, body.ID); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
+	s.saveAutomationWakeSites(body.ID, body.TargetWebsiteID, body.WakeWebsiteIDs)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -970,6 +1032,7 @@ func (s *server) deleteAutomationJob(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Choose a job")
 		return
 	}
+	_, _ = s.db.Exec(`DELETE FROM automation_job_sites WHERE job_id=?`, id)
 	_, _ = s.db.Exec(`DELETE FROM automation_jobs WHERE id=?`, id)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }

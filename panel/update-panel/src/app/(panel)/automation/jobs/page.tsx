@@ -13,6 +13,7 @@ import { FormOverlay } from "@/components/form-overlay"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -47,6 +48,7 @@ function jobSchema(websites: AutomationWebsite[]) {
       target_account_id: z.string(),
       interval_minutes: z.number().int().min(5, "Use at least 5 minutes").max(1440, "Use at most 1440 minutes"),
       enabled: z.boolean(),
+      wake_website_ids: z.array(z.string()),
     })
     .superRefine((value, ctx) => {
       const website = websites.find((item) => String(item.id) === value.target_website_id)
@@ -260,6 +262,7 @@ function JobForm({
       target_account_id: job && job.target_account_id > 0 ? String(job.target_account_id) : "",
       interval_minutes: job?.interval_minutes ?? 60,
       enabled: job?.enabled ?? true,
+      wake_website_ids: (job?.wake_website_ids ?? []).map(String),
     },
   })
   const errors = form.formState.errors
@@ -268,6 +271,8 @@ function JobForm({
   const website = options.websites.find((item) => String(item.id) === websiteId)
   const credentials = options.credentials.filter((item) => item.provider === provider)
   const showAccount = Boolean(website) && website?.kind !== "recloud"
+  const wakeSites = options.websites.filter((item) => item.kind === "recloud" && String(item.id) !== websiteId)
+  const selectedWakes = form.watch("wake_website_ids")
 
   return (
     <form
@@ -285,6 +290,7 @@ function JobForm({
               target_account_id: selected?.kind === "recloud" ? 0 : Number(values.target_account_id),
               interval_minutes: values.interval_minutes,
               enabled: values.enabled,
+              wake_website_ids: values.wake_website_ids.map(Number).filter((id) => id > 0 && id !== Number(values.target_website_id)),
             }),
           "Job saved",
         )
@@ -360,9 +366,37 @@ function JobForm({
         <Field data-invalid={Boolean(errors.interval_minutes) || undefined}>
           <FieldLabel htmlFor="job-interval">Interval (minutes)</FieldLabel>
           <Input id="job-interval" type="number" min={5} max={1440} {...form.register("interval_minutes", { valueAsNumber: true })} />
-          <FieldDescription>From 5 to 1440. A change waits that long unless a run is already due.</FieldDescription>
+          <FieldDescription>Counted from the last run. If that time has already passed, the count starts when you save.</FieldDescription>
           <FieldError errors={[errors.interval_minutes]} />
         </Field>
+        {wakeSites.length > 0 ? (
+          <Field>
+            <FieldLabel>Also run when these log out</FieldLabel>
+            <FieldDescription>
+              Leave this empty while this is the only job for the provider. Every matching recloud tool will wake it. Choose sites when one provider has more than one job.
+            </FieldDescription>
+            <div className="flex max-h-48 flex-col gap-2 overflow-auto rounded-md border p-3">
+              {wakeSites.map((item) => {
+                const id = String(item.id)
+                const checked = selectedWakes.includes(id)
+                return (
+                  <label key={item.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) => {
+                        const next = new Set(selectedWakes)
+                        if (value === true) next.add(id)
+                        else next.delete(id)
+                        form.setValue("wake_website_ids", [...next], { shouldDirty: true })
+                      }}
+                    />
+                    <span>{websiteLabel(item)}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </Field>
+        ) : null}
         <Field orientation="horizontal">
           <Controller
             control={form.control}
