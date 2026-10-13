@@ -675,6 +675,13 @@
       "subdomain": "markhuber",
       "port": 6107,
       "fqdn": "markhuber.gt4rents.com"
+    },
+    {
+      "tool": "markhanswer",
+      "folder": "recloud/markhor/markhanswer",
+      "subdomain": "markhanswer",
+      "port": 6108,
+      "fqdn": "markhanswer.gt4rents.com"
     }
   ]
 }

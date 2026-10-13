@@ -1,0 +1,12 @@
+{
+  "port": "6108",
+  "public_host": "127.0.0.1:6108",
+  "public_scheme": "http",
+  "target_url": "https://answer.markhorseotool.com",
+  "home_path": "/en/dashboard/fdt6pq/searches",
+  "tool_name": "Markhor AnswerThePublic",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}
