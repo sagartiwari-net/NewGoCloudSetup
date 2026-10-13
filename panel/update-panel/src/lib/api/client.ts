@@ -700,6 +700,16 @@ export async function listTelegramInbox(): Promise<TelegramInboxRow[]> {
   return page.items ?? []
 }
 
+export async function deleteTelegramInbox(chatIds: string[]): Promise<Ok> {
+  await api("/api/telegram/inbox/delete", { method: "POST", body: JSON.stringify({ chat_ids: chatIds }) })
+  return { status: "ok" }
+}
+
+export async function clearTelegramInbox(): Promise<Ok> {
+  await api("/api/telegram/inbox/delete", { method: "POST", body: JSON.stringify({ all: true }) })
+  return { status: "ok" }
+}
+
 export async function listTelegramDestinations(query: {
   page: number
   pageSize: number

@@ -22,6 +22,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { useResource } from "@/hooks/use-resource"
 import {
   clearTelegramDeliveries,
+  clearTelegramInbox,
+  deleteTelegramInbox,
   deleteTelegramDestination,
   getTelegramSettings,
   getTelegramTemplates,
@@ -306,13 +308,20 @@ function MasterSettings({ token, minutes, onSaved }: { token: string; minutes: n
 function InboxCard({ onUse }: { onUse: (row: TelegramInboxRow) => void }) {
   const [rows, setRows] = useState<TelegramInboxRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<string[]>([])
+  const [reloadKey, setReloadKey] = useState(0)
+  const [pending, setPending] = useState(false)
+  const [confirm, setConfirm] = useState<null | { ids: string[]; all: boolean; title: string; description: string }>(null)
+  const allChecked = rows.length > 0 && rows.every((row) => selected.includes(row.chat_id))
 
   useEffect(() => {
     let active = true
     const load = () => {
       listTelegramInbox()
         .then((items) => {
-          if (active) setRows(items)
+          if (!active) return
+          setRows(items)
+          setSelected((current) => current.filter((id) => items.some((row) => row.chat_id === id)))
         })
         .catch(() => {})
         .finally(() => {
@@ -325,9 +334,29 @@ function InboxCard({ onUse }: { onUse: (row: TelegramInboxRow) => void }) {
       active = false
       window.clearInterval(timer)
     }
-  }, [])
+  }, [reloadKey])
 
   const columns: DataColumn<TelegramInboxRow>[] = [
+    {
+      id: "select",
+      header: "Select",
+      headerCell: () => (
+        <Checkbox
+          aria-label="Select messages on this page"
+          checked={allChecked}
+          onCheckedChange={(next) => setSelected(next ? rows.map((row) => row.chat_id) : [])}
+        />
+      ),
+      cell: (row) => (
+        <Checkbox
+          aria-label={`Select ${row.display_name || row.chat_id}`}
+          checked={selected.includes(row.chat_id)}
+          onCheckedChange={(next) =>
+            setSelected((current) => (next ? [...current, row.chat_id] : current.filter((id) => id !== row.chat_id)))
+          }
+        />
+      ),
+    },
     { id: "name", header: "Name", cell: (row) => row.display_name || "—" },
     { id: "username", header: "Username", cell: (row) => (row.username ? `@${row.username}` : "—") },
     { id: "chat", header: "Telegram id", cell: (row) => <span className="font-mono">{row.chat_id}</span> },
@@ -337,9 +366,25 @@ function InboxCard({ onUse }: { onUse: (row: TelegramInboxRow) => void }) {
       id: "use",
       header: "",
       cell: (row) => (
-        <Button variant="outline" size="sm" onClick={() => onUse(row)}>
-          Use this id
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => onUse(row)}>
+            Use this id
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setConfirm({
+                ids: [row.chat_id],
+                all: false,
+                title: "Delete this message",
+                description: `Remove ${row.display_name || row.chat_id} from the list? A later message from the same person shows up as a new row.`,
+              })
+            }
+          >
+            Delete
+          </Button>
+        </div>
       ),
     },
   ]
@@ -349,10 +394,40 @@ function InboxCard({ onUse }: { onUse: (row: TelegramInboxRow) => void }) {
       <CardHeader>
         <CardTitle>People who messaged the bot</CardTitle>
         <CardDescription>
-          Ask the reseller to open the bot and press Start. Their Telegram id shows up here. Use that id as the chat id.
+          Ask the reseller to open the bot and press Start. Their Telegram id shows up here. Use that id as the chat id. Each person keeps one row: a new message replaces the old one.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="outline"
+            disabled={selected.length === 0}
+            onClick={() =>
+              setConfirm({
+                ids: selected,
+                all: false,
+                title: "Delete selected messages",
+                description: `Delete ${selected.length} selected ${selected.length === 1 ? "row" : "rows"}?`,
+              })
+            }
+          >
+            Delete selected
+          </Button>
+          <Button
+            variant="outline"
+            disabled={rows.length === 0}
+            onClick={() =>
+              setConfirm({
+                ids: [],
+                all: true,
+                title: "Clear message list",
+                description: "Delete every person who messaged the bot? Chats you already saved stay.",
+              })
+            }
+          >
+            Clear list
+          </Button>
+        </div>
         <DataTable
           rows={rows}
           columns={columns}
@@ -362,6 +437,28 @@ function InboxCard({ onUse }: { onUse: (row: TelegramInboxRow) => void }) {
           emptyDescription="When someone presses Start, their id appears here within a few seconds."
         />
       </CardContent>
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirm(null)
+        }}
+        title={confirm?.title ?? "Delete"}
+        description={confirm?.description ?? ""}
+        confirmLabel="Delete"
+        pending={pending}
+        onConfirm={() => {
+          if (!confirm) return
+          setPending(true)
+          const action = confirm.all ? clearTelegramInbox : () => deleteTelegramInbox(confirm.ids)
+          void runMutation(action, confirm.all ? "Message list cleared" : "Message deleted").then((ok) => {
+            setPending(false)
+            if (!ok) return
+            setConfirm(null)
+            setSelected([])
+            setReloadKey((value) => value + 1)
+          })
+        }}
+      />
     </Card>
   )
 }
@@ -889,7 +986,7 @@ function SentTab() {
             </Field>
           ) : null}
         </div>
-        <Button variant="outline" onClick={() => setConfirmClear(true)}>Clear</Button>
+        <Button variant="outline" onClick={() => setConfirmClear(true)}>Clear sent log</Button>
       </div>
       <Card>
         <CardContent>

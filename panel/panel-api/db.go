@@ -173,6 +173,7 @@ func ensureTelegramInbox(db *sql.DB) {
 		last_text TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`)
+	_, _ = db.Exec(`ALTER TABLE telegram_inbox ADD COLUMN user_id VARCHAR(64) NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE telegram_deliveries ADD COLUMN error_text TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`INSERT INTO settings ("key", value) VALUES ('switch_template', ?) ON DUPLICATE KEY UPDATE value=value`,
 		"{tool} {account} {problem}")

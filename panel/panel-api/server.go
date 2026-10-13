@@ -134,6 +134,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/telegram/routes", s.listRoutes)
 	mux.HandleFunc("POST /api/telegram/routes", s.saveRoute)
 	mux.HandleFunc("GET /api/telegram/inbox", s.listTelegramInbox)
+	mux.HandleFunc("POST /api/telegram/inbox/delete", s.deleteTelegramInbox)
 	mux.HandleFunc("GET /api/telegram/deliveries", s.listDeliveries)
 	mux.HandleFunc("DELETE /api/telegram/deliveries", s.clearDeliveries)
 	mux.HandleFunc("GET /api/spam-reports", s.listSpamReports)

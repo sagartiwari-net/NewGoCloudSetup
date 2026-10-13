@@ -121,7 +121,7 @@ func (s *server) pullTelegramUpdates(client *http.Client) error {
 		next := update.UpdateID + 1
 		message := update.Message
 		if message.Chat.ID != 0 && !message.From.IsBot {
-			if err := s.saveTelegramInbox(token, message.Chat.ID, message.Chat.Type, message.From.Username, message.From.FirstName, message.From.LastName, message.Text); err != nil {
+			if err := s.saveTelegramInbox(token, message.Chat.ID, message.From.ID, message.Chat.Type, message.From.Username, message.From.FirstName, message.From.LastName, message.Text); err != nil {
 				return err
 			}
 		}
@@ -130,8 +130,12 @@ func (s *server) pullTelegramUpdates(client *http.Client) error {
 	return nil
 }
 
-func (s *server) saveTelegramInbox(token string, chatID int64, chatType, username, first, last, text string) error {
+func (s *server) saveTelegramInbox(token string, chatID, userID int64, chatType, username, first, last, text string) error {
 	id := strconv.FormatInt(chatID, 10)
+	uid := ""
+	if userID != 0 {
+		uid = strconv.FormatInt(userID, 10)
+	}
 	name := strings.TrimSpace(strings.TrimSpace(first) + " " + strings.TrimSpace(last))
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -141,14 +145,15 @@ func (s *server) saveTelegramInbox(token string, chatID int64, chatType, usernam
 		text = string(letters[:200])
 	}
 	var existing int
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM telegram_inbox WHERE chat_id=?`, id).Scan(&existing)
-	now := time.Now().UTC().Format(time.RFC3339)
-	var err error
-	if existing == 0 {
-		_, err = s.db.Exec(`INSERT INTO telegram_inbox (chat_id, username, display_name, last_text, updated_at) VALUES (?,?,?,?,?)`, id, username, name, text, now)
+	if uid != "" {
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM telegram_inbox WHERE chat_id=? OR user_id=?`, id, uid).Scan(&existing)
+		_, _ = s.db.Exec(`DELETE FROM telegram_inbox WHERE chat_id=? OR user_id=?`, id, uid)
 	} else {
-		_, err = s.db.Exec(`UPDATE telegram_inbox SET username=?, display_name=?, last_text=?, updated_at=? WHERE chat_id=?`, username, name, text, now, id)
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM telegram_inbox WHERE chat_id=?`, id).Scan(&existing)
+		_, _ = s.db.Exec(`DELETE FROM telegram_inbox WHERE chat_id=?`, id)
 	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := s.db.Exec(`INSERT INTO telegram_inbox (chat_id, username, display_name, last_text, updated_at, user_id) VALUES (?,?,?,?,?,?)`, id, username, name, text, now, uid)
 	if err != nil {
 		return err
 	}
@@ -159,6 +164,44 @@ func (s *server) saveTelegramInbox(token string, chatID int64, chatType, usernam
 		}
 	}
 	return nil
+}
+
+func (s *server) deleteTelegramInbox(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok || op.Role != "master" {
+		if ok {
+			writeErr(w, 403, "Master only")
+		}
+		return
+	}
+	var body struct {
+		All     bool     `json:"all"`
+		ChatIDs []string `json:"chat_ids"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	if body.All {
+		_, _ = s.db.Exec(`DELETE FROM telegram_inbox`)
+		writeJSON(w, 200, map[string]string{"status": "ok"})
+		return
+	}
+	n := 0
+	for _, id := range body.ChatIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, err := s.db.Exec(`DELETE FROM telegram_inbox WHERE chat_id=?`, id); err == nil {
+			n++
+		}
+	}
+	if n == 0 {
+		writeErr(w, 400, "Choose at least one message")
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
 func (s *server) saveTelegramOffset(fingerprint string, offset int) {
