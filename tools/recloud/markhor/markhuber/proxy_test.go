@@ -115,6 +115,9 @@ func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
 	if !strings.Contains(out, `docs-lnk`) || strings.Contains(out, `docs-lnk{display:none`) {
 		t.Fatal("docs link was hidden")
 	}
+	if !strings.Contains(out, `button[data-testid="nav-avatar-button"]{display:none!important}`) {
+		t.Fatal("avatar button hide style missing")
+	}
 }
 
 func TestLogoutPath(t *testing.T) {
