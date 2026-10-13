@@ -150,6 +150,9 @@ func TestSessionCookieFollowsUpstream(t *testing.T) {
 	if _, ok := sameSiteRequestURI("https://example.com/docs", "qb.markhorseotool.com", "https://markhquill.gt4rents.com"); ok {
 		t.Fatal("off-site redirect must stay with the browser")
 	}
+	if _, ok := sameSiteRequestURI("/cdn-cgi/challenge-platform/h/g/scripts/precursor/main.js", "qb.markhorseotool.com", "https://markhquill.gt4rents.com"); ok {
+		t.Fatal("cloudflare challenge must not be followed")
+	}
 
 	oldWait := loginRetryWait
 	loginRetryWait = 0

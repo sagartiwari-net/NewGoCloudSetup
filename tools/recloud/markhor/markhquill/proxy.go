@@ -196,6 +196,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		return
 	}
 	origin := publicOrigin(r, cfg)
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		proxyWebSocket(w, r, acc, base)
+		return
+	}
 	cdnKey := cdncache.RequestKey(r, isCacheableStaticPath(r.URL.Path))
 	if cdncache.Serve(w, r, cdnKey) {
 		return
@@ -240,7 +244,11 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		var resp *http.Response
 		var payload []byte
 		var ct string
-		for hop := 0; hop < maxCookieHops; hop++ {
+		hops := 1
+		if r.Method == http.MethodGet && isDocumentNavigation(r) {
+			hops = maxCookieHops
+		}
+		for hop := 0; hop < hops; hop++ {
 			var body io.Reader
 			if bodyBytes != nil && hop == 0 {
 				body = bytes.NewReader(bodyBytes)

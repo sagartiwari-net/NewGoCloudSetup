@@ -157,7 +157,7 @@ func sameSiteRequestURI(loc, upstreamHost, publicHost string) (string, bool) {
 		return "", false
 	}
 	if u.Host == "" {
-		if !strings.HasPrefix(u.Path, "/") {
+		if !strings.HasPrefix(u.Path, "/") || strings.Contains(strings.ToLower(u.Path), "/cdn-cgi/") {
 			return "", false
 		}
 		return u.RequestURI(), true
@@ -176,6 +176,9 @@ func sameSiteRequestURI(loc, upstreamHost, publicHost string) (string, bool) {
 	}
 	if u.Path == "" {
 		u.Path = "/"
+	}
+	if strings.Contains(strings.ToLower(u.Path), "/cdn-cgi/") {
+		return "", false
 	}
 	return u.RequestURI(), true
 }
