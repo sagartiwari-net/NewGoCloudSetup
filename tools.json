@@ -661,6 +661,13 @@
       "subdomain": "markhgpt",
       "port": 6105,
       "fqdn": "markhgpt.gt4rents.com"
+    },
+    {
+      "tool": "markhke",
+      "folder": "recloud/markhor/markhke",
+      "subdomain": "markhke",
+      "port": 6106,
+      "fqdn": "markhke.gt4rents.com"
     }
   ]
 }
