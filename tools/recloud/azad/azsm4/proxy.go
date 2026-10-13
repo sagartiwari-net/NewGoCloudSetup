@@ -207,15 +207,17 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
 		payload = rewriteText(payload, base.Host, origin)
 	}
-	if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {
-		if bodyLooksLoggedOut(payload) {
-			token := sessionTokenFromRequest(r)
-			switched, _ := noteLogout(cfg, r, acc, token, "session_expired")
-			if switched {
-				http.Redirect(w, r, cfg.HomePath, http.StatusFound)
-				return
-			}
+	if bodyLooksLoggedOut(payload) {
+		token := sessionTokenFromRequest(r)
+		switched, _ := noteLogout(cfg, r, acc, token, "session_expired")
+		if switched && cfg.HomePath != "" {
+			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
+			return
 		}
+		renderAccessDeniedPage(w, cfg)
+		return
+	}
+	if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {
 		payload = injectDeviceHTML(payload)
 	}
 

@@ -54,6 +54,12 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 	}
 }
 
+func TestDashboardExpiryIsLogout(t *testing.T) {
+	if !bodyLooksLoggedOut([]byte("Session expired, access again from Dashboard")) {
+		t.Fatal("dashboard expiry was not detected")
+	}
+}
+
 func TestLogoutPath(t *testing.T) {
 	if !isLogoutPath("/sso/logout") || isLogoutPath("/analytics/overview/") {
 		t.Fatal("logout path detection")
