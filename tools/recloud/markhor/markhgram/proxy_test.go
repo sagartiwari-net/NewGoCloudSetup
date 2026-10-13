@@ -128,3 +128,44 @@ func TestLogoutPath(t *testing.T) {
 		t.Fatal("a login button alone is not logout")
 	}
 }
+
+func TestSessionCookieFollowsUpstream(t *testing.T) {
+	got := absorbSetCookies("PHPSESSID=session", http.Header{"Set-Cookie": []string{"grauth=fresh; Path=/; Secure", "csrf_token=tok; Path=/"}})
+	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=fresh") || !strings.Contains(got, "csrf_token=tok") {
+		t.Fatalf("cookies were not merged: %s", got)
+	}
+	next, ok := sameSiteRequestURI("https://gra.markhorseotool.com/docs?x=1", "gra.markhorseotool.com", "https://markhgram.gt4rents.com")
+	if !ok || next != "/docs?x=1" {
+		t.Fatalf("same-site redirect %q %v", next, ok)
+	}
+	if _, ok := sameSiteRequestURI("https://example.com/docs", "gra.markhorseotool.com", "https://markhgram.gt4rents.com"); ok {
+		t.Fatal("off-site redirect must stay with the browser")
+	}
+
+	oldWait := loginRetryWait
+	loginRetryWait = 0
+	t.Cleanup(func() { loginRetryWait = oldWait })
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.SetCookie(w, &http.Cookie{Name: "grauth", Value: "fresh", Path: "/"})
+			http.Redirect(w, r, "/docs", http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=session") || !strings.Contains(r.Header.Get("Cookie"), "grauth=fresh") {
+			_, _ = w.Write([]byte(`<h1>Member Login</h1><a>Forgot password?</a>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<html><body>My docs</body></html>`))
+	}))
+	defer upstream.Close()
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/", PublicHost: "markhgram.gt4rents.com", PublicScheme: "http", ToolName: "Markhor Grammarly"}
+	req := httptest.NewRequest(http.MethodGet, "http://markhgram.gt4rents.com/", nil)
+	req.Header.Set("Accept", "text/html")
+	req.Host = "markhgram.gt4rents.com"
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=session"})
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "My docs") {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+}

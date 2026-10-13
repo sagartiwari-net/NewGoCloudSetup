@@ -236,48 +236,71 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				}
 			}
 		}
-		var body io.Reader
-		if bodyBytes != nil {
-			body = bytes.NewReader(bodyBytes)
+		jar := cookiesForUpstream(acc)
+		var resp *http.Response
+		var payload []byte
+		var ct string
+		for hop := 0; hop < maxCookieHops; hop++ {
+			var body io.Reader
+			if bodyBytes != nil && hop == 0 {
+				body = bytes.NewReader(bodyBytes)
+			}
+			method := r.Method
+			if hop > 0 {
+				method = http.MethodGet
+			}
+			upReq, err := http.NewRequestWithContext(r.Context(), method, upstreamURL(base, requestURI), body)
+			if err != nil {
+				http.Error(w, "Bad gateway", http.StatusBadGateway)
+				return
+			}
+			copyRequestHeaders(upReq, r)
+			upReq.Host = base.Host
+			upReq.Header.Set("Host", base.Host)
+			upReq.Header.Set("Origin", base.Scheme+"://"+base.Host)
+			if ref := r.Referer(); ref != "" {
+				upReq.Header.Set("Referer", string(rewriteOutbound([]byte(ref), base.Scheme+"://"+base.Host, origin)))
+			} else {
+				upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
+			}
+			if jar != "" {
+				upReq.Header.Set("Cookie", jar)
+			} else {
+				upReq.Header.Del("Cookie")
+			}
+			upReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+			if upReq.Header.Get("User-Agent") == "" {
+				upReq.Header.Set("User-Agent", "Mozilla/5.0")
+			}
+			resp, err = upstreamClient.Do(upReq)
+			if err != nil {
+				lastErr = err
+				log.Printf("[UP] %s %s try %d/%d: %v", method, requestURI, attempt, attempts, err)
+				resp = nil
+				break
+			}
+			payload, err = readUpstreamBody(resp)
+			resp.Body.Close()
+			if err != nil {
+				lastErr = err
+				log.Printf("[UP] %s %s try %d/%d unreadable: %v", method, requestURI, attempt, attempts, err)
+				resp = nil
+				break
+			}
+			jar = absorbSetCookies(jar, resp.Header)
+			rememberUpstreamCookies(acc, jar)
+			next, ok := sameSiteRequestURI(resp.Header.Get("Location"), base.Host, origin)
+			if ok && resp.StatusCode >= 300 && resp.StatusCode < 400 {
+				log.Printf("[UP] session cookie hop %d -> %s", hop+1, next)
+				requestURI = next
+				continue
+			}
+			break
 		}
-		upReq, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL(base, requestURI), body)
-		if err != nil {
-			http.Error(w, "Bad gateway", http.StatusBadGateway)
-			return
-		}
-		copyRequestHeaders(upReq, r)
-		upReq.Host = base.Host
-		upReq.Header.Set("Host", base.Host)
-		upReq.Header.Set("Origin", base.Scheme+"://"+base.Host)
-		if ref := r.Referer(); ref != "" {
-			upReq.Header.Set("Referer", string(rewriteOutbound([]byte(ref), base.Scheme+"://"+base.Host, origin)))
-		} else {
-			upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
-		}
-		if acc.Cookie != "" {
-			upReq.Header.Set("Cookie", acc.Cookie)
-		} else {
-			upReq.Header.Del("Cookie")
-		}
-		upReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
-		if upReq.Header.Get("User-Agent") == "" {
-			upReq.Header.Set("User-Agent", "Mozilla/5.0")
-		}
-
-		resp, err := upstreamClient.Do(upReq)
-		if err != nil {
-			lastErr = err
-			log.Printf("[UP] %s %s try %d/%d: %v", r.Method, requestURI, attempt, attempts, err)
+		if resp == nil {
 			continue
 		}
-		payload, err := readUpstreamBody(resp)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = err
-			log.Printf("[UP] %s %s try %d/%d unreadable: %v", r.Method, requestURI, attempt, attempts, err)
-			continue
-		}
-		ct := resp.Header.Get("Content-Type")
+		ct = resp.Header.Get("Content-Type")
 		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
 			payload = rewriteText(payload, base.Host, origin)
 		}
