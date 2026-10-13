@@ -584,6 +584,13 @@
       "subdomain": "azsm2",
       "port": 6000,
       "fqdn": "azsm2.gt4rents.com"
+    },
+    {
+      "tool": "azsm3",
+      "folder": "recloud/azad/azsm3",
+      "subdomain": "azsm3",
+      "port": 6001,
+      "fqdn": "azsm3.gt4rents.com"
     }
   ]
 }
