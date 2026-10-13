@@ -323,6 +323,7 @@ func switchAhrefsPanelAccount(requestHost, sessionToken string, current AhrefsAc
 	}
 	next, err := ahrefsLeastUsedAccount(db, websiteID, current.ID)
 	if err != nil {
+		ahrefsRecordSwitchOnce(db, websiteID, username, current.Name, "", reason)
 		return AhrefsAccount{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)

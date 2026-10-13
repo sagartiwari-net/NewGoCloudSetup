@@ -1326,13 +1326,12 @@ func handleAhrefsAccountSwitch(w http.ResponseWriter, r *http.Request) {
 		reason = "suspicious activity detected"
 	}
 	next, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, current, userName, reason)
-	nextName := ""
 	if switchErr != nil {
 		log.Printf("[LB] still looking for another account: %v", switchErr)
-	} else {
-		nextName = next.Name
+		renderNoActiveAccountsPage(w)
+		return
 	}
-	renderAccountSwitchPage(w, nextName, safeAhrefsSwitchNext(r.URL.Query().Get("next")))
+	renderAccountSwitchPage(w, next.Name, safeAhrefsSwitchNext(r.URL.Query().Get("next")))
 }
 
 func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
@@ -3241,13 +3240,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			userName = ahrefsSessionUser(sessionToken)
 		}
 		nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, "opened /user/login")
-		nextName := ""
 		if switchErr != nil {
 			log.Printf("[LB] still looking for another account after /user/login: %v", switchErr)
-		} else {
-			nextName = nextAcc.Name
+			renderNoActiveAccountsPage(w)
+			return
 		}
-		renderAccountSwitchPage(w, nextName, ahrefsSwitchReturnPath(r))
+		renderAccountSwitchPage(w, nextAcc.Name, ahrefsSwitchReturnPath(r))
 		return
 	}
 	var resp *http.Response
@@ -3439,15 +3437,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				nextAcc, switchErr = switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, switchReason)
-				nextName := ""
 				if switchErr != nil {
 					log.Printf("[LB] still looking for another panel account: %v", switchErr)
-				} else {
-					nextName = nextAcc.Name
-					activeAcc = nextAcc
-					ahrefsPanelSwitchBump(sessionToken)
+					renderNoActiveAccountsPage(w)
+					return
 				}
-				renderAccountSwitchPage(w, nextName, ahrefsSwitchReturnPath(r))
+				activeAcc = nextAcc
+				ahrefsPanelSwitchBump(sessionToken)
+				renderAccountSwitchPage(w, nextAcc.Name, ahrefsSwitchReturnPath(r))
 				return
 			}
 			nextAcc, switchErr = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, switchReason)
@@ -3504,13 +3501,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if userName == "" {
 				userName = ahrefsSessionUser(sessionToken)
 			}
-			nextName := ""
-			if nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, "opened /user/login"); switchErr != nil {
+			nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, "opened /user/login")
+			if switchErr != nil {
 				log.Printf("[LB] still looking for another account: %v", switchErr)
-			} else {
-				nextName = nextAcc.Name
+				renderNoActiveAccountsPage(w)
+				return
 			}
-			renderAccountSwitchPage(w, nextName, ahrefsSwitchReturnPath(r))
+			renderAccountSwitchPage(w, nextAcc.Name, ahrefsSwitchReturnPath(r))
 			return
 		}
 		host := cfg.PublicHost
@@ -3534,13 +3531,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if userName == "" {
 				userName = ahrefsSessionUser(sessionToken)
 			}
-			nextName := ""
-			if nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, "opened /user/login"); switchErr != nil {
+			nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, "opened /user/login")
+			if switchErr != nil {
 				log.Printf("[LB] still looking for another account: %v", switchErr)
-			} else {
-				nextName = nextAcc.Name
+				renderNoActiveAccountsPage(w)
+				return
 			}
-			renderAccountSwitchPage(w, nextName, ahrefsSwitchReturnPath(r))
+			renderAccountSwitchPage(w, nextAcc.Name, ahrefsSwitchReturnPath(r))
 			return
 		}
 		copyResponseHeaders(w, resp.Header)
