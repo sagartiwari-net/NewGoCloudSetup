@@ -8,5 +8,5 @@
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
-  "session_duration_minutes": 120
+  "session_duration_minutes": 30
 }

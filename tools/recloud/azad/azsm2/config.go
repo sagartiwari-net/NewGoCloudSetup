@@ -36,7 +36,7 @@ func loadConfig() Config {
 			TargetURL:              "https://semrush2.xemrush.site",
 			HomePath:               "/analytics/overview/?searchType=domain",
 			ToolName:               "Semrush 2",
-			SessionDurationMinutes: 120,
+			SessionDurationMinutes: 30,
 		}
 		body, err := os.ReadFile("config.json")
 		if err != nil {

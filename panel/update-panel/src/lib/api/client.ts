@@ -594,12 +594,19 @@ function mapWebsiteOptions(
 }
 
 export function listAllWebsites(): Promise<Website[]> {
-  return cachedCatalog("websites", async () => {
-    const page = await api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> }>(
-      "/api/websites/options",
-    )
-    return mapWebsiteOptions(page)
-  })
+  return cachedCatalog("websites", loadWebsiteChoices)
+}
+
+// Product Mapping must see a website the moment a tool creates it. The catalog
+// cache is filled by other pages and is not cleared when a proxy inserts a row.
+export function listWebsiteChoices(): Promise<Website[]> {
+  return loadWebsiteChoices()
+}
+
+function loadWebsiteChoices(): Promise<Website[]> {
+  return api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> }>(
+    "/api/websites/options",
+  ).then(mapWebsiteOptions)
 }
 
 export function listAccountWebsites(): Promise<Website[]> {

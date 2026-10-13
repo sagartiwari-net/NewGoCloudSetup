@@ -297,7 +297,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		durationMin = cfg.SessionDurationMinutes
 	}
 	if durationMin <= 0 {
-		durationMin = 120
+		durationMin = 30
 	}
 	sessionToken, sessionExpiry, err := issuePanelSession(username, time.Duration(durationMin)*time.Minute)
 	if err != nil {
@@ -524,7 +524,7 @@ func ensureRecloudSite(cfg Config) {
 		_, _ = rand.Read(buf)
 		secret := hex.EncodeToString(buf)
 		res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, kind, upstream_url)
-			VALUES (?,?,?,?,120,'{}',1,'recloud',?)`, toolID, toolDisplayName(cfg), cfg.PublicHost, secret, upstream)
+			VALUES (?,?,?,?,30,'{}',1,'recloud',?)`, toolID, toolDisplayName(cfg), cfg.PublicHost, secret, upstream)
 		if insErr != nil {
 			log.Printf("[PANEL] website insert failed: %v", insErr)
 			return

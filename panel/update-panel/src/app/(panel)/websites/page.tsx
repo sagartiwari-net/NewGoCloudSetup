@@ -259,7 +259,7 @@ function WebsiteForm({
       name: website?.name ?? "",
       domain: website?.domain ?? "",
       secret_key: website?.secret_key ?? "",
-      session_duration: website?.session_duration ?? 60,
+      session_duration: website?.session_duration ?? 30,
       session_security_enabled: website?.session_security_enabled ?? true,
     },
   })
@@ -292,7 +292,7 @@ function WebsiteForm({
           name: values.name,
           domain: values.domain,
           secret_key: values.secret_key,
-          session_duration: values.session_duration,
+          session_duration: website ? values.session_duration : 30,
           default_limits: Object.fromEntries(
             (selectedTool?.limits ?? []).map((definition) => [definition.key, defaults[definition.key] ?? -1]),
           ),

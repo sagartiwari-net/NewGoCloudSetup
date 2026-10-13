@@ -19,7 +19,7 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { useResource } from "@/hooks/use-resource"
-import { deleteProduct, listProducts, listAllWebsites, saveProduct } from "@/lib/api/client"
+import { deleteProduct, listProducts, listWebsiteChoices, saveProduct } from "@/lib/api/client"
 import type { ProductMap, Website } from "@/lib/api/types"
 import { runMutation } from "@/lib/mutate"
 import { useListPage } from "@/lib/page-size"
@@ -30,6 +30,12 @@ const schema = z.object({
 })
 
 type FormValues = z.infer<typeof schema>
+
+function websiteChoiceLabel(website: Website) {
+  const domain = website.domain.trim()
+  if (!domain || domain.toLowerCase() === website.name.trim().toLowerCase()) return website.name
+  return `${website.name} · ${domain}`
+}
 
 export default function ProductsPage() {
   const { session } = useAuth()
@@ -46,7 +52,7 @@ export default function ProductsPage() {
           query,
           websiteId: websiteId === "all" ? 0 : Number(websiteId),
         }),
-        listAllWebsites(),
+        listWebsiteChoices(),
       ])
       return { products, websites }
     },
@@ -125,7 +131,7 @@ export default function ProductsPage() {
             }}
             items={[
               { label: "All websites", value: "all" },
-              ...(data?.websites ?? []).map((website) => ({ label: website.name, value: String(website.id) })),
+              ...(data?.websites ?? []).map((website) => ({ label: websiteChoiceLabel(website), value: String(website.id) })),
             ]}
           />
         </Field>
@@ -258,7 +264,7 @@ function ProductForm({
                 id="website_id"
                 value={field.value}
                 onValueChange={field.onChange}
-                items={websites.map((website) => ({ label: website.name, value: String(website.id) }))}
+                items={websites.map((website) => ({ label: websiteChoiceLabel(website), value: String(website.id) }))}
               />
             )}
           />

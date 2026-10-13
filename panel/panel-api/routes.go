@@ -195,6 +195,7 @@ func (s *server) saveWebsite(w http.ResponseWriter, r *http.Request) {
 		sec = 1
 	}
 	if body.ID == 0 {
+		body.SessionDuration = 30
 		res, err := s.db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled) VALUES (?,?,?,?,?,?,?)`,
 			body.ToolID, body.Name, body.Domain, body.SecretKey, body.SessionDuration, string(raw), sec)
 		if err != nil {
@@ -504,6 +505,15 @@ func (s *server) deleteID(table string) http.HandlerFunc {
 
 func (s *server) listAutomate(w http.ResponseWriter, r *http.Request) { s.listAccounts(w, r) }
 
+func websiteChoiceLabel(name, domain string) string {
+	name = strings.TrimSpace(name)
+	domain = strings.TrimSpace(domain)
+	if domain == "" || strings.EqualFold(domain, name) {
+		return name
+	}
+	return name + " · " + domain
+}
+
 func (s *server) listProducts(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
 	if !ok {
@@ -516,16 +526,16 @@ func (s *server) listProducts(w http.ResponseWriter, r *http.Request) {
 		args = append(args, id)
 	}
 	if q != "" {
-		where += " AND (p.product_name LIKE ? OR p.product_ids_json LIKE ? OR w.name LIKE ?)"
+		where += " AND (p.product_name LIKE ? OR p.product_ids_json LIKE ? OR w.name LIKE ? OR w.domain LIKE ?)"
 		like := "%" + q + "%"
-		args = append(args, like, like, like)
+		args = append(args, like, like, like, like)
 	}
 	from := ` FROM products p JOIN websites w ON w.id=p.website_id WHERE ` + where
 	var total int
 	_ = s.db.QueryRow(`SELECT COUNT(*)`+from, args...).Scan(&total)
 	page = clampPage(page, size, total)
 	args = append(args, size, (page-1)*size)
-	rows, err := s.db.Query(`SELECT p.id, p.website_id, w.name, p.product_name, p.product_ids_json`+from+` ORDER BY w.name, p.product_name LIMIT ? OFFSET ?`, args...)
+	rows, err := s.db.Query(`SELECT p.id, p.website_id, w.name, w.domain, p.product_name, p.product_ids_json`+from+` ORDER BY w.name, p.product_name LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -534,12 +544,12 @@ func (s *server) listProducts(w http.ResponseWriter, r *http.Request) {
 	items := []any{}
 	for rows.Next() {
 		var id, website int
-		var name, product, raw string
-		_ = rows.Scan(&id, &website, &name, &product, &raw)
+		var name, domain, product, raw string
+		_ = rows.Scan(&id, &website, &name, &domain, &product, &raw)
 		ids := []string{}
 		_ = json.Unmarshal([]byte(raw), &ids)
 		items = append(items, map[string]any{
-			"id": id, "website_id": website, "website_name": name, "product_name": product, "product_ids": ids,
+			"id": id, "website_id": website, "website_name": websiteChoiceLabel(name, domain), "product_name": product, "product_ids": ids,
 		})
 	}
 	s.writePage(w, page, size, total, items)
