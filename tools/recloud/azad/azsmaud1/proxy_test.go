@@ -54,6 +54,16 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 	}
 }
 
+func TestPublicHeaderIsLoggedOut(t *testing.T) {
+	body := []byte(`<div class="srf-header__buttons"><a href="/login/?src=header" class="srf-header__link-button srf-login-btn">Log In</a><a href="/signup/?src=header" class="srf-header__link-button srf-register-btn">Start for free</a></div>`)
+	if !bodyLooksLoggedOut(body) {
+		t.Fatal("public login header should count as logged out")
+	}
+	if bodyLooksLoggedOut([]byte(`<a href="/siteaudit/">open</a>`)) {
+		t.Fatal("the app page is not a logout")
+	}
+}
+
 func TestLogoutPath(t *testing.T) {
 	if !isLogoutPath("/sso/logout") || isLogoutPath("/analytics/overview/") {
 		t.Fatal("logout path detection")

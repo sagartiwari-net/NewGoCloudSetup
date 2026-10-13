@@ -34,7 +34,7 @@ func loadConfig() Config {
 			PublicHost:             "azsmaud1.gt4rents.com",
 			PublicScheme:           "http",
 			TargetURL:              "https://siteaudit1.xemrush.site",
-			HomePath:               "/",
+			HomePath:               "/siteaudit/",
 			ToolName:               "Azad Semrush Audit 1",
 			SessionDurationMinutes: 30,
 		}

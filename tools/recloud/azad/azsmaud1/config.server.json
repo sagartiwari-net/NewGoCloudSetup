@@ -3,7 +3,7 @@
   "public_host": "azsmaud1.gt4rents.com",
   "public_scheme": "http",
   "target_url": "https://siteaudit1.xemrush.site",
-  "home_path": "/",
+  "home_path": "/siteaudit/",
   "tool_name": "Azad Semrush Audit 1",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
