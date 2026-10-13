@@ -577,6 +577,13 @@
       "subdomain": "quillbot",
       "port": 5311,
       "fqdn": "quillbot.gt4rents.com"
+    },
+    {
+      "tool": "azsm2",
+      "folder": "recloud/azad/azsm2",
+      "subdomain": "azsm2",
+      "port": 6000,
+      "fqdn": "azsm2.gt4rents.com"
     }
   ]
 }

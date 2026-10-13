@@ -12,6 +12,7 @@ setup.md
 **/tsconfig.tsbuildinfo
 **/*.db
 **/cookie.txt
+**/cookie.json
 **/.DS_Store
 **/*.png
 **/*.jpg
