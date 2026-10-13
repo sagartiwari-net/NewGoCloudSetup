@@ -1315,7 +1315,7 @@ func handleAhrefsAccountSwitch(w http.ResponseWriter, r *http.Request) {
 		sessionToken = cookie.Value
 	}
 	cfg := loadConfig()
-	current, ok := ahrefsPanelAccount(cfg.PublicHost, sessionToken)
+	current, ok := ahrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken)
 	if !ok {
 		renderAccountSwitchPage(w, "", ahrefsSwitchReturnPath(r))
 		return
@@ -1325,7 +1325,7 @@ func handleAhrefsAccountSwitch(w http.ResponseWriter, r *http.Request) {
 	if reason == "" {
 		reason = "suspicious activity detected"
 	}
-	next, switchErr := switchAhrefsPanelAccount(cfg.PublicHost, sessionToken, current, userName, reason)
+	next, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, current, userName, reason)
 	nextName := ""
 	if switchErr != nil {
 		log.Printf("[LB] still looking for another account: %v", switchErr)
@@ -3164,7 +3164,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		sessionToken = cookie.Value
 	}
 
-	if panelAcc, ok := ahrefsPanelAccount(cfg.PublicHost, sessionToken); ok {
+	if panelAcc, ok := ahrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken); ok {
 		activeAcc = panelAcc
 		useDBAccount = true
 		usePanelAccount = true
@@ -3240,7 +3240,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if userName == "" {
 			userName = ahrefsSessionUser(sessionToken)
 		}
-		nextAcc, switchErr := switchAhrefsPanelAccount(cfg.PublicHost, sessionToken, activeAcc, userName, "opened /user/login")
+		nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, "opened /user/login")
 		nextName := ""
 		if switchErr != nil {
 			log.Printf("[LB] still looking for another account after /user/login: %v", switchErr)
@@ -3261,7 +3261,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				if userName == "" {
 					userName = ahrefsSessionUser(sessionToken)
 				}
-				nextAcc, switchErr := switchAhrefsPanelAccount(cfg.PublicHost, sessionToken, activeAcc, userName, fmt.Sprintf("retry attempt %d", attempt))
+				nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, fmt.Sprintf("retry attempt %d", attempt))
 				if switchErr != nil {
 					log.Printf("[LB] Retry %d: still looking for another panel account: %v", attempt, switchErr)
 					break
@@ -3438,7 +3438,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 					renderNoActiveAccountsPage(w)
 					return
 				}
-				nextAcc, switchErr = switchAhrefsPanelAccount(cfg.PublicHost, sessionToken, activeAcc, userName, switchReason)
+				nextAcc, switchErr = switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, switchReason)
 				nextName := ""
 				if switchErr != nil {
 					log.Printf("[LB] still looking for another panel account: %v", switchErr)
@@ -3505,7 +3505,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				userName = ahrefsSessionUser(sessionToken)
 			}
 			nextName := ""
-			if nextAcc, switchErr := switchAhrefsPanelAccount(cfg.PublicHost, sessionToken, activeAcc, userName, "opened /user/login"); switchErr != nil {
+			if nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, "opened /user/login"); switchErr != nil {
 				log.Printf("[LB] still looking for another account: %v", switchErr)
 			} else {
 				nextName = nextAcc.Name
@@ -3535,7 +3535,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				userName = ahrefsSessionUser(sessionToken)
 			}
 			nextName := ""
-			if nextAcc, switchErr := switchAhrefsPanelAccount(cfg.PublicHost, sessionToken, activeAcc, userName, "opened /user/login"); switchErr != nil {
+			if nextAcc, switchErr := switchAhrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken, activeAcc, userName, "opened /user/login"); switchErr != nil {
 				log.Printf("[LB] still looking for another account: %v", switchErr)
 			} else {
 				nextName = nextAcc.Name

@@ -133,20 +133,91 @@ func ahrefsWebsiteIDForUser(db *sql.DB, username, fallbackHost string) int {
 	return ahrefsWebsiteID(db, fallbackHost)
 }
 
-func ahrefsPanelAccount(publicHost, sessionToken string) (AhrefsAccount, bool) {
+func ahrefsParseExpiry(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return t, true
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t, true
+	}
+	return time.Time{}, false
+}
+
+func ahrefsSessionLive(db *sql.DB, token string) (websiteID, assignedID int, username string, ok bool) {
+	if db == nil || strings.TrimSpace(token) == "" {
+		return 0, 0, "", false
+	}
+	var expRaw string
+	err := db.QueryRow(`SELECT COALESCE(assigned_account_id, 0), COALESCE(website_id, 0), COALESCE(username, ''), COALESCE(expires_at, '') FROM live_sessions WHERE session_token=?`, token).Scan(&assignedID, &websiteID, &username, &expRaw)
+	if err != nil || websiteID <= 0 {
+		return 0, 0, "", false
+	}
+	if exp, parsed := ahrefsParseExpiry(expRaw); parsed && time.Now().After(exp) {
+		return 0, 0, "", false
+	}
+	return websiteID, assignedID, strings.TrimSpace(username), true
+}
+
+// ahrefsActiveUsername is the logged-in user on this website.
+// Prefer the session that is on the account being switched. If that is missing,
+// use the username only when this website has one logged-in user.
+func ahrefsActiveUsername(db *sql.DB, websiteID, accountID int) string {
+	if db == nil || websiteID <= 0 {
+		return ""
+	}
+	rows, err := db.Query(`SELECT COALESCE(username, ''), COALESCE(assigned_account_id, 0), COALESCE(expires_at, '') FROM live_sessions WHERE website_id=? ORDER BY id DESC LIMIT 30`, websiteID)
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+	seen := map[string]struct{}{}
+	var only string
+	for rows.Next() {
+		var name, expRaw string
+		var assigned int
+		if rows.Scan(&name, &assigned, &expRaw) != nil {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if exp, parsed := ahrefsParseExpiry(expRaw); parsed && time.Now().After(exp) {
+			continue
+		}
+		if accountID > 0 && assigned == accountID {
+			return name
+		}
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		only = name
+	}
+	if len(seen) == 1 {
+		return only
+	}
+	return ""
+}
+
+func ahrefsPanelAccount(requestHost, sessionToken string) (AhrefsAccount, bool) {
 	db, err := openAhrefsPanel()
 	if err != nil {
 		log.Printf("[PANEL] database open failed: %v", err)
 		return AhrefsAccount{}, false
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	websiteID := ahrefsWebsiteID(db, requestHost)
 	assignedID := 0
-	websiteID := 0
-	if sessionToken != "" {
-		_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0), COALESCE(website_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assignedID, &websiteID)
-	}
-	if websiteID <= 0 {
-		websiteID = ahrefsWebsiteID(db, publicHost)
+	if sessWebsite, sessAssigned, _, sessOK := ahrefsSessionLive(db, sessionToken); sessOK && (websiteID <= 0 || sessWebsite == websiteID) {
+		if websiteID <= 0 {
+			websiteID = sessWebsite
+		}
+		assignedID = sessAssigned
 	}
 	if websiteID <= 0 {
 		return AhrefsAccount{}, false
@@ -231,17 +302,24 @@ func ahrefsSessionUser(token string) string {
 	return username
 }
 
-func switchAhrefsPanelAccount(publicHost, sessionToken string, current AhrefsAccount, username, reason string) (AhrefsAccount, error) {
+func switchAhrefsPanelAccount(requestHost, sessionToken string, current AhrefsAccount, username, reason string) (AhrefsAccount, error) {
 	db, err := openAhrefsPanel()
 	if err != nil {
 		return AhrefsAccount{}, err
 	}
-	websiteID := 0
-	if sessionToken != "" {
-		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID)
+	websiteID := ahrefsWebsiteID(db, requestHost)
+	sessWebsite, _, sessUser, sessOK := ahrefsSessionLive(db, sessionToken)
+	if websiteID <= 0 && sessOK {
+		websiteID = sessWebsite
 	}
 	if websiteID <= 0 {
-		websiteID = ahrefsWebsiteID(db, publicHost)
+		return AhrefsAccount{}, fmt.Errorf("no website for host %s", requestHost)
+	}
+	if strings.TrimSpace(username) == "" && sessOK && sessWebsite == websiteID {
+		username = sessUser
+	}
+	if strings.TrimSpace(username) == "" {
+		username = ahrefsActiveUsername(db, websiteID, current.ID)
 	}
 	next, err := ahrefsLeastUsedAccount(db, websiteID, current.ID)
 	if err != nil {
@@ -249,12 +327,10 @@ func switchAhrefsPanelAccount(publicHost, sessionToken string, current AhrefsAcc
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, next.ID)
-	if sessionToken != "" {
+	if sessionToken != "" && sessOK && sessWebsite == websiteID {
 		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, next.ID, sessionToken)
 	}
-	if websiteID != 0 {
-		tmRecordSwitchLogout(db, websiteID, username, current.Name, next.Name, reason)
-	}
+	tmRecordSwitchLogout(db, websiteID, username, current.Name, next.Name, reason)
 	log.Printf("[LB] switched %s -> %s reason=%s", current.Name, next.Name, reason)
 	return next, nil
 }
