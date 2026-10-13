@@ -332,7 +332,11 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			return
 		}
 		if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {
-			payload = injectDeviceHTML(payload)
+			viewer := ""
+			if name, err := panelSessionUsername(r); err == nil {
+				viewer = name
+			}
+			payload = injectDeviceHTML(payload, viewer)
 		}
 		if cdnKey != "" && resp.StatusCode == http.StatusOK {
 			cdncache.Store(cdnKey, resp.StatusCode, ct, payload)

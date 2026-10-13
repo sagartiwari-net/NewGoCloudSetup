@@ -102,7 +102,13 @@ func TestLoginPageRetriesThenOpensHome(t *testing.T) {
 
 func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
 	in := []byte(`<html><head></head><body><ul class="experiment-sidebar-navigationList_f1guxiff"><a data-name="support-lnk">Support</a></ul><a class="docs-lnk">Docs</a></body></html>`)
-	out := string(injectDeviceHTML(in))
+	out := string(injectDeviceHTML(in, "sagar"))
+	if !strings.Contains(out, `data-tm-viewer-name`) || !strings.Contains(out, `"sagar"`) {
+		t.Fatal("viewer username script missing")
+	}
+	if !strings.Contains(out, `span.min-w-0.truncate.text-default > span.min-w-0.flex-1.truncate`) {
+		t.Fatal("viewer name selector missing")
+	}
 	if !strings.Contains(out, `ul[class*="experiment-sidebar-navigationList"]{display:none!important}`) {
 		t.Fatal("sidebar list hide style missing")
 	}
