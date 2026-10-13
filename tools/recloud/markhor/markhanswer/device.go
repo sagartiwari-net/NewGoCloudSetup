@@ -196,7 +196,7 @@ func viewerNameScript(username string) string {
 }
 
 func injectDeviceHTML(body []byte, username string) []byte {
-	script := []byte(devicePageScript() + `<style data-tm-hide-notice>.srf-layout__notification{display:none!important}ul[class*="experiment-sidebar-navigationList"]{display:none!important}button[data-testid="nav-avatar-button"]{display:none!important}</style>` + viewerNameScript(username))
+	script := []byte(devicePageScript() + `<style data-tm-hide-notice>[data-slot="dropdown-menu-trigger"]:has([data-testid="nav-avatar-button"]){display:none!important}</style>` + viewerNameScript(username))
 	if bytes.Contains(body, []byte("data-tm-device")) {
 		return body
 	}

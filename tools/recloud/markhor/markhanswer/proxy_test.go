@@ -109,14 +109,14 @@ func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
 	if !strings.Contains(out, `span.min-w-0.truncate.text-default > span.min-w-0.flex-1.truncate`) {
 		t.Fatal("viewer name selector missing")
 	}
-	if !strings.Contains(out, `ul[class*="experiment-sidebar-navigationList"]{display:none!important}`) {
-		t.Fatal("sidebar list hide style missing")
+	if !strings.Contains(out, `[data-slot="dropdown-menu-trigger"]:has([data-testid="nav-avatar-button"]){display:none!important}`) {
+		t.Fatal("avatar menu trigger hide style missing")
+	}
+	if strings.Contains(out, `.srf-layout__notification`) || strings.Contains(out, `experiment-sidebar-navigationList`) {
+		t.Fatal("unrelated hide rules were injected")
 	}
 	if !strings.Contains(out, `docs-lnk`) || strings.Contains(out, `docs-lnk{display:none`) {
 		t.Fatal("docs link was hidden")
-	}
-	if !strings.Contains(out, `button[data-testid="nav-avatar-button"]{display:none!important}`) {
-		t.Fatal("avatar button hide style missing")
 	}
 }
 
