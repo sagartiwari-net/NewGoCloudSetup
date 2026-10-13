@@ -96,14 +96,10 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		return false
 	}
 	if fp == "" && proof == "" {
-		if isDocumentNavigation(r) {
-			return false
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
+		// The document editor calls /gateway without these headers. A 401 here
+		// is the "Can't Connect to Grammarly" banner. The HTML page still binds
+		// the device; a different proof below still ends the session.
+		return false
 	}
 	panelSess.Delete(token)
 	recordCookieShare(cfg, r, token)
