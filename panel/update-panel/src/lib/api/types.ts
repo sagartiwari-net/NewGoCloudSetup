@@ -31,6 +31,19 @@ export type Website = {
   session_security_enabled: boolean
 }
 
+export type RecloudTool = {
+  website_id: number
+  tool_name: string
+  domain: string
+  upstream_url: string
+  account_id: number
+  cookie_updated_at: string
+}
+
+export type RecloudToolDetail = RecloudTool & {
+  cookie: string
+}
+
 export type UserAgentProfile = {
   id: number
   name: string

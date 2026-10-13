@@ -22,7 +22,7 @@ import {
   assignAccountsUserAgent,
   listAccounts,
   listAgentChoices,
-  listAllWebsites,
+  listAccountWebsites,
   listProxyChoices,
   type AccountListItem,
 } from "@/lib/api/client"
@@ -52,7 +52,7 @@ export default function AccountsPage() {
           query,
           websiteId: websiteFilter === "all" ? 0 : Number(websiteFilter),
         }),
-        listAllWebsites(),
+        listAccountWebsites(),
       ])
       return { accounts, websites }
     },

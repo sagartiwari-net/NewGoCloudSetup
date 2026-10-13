@@ -78,6 +78,9 @@ func (s *server) listWebsiteOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	where, args := s.scope(op, "w.id")
+	if r.URL.Query().Get("exclude") == "recloud" {
+		where += ` AND COALESCE(w.kind, '') <> 'recloud'`
+	}
 	rows, err := s.db.Query(`SELECT w.id, w.tool_id, w.name, w.domain, w.default_limits_json
 		FROM websites w WHERE `+where+` ORDER BY w.name`, args...)
 	if err != nil {
@@ -238,6 +241,7 @@ func (s *server) listAccounts(w http.ResponseWriter, r *http.Request) {
 		like := "%" + q + "%"
 		args = append(args, like, like, like)
 	}
+	where += ` AND COALESCE(w.kind, '') <> 'recloud'`
 	var total int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM accounts a JOIN websites w ON w.id=a.website_id WHERE `+where, args...).Scan(&total)
 	args = append(args, size, (page-1)*size)
@@ -373,6 +377,10 @@ func (s *server) saveAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.owns(op, body.WebsiteID) {
 		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
+	if s.recloudWebsite(body.WebsiteID) {
+		writeErr(w, 400, "Recloud tools are updated on the Recloud page")
 		return
 	}
 	if body.ID != 0 {

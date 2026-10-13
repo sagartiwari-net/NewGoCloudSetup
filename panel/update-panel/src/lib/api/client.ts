@@ -27,6 +27,8 @@ import type {
   TelegramEvent,
   TelegramRoute,
   TelegramTemplates,
+  RecloudTool,
+  RecloudToolDetail,
   Tool,
   UsageEvent,
   UserAgentProfile,
@@ -55,6 +57,7 @@ export function clearCatalogCache(key?: string) {
     return
   }
   catalogCache.delete(key)
+  if (key === "websites") catalogCache.delete("account-websites")
 }
 
 export type Session = {
@@ -579,18 +582,47 @@ export async function listWebsites(query: {
   return api(`/api/websites${qs(query)}`)
 }
 
+function mapWebsiteOptions(
+  page: { items?: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> },
+): Website[] {
+  return (page.items ?? []).map((website) => ({
+    ...website,
+    secret_key: "",
+    session_duration: 0,
+    session_security_enabled: false,
+  }))
+}
+
 export function listAllWebsites(): Promise<Website[]> {
   return cachedCatalog("websites", async () => {
     const page = await api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> }>(
       "/api/websites/options",
     )
-    return (page.items ?? []).map((website) => ({
-      ...website,
-      secret_key: "",
-      session_duration: 0,
-      session_security_enabled: false,
-    }))
+    return mapWebsiteOptions(page)
   })
+}
+
+export function listAccountWebsites(): Promise<Website[]> {
+  return cachedCatalog("account-websites", async () => {
+    const page = await api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> }>(
+      "/api/websites/options?exclude=recloud",
+    )
+    return mapWebsiteOptions(page)
+  })
+}
+
+export async function listRecloud(): Promise<RecloudTool[]> {
+  const page = await api<{ items: RecloudTool[] }>("/api/recloud")
+  return page.items ?? []
+}
+
+export async function getRecloud(websiteId: number): Promise<RecloudToolDetail> {
+  return api(`/api/recloud/${websiteId}`)
+}
+
+export async function saveRecloud(input: { website_id: number; upstream_url: string; cookie: string }): Promise<Ok> {
+  await api("/api/recloud", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
 }
 
 export async function saveWebsite(input: WebsiteInput): Promise<Ok> {

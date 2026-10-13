@@ -155,6 +155,14 @@ func ensureAccessAlertSettings(db *sql.DB) {
 	}
 	ensureScaleIndexes(db)
 	ensureTelegramInbox(db)
+	ensureRecloudColumns(db)
+}
+
+// ensureRecloudColumns marks recloud websites apart from mapped accounts.
+// upstream_url is the live origin a recloud proxy reads on each request.
+func ensureRecloudColumns(db *sql.DB) {
+	_, _ = db.Exec(`ALTER TABLE websites ADD COLUMN kind VARCHAR(32) NOT NULL DEFAULT ''`)
+	_, _ = db.Exec(`ALTER TABLE websites ADD COLUMN upstream_url VARCHAR(2048) NOT NULL DEFAULT ''`)
 }
 
 func ensureTelegramInbox(db *sql.DB) {
