@@ -10,9 +10,13 @@ import (
 
 var logoutSeen sync.Map
 
-func isLogoutPath(path string) bool {
+func isHardLogoutPath(path string) bool {
 	p := strings.ToLower(path)
-	return strings.Contains(p, "logout") || strings.Contains(p, "sign-out") || strings.Contains(p, "signout") || isLoginPath(p)
+	return strings.Contains(p, "logout") || strings.Contains(p, "sign-out") || strings.Contains(p, "signout")
+}
+
+func isLogoutPath(path string) bool {
+	return isHardLogoutPath(path) || isLoginPath(path)
 }
 
 func isLoginPath(path string) bool {
@@ -28,6 +32,9 @@ func bodyLooksLoggedOut(body []byte) bool {
 }
 
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {
+	if strings.TrimSpace(cfg.PanelDB) == "" {
+		return false, ""
+	}
 	if acc.ID > 0 {
 		if prev, ok := logoutSeen.Load(acc.ID); ok {
 			if time.Since(prev.(time.Time)) < 2*time.Minute {

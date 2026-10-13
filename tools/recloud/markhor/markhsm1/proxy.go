@@ -71,6 +71,7 @@ func rewriteText(body []byte, upstreamHost, origin string) []byte {
 	s = markhorHost.ReplaceAllString(s, hostOnly)
 	s = semrushHost.ReplaceAllString(s, origin)
 	s = strings.ReplaceAll(s, ".semrush.com", "."+cookieDomain)
+	s = strings.ReplaceAll(s, "sm01."+cookieDomain, cookieDomain)
 	return []byte(s)
 }
 
@@ -137,16 +138,63 @@ func readUpstreamBody(resp *http.Response) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(reader, 20<<20))
 }
 
+const loginAttempts = 3
+
+var loginRetryWait = time.Second
+
+func toolRetryPath(r *http.Request, cfg Config) string {
+	if !isLoginPath(r.URL.Path) {
+		return r.URL.RequestURI()
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("url")); raw != "" {
+		if u, err := url.Parse(raw); err == nil && u.Host == "" && strings.HasPrefix(u.Path, "/") && u.Path != "/" && !isLoginPath(u.Path) {
+			return u.RequestURI()
+		}
+	}
+	if home := strings.TrimSpace(cfg.HomePath); home != "" {
+		return home
+	}
+	return "/"
+}
+
+func locationIsLogin(loc string) bool {
+	loc = strings.TrimSpace(loc)
+	if loc == "" {
+		return false
+	}
+	u, err := url.Parse(loc)
+	if err != nil {
+		return strings.Contains(strings.ToLower(loc), "/login")
+	}
+	return isLoginPath(u.Path)
+}
+
+func responseLooksLoggedOut(status int, location string, body []byte) bool {
+	if status >= 300 && status < 400 && locationIsLogin(location) {
+		return true
+	}
+	return bodyLooksLoggedOut(body)
+}
+
+func upstreamURL(base *url.URL, requestURI string) string {
+	u := *base
+	rel, err := url.Parse(requestURI)
+	if err != nil || rel.Host != "" || !strings.HasPrefix(rel.Path, "/") {
+		u.Path = "/"
+		u.RawQuery = ""
+		return u.String()
+	}
+	u.Path = rel.Path
+	u.RawQuery = rel.RawQuery
+	return u.String()
+}
+
 func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount) {
 	base, err := url.Parse(liveUpstream(cfg))
 	if err != nil || base.Host == "" {
 		http.Error(w, "Upstream URL is not configured", http.StatusBadGateway)
 		return
 	}
-	target := *base
-	target.Path = r.URL.Path
-	target.RawPath = r.URL.RawPath
-	target.RawQuery = r.URL.RawQuery
 	origin := publicOrigin(r, cfg)
 	cdnKey := cdncache.RequestKey(r, isCacheableStaticPath(r.URL.Path))
 	if cdncache.Serve(w, r, cdnKey) {
@@ -156,7 +204,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		defer cdncache.Complete(cdnKey)
 	}
 
-	var body io.Reader
+	var bodyBytes []byte
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		raw, err := io.ReadAll(io.LimitReader(r.Body, 20<<20))
 		if err != nil {
@@ -166,84 +214,114 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		if shouldRewriteBody(r.Header.Get("Content-Type")) {
 			raw = rewriteOutbound(raw, base.Scheme+"://"+base.Host, origin)
 		}
-		body = bytes.NewReader(raw)
-	}
-	upReq, err := http.NewRequestWithContext(r.Context(), r.Method, target.String(), body)
-	if err != nil {
-		http.Error(w, "Bad gateway", http.StatusBadGateway)
-		return
-	}
-	copyRequestHeaders(upReq, r)
-	upReq.Host = base.Host
-	upReq.Header.Set("Host", base.Host)
-	upReq.Header.Set("Origin", base.Scheme+"://"+base.Host)
-	if ref := r.Referer(); ref != "" {
-		upReq.Header.Set("Referer", string(rewriteOutbound([]byte(ref), base.Scheme+"://"+base.Host, origin)))
-	} else {
-		upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
-	}
-	if acc.Cookie != "" {
-		upReq.Header.Set("Cookie", acc.Cookie)
-	} else {
-		upReq.Header.Del("Cookie")
-	}
-	upReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	if upReq.Header.Get("User-Agent") == "" {
-		upReq.Header.Set("User-Agent", "Mozilla/5.0")
+		bodyBytes = raw
 	}
 
-	resp, err := upstreamClient.Do(upReq)
-	if err != nil {
-		log.Printf("[UP] %s %s: %v", r.Method, r.URL.Path, err)
-		http.Error(w, "Upstream unavailable", http.StatusBadGateway)
-		return
+	attempts := 1
+	if r.Method == http.MethodGet && isDocumentNavigation(r) {
+		attempts = loginAttempts
 	}
-	defer resp.Body.Close()
-
-	payload, err := readUpstreamBody(resp)
-	if err != nil {
-		http.Error(w, "Upstream unreadable", http.StatusBadGateway)
-		return
+	requestURI := r.URL.RequestURI()
+	if isLoginPath(r.URL.Path) {
+		requestURI = toolRetryPath(r, cfg)
 	}
-	ct := resp.Header.Get("Content-Type")
-	if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
-		payload = rewriteText(payload, base.Host, origin)
-	}
-	if bodyLooksLoggedOut(payload) {
-		token := sessionTokenFromRequest(r)
-		reason := "session_expired"
-		if isLoginPath(r.URL.Path) || strings.Contains(strings.ToLower(string(payload)), "this section is restricted") {
-			reason = "logout"
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if attempt > 1 {
+			time.Sleep(loginRetryWait)
+			requestURI = toolRetryPath(r, cfg)
+			if usesPanelAccountMode(cfg) {
+				if fresh, err := loadPanelSessionAccount(cfg, sessionTokenFromRequest(r)); err == nil {
+					acc = fresh
+				}
+			}
 		}
-		switched, _ := noteLogout(cfg, r, acc, token, reason)
-		if switched && cfg.HomePath != "" {
-			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
+		var body io.Reader
+		if bodyBytes != nil {
+			body = bytes.NewReader(bodyBytes)
+		}
+		upReq, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL(base, requestURI), body)
+		if err != nil {
+			http.Error(w, "Bad gateway", http.StatusBadGateway)
 			return
 		}
-		renderLoggedOutPage(w, cfg)
-		return
-	}
-	if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {
-		payload = injectDeviceHTML(payload)
-	}
+		copyRequestHeaders(upReq, r)
+		upReq.Host = base.Host
+		upReq.Header.Set("Host", base.Host)
+		upReq.Header.Set("Origin", base.Scheme+"://"+base.Host)
+		if ref := r.Referer(); ref != "" {
+			upReq.Header.Set("Referer", string(rewriteOutbound([]byte(ref), base.Scheme+"://"+base.Host, origin)))
+		} else {
+			upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
+		}
+		if acc.Cookie != "" {
+			upReq.Header.Set("Cookie", acc.Cookie)
+		} else {
+			upReq.Header.Del("Cookie")
+		}
+		upReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		if upReq.Header.Get("User-Agent") == "" {
+			upReq.Header.Set("User-Agent", "Mozilla/5.0")
+		}
 
-	if cdnKey != "" && resp.StatusCode == http.StatusOK {
-		cdncache.Store(cdnKey, resp.StatusCode, ct, payload)
-		if cdncache.ServeDisk(w, r, cdnKey) {
+		resp, err := upstreamClient.Do(upReq)
+		if err != nil {
+			lastErr = err
+			log.Printf("[UP] %s %s try %d/%d: %v", r.Method, requestURI, attempt, attempts, err)
+			continue
+		}
+		payload, err := readUpstreamBody(resp)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			log.Printf("[UP] %s %s try %d/%d unreadable: %v", r.Method, requestURI, attempt, attempts, err)
+			continue
+		}
+		ct := resp.Header.Get("Content-Type")
+		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
+			payload = rewriteText(payload, base.Host, origin)
+		}
+		if attempts > 1 && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload) {
+			if attempt < attempts {
+				log.Printf("[UP] session not in yet, try %d/%d", attempt, attempts)
+				continue
+			}
+			token := sessionTokenFromRequest(r)
+			switched, _ := noteLogout(cfg, r, acc, token, "logout")
+			if switched && cfg.HomePath != "" {
+				http.Redirect(w, r, cfg.HomePath, http.StatusFound)
+				return
+			}
+			renderLoggedOutPage(w, cfg)
 			return
 		}
+		if isLoginPath(r.URL.Path) && resp.StatusCode < 400 {
+			http.Redirect(w, r, requestURI, http.StatusFound)
+			return
+		}
+		if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {
+			payload = injectDeviceHTML(payload)
+		}
+		if cdnKey != "" && resp.StatusCode == http.StatusOK {
+			cdncache.Store(cdnKey, resp.StatusCode, ct, payload)
+			if cdncache.ServeDisk(w, r, cdnKey) {
+				return
+			}
+		}
+		h := w.Header()
+		copyResponseHeaders(h, resp.Header, base.Host, origin)
+		h.Set("Cache-Control", "no-store")
+		h.Set("Pragma", "no-cache")
+		h.Del("Content-Encoding")
+		h.Del("Content-Length")
+		w.WriteHeader(resp.StatusCode)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write(payload)
+		}
+		return
 	}
-
-	h := w.Header()
-	copyResponseHeaders(h, resp.Header, base.Host, origin)
-	h.Set("Cache-Control", "no-store")
-	h.Set("Pragma", "no-cache")
-	h.Del("Content-Encoding")
-	h.Del("Content-Length")
-	w.WriteHeader(resp.StatusCode)
-	if r.Method != http.MethodHead {
-		_, _ = w.Write(payload)
-	}
+	log.Printf("[UP] %s %s: %v", r.Method, r.URL.Path, lastErr)
+	http.Error(w, "Upstream unavailable", http.StatusBadGateway)
 }
 
 func copyRequestHeaders(dst *http.Request, src *http.Request) {

@@ -70,7 +70,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		}
 		acc = loaded
 	}
-	if isLogoutPath(r.URL.Path) {
+	if isHardLogoutPath(r.URL.Path) {
 		switched, _ := noteLogout(cfg, r, acc, token, "logout")
 		if switched && cfg.HomePath != "" {
 			http.Redirect(w, r, cfg.HomePath, http.StatusFound)

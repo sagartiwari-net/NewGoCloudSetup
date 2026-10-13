@@ -10,7 +10,7 @@ import (
 )
 
 func TestRewriteKeepsBrowserOnPublicHost(t *testing.T) {
-	in := []byte(`<a href="https://sm01.markhorseotool.com/analytics/overview/">x</a><script src="https://static.markhorseotool.com/app.js"></script><script src="https://de.semrush.com/app.js"></script>{"cookie_domain":".markhorseotool.com","host":"sm01.markhorseotool.com"}`)
+	in := []byte(`<a href="https://sm01.markhorseotool.com/analytics/overview/">x</a><script src="https://static.markhorseotool.com/app.js"></script><script src="https://de.semrush.com/app.js"></script>{"cookie_domain":".markhorseotool.com","host":"sm01.markhorseotool.com","bad":"sm01.markhsm1.gt4rents.com"}`)
 	out := string(rewriteText(in, "sm01.markhorseotool.com", "https://markhsm1.gt4rents.com"))
 	if strings.Contains(out, "markhorseotool.com") || strings.Contains(out, "semrush.com") || strings.Contains(out, "sm01.markhsm1") {
 		t.Fatalf("upstream host leaked: %s", out)
@@ -51,6 +51,52 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 	got, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "sm01.markhorseotool.com", "https://markhsm1.gt4rents.com")
 	if !ok || !strings.Contains(got, "Domain=markhsm1.gt4rents.com") || strings.Contains(got, "semrush.com") {
 		t.Fatal("sidebar cookie domain was not rewritten")
+	}
+}
+
+func TestLoginPageRetriesThenOpensHome(t *testing.T) {
+	oldWait := loginRetryWait
+	loginRetryWait = 0
+	t.Cleanup(func() { loginRetryWait = oldWait })
+
+	var hits int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if hits < loginAttempts {
+			_, _ = w.Write([]byte(`<h1>Access Denied</h1><p>This section is restricted.</p>`))
+			return
+		}
+		if r.URL.Path != "/analytics/overview/" {
+			t.Errorf("retry path %s", r.URL.RequestURI())
+		}
+		_, _ = w.Write([]byte(`<html><body>overview ready</body></html>`))
+	}))
+	defer upstream.Close()
+
+	cfg := Config{
+		TargetURL:    upstream.URL,
+		HomePath:     "/analytics/overview/?searchType=domain",
+		PublicHost:   "markhsm1.gt4rents.com",
+		PublicScheme: "http",
+		ToolName:     "Markhor Semrush 1",
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://markhsm1.gt4rents.com/login?url=%2F&host=sm01.markhsm1.gt4rents.com&ssl=on", nil)
+	req.Header.Set("Accept", "text/html")
+	req.Host = "markhsm1.gt4rents.com"
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=fresh"})
+	if hits != loginAttempts {
+		t.Fatalf("upstream hits=%d", hits)
+	}
+	if rr.Code != http.StatusFound {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Location") != cfg.HomePath {
+		t.Fatalf("location %s", rr.Header().Get("Location"))
+	}
+	if strings.Contains(rr.Body.String(), "restricted") {
+		t.Fatal("upstream restricted page was shown")
 	}
 }
 
