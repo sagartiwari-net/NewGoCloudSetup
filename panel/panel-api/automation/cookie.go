@@ -1,4 +1,4 @@
-package main
+package automation
 
 import (
 	"encoding/json"
@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// cookieJSON is the Chrome-export shape the recloud proxies already accept.
-type cookieJSON struct {
+// Cookie is the Chrome-export shape the recloud proxies already accept.
+type Cookie struct {
 	Domain         string   `json:"domain"`
 	ExpirationDate *float64 `json:"expirationDate,omitempty"`
 	HostOnly       bool     `json:"hostOnly"`
@@ -23,8 +23,8 @@ type cookieJSON struct {
 	Value          string   `json:"value"`
 }
 
-func cookiesToJSON(cookies []cookieJSON) (string, error) {
-	cleaned := make([]cookieJSON, 0, len(cookies))
+func CookiesToJSON(cookies []Cookie) (string, error) {
+	cleaned := make([]Cookie, 0, len(cookies))
 	for _, cookie := range cookies {
 		cookie.Name = strings.TrimSpace(cookie.Name)
 		if cookie.Name == "" || cookie.Value == "" {
@@ -36,7 +36,7 @@ func cookiesToJSON(cookies []cookieJSON) (string, error) {
 		cleaned = append(cleaned, cookie)
 	}
 	if len(cleaned) == 0 {
-		return "", errAutomationLoginPage
+		return "", ErrLoginPage
 	}
 	raw, err := json.Marshal(cleaned)
 	if err != nil {
@@ -45,20 +45,20 @@ func cookiesToJSON(cookies []cookieJSON) (string, error) {
 	return string(raw), nil
 }
 
-func parseStoredCookies(raw string) []cookieJSON {
+func ParseStoredCookies(raw string) []Cookie {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil
 	}
 	if strings.HasPrefix(raw, "[") {
-		var cookies []cookieJSON
+		var cookies []Cookie
 		if json.Unmarshal([]byte(raw), &cookies) == nil {
 			return dropEmptyCookies(cookies)
 		}
 	}
 	if strings.HasPrefix(raw, "{") {
 		var wrapped struct {
-			Cookies []cookieJSON `json:"cookies"`
+			Cookies []Cookie `json:"cookies"`
 		}
 		if json.Unmarshal([]byte(raw), &wrapped) == nil && len(wrapped.Cookies) > 0 {
 			return dropEmptyCookies(wrapped.Cookies)
@@ -67,8 +67,8 @@ func parseStoredCookies(raw string) []cookieJSON {
 	return headerCookies(raw)
 }
 
-func dropEmptyCookies(cookies []cookieJSON) []cookieJSON {
-	out := make([]cookieJSON, 0, len(cookies))
+func dropEmptyCookies(cookies []Cookie) []Cookie {
+	out := make([]Cookie, 0, len(cookies))
 	for _, cookie := range cookies {
 		if strings.TrimSpace(cookie.Name) == "" || cookie.Value == "" {
 			continue
@@ -78,23 +78,23 @@ func dropEmptyCookies(cookies []cookieJSON) []cookieJSON {
 	return out
 }
 
-func headerCookies(raw string) []cookieJSON {
-	var out []cookieJSON
+func headerCookies(raw string) []Cookie {
+	var out []Cookie
 	for _, part := range strings.Split(raw, ";") {
 		name, value, ok := strings.Cut(strings.TrimSpace(part), "=")
 		name = strings.TrimSpace(name)
 		if !ok || name == "" || value == "" {
 			continue
 		}
-		out = append(out, cookieJSON{Name: name, Value: value, Path: "/", HostOnly: true})
+		out = append(out, Cookie{Name: name, Value: value, Path: "/", HostOnly: true})
 	}
 	return out
 }
 
-func mergeCookieSets(stored, live []cookieJSON) []cookieJSON {
+func MergeCookieSets(stored, live []Cookie) []Cookie {
 	seen := map[string]struct{}{}
-	out := make([]cookieJSON, 0, len(stored)+len(live))
-	add := func(batch []cookieJSON) {
+	out := make([]Cookie, 0, len(stored)+len(live))
+	add := func(batch []Cookie) {
 		for _, cookie := range batch {
 			if strings.TrimSpace(cookie.Name) == "" || cookie.Value == "" {
 				continue
@@ -112,7 +112,7 @@ func mergeCookieSets(stored, live []cookieJSON) []cookieJSON {
 	return out
 }
 
-func seedCookieJar(jar http.CookieJar, cookies []cookieJSON, fallbackDomain string) {
+func SeedCookieJar(jar http.CookieJar, cookies []Cookie, fallbackDomain string) {
 	byURL := map[string][]*http.Cookie{}
 	for _, cookie := range cookies {
 		if strings.TrimSpace(cookie.Name) == "" || cookie.Value == "" {
@@ -150,7 +150,7 @@ func seedCookieJar(jar http.CookieJar, cookies []cookieJSON, fallbackDomain stri
 	}
 }
 
-func httpCookieToJSON(cookie *http.Cookie, fallbackHost string) cookieJSON {
+func httpCookieToJSON(cookie *http.Cookie, fallbackHost string) Cookie {
 	domain := cookie.Domain
 	if domain == "" {
 		domain = fallbackHost
@@ -166,7 +166,7 @@ func httpCookieToJSON(cookie *http.Cookie, fallbackHost string) cookieJSON {
 	if path == "" {
 		path = "/"
 	}
-	return cookieJSON{
+	return Cookie{
 		Domain:         domain,
 		ExpirationDate: exp,
 		HostOnly:       hostOnly,
@@ -179,9 +179,9 @@ func httpCookieToJSON(cookie *http.Cookie, fallbackHost string) cookieJSON {
 	}
 }
 
-func jarCookies(jar http.CookieJar, rawURLs []string) []cookieJSON {
+func JarCookies(jar http.CookieJar, rawURLs []string) []Cookie {
 	seen := map[string]struct{}{}
-	var out []cookieJSON
+	var out []Cookie
 	for _, raw := range rawURLs {
 		parsed, err := url.Parse(raw)
 		if err != nil {
@@ -202,7 +202,7 @@ func jarCookies(jar http.CookieJar, rawURLs []string) []cookieJSON {
 	return out
 }
 
-func cookieValues(cookies []cookieJSON) []string {
+func CookieValues(cookies []Cookie) []string {
 	values := make([]string, 0, len(cookies))
 	for _, cookie := range cookies {
 		if cookie.Value != "" {

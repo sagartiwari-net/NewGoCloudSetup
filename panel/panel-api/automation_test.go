@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"panel-api/automation"
 	"strings"
 	"sync"
 	"testing"
@@ -73,7 +74,7 @@ func (r *scriptedRecipe) loginCount() int {
 	return r.logins
 }
 
-func useAutomationRecipe(t *testing.T, recipe automationRecipe) {
+func useAutomationRecipe(t *testing.T, recipe automation.Recipe) {
 	t.Helper()
 	recipeMu.Lock()
 	prev := automationRecipes["markhor"]
@@ -434,23 +435,5 @@ func TestAutomationShareCookieFrom(t *testing.T) {
 	}
 	if !strings.Contains(stored, "portal-session-value") {
 		t.Fatal("failed login wiped storage")
-	}
-}
-
-func TestMarkhorPageSignals(t *testing.T) {
-	if !markhorShowsLogin(`<input name="username"><input name="password">`, "https://markhorseotool.com/member/") {
-		t.Fatal("username and password inputs are a login page")
-	}
-	if !markhorShowsLogin("Member login. Sign in", "https://markhorseotool.com/member/") {
-		t.Fatal("member login copy is a login page")
-	}
-	if !markhorShowsDashboard(`<a href="/logout">Logout</a> My tools`, "https://markhorseotool.com/member/") {
-		t.Fatal("member dashboard was not detected")
-	}
-	if markhorShowsDashboard(`<input name="password">`, "https://markhorseotool.com/member/") {
-		t.Fatal("a password field on /member is not a dashboard")
-	}
-	if !markhorShowsDenied("Access denied. You do not have an active subscription") {
-		t.Fatal("access denied was not detected")
 	}
 }

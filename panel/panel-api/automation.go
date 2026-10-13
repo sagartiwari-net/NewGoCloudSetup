@@ -12,6 +12,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"panel-api/automation"
+	"panel-api/automation/markhor"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,30 +23,32 @@ import (
 
 const automationJobTimeout = 120 * time.Second
 
+// cookieJSON stays as the name this file already uses. The type lives in the
+// shared automation package so each portal folder can use it.
+type cookieJSON = automation.Cookie
+
 var (
-	errAutomationLoginPage = errors.New("login page still showing")
-	errAutomationCSRF      = errors.New("csrf token missing")
-	errAutomationTimeout   = errors.New("timed out")
-	errAutomationDenied    = errors.New("access denied")
-	errAutomationUpstream  = errors.New("upstream URL missing")
+	errAutomationLoginPage = automation.ErrLoginPage
+	errAutomationCSRF      = automation.ErrCSRF
+	errAutomationTimeout   = automation.ErrTimeout
+	errAutomationDenied    = automation.ErrDenied
+	errAutomationUpstream  = automation.ErrUpstream
 )
 
-type automationRecipe interface {
-	Check(ctx context.Context, cookies []cookieJSON) (stillValid bool, updated []cookieJSON, err error)
-	Login(ctx context.Context, username, password string) ([]cookieJSON, error)
-	Capture(ctx context.Context, portal []cookieJSON, upstreamURL string) ([]cookieJSON, error)
-}
+func cookiesToJSON(cookies []cookieJSON) (string, error) { return automation.CookiesToJSON(cookies) }
+func parseStoredCookies(raw string) []cookieJSON         { return automation.ParseStoredCookies(raw) }
+func cookieValues(cookies []cookieJSON) []string         { return automation.CookieValues(cookies) }
 
 var (
 	recipeMu                sync.Mutex
-	automationRecipes       = map[string]automationRecipe{"markhor": markhorRecipe{}}
+	automationRecipes       = map[string]automation.Recipe{"markhor": markhor.Recipe{}}
 	automationProviderNames = map[string]string{"markhor": "Markhor"}
 	automationCredLocks     sync.Map
 	automationKeyWarn       sync.Once
 	automationMySQLIDs      sync.Once
 )
 
-func recipeFor(id string) (automationRecipe, bool) {
+func recipeFor(id string) (automation.Recipe, bool) {
 	recipeMu.Lock()
 	defer recipeMu.Unlock()
 	recipe, ok := automationRecipes[strings.TrimSpace(id)]
@@ -370,7 +374,7 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	s.finishAutomation(job, "ok", message)
 }
 
-func (s *server) automationLogin(ctx context.Context, recipe automationRecipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {
+func (s *server) automationLogin(ctx context.Context, recipe automation.Recipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {
 	cookies, err := recipe.Login(ctx, username, password)
 	if err != nil {
 		return nil, err
