@@ -21,17 +21,41 @@ func (s *server) recloudWebsite(websiteID int) bool {
 	return err == nil && kind == "recloud"
 }
 
+// recloudCookieExpr is the cookie stored on the tool's first account.
+// It is only used in WHERE so the list response never includes the cookie.
+const recloudCookieExpr = `COALESCE((SELECT TRIM(COALESCE(a.cookie, '')) FROM accounts a WHERE a.website_id=w.id ORDER BY a.id ASC LIMIT 1), '')`
+
 func (s *server) listRecloud(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
 	if !ok {
 		return
 	}
+	page, size, q := pageQuery(r)
 	where, args := s.scope(op, "w.id")
+	where = "w.kind='recloud' AND " + where
+	if q != "" {
+		where += " AND (t.name LIKE ? OR w.name LIKE ? OR w.domain LIKE ? OR w.upstream_url LIKE ?)"
+		like := "%" + q + "%"
+		args = append(args, like, like, like, like)
+	}
+	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("cookie"))) {
+	case "saved":
+		where += " AND " + recloudCookieExpr + " <> ''"
+	case "missing":
+		where += " AND " + recloudCookieExpr + " = ''"
+	}
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM websites w JOIN tools t ON t.id=w.tool_id WHERE `+where, args...).Scan(&total); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	page = clampPage(page, size, total)
+	args = append(args, size, (page-1)*size)
 	rows, err := s.db.Query(`SELECT w.id, t.name, w.domain, w.upstream_url,
 		(SELECT a.id FROM accounts a WHERE a.website_id=w.id ORDER BY a.id ASC LIMIT 1),
 		COALESCE((SELECT a.cookie_updated_at FROM accounts a WHERE a.website_id=w.id ORDER BY a.id ASC LIMIT 1), '')
 		FROM websites w JOIN tools t ON t.id=w.tool_id
-		WHERE w.kind='recloud' AND `+where+` ORDER BY t.name, w.domain`, args...)
+		WHERE `+where+` ORDER BY t.name, w.domain LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -56,7 +80,7 @@ func (s *server) listRecloud(w http.ResponseWriter, r *http.Request) {
 			"upstream_url": upstream, "account_id": account, "cookie_updated_at": updated,
 		})
 	}
-	writeJSON(w, 200, map[string]any{"items": items})
+	s.writePage(w, page, size, total, items)
 }
 
 func (s *server) getRecloud(w http.ResponseWriter, r *http.Request) {

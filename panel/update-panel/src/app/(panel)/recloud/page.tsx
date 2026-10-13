@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 
 import { useAuth } from "@/components/auth-provider"
+import { ChoiceSelect } from "@/components/choice-select"
 import { CookieSourceField } from "@/components/cookie-source-field"
 import { DataTable, type DataColumn } from "@/components/data-table"
 import { FormOverlay } from "@/components/form-overlay"
@@ -21,6 +22,7 @@ import { useResource } from "@/hooks/use-resource"
 import { getRecloud, listRecloud, saveRecloud } from "@/lib/api/client"
 import type { RecloudTool, RecloudToolDetail } from "@/lib/api/types"
 import { formatIst } from "@/lib/format"
+import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
 
 const schema = z.object({
@@ -42,10 +44,17 @@ type FormValues = z.infer<typeof schema>
 
 export default function RecloudPage() {
   const { session } = useAuth()
+  const [query, setQuery] = useState("")
+  const [cookieFilter, setCookieFilter] = useState("all")
+  const { page, setPage, pageSize } = useListPage()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
-  const { data, loading, reload } = useResource(session?.role ?? "none", listRecloud)
-  const rows = data ?? []
+  const { data, loading, reload } = useResource(
+    `${session?.role ?? "none"}-${page}-${pageSize}-${query}-${cookieFilter}`,
+    () => listRecloud({ page, pageSize, query, cookie: cookieFilter }),
+  )
+  const rows = data?.items ?? []
+  const filtered = query.trim() !== "" || cookieFilter !== "all"
 
   const columns: DataColumn<RecloudTool>[] = [
     {
@@ -95,6 +104,36 @@ export default function RecloudPage() {
         title="Recloud"
         description="Cookie and upstream URL for recloud tools. A save applies on the next request."
       />
+      <div className="flex flex-col gap-3 md:flex-row md:items-end">
+        <Field className="md:max-w-sm md:flex-1">
+          <FieldLabel htmlFor="recloud-search">Search</FieldLabel>
+          <Input
+            id="recloud-search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setPage(1)
+            }}
+            placeholder="Tool, domain, or upstream URL"
+          />
+        </Field>
+        <Field className="md:w-56">
+          <FieldLabel htmlFor="recloud-cookie">Cookie</FieldLabel>
+          <ChoiceSelect
+            id="recloud-cookie"
+            value={cookieFilter}
+            onValueChange={(value) => {
+              setCookieFilter(value)
+              setPage(1)
+            }}
+            items={[
+              { label: "All tools", value: "all" },
+              { label: "Has cookie", value: "saved" },
+              { label: "No cookie", value: "missing" },
+            ]}
+          />
+        </Field>
+      </div>
       <Card>
         <CardContent>
           <DataTable
@@ -102,8 +141,19 @@ export default function RecloudPage() {
             columns={columns}
             rowKey={(row) => row.website_id}
             loading={loading}
-            emptyTitle="No recloud tools"
-            emptyDescription="A tool shows up here after it is added as recloud."
+            paging={{
+              page: data?.page ?? page,
+              total: data?.total ?? 0,
+              pageSize,
+              onPageChange: setPage,
+            }}
+            resetKey={`${query}-${cookieFilter}`}
+            emptyTitle={filtered ? "No matches" : "No recloud tools"}
+            emptyDescription={
+              filtered
+                ? "Try another name, domain, or cookie filter."
+                : "A tool shows up here after it is added as recloud."
+            }
           />
         </CardContent>
       </Card>

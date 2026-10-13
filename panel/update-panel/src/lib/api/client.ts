@@ -641,9 +641,13 @@ export function listAccountWebsites(): Promise<Website[]> {
   })
 }
 
-export async function listRecloud(): Promise<RecloudTool[]> {
-  const page = await api<{ items: RecloudTool[] }>("/api/recloud")
-  return page.items ?? []
+export async function listRecloud(query: {
+  page: number
+  pageSize: number
+  query: string
+  cookie: string
+}): Promise<PageResult<RecloudTool>> {
+  return api(`/api/recloud${qs(query)}`)
 }
 
 export async function getRecloud(websiteId: number): Promise<RecloudToolDetail> {

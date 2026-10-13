@@ -211,3 +211,80 @@ func callJSON(t *testing.T, handler http.Handler, method, path, body string) *ht
 	handler.ServeHTTP(rec, req)
 	return rec
 }
+
+func TestRecloudListSearchAndCookieFilter(t *testing.T) {
+	t.Setenv("GT4RENTS_MYSQL_PASSWORD", "")
+	db := openRecloudTestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES ('Sem Two', 'recloud', '[]')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolID, _ := res.LastInsertId()
+	if _, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, kind, upstream_url)
+		VALUES (?, 'Sem Two', 'tzsem2.gt4rents.com', 'secret', 30, '{}', 1, 'recloud', 'https://two.example')`, toolID); err != nil {
+		t.Fatal(err)
+	}
+	var websiteID int
+	if err := db.QueryRow(`SELECT id FROM websites WHERE domain='tzsem2.gt4rents.com'`).Scan(&websiteID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
+		VALUES (?, 'seat', 'secret-cookie-value', '', '', 'active', 1, '', '', '', ?, '')`, websiteID, now); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &server{db: db}
+	mux := http.NewServeMux()
+	s.routes(mux)
+
+	all := recloudList(t, mux, "/api/recloud?page=1&pageSize=50&query=Sem&cookie=all")
+	if all.Total != 2 || len(all.Items) != 2 {
+		t.Fatalf("search total %d items %d", all.Total, len(all.Items))
+	}
+	saved := recloudList(t, mux, "/api/recloud?page=1&pageSize=50&cookie=saved")
+	if saved.Total != 1 || saved.Items[0].ToolName != "Sem Two" {
+		t.Fatalf("saved filter %#v", saved.Items)
+	}
+	missing := recloudList(t, mux, "/api/recloud?page=1&pageSize=50&cookie=missing")
+	if missing.Total != 1 || missing.Items[0].ToolName != "Sem One" {
+		t.Fatalf("missing filter %#v", missing.Items)
+	}
+	byURL := recloudList(t, mux, "/api/recloud?page=1&pageSize=50&query=two.example")
+	if byURL.Total != 1 || byURL.Items[0].ToolName != "Sem Two" {
+		t.Fatalf("url search %#v", byURL.Items)
+	}
+	page := recloudList(t, mux, "/api/recloud?page=1&pageSize=1")
+	if page.Total != 2 || len(page.Items) != 1 || page.PageSize != 1 {
+		t.Fatalf("page total %d len %d size %d", page.Total, len(page.Items), page.PageSize)
+	}
+}
+
+func recloudList(t *testing.T, handler http.Handler, path string) struct {
+	Total    int `json:"total"`
+	PageSize int `json:"pageSize"`
+	Items    []struct {
+		ToolName string `json:"tool_name"`
+	} `json:"items"`
+} {
+	t.Helper()
+	rec := callJSON(t, handler, http.MethodGet, path, "")
+	if rec.Code != 200 {
+		t.Fatalf("%s status %d", path, rec.Code)
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("secret-cookie-value")) || bytes.Contains(rec.Body.Bytes(), []byte("kept-cookie")) {
+		t.Fatal("recloud list included a cookie")
+	}
+	var page struct {
+		Total    int `json:"total"`
+		PageSize int `json:"pageSize"`
+		Items    []struct {
+			ToolName string `json:"tool_name"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	return page
+}
