@@ -1,0 +1,1140 @@
+package main
+
+import (
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+const automationJobTimeout = 120 * time.Second
+
+var (
+	errAutomationLoginPage = errors.New("login page still showing")
+	errAutomationCSRF      = errors.New("csrf token missing")
+	errAutomationTimeout   = errors.New("timed out")
+	errAutomationDenied    = errors.New("access denied")
+	errAutomationUpstream  = errors.New("upstream URL missing")
+)
+
+type automationRecipe interface {
+	Check(ctx context.Context, cookies []cookieJSON) (stillValid bool, updated []cookieJSON, err error)
+	Login(ctx context.Context, username, password string) ([]cookieJSON, error)
+	Capture(ctx context.Context, portal []cookieJSON, upstreamURL string) ([]cookieJSON, error)
+}
+
+var (
+	recipeMu                sync.Mutex
+	automationRecipes       = map[string]automationRecipe{"markhor": markhorRecipe{}}
+	automationProviderNames = map[string]string{"markhor": "Markhor"}
+	automationCredLocks     sync.Map
+	automationKeyWarn       sync.Once
+	automationMySQLIDs      sync.Once
+)
+
+func recipeFor(id string) (automationRecipe, bool) {
+	recipeMu.Lock()
+	defer recipeMu.Unlock()
+	recipe, ok := automationRecipes[strings.TrimSpace(id)]
+	return recipe, ok
+}
+
+func knownAutomationProvider(id string) bool {
+	_, ok := recipeFor(id)
+	return ok
+}
+
+func automationCredLock(id int) *sync.Mutex {
+	value, _ := automationCredLocks.LoadOrStore(id, &sync.Mutex{})
+	return value.(*sync.Mutex)
+}
+
+func automationKey() []byte {
+	raw := strings.TrimSpace(os.Getenv("GT4RENTS_AUTOMATION_KEY"))
+	if raw == "" {
+		if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) != "" {
+			automationKeyWarn.Do(func() {
+				log.Printf("[automation] GT4RENTS_AUTOMATION_KEY is empty; set it in mysql.env before saving credentials")
+			})
+		}
+		raw = "panel-automation-sqlite-test-key"
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return sum[:]
+}
+
+func encryptAutomation(plain string) (string, error) {
+	block, err := aes.NewCipher(automationKey())
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(gcm.Seal(nonce, nonce, []byte(plain), nil)), nil
+}
+
+func decryptAutomation(enc string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(enc))
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(automationKey())
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) < gcm.NonceSize() {
+		return "", errors.New("short secret")
+	}
+	plain, err := gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
+}
+
+func (s *server) ensureAutomationTables() {
+	if s != nil {
+		ensureAutomationTables(s.db)
+	}
+}
+
+func ensureAutomationTables(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS automation_credentials (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			username TEXT NOT NULL,
+			password_enc TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS automation_storage (
+			credential_id INTEGER PRIMARY KEY,
+			cookies_json TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS automation_jobs (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			credential_id INTEGER NOT NULL,
+			target_website_id INTEGER NOT NULL,
+			target_account_id INTEGER NOT NULL DEFAULT 0,
+			interval_minutes INTEGER NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 0,
+			run_requested INTEGER NOT NULL DEFAULT 0,
+			next_run_at TEXT NOT NULL,
+			last_run_at TEXT NOT NULL DEFAULT '',
+			last_result TEXT NOT NULL DEFAULT '',
+			last_reason TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS automation_logs (
+			id INTEGER PRIMARY KEY,
+			job_id INTEGER NOT NULL,
+			job_name TEXT NOT NULL,
+			credential_id INTEGER NOT NULL,
+			credential_name TEXT NOT NULL,
+			level TEXT NOT NULL,
+			message TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_automation_logs_created ON automation_logs(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_automation_jobs_due ON automation_jobs(enabled, next_run_at)`,
+	}
+	for _, statement := range statements {
+		_, _ = db.Exec(statement)
+	}
+	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) == "" {
+		return
+	}
+	automationMySQLIDs.Do(func() {
+		for _, table := range []string{"automation_credentials", "automation_jobs", "automation_logs"} {
+			_, _ = db.Exec(`ALTER TABLE ` + table + ` MODIFY COLUMN id INTEGER NOT NULL AUTO_INCREMENT`)
+		}
+	})
+}
+
+func automationPublicReason(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, errAutomationLoginPage):
+		return errAutomationLoginPage.Error()
+	case errors.Is(err, errAutomationCSRF):
+		return errAutomationCSRF.Error()
+	case errors.Is(err, errAutomationTimeout):
+		return errAutomationTimeout.Error()
+	case errors.Is(err, errAutomationDenied):
+		return errAutomationDenied.Error()
+	case errors.Is(err, errAutomationUpstream):
+		return errAutomationUpstream.Error()
+	default:
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline") || strings.Contains(msg, "timed out") {
+			return errAutomationTimeout.Error()
+		}
+		return errAutomationLoginPage.Error()
+	}
+}
+
+func scrubAutomation(message string, secrets []string) string {
+	for _, secret := range secrets {
+		secret = strings.TrimSpace(secret)
+		if len(secret) < 4 {
+			continue
+		}
+		message = strings.ReplaceAll(message, secret, "")
+	}
+	message = strings.Join(strings.Fields(message), " ")
+	if len(message) > 240 {
+		message = message[:240]
+	}
+	return strings.TrimSpace(message)
+}
+
+type automationJobRow struct {
+	ID              int
+	Name            string
+	Provider        string
+	CredentialID    int
+	CredentialName  string
+	TargetWebsiteID int
+	TargetAccountID int
+	IntervalMinutes int
+	Enabled         int
+}
+
+type automationSite struct {
+	ID       int
+	Name     string
+	Domain   string
+	Kind     string
+	Upstream string
+}
+
+func (s *server) pollAutomation() {
+	for {
+		s.runDueAutomationJobs()
+		time.Sleep(30 * time.Second)
+	}
+}
+
+func (s *server) runDueAutomationJobs() {
+	s.ensureAutomationTables()
+	now := time.Now().UTC().Format(time.RFC3339)
+	rows, err := s.db.Query(`SELECT id, credential_id FROM automation_jobs
+		WHERE enabled=1 AND (run_requested=1 OR next_run_at<=?)
+		ORDER BY credential_id, id`, now)
+	if err != nil {
+		return
+	}
+	groups := map[int][]int{}
+	var order []int
+	for rows.Next() {
+		var id, cred int
+		if rows.Scan(&id, &cred) != nil {
+			continue
+		}
+		if _, ok := groups[cred]; !ok {
+			order = append(order, cred)
+		}
+		groups[cred] = append(groups[cred], id)
+	}
+	rows.Close()
+	var wg sync.WaitGroup
+	for _, cred := range order {
+		wg.Add(1)
+		ids := groups[cred]
+		go func(credentialID int, jobIDs []int) {
+			defer wg.Done()
+			lock := automationCredLock(credentialID)
+			lock.Lock()
+			defer lock.Unlock()
+			for _, id := range jobIDs {
+				ctx, cancel := context.WithTimeout(context.Background(), automationJobTimeout)
+				s.runAutomationJob(ctx, id)
+				cancel()
+			}
+		}(cred, ids)
+	}
+	wg.Wait()
+}
+
+func (s *server) runAutomationJob(ctx context.Context, id int) {
+	job, ok := s.loadAutomationJob(id)
+	if !ok || job.Enabled != 1 {
+		return
+	}
+	if !s.claimAutomationJob(job) {
+		return
+	}
+	site, ok := s.loadAutomationSite(job.TargetWebsiteID)
+	if !ok || strings.TrimSpace(site.Upstream) == "" {
+		s.failAutomation(job, errAutomationUpstream, nil)
+		return
+	}
+	var username, passwordEnc string
+	err := s.db.QueryRow(`SELECT username, password_enc FROM automation_credentials WHERE id=?`, job.CredentialID).Scan(&username, &passwordEnc)
+	if err != nil {
+		s.failAutomation(job, errAutomationLoginPage, nil)
+		return
+	}
+	password, err := decryptAutomation(passwordEnc)
+	if err != nil || strings.TrimSpace(password) == "" {
+		s.failAutomation(job, errAutomationLoginPage, nil)
+		return
+	}
+	secrets := []string{password}
+	recipe, ok := recipeFor(job.Provider)
+	if !ok {
+		s.failAutomation(job, errAutomationLoginPage, secrets)
+		return
+	}
+	stored := s.readAutomationCookies(job.CredentialID)
+	secrets = append(secrets, cookieValues(stored)...)
+	portal := stored
+	if len(stored) > 0 {
+		valid, updated, checkErr := recipe.Check(ctx, stored)
+		if checkErr != nil {
+			s.failAutomation(job, checkErr, secrets)
+			return
+		}
+		if valid {
+			if len(updated) == 0 {
+				updated = stored
+			}
+			if err := s.saveAutomationCookies(job.CredentialID, updated); err != nil {
+				s.failAutomation(job, errAutomationLoginPage, secrets)
+				return
+			}
+			s.writeAutomationLog(job, "info", "session still valid", secrets)
+			portal = updated
+		} else if portal, err = s.automationLogin(ctx, recipe, job, username, password, secrets); err != nil {
+			s.failAutomation(job, err, append(secrets, cookieValues(portal)...))
+			return
+		}
+	} else if portal, err = s.automationLogin(ctx, recipe, job, username, password, secrets); err != nil {
+		s.failAutomation(job, err, secrets)
+		return
+	}
+	secrets = append(secrets, cookieValues(portal)...)
+	tool, err := recipe.Capture(ctx, portal, site.Upstream)
+	if err != nil {
+		s.failAutomation(job, err, secrets)
+		return
+	}
+	if len(tool) == 0 {
+		tool = portal
+	}
+	raw, err := cookiesToJSON(tool)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		s.failAutomation(job, errAutomationLoginPage, append(secrets, cookieValues(tool)...))
+		return
+	}
+	accountID, err := s.writeAutomationAccountCookie(site, job.TargetAccountID, raw)
+	if err != nil {
+		s.failAutomation(job, errAutomationLoginPage, append(secrets, raw))
+		return
+	}
+	s.shareCookieFrom(accountID)
+	message := "wrote cookie to " + strings.TrimSpace(site.Name)
+	s.writeAutomationLog(job, "info", message, append(secrets, raw))
+	s.finishAutomation(job, "ok", message)
+}
+
+func (s *server) automationLogin(ctx context.Context, recipe automationRecipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {
+	cookies, err := recipe.Login(ctx, username, password)
+	if err != nil {
+		return nil, err
+	}
+	if len(cookies) == 0 {
+		return nil, errAutomationLoginPage
+	}
+	if err := s.saveAutomationCookies(job.CredentialID, cookies); err != nil {
+		return nil, errAutomationLoginPage
+	}
+	s.writeAutomationLog(job, "info", "logged in", append(secrets, cookieValues(cookies)...))
+	return cookies, nil
+}
+
+func (s *server) claimAutomationJob(job automationJobRow) bool {
+	now := time.Now().UTC()
+	interval := job.IntervalMinutes
+	if interval < 5 {
+		interval = 5
+	}
+	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
+	res, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=0, next_run_at=?
+		WHERE id=? AND enabled=1 AND (run_requested=1 OR next_run_at<=?)`,
+		next, job.ID, now.Format(time.RFC3339))
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n == 1
+}
+
+func (s *server) finishAutomation(job automationJobRow, result, reason string) {
+	reason = scrubAutomation(reason, nil)
+	if reason == "" {
+		reason = "session still valid"
+	}
+	now := time.Now().UTC()
+	interval := job.IntervalMinutes
+	if interval < 5 {
+		interval = 5
+	}
+	var current int
+	_ = s.db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE id=?`, job.ID).Scan(&current)
+	if current >= 5 && current <= 1440 {
+		interval = current
+	}
+	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
+	stamp := now.Format(time.RFC3339)
+	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_run_at=?, last_result=?, last_reason=?, next_run_at=?, run_requested=0, updated_at=? WHERE id=?`,
+		stamp, result, reason, next, stamp, job.ID)
+	log.Printf("[automation] job %d %s: %s", job.ID, result, reason)
+}
+
+func (s *server) failAutomation(job automationJobRow, err error, secrets []string) {
+	reason := scrubAutomation(automationPublicReason(err), secrets)
+	if reason == "" {
+		reason = automationPublicReason(err)
+	}
+	s.writeAutomationLog(job, "error", reason, secrets)
+	now := time.Now().UTC()
+	interval := job.IntervalMinutes
+	if interval < 5 {
+		interval = 5
+	}
+	var current int
+	_ = s.db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE id=?`, job.ID).Scan(&current)
+	if current >= 5 && current <= 1440 {
+		interval = current
+	}
+	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
+	stamp := now.Format(time.RFC3339)
+	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_run_at=?, last_result='failed', last_reason=?, next_run_at=?, run_requested=0, updated_at=? WHERE id=?`,
+		stamp, reason, next, stamp, job.ID)
+	log.Printf("[automation] job %d failed: %s", job.ID, reason)
+}
+
+func (s *server) writeAutomationLog(job automationJobRow, level, message string, secrets []string) {
+	message = scrubAutomation(message, secrets)
+	if message == "" {
+		if level == "error" {
+			message = errAutomationLoginPage.Error()
+		} else {
+			message = "session still valid"
+		}
+	}
+	if level != "info" && level != "error" {
+		level = "info"
+	}
+	_, _ = s.db.Exec(`INSERT INTO automation_logs (job_id, job_name, credential_id, credential_name, level, message, created_at)
+		VALUES (?,?,?,?,?,?,?)`,
+		job.ID, job.Name, job.CredentialID, job.CredentialName, level, message, time.Now().UTC().Format(time.RFC3339))
+}
+
+func (s *server) loadAutomationJob(id int) (automationJobRow, bool) {
+	var job automationJobRow
+	err := s.db.QueryRow(`SELECT j.id, j.name, j.provider, j.credential_id, COALESCE(c.name, ''),
+		j.target_website_id, j.target_account_id, j.interval_minutes, j.enabled
+		FROM automation_jobs j LEFT JOIN automation_credentials c ON c.id=j.credential_id
+		WHERE j.id=?`, id).Scan(&job.ID, &job.Name, &job.Provider, &job.CredentialID, &job.CredentialName,
+		&job.TargetWebsiteID, &job.TargetAccountID, &job.IntervalMinutes, &job.Enabled)
+	return job, err == nil
+}
+
+func (s *server) loadAutomationSite(id int) (automationSite, bool) {
+	var site automationSite
+	err := s.db.QueryRow(`SELECT id, name, domain, COALESCE(kind, ''), COALESCE(upstream_url, '') FROM websites WHERE id=?`, id).
+		Scan(&site.ID, &site.Name, &site.Domain, &site.Kind, &site.Upstream)
+	return site, err == nil
+}
+
+func (s *server) readAutomationCookies(credentialID int) []cookieJSON {
+	var raw string
+	if err := s.db.QueryRow(`SELECT cookies_json FROM automation_storage WHERE credential_id=?`, credentialID).Scan(&raw); err != nil {
+		return nil
+	}
+	return parseStoredCookies(raw)
+}
+
+func (s *server) saveAutomationCookies(credentialID int, cookies []cookieJSON) error {
+	raw, err := cookiesToJSON(cookies)
+	if err != nil {
+		return err
+	}
+	return s.replaceAutomationStorage(credentialID, raw)
+}
+
+func (s *server) replaceAutomationStorage(credentialID int, raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return errAutomationLoginPage
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM automation_storage WHERE credential_id=?`, credentialID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO automation_storage (credential_id, cookies_json, updated_at) VALUES (?,?,?)`,
+		credentialID, raw, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *server) writeAutomationAccountCookie(site automationSite, accountID int, cookie string) (int, error) {
+	cookie = strings.TrimSpace(cookie)
+	if cookie == "" {
+		return 0, errAutomationLoginPage
+	}
+	if site.Kind == "recloud" {
+		return s.saveRecloudCookie(site.ID, cookie)
+	}
+	if accountID <= 0 {
+		return 0, errAutomationLoginPage
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.Exec(`UPDATE accounts SET cookie=?, status='active', cookie_updated_at=?, failure_count=0 WHERE id=? AND website_id=?`,
+		cookie, now, accountID, site.ID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return 0, errAutomationLoginPage
+	}
+	return accountID, nil
+}
+
+func (s *server) automationProviders() []any {
+	recipeMu.Lock()
+	defer recipeMu.Unlock()
+	ids := make([]string, 0, len(automationRecipes))
+	for id := range automationRecipes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	items := []any{}
+	for _, id := range ids {
+		label := automationProviderNames[id]
+		if label == "" {
+			label = id
+		}
+		items = append(items, map[string]any{"id": id, "label": label})
+	}
+	return items
+}
+
+func (s *server) listAutomationCredentials(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	page, size, q := pageQuery(r)
+	where := "1=1"
+	args := []any{}
+	if q != "" {
+		where += " AND (name LIKE ? OR provider LIKE ? OR username LIKE ?)"
+		like := "%" + q + "%"
+		args = append(args, like, like, like)
+	}
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_credentials WHERE `+where, args...).Scan(&total); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	page = clampPage(page, size, total)
+	qargs := append(append([]any{}, args...), size, (page-1)*size)
+	rows, err := s.db.Query(`SELECT id, name, provider, username, updated_at, CASE WHEN TRIM(password_enc)='' THEN 0 ELSE 1 END
+		FROM automation_credentials WHERE `+where+` ORDER BY name LIMIT ? OFFSET ?`, qargs...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	items := []any{}
+	for rows.Next() {
+		var id, has int
+		var name, provider, username, updated string
+		if rows.Scan(&id, &name, &provider, &username, &updated, &has) != nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"id": id, "name": name, "provider": provider, "username": username,
+			"has_password": has == 1, "updated_at": updated,
+		})
+	}
+	s.writePage(w, page, size, total, items)
+}
+
+func (s *server) saveAutomationCredential(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	var body struct {
+		ID       int    `json:"id"`
+		Name     string `json:"name"`
+		Provider string `json:"provider"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	body.Provider = strings.TrimSpace(body.Provider)
+	body.Username = strings.TrimSpace(body.Username)
+	if body.Name == "" {
+		writeErr(w, 400, "Enter a name")
+		return
+	}
+	if !knownAutomationProvider(body.Provider) {
+		writeErr(w, 400, "Choose a provider")
+		return
+	}
+	if body.Username == "" {
+		writeErr(w, 400, "Enter a username")
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if body.ID == 0 {
+		if strings.TrimSpace(body.Password) == "" {
+			writeErr(w, 400, "Enter a password")
+			return
+		}
+		enc, err := encryptAutomation(body.Password)
+		if err != nil {
+			writeErr(w, 500, "Could not save the password")
+			return
+		}
+		if _, err := s.db.Exec(`INSERT INTO automation_credentials (name, provider, username, password_enc, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
+			body.Name, body.Provider, body.Username, enc, now, now); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "ok"})
+		return
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT id FROM automation_credentials WHERE id=?`, body.ID).Scan(&exists); err != nil {
+		writeErr(w, 404, "Credential not found")
+		return
+	}
+	if strings.TrimSpace(body.Password) == "" {
+		_, err := s.db.Exec(`UPDATE automation_credentials SET name=?, provider=?, username=?, updated_at=? WHERE id=?`,
+			body.Name, body.Provider, body.Username, now, body.ID)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	} else {
+		enc, err := encryptAutomation(body.Password)
+		if err != nil {
+			writeErr(w, 500, "Could not save the password")
+			return
+		}
+		_, err = s.db.Exec(`UPDATE automation_credentials SET name=?, provider=?, username=?, password_enc=?, updated_at=? WHERE id=?`,
+			body.Name, body.Provider, body.Username, enc, now, body.ID)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) deleteAutomationCredential(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	id, _ := strconv.Atoi(r.URL.Query().Get("id"))
+	if id <= 0 {
+		writeErr(w, 400, "Choose a credential")
+		return
+	}
+	rows, err := s.db.Query(`SELECT name FROM automation_jobs WHERE credential_id=? ORDER BY name`, id)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	var names []string
+	for rows.Next() {
+		var name string
+		if rows.Scan(&name) == nil && strings.TrimSpace(name) != "" {
+			names = append(names, name)
+		}
+	}
+	rows.Close()
+	if len(names) > 0 {
+		writeErr(w, 400, "Jobs still use this credential: "+strings.Join(names, ", "))
+		return
+	}
+	_, _ = s.db.Exec(`DELETE FROM automation_storage WHERE credential_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM automation_credentials WHERE id=?`, id)
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) listAutomationStorage(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	page, size, q := pageQuery(r)
+	where := "1=1"
+	args := []any{}
+	if q != "" {
+		where += " AND (c.name LIKE ? OR c.provider LIKE ? OR c.username LIKE ?)"
+		like := "%" + q + "%"
+		args = append(args, like, like, like)
+	}
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_credentials c WHERE `+where, args...).Scan(&total); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	page = clampPage(page, size, total)
+	qargs := append(append([]any{}, args...), size, (page-1)*size)
+	rows, err := s.db.Query(`SELECT c.id, c.name, c.provider, COALESCE(st.updated_at, ''),
+		(SELECT COUNT(*) FROM automation_jobs j WHERE j.credential_id=c.id)
+		FROM automation_credentials c
+		LEFT JOIN automation_storage st ON st.credential_id=c.id
+		WHERE `+where+` ORDER BY c.name LIMIT ? OFFSET ?`, qargs...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	items := []any{}
+	for rows.Next() {
+		var id, jobs int
+		var name, provider, updated string
+		if rows.Scan(&id, &name, &provider, &updated, &jobs) != nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"credential_id": id, "name": name, "provider": provider, "updated_at": updated, "job_count": jobs,
+		})
+	}
+	s.writePage(w, page, size, total, items)
+}
+
+func (s *server) getAutomationStorage(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	id, _ := strconv.Atoi(r.PathValue("credentialId"))
+	if id <= 0 {
+		writeErr(w, 400, "Choose a credential")
+		return
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT id FROM automation_credentials WHERE id=?`, id).Scan(&exists); err != nil {
+		writeErr(w, 404, "Credential not found")
+		return
+	}
+	var cookie, updated string
+	_ = s.db.QueryRow(`SELECT cookies_json, updated_at FROM automation_storage WHERE credential_id=?`, id).Scan(&cookie, &updated)
+	writeJSON(w, 200, map[string]any{"credential_id": id, "cookie": cookie, "updated_at": updated})
+}
+
+func (s *server) saveAutomationStorage(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	var body struct {
+		CredentialID int    `json:"credential_id"`
+		Cookie       string `json:"cookie"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	if body.CredentialID <= 0 {
+		writeErr(w, 400, "Choose a credential")
+		return
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT id FROM automation_credentials WHERE id=?`, body.CredentialID).Scan(&exists); err != nil {
+		writeErr(w, 404, "Credential not found")
+		return
+	}
+	if strings.TrimSpace(body.Cookie) == "" {
+		writeErr(w, 400, "Enter a cookie")
+		return
+	}
+	if err := s.replaceAutomationStorage(body.CredentialID, body.Cookie); err != nil {
+		writeErr(w, 500, "Could not save the cookie")
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) listAutomationJobs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	page, size, q := pageQuery(r)
+	where := "1=1"
+	args := []any{}
+	if q != "" {
+		where += " AND (j.name LIKE ? OR c.name LIKE ? OR w.name LIKE ? OR w.domain LIKE ?)"
+		like := "%" + q + "%"
+		args = append(args, like, like, like, like)
+	}
+	from := ` FROM automation_jobs j
+		LEFT JOIN automation_credentials c ON c.id=j.credential_id
+		LEFT JOIN websites w ON w.id=j.target_website_id
+		LEFT JOIN accounts a ON a.id=j.target_account_id
+		WHERE `
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) `+from+where, args...).Scan(&total); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	page = clampPage(page, size, total)
+	qargs := append(append([]any{}, args...), size, (page-1)*size)
+	rows, err := s.db.Query(`SELECT j.id, j.name, j.provider, j.credential_id, COALESCE(c.name, ''),
+		j.target_website_id, COALESCE(w.name, ''), COALESCE(w.domain, ''), j.target_account_id, COALESCE(a.name, ''),
+		j.interval_minutes, j.enabled, j.last_run_at, j.last_result, j.last_reason, j.next_run_at `+from+where+
+		` ORDER BY j.name LIMIT ? OFFSET ?`, qargs...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	items := []any{}
+	for rows.Next() {
+		var id, credID, websiteID, accountID, interval, enabled int
+		var name, provider, credName, siteName, domain, accountName, lastRun, lastResult, lastReason, nextRun string
+		if rows.Scan(&id, &name, &provider, &credID, &credName, &websiteID, &siteName, &domain, &accountID, &accountName,
+			&interval, &enabled, &lastRun, &lastResult, &lastReason, &nextRun) != nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"id": id, "name": name, "provider": provider,
+			"credential_id": credID, "credential_name": credName,
+			"target_website_id": websiteID, "target_label": websiteChoiceLabel(siteName, domain),
+			"target_account_id": accountID, "target_account_name": accountName,
+			"interval_minutes": interval, "enabled": enabled == 1,
+			"last_run_at": lastRun, "last_result": lastResult, "last_reason": lastReason, "next_run_at": nextRun,
+		})
+	}
+	s.writePage(w, page, size, total, items)
+}
+
+func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	var body struct {
+		ID              int    `json:"id"`
+		Name            string `json:"name"`
+		Provider        string `json:"provider"`
+		CredentialID    int    `json:"credential_id"`
+		TargetWebsiteID int    `json:"target_website_id"`
+		TargetAccountID int    `json:"target_account_id"`
+		IntervalMinutes int    `json:"interval_minutes"`
+		Enabled         bool   `json:"enabled"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	body.Provider = strings.TrimSpace(body.Provider)
+	if body.Name == "" {
+		writeErr(w, 400, "Enter a name")
+		return
+	}
+	if !knownAutomationProvider(body.Provider) {
+		writeErr(w, 400, "Choose a provider")
+		return
+	}
+	if body.IntervalMinutes < 5 || body.IntervalMinutes > 1440 {
+		writeErr(w, 400, "Interval must be from 5 to 1440 minutes")
+		return
+	}
+	var credProvider string
+	if err := s.db.QueryRow(`SELECT provider FROM automation_credentials WHERE id=?`, body.CredentialID).Scan(&credProvider); err != nil {
+		writeErr(w, 400, "Choose a credential")
+		return
+	}
+	if credProvider != body.Provider {
+		writeErr(w, 400, "Credential provider does not match the job")
+		return
+	}
+	site, ok := s.loadAutomationSite(body.TargetWebsiteID)
+	if !ok {
+		writeErr(w, 400, "Choose a website")
+		return
+	}
+	if site.Kind == "recloud" {
+		body.TargetAccountID = 0
+	} else {
+		var accountWebsite int
+		if err := s.db.QueryRow(`SELECT website_id FROM accounts WHERE id=?`, body.TargetAccountID).Scan(&accountWebsite); err != nil || accountWebsite != site.ID {
+			writeErr(w, 400, "Choose an account")
+			return
+		}
+	}
+	enabled := 0
+	if body.Enabled {
+		enabled = 1
+	}
+	now := time.Now().UTC()
+	stamp := now.Format(time.RFC3339)
+	if body.ID == 0 {
+		next := now.Add(time.Duration(body.IntervalMinutes) * time.Minute).Format(time.RFC3339)
+		if _, err := s.db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,0,?,'','','',?,?)`,
+			body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, stamp); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "ok"})
+		return
+	}
+	var prevInterval int
+	var prevNext string
+	if err := s.db.QueryRow(`SELECT interval_minutes, next_run_at FROM automation_jobs WHERE id=?`, body.ID).Scan(&prevInterval, &prevNext); err != nil {
+		writeErr(w, 404, "Job not found")
+		return
+	}
+	next := prevNext
+	if prevInterval != body.IntervalMinutes {
+		if strings.TrimSpace(prevNext) == "" || prevNext > stamp {
+			next = now.Add(time.Duration(body.IntervalMinutes) * time.Minute).Format(time.RFC3339)
+		}
+	}
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET name=?, provider=?, credential_id=?, target_website_id=?, target_account_id=?, interval_minutes=?, enabled=?, next_run_at=?, updated_at=? WHERE id=?`,
+		body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, body.ID); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) deleteAutomationJob(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	id, _ := strconv.Atoi(r.URL.Query().Get("id"))
+	if id <= 0 {
+		writeErr(w, 400, "Choose a job")
+		return
+	}
+	_, _ = s.db.Exec(`DELETE FROM automation_jobs WHERE id=?`, id)
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) runAutomationJobNow(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	var enabled int
+	if err := s.db.QueryRow(`SELECT enabled FROM automation_jobs WHERE id=?`, id).Scan(&enabled); err != nil {
+		writeErr(w, 404, "Job not found")
+		return
+	}
+	if enabled != 1 {
+		writeErr(w, 400, "Enable the job first")
+		return
+	}
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=1 WHERE id=?`, id); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	go s.runDueAutomationJobs()
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) listAutomationLogs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	page, size, q := pageQuery(r)
+	where := "1=1"
+	args := []any{}
+	if q != "" {
+		where += " AND (message LIKE ? OR job_name LIKE ? OR credential_name LIKE ?)"
+		like := "%" + q + "%"
+		args = append(args, like, like, like)
+	}
+	if jobID, _ := strconv.Atoi(r.URL.Query().Get("jobId")); jobID > 0 {
+		where += " AND job_id=?"
+		args = append(args, jobID)
+	}
+	level := strings.TrimSpace(r.URL.Query().Get("level"))
+	if level == "info" || level == "error" {
+		where += " AND level=?"
+		args = append(args, level)
+	}
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_logs WHERE `+where, args...).Scan(&total); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	page = clampPage(page, size, total)
+	qargs := append(append([]any{}, args...), size, (page-1)*size)
+	rows, err := s.db.Query(`SELECT id, created_at, job_id, job_name, credential_id, credential_name, level, message
+		FROM automation_logs WHERE `+where+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, qargs...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	items := []any{}
+	for rows.Next() {
+		var id, jobID, credID int
+		var created, jobName, credName, level, message string
+		if rows.Scan(&id, &created, &jobID, &jobName, &credID, &credName, &level, &message) != nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"id": id, "created_at": created, "job_id": jobID, "job_name": jobName,
+			"credential_id": credID, "credential_name": credName, "level": level, "message": message,
+		})
+	}
+	s.writePage(w, page, size, total, items)
+}
+
+func (s *server) automationOptions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	credRows, err := s.db.Query(`SELECT id, name, provider, username FROM automation_credentials ORDER BY name`)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	credentials := []any{}
+	for credRows.Next() {
+		var id int
+		var name, provider, username string
+		if credRows.Scan(&id, &name, &provider, &username) != nil {
+			continue
+		}
+		credentials = append(credentials, map[string]any{"id": id, "name": name, "provider": provider, "username": username})
+	}
+	credRows.Close()
+	jobRows, err := s.db.Query(`SELECT id, name FROM automation_jobs ORDER BY name`)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	jobs := []any{}
+	for jobRows.Next() {
+		var id int
+		var name string
+		if jobRows.Scan(&id, &name) != nil {
+			continue
+		}
+		jobs = append(jobs, map[string]any{"id": id, "name": name})
+	}
+	jobRows.Close()
+	siteRows, err := s.db.Query(`SELECT id, name, domain, COALESCE(kind, '') FROM websites ORDER BY name`)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	type siteAccounts struct {
+		ID       int
+		Name     string
+		Domain   string
+		Kind     string
+		Accounts []any
+	}
+	sites := map[int]*siteAccounts{}
+	var siteOrder []int
+	for siteRows.Next() {
+		item := &siteAccounts{Accounts: []any{}}
+		if siteRows.Scan(&item.ID, &item.Name, &item.Domain, &item.Kind) != nil {
+			continue
+		}
+		sites[item.ID] = item
+		siteOrder = append(siteOrder, item.ID)
+	}
+	siteRows.Close()
+	accountRows, err := s.db.Query(`SELECT id, website_id, name FROM accounts ORDER BY id`)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	for accountRows.Next() {
+		var id, websiteID int
+		var name string
+		if accountRows.Scan(&id, &websiteID, &name) != nil {
+			continue
+		}
+		if site := sites[websiteID]; site != nil {
+			site.Accounts = append(site.Accounts, map[string]any{"id": id, "name": name})
+		}
+	}
+	accountRows.Close()
+	websites := []any{}
+	for _, id := range siteOrder {
+		site := sites[id]
+		websites = append(websites, map[string]any{
+			"id": site.ID, "name": site.Name, "domain": site.Domain, "kind": site.Kind, "accounts": site.Accounts,
+		})
+	}
+	if credentials == nil {
+		credentials = []any{}
+	}
+	if jobs == nil {
+		jobs = []any{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"providers":   s.automationProviders(),
+		"credentials": credentials,
+		"websites":    websites,
+		"jobs":        jobs,
+	})
+}

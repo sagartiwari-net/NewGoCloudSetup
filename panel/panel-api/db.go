@@ -161,6 +161,7 @@ func ensureAccessAlertSettings(db *sql.DB) {
 		source_account_id INTEGER NOT NULL,
 		created_at TEXT NOT NULL
 	)`)
+	ensureAutomationTables(db)
 }
 
 // ensureRecloudColumns marks recloud websites apart from mapped accounts.
@@ -203,7 +204,11 @@ func ensureTelegramRouteEvents(db *sql.DB) {
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	type routeUpdate struct {
+		id  int
+		raw string
+	}
+	var updates []routeUpdate
 	for rows.Next() {
 		var id int
 		var raw string
@@ -232,7 +237,11 @@ func ensureTelegramRouteEvents(db *sql.DB) {
 		if err != nil {
 			continue
 		}
-		_, _ = db.Exec(`UPDATE telegram_routes SET events_json=? WHERE id=?`, string(next), id)
+		updates = append(updates, routeUpdate{id: id, raw: string(next)})
+	}
+	rows.Close()
+	for _, item := range updates {
+		_, _ = db.Exec(`UPDATE telegram_routes SET events_json=? WHERE id=?`, item.raw, item.id)
 	}
 }
 

@@ -44,6 +44,78 @@ export type RecloudToolDetail = RecloudTool & {
   cookie: string
 }
 
+export type AutomationProvider = {
+  id: string
+  label: string
+}
+
+export type AutomationCredential = {
+  id: number
+  name: string
+  provider: string
+  username: string
+  has_password: boolean
+  updated_at: string
+}
+
+export type AutomationJob = {
+  id: number
+  name: string
+  provider: string
+  credential_id: number
+  credential_name: string
+  target_website_id: number
+  target_label: string
+  target_account_id: number
+  target_account_name: string
+  interval_minutes: number
+  enabled: boolean
+  last_run_at: string
+  last_result: "" | "ok" | "failed"
+  last_reason: string
+  next_run_at: string
+}
+
+export type AutomationStorageRow = {
+  credential_id: number
+  name: string
+  provider: string
+  updated_at: string
+  job_count: number
+}
+
+export type AutomationStorageDetail = {
+  credential_id: number
+  cookie: string
+  updated_at: string
+}
+
+export type AutomationLog = {
+  id: number
+  created_at: string
+  job_id: number
+  job_name: string
+  credential_id: number
+  credential_name: string
+  level: "info" | "error"
+  message: string
+}
+
+export type AutomationWebsite = {
+  id: number
+  name: string
+  domain: string
+  kind: string
+  accounts: Array<{ id: number; name: string }>
+}
+
+export type AutomationOptions = {
+  providers: AutomationProvider[]
+  credentials: Array<{ id: number; name: string; provider: string; username: string }>
+  websites: AutomationWebsite[]
+  jobs: Array<{ id: number; name: string }>
+}
+
 export type CookieLink = {
   follower_account_id: number
   source_account_id: number

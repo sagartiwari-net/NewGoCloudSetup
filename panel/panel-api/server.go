@@ -34,6 +34,7 @@ func main() {
 	}
 	go s.pollTelegramInbox()
 	go s.pollTelegramNotices()
+	go s.pollAutomation()
 	log.Printf("panel api on http://%s", addr)
 	log.Fatal(http.ListenAndServe(addr, s.withCORS(mux)))
 }
@@ -152,6 +153,18 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/access", s.openAccess)
 	mux.HandleFunc("GET /api/access-alerts", s.accessAlerts)
 	mux.HandleFunc("POST /api/access-alerts", s.saveAccessAlerts)
+	mux.HandleFunc("GET /api/automation/options", s.automationOptions)
+	mux.HandleFunc("GET /api/automation/credentials", s.listAutomationCredentials)
+	mux.HandleFunc("POST /api/automation/credentials", s.saveAutomationCredential)
+	mux.HandleFunc("DELETE /api/automation/credentials", s.deleteAutomationCredential)
+	mux.HandleFunc("GET /api/automation/storage", s.listAutomationStorage)
+	mux.HandleFunc("GET /api/automation/storage/{credentialId}", s.getAutomationStorage)
+	mux.HandleFunc("POST /api/automation/storage", s.saveAutomationStorage)
+	mux.HandleFunc("GET /api/automation/jobs", s.listAutomationJobs)
+	mux.HandleFunc("POST /api/automation/jobs", s.saveAutomationJob)
+	mux.HandleFunc("POST /api/automation/jobs/{id}/run", s.runAutomationJobNow)
+	mux.HandleFunc("DELETE /api/automation/jobs", s.deleteAutomationJob)
+	mux.HandleFunc("GET /api/automation/logs", s.listAutomationLogs)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

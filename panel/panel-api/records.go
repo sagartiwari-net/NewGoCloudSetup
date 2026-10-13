@@ -182,6 +182,8 @@ func (s *server) purgeOldRows() {
 	_, _ = s.db.Exec(`DELETE FROM host_reports WHERE created_at < ?`, hours48)
 	_, _ = s.db.Exec(`DELETE FROM ingest_logs WHERE created_at < ?`, hours48)
 	_, _ = s.db.Exec(`DELETE FROM telegram_deliveries WHERE created_at < ?`, hours48)
+	hours3 := now.Add(-3 * time.Hour).Format(time.RFC3339)
+	_, _ = s.db.Exec(`DELETE FROM automation_logs WHERE created_at < ?`, hours3)
 }
 
 func parseTime(value string) (time.Time, bool) {

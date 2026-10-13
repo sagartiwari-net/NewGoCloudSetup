@@ -30,6 +30,12 @@ import type {
   CookieLink,
   CookieLinkCopy,
   CookieLinkSources,
+  AutomationCredential,
+  AutomationJob,
+  AutomationLog,
+  AutomationOptions,
+  AutomationStorageDetail,
+  AutomationStorageRow,
   RecloudTool,
   RecloudToolDetail,
   Tool,
@@ -657,6 +663,93 @@ export async function getRecloud(websiteId: number): Promise<RecloudToolDetail> 
 export async function saveRecloud(input: { website_id: number; upstream_url: string; cookie: string }): Promise<Ok> {
   await api("/api/recloud", { method: "POST", body: JSON.stringify(input) })
   return { status: "ok" }
+}
+
+export function automationOptions(): Promise<AutomationOptions> {
+  return api("/api/automation/options")
+}
+
+export async function listAutomationCredentials(query: {
+  page: number
+  pageSize: number
+  query: string
+}): Promise<PageResult<AutomationCredential>> {
+  return api(`/api/automation/credentials${qs(query)}`)
+}
+
+export async function saveAutomationCredential(input: {
+  id?: number
+  name: string
+  provider: string
+  username: string
+  password?: string
+}): Promise<Ok> {
+  await api("/api/automation/credentials", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
+}
+
+export async function deleteAutomationCredential(id: number): Promise<Ok> {
+  await api(`/api/automation/credentials${qs({ id })}`, { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function listAutomationStorage(query: {
+  page: number
+  pageSize: number
+  query: string
+}): Promise<PageResult<AutomationStorageRow>> {
+  return api(`/api/automation/storage${qs(query)}`)
+}
+
+export async function getAutomationStorage(credentialId: number): Promise<AutomationStorageDetail> {
+  return api(`/api/automation/storage/${credentialId}`)
+}
+
+export async function saveAutomationStorage(credentialId: number, cookie: string): Promise<Ok> {
+  await api("/api/automation/storage", { method: "POST", body: JSON.stringify({ credential_id: credentialId, cookie }) })
+  return { status: "ok" }
+}
+
+export async function listAutomationJobs(query: {
+  page: number
+  pageSize: number
+  query: string
+}): Promise<PageResult<AutomationJob>> {
+  return api(`/api/automation/jobs${qs(query)}`)
+}
+
+export async function saveAutomationJob(input: {
+  id?: number
+  name: string
+  provider: string
+  credential_id: number
+  target_website_id: number
+  target_account_id: number
+  interval_minutes: number
+  enabled: boolean
+}): Promise<Ok> {
+  await api("/api/automation/jobs", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
+}
+
+export async function deleteAutomationJob(id: number): Promise<Ok> {
+  await api(`/api/automation/jobs${qs({ id })}`, { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function runAutomationJob(id: number): Promise<Ok> {
+  await api(`/api/automation/jobs/${id}/run`, { method: "POST" })
+  return { status: "ok" }
+}
+
+export async function listAutomationLogs(query: {
+  page: number
+  pageSize: number
+  query: string
+  jobId?: number
+  level?: string
+}): Promise<PageResult<AutomationLog>> {
+  return api(`/api/automation/logs${qs(query)}`)
 }
 
 export async function saveWebsite(input: WebsiteInput): Promise<Ok> {

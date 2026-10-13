@@ -10,10 +10,14 @@ import {
   MapPinIcon,
   BotIcon,
   ChartColumnIcon,
+  CalendarClockIcon,
   CloudIcon,
+  DatabaseIcon,
+  FileTextIcon,
   GlobeIcon,
   KeyRoundIcon,
   Link2Icon,
+  LockKeyholeIcon,
   LogInIcon,
   LayoutDashboardIcon,
   LogOutIcon,
@@ -63,7 +67,19 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { Role } from "@/lib/api/types"
 
-const masterRoutes = ["/proxies", "/user-agents", "/websites", "/resellers", "/automate", "/settings", "/shared-cookies"]
+const masterRoutes = [
+  "/proxies",
+  "/user-agents",
+  "/websites",
+  "/resellers",
+  "/automate",
+  "/settings",
+  "/shared-cookies",
+  "/automation/credentials",
+  "/automation/jobs",
+  "/automation/storage",
+  "/automation/logs",
+]
 
 const nav: Array<{
   label: string
@@ -109,6 +125,15 @@ const nav: Array<{
       { href: "/user-agents", label: "User Agents", icon: BotIcon, masterOnly: true },
       { href: "/websites", label: "Website Domains", icon: GlobeIcon, masterOnly: true },
       { href: "/resellers", label: "Resellers", icon: StoreIcon, masterOnly: true },
+    ],
+  },
+  {
+    label: "Automation",
+    items: [
+      { href: "/automation/credentials", label: "Credentials", icon: LockKeyholeIcon, masterOnly: true },
+      { href: "/automation/jobs", label: "Jobs", icon: CalendarClockIcon, masterOnly: true },
+      { href: "/automation/storage", label: "Storage", icon: DatabaseIcon, masterOnly: true },
+      { href: "/automation/logs", label: "Logs", icon: FileTextIcon, masterOnly: true },
     ],
   },
 ]
