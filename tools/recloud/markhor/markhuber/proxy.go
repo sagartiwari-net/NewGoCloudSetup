@@ -245,9 +245,11 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		var payload []byte
 		var ct string
 		hops := 1
-		if r.Method == http.MethodGet && isDocumentNavigation(r) {
+		if followSessionRedirects(r, cfg) {
 			hops = maxCookieHops
 		}
+		bare := false
+		originalURI := requestURI
 		for hop := 0; hop < hops; hop++ {
 			var body io.Reader
 			if bodyBytes != nil && hop == 0 {
@@ -262,14 +264,24 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				http.Error(w, "Bad gateway", http.StatusBadGateway)
 				return
 			}
-			copyRequestHeaders(upReq, r)
+			if bare {
+				setBareUpstreamHeaders(upReq, r)
+			} else {
+				copyRequestHeaders(upReq, r)
+			}
 			upReq.Host = base.Host
 			upReq.Header.Set("Host", base.Host)
-			upReq.Header.Set("Origin", base.Scheme+"://"+base.Host)
-			if ref := r.Referer(); ref != "" {
-				upReq.Header.Set("Referer", string(rewriteOutbound([]byte(ref), base.Scheme+"://"+base.Host, origin)))
-			} else {
-				upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
+			if !bare {
+				if r.Header.Get("Origin") != "" {
+					upReq.Header.Set("Origin", base.Scheme+"://"+base.Host)
+				} else {
+					upReq.Header.Del("Origin")
+				}
+				if ref := r.Referer(); ref != "" {
+					upReq.Header.Set("Referer", string(rewriteOutbound([]byte(ref), base.Scheme+"://"+base.Host, origin)))
+				} else {
+					upReq.Header.Del("Referer")
+				}
 			}
 			if jar != "" {
 				upReq.Header.Set("Cookie", jar)
@@ -296,9 +308,16 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				break
 			}
 			jar = absorbSetCookies(jar, resp.Header)
+			if plainAccessDenied(resp.StatusCode, payload) && !bare && r.Method == http.MethodGet && isDocumentNavigation(r) {
+				bare = true
+				requestURI = originalURI
+				jar = cookiesForUpstream(acc, r)
+				hop = -1
+				continue
+			}
 			rememberUpstreamCookies(acc, jar)
 			next, ok := sameSiteRequestURI(resp.Header.Get("Location"), base.Host, origin)
-			if ok && resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			if ok && resp.StatusCode >= 300 && resp.StatusCode < 400 && hop+1 < hops {
 				log.Printf("[UP] session cookie hop %d -> %s", hop+1, next)
 				requestURI = next
 				continue
@@ -360,11 +379,43 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	http.Error(w, "Upstream unavailable", http.StatusBadGateway)
 }
 
+func followSessionRedirects(r *http.Request, cfg Config) bool {
+	if r.Method != http.MethodGet || !isDocumentNavigation(r) {
+		return false
+	}
+	path := r.URL.Path
+	if path == "/" || path == "" || isLoginPath(path) {
+		return true
+	}
+	home := cfg.HomePath
+	if i := strings.Index(home, "?"); i >= 0 {
+		home = home[:i]
+	}
+	return home != "" && home != "/" && path == home
+}
+
+func plainAccessDenied(status int, body []byte) bool {
+	return status == http.StatusForbidden && strings.TrimSpace(string(body)) == "Access Denied"
+}
+
+func setBareUpstreamHeaders(dst *http.Request, src *http.Request) {
+	if accept := src.Header.Get("Accept"); accept != "" {
+		dst.Header.Set("Accept", accept)
+	}
+	if lang := src.Header.Get("Accept-Language"); lang != "" {
+		dst.Header.Set("Accept-Language", lang)
+	}
+	if ua := src.Header.Get("User-Agent"); ua != "" {
+		dst.Header.Set("User-Agent", ua)
+	}
+}
+
 func copyRequestHeaders(dst *http.Request, src *http.Request) {
 	for key, values := range src.Header {
 		lk := strings.ToLower(key)
 		switch lk {
-		case "cookie", "host", "content-length", "accept-encoding", "connection", "upgrade", "proxy-connection", "x-device-fp", "x-device-proof":
+		case "cookie", "host", "content-length", "accept-encoding", "connection", "upgrade", "proxy-connection", "x-device-fp", "x-device-proof",
+			"cf-connecting-ip", "cf-ray", "cf-ipcountry", "cf-visitor", "cf-worker", "cdn-loop", "true-client-ip", "x-forwarded-host", "x-forwarded-server", "forwarded":
 			continue
 		}
 		for _, v := range values {

@@ -137,10 +137,13 @@ func TestLogoutPath(t *testing.T) {
 
 func TestBrowserSessionCookiesAreForwarded(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://markhuber.gt4rents.com/gateway/experimentation/properties", nil)
-	req.Header.Set("Cookie", "ct_session=panel-session; grauth=from-browser; csrf_token=tok")
+	req.Header.Set("Cookie", "ct_session=panel-session; grauth=from-browser; csrf_token=tok; PHPSESSID=guest")
 	got := cookiesForUpstream(ToolAccount{Cookie: "PHPSESSID=session"}, req)
 	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=from-browser") || !strings.Contains(got, "csrf_token=tok") {
 		t.Fatalf("browser session cookies were dropped: %s", got)
+	}
+	if strings.Contains(got, "PHPSESSID=guest") {
+		t.Fatalf("browser session replaced the panel cookie: %s", got)
 	}
 	if strings.Contains(got, "ct_session") || strings.Contains(got, "panel-session") {
 		t.Fatalf("panel session leaked upstream: %s", got)
@@ -188,5 +191,40 @@ func TestSessionCookieFollowsUpstream(t *testing.T) {
 	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=session"})
 	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "My docs") {
 		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestMenuClickDoesNotFollowIntoAccessDenied(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/en/analyze/dashboard" {
+			if r.Header.Get("X-Forwarded-Host") != "" || r.Header.Get("Origin") != "" {
+				w.Header().Set("Content-Type", "text/plain")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte("Access Denied"))
+				return
+			}
+			http.Redirect(w, r, "/en/project?domain=semrushtoolz.com", http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("Access Denied"))
+	}))
+	defer upstream.Close()
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/en/dashboard", PublicHost: "markhuber.gt4rents.com", PublicScheme: "http", ToolName: "Markhor Ubersuggest"}
+	req := httptest.NewRequest(http.MethodGet, "http://markhuber.gt4rents.com/en/analyze/dashboard", nil)
+	req.Host = "markhuber.gt4rents.com"
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Origin", "https://markhuber.gt4rents.com")
+	req.Header.Set("X-Forwarded-Host", "markhuber.gt4rents.com")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=session"})
+	if rr.Code != http.StatusFound {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Location") != "/en/project?domain=semrushtoolz.com" {
+		t.Fatalf("location %s", rr.Header().Get("Location"))
 	}
 }

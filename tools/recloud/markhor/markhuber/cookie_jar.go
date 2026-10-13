@@ -12,16 +12,22 @@ const maxCookieHops = 6
 var derivedCookies sync.Map
 
 func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
-	base := strings.TrimSpace(acc.Cookie)
+	// The panel cookie is the session the user saved. A later Set-Cookie on this
+	// host must not replace those names, or the next menu navigation is sent
+	// with a guest session and Ubersuggest answers 403 Access Denied.
+	panel := strings.TrimSpace(acc.Cookie)
+	derived := ""
 	if acc.ID != 0 {
 		if extra, ok := derivedCookies.Load(acc.ID); ok {
-			base = mergeCookieHeaders(extra.(string), base)
+			derived = extra.(string)
 		}
 	}
-	if r == nil {
-		return base
+	browser := ""
+	if r != nil {
+		browser = browserCookiesForUpstream(r)
 	}
-	return mergeCookieHeaders(base, browserCookiesForUpstream(r))
+	merged := mergeCookieHeaders(browser, derived)
+	return mergeCookieHeaders(merged, panel)
 }
 
 func browserCookiesForUpstream(r *http.Request) string {
