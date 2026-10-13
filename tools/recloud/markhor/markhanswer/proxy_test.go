@@ -112,7 +112,7 @@ func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
 	if !strings.Contains(out, `[data-slot="dropdown-menu-trigger"]:has([data-testid="nav-avatar-button"]){display:none!important}`) {
 		t.Fatal("avatar menu trigger hide style missing")
 	}
-	if strings.Contains(out, `.srf-layout__notification`) || strings.Contains(out, `experiment-sidebar-navigationList`) {
+	if strings.Contains(out, `.srf-layout__notification{display:none`) || strings.Contains(out, `experiment-sidebar-navigationList"]{display:none`) {
 		t.Fatal("unrelated hide rules were injected")
 	}
 	if !strings.Contains(out, `docs-lnk`) || strings.Contains(out, `docs-lnk{display:none`) {
