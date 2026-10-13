@@ -144,17 +144,14 @@ func (s *server) deliverNetworkNotices() {
 func (s *server) noticeRecipients(websiteID int, event string) ([]map[string]string, bool) {
 	var routeID int
 	var eventsRaw string
+	ownedSQL := `d.enabled=1 AND d.reseller_id IN (SELECT operator_id FROM operator_websites WHERE website_id=?)`
 	if s.db.QueryRow(`SELECT id, events_json FROM telegram_routes WHERE website_id=?`, websiteID).Scan(&routeID, &eventsRaw) == nil {
 		if !strings.Contains(eventsRaw, `"`+event+`"`) {
 			return nil, false
 		}
-		return s.destinationRecipients(`SELECT d.label, d.chat_id, o.username FROM telegram_route_chats c JOIN telegram_destinations d ON d.id=c.destination_id JOIN operators o ON o.id=d.reseller_id WHERE c.route_id=? AND d.enabled=1`, routeID), true
+		return s.destinationRecipients(`SELECT d.label, d.chat_id, o.username FROM telegram_route_chats c JOIN telegram_destinations d ON d.id=c.destination_id JOIN operators o ON o.id=d.reseller_id WHERE c.route_id=? AND `+ownedSQL, routeID, websiteID), true
 	}
-	owned := s.destinationRecipients(`SELECT d.label, d.chat_id, o.username FROM telegram_destinations d JOIN operators o ON o.id=d.reseller_id WHERE d.enabled=1 AND d.reseller_id IN (SELECT operator_id FROM operator_websites WHERE website_id=?)`, websiteID)
-	if len(owned) > 0 {
-		return owned, true
-	}
-	return s.destinationRecipients(`SELECT d.label, d.chat_id, o.username FROM telegram_destinations d JOIN operators o ON o.id=d.reseller_id WHERE d.enabled=1`), true
+	return s.destinationRecipients(`SELECT d.label, d.chat_id, o.username FROM telegram_destinations d JOIN operators o ON o.id=d.reseller_id WHERE `+ownedSQL, websiteID), true
 }
 
 func (s *server) destinationRecipients(query string, args ...any) []map[string]string {
@@ -284,8 +281,8 @@ func (s *server) sendTelegramNotice(event, templateKey, fallback string, note te
 			status = "failed"
 			errorText = "Bot token is empty"
 		case len(recipients) == 0:
-			status = "failed"
-			errorText = "No enabled chat on this route"
+			status = "skipped"
+			errorText = "No reseller allowed for this website"
 		default:
 			var failures []string
 			for _, rec := range recipients {
