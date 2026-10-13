@@ -619,6 +619,13 @@
       "subdomain": "azkwfind",
       "port": 6005,
       "fqdn": "azkwfind.gt4rents.com"
+    },
+    {
+      "tool": "markhsm1",
+      "folder": "recloud/markhor/markhsm1",
+      "subdomain": "markhsm1",
+      "port": 6100,
+      "fqdn": "markhsm1.gt4rents.com"
     }
   ]
 }
