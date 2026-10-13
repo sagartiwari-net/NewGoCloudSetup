@@ -54,6 +54,17 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 	}
 }
 
+func TestPublicAuthButtonsAreRemoved(t *testing.T) {
+	in := []byte(`<header><div class="srf-header__buttons"><a class="srf-login-btn" href="/login/?src=header">Log In</a><a class="srf-register-btn" href="/signup/?src=header">Start for free</a></div><nav>keep</nav></header>`)
+	out := string(publicAuthButtons.ReplaceAll(in, nil))
+	if strings.Contains(out, "Log In") || strings.Contains(out, "Start for free") || strings.Contains(out, "srf-header__buttons") {
+		t.Fatalf("auth buttons stayed: %s", out)
+	}
+	if !strings.Contains(out, "<nav>keep</nav>") {
+		t.Fatal("the rest of the header was removed")
+	}
+}
+
 func TestPublicHeaderIsLoggedOut(t *testing.T) {
 	body := []byte(`<div class="srf-header__buttons"><a href="/login/?src=header" class="srf-header__link-button srf-login-btn">Log In</a><a href="/signup/?src=header" class="srf-header__link-button srf-register-btn">Start for free</a></div>`)
 	if !bodyLooksLoggedOut(body) {
