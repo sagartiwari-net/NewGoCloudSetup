@@ -23,6 +23,20 @@ func TestRewriteKeepsBrowserOnPublicHost(t *testing.T) {
 	}
 }
 
+func TestMangoolsStaysOnRecloudHost(t *testing.T) {
+	in := []byte(`<a href="https://mangools.com/users/sign_in">x</a><script src="https://app.mangools.com/kwfinder/app.js"></script>{"cookie_domain":".mangools.com"}`)
+	out := string(rewriteText(in, "kwfinder.premiium.click", "https://azkwfind.gt4rents.com"))
+	if strings.Contains(out, "mangools.com") {
+		t.Fatalf("official host leaked: %s", out)
+	}
+	if !strings.Contains(out, "https://azkwfind.gt4rents.com/users/sign_in") || !strings.Contains(out, "https://azkwfind.gt4rents.com/kwfinder/app.js") {
+		t.Fatalf("official urls were not kept on the recloud host: %s", out)
+	}
+	if !strings.Contains(out, ".azkwfind.gt4rents.com") {
+		t.Fatal("mangools cookie domain was not rewritten")
+	}
+}
+
 func TestStaticCachePolicy(t *testing.T) {
 	if !isCacheableStaticPath("/__static__/webpack/app.js") {
 		t.Fatal("js should cache")

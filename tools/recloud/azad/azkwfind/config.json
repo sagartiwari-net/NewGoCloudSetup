@@ -3,7 +3,7 @@
   "public_host": "127.0.0.1:6005",
   "public_scheme": "http",
   "target_url": "https://kwfinder.premiium.click",
-  "home_path": "/",
+  "home_path": "/kwfinder/",
   "tool_name": "Azad KWFinder",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

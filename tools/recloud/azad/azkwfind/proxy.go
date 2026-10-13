@@ -32,6 +32,7 @@ var (
 		},
 	}
 	premiiumHost = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*premiium\.click`)
+	mangoolsHost = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*mangools\.com`)
 	semrushHost  = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*semrush\.com`)
 )
 
@@ -70,6 +71,8 @@ func rewriteText(body []byte, upstreamHost, origin string) []byte {
 	s = strings.ReplaceAll(s, "http://localhost", origin)
 	s = premiiumHost.ReplaceAllString(s, origin)
 	s = strings.ReplaceAll(s, ".premiium.click", "."+cookieDomain)
+	s = mangoolsHost.ReplaceAllString(s, origin)
+	s = strings.ReplaceAll(s, ".mangools.com", "."+cookieDomain)
 	s = semrushHost.ReplaceAllString(s, origin)
 	s = strings.ReplaceAll(s, ".semrush.com", "."+cookieDomain)
 	return []byte(s)

@@ -70,6 +70,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		}
 		acc = loaded
 	}
+	if (r.URL.Path == "/" || r.URL.Path == "") && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		http.Redirect(w, r, "/kwfinder/", http.StatusFound)
+		return
+	}
 	if isLogoutPath(r.URL.Path) {
 		switched, _ := noteLogout(cfg, r, acc, token, "logout")
 		if switched && cfg.HomePath != "" {

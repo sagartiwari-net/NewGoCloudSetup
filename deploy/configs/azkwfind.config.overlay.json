@@ -11,7 +11,7 @@
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
   "target_url": "https://kwfinder.premiium.click",
-  "home_path": "/",
+  "home_path": "/kwfinder/",
   "tool_name": "Azad KWFinder",
   "_note": "Live upstream is websites.upstream_url. target_url is only the fallback. Cookie is the Recloud account row. panel.db is not opened."
 }

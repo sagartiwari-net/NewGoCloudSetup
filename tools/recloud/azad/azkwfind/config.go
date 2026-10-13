@@ -34,7 +34,7 @@ func loadConfig() Config {
 			PublicHost:             "azkwfind.gt4rents.com",
 			PublicScheme:           "http",
 			TargetURL:              "https://kwfinder.premiium.click",
-			HomePath:               "/",
+			HomePath:               "/kwfinder/",
 			ToolName:               "Azad KWFinder",
 			SessionDurationMinutes: 30,
 		}
