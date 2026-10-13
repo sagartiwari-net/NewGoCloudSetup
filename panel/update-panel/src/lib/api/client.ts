@@ -617,7 +617,7 @@ function mapWebsiteOptions(
 }
 
 export function listAllWebsites(): Promise<Website[]> {
-  return cachedCatalog("websites", loadWebsiteChoices)
+  return loadWebsiteChoices()
 }
 
 // Product Mapping must see a website the moment a tool creates it. The catalog
