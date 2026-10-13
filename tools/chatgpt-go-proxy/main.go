@@ -1237,7 +1237,8 @@ func panelAssignedShowLimit(r *http.Request, cfg Config, username string) bool {
 		return false
 	}
 	var websiteID, accountID int
-	if err = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID); err != nil || websiteID == 0 {
+	websiteID = panelWebsiteIDForUser(db, cfg.PublicHost, username)
+	if websiteID == 0 {
 		return false
 	}
 	if username != "" {

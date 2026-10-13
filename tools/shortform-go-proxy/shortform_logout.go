@@ -72,7 +72,9 @@ func noteShortformLogout(cfg Config, r *http.Request, reason string) (switched b
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	nextName := "(none)"
-	skipIDs := []any{cfg.PublicHost, acc.ID}
+	accountWebsiteID := 0
+	_ = db.QueryRow(`SELECT website_id FROM accounts WHERE id=?`, acc.ID).Scan(&accountWebsiteID)
+	skipIDs := []any{accountWebsiteID, acc.ID}
 	placeholders := "?"
 	sfLogoutMu.Lock()
 	for id, hit := range sfLogoutSeen {
@@ -84,7 +86,7 @@ func noteShortformLogout(cfg Config, r *http.Request, reason string) (switched b
 	}
 	sfLogoutMu.Unlock()
 	if other, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id NOT IN (`+placeholders+`)
+		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != '' AND a.id NOT IN (`+placeholders+`)
 		`+panelAccountOrder+` LIMIT 1`, skipIDs...)); err == nil {
 		_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, other.ID)
 		if acc.Session != "" {

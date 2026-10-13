@@ -398,7 +398,11 @@ func renderAccessDeniedPage(w http.ResponseWriter) {
 
 // loadCookies reads the cookie string from cookie.txt
 func loadCookies(cfg Config) string {
-	if ck := panelSemrushCookie(cfg.PublicHost); ck != "" {
+	return loadCookiesForHost(cfg, cfg.PublicHost)
+}
+
+func loadCookiesForHost(cfg Config, host string) string {
+	if ck := panelSemrushCookie(host); ck != "" {
 		return ck
 	}
 	log.Printf("[COOKIE] panel cookie empty, using %s", cookieFilePath(cfg))
@@ -917,7 +921,7 @@ func main() {
 
 		if dbCookie == "" {
 			if c, cErr := req.Cookie("sem_session"); cErr == nil && c.Value != "" {
-				if acc, ok := semrushPanelAccount(cfg.PublicHost, c.Value); ok {
+				if acc, ok := semrushPanelAccount(panelRequestHost(req, cfg.PublicHost), c.Value); ok {
 					dbCookie = acc.Cookie
 					if strings.TrimSpace(dbUserAgent) == "" {
 						dbUserAgent = acc.UserAgent
@@ -930,7 +934,7 @@ func main() {
 			}
 		}
 		if dbCookie == "" && semrushStaticGet(req) {
-			dbCookie = panelSemrushCookie(cfg.PublicHost)
+			dbCookie = panelSemrushCookie(panelRequestHost(req, cfg.PublicHost))
 		}
 		if dbCookie == "" && db != nil {
 			dbCookie = loadCookies(cfg)

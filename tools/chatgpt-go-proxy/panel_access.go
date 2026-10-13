@@ -124,7 +124,8 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 	var username, expires string
 	err = db.QueryRow(`SELECT s.username, s.expires_at FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
-		WHERE s.session_token = ? AND w.domain = ?`, token, cfg.PublicHost).Scan(&username, &expires)
+		JOIN websites owner ON owner.tool_id = w.tool_id
+		WHERE s.session_token = ? AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`, token, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&username, &expires)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,8 @@ func panelLiveSessionExists(sessionToken string) bool {
 	var n int
 	err = db.QueryRow(`SELECT COUNT(*) FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
-		WHERE s.session_token = ? AND w.domain = ?`, sessionToken, cfg.PublicHost).Scan(&n)
+		JOIN websites owner ON owner.tool_id = w.tool_id
+		WHERE s.session_token = ? AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`, sessionToken, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&n)
 	if err != nil {
 		log.Printf("[PANEL] live session lookup failed: %v", err)
 		return false
@@ -196,10 +198,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	reqHost := strings.TrimSpace(r.Host)
-	if i := strings.LastIndex(reqHost, ":"); i > 0 && strings.Count(reqHost, ":") == 1 {
-		reqHost = reqHost[:i]
-	}
+	reqHost := panelRequestHost(r, cfg.PublicHost)
 	var dbUser, productID, clientIP, expiresRaw, domain string
 	var websiteID, durationMin int
 	// Consume OTT only when website domain matches public_host or request Host.
@@ -208,7 +207,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
 		)`,
-		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).
+		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost)).
 		Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	if err != nil {
 		log.Printf("[PANEL] token rejected host=%s public_host=%s err=%v", reqHost, cfg.PublicHost, err)
@@ -230,7 +229,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	acc, accErr := claimPanelAccount(cfg)
+	acc, accErr := claimPanelAccount(cfg, websiteID)
 	if accErr != nil {
 		log.Printf("[PANEL] no mapped account: %v", accErr)
 		renderNoActiveAccountsPage(w, cfg)
@@ -280,22 +279,25 @@ const panelAccountOrder = `ORDER BY CASE WHEN a.last_used_at = '' THEN 0 ELSE 1 
 
 var panelPickMu sync.Mutex
 
-func listActivePanelAccounts(cfg Config, excludeID int) ([]ToolAccount, error) {
+func listActivePanelAccounts(cfg Config, websiteID, excludeID int) ([]ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
 	db, err := openPanelDB(cfg)
 	if err != nil {
 		return nil, err
 	}
+	if websiteID <= 0 {
+		websiteID = panelWebsiteIDForDomain(db, cfg.PublicHost)
+	}
 	var rows *sql.Rows
 	if excludeID > 0 {
 		rows, err = db.Query(panelAccountSelect+`
-			WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
-			`+panelAccountOrder, cfg.PublicHost, excludeID)
+			WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
+			`+panelAccountOrder, websiteID, excludeID)
 	} else {
 		rows, err = db.Query(panelAccountSelect+`
-			WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-			`+panelAccountOrder, cfg.PublicHost)
+			WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+			`+panelAccountOrder, websiteID)
 	}
 	if err != nil {
 		return nil, err
@@ -342,8 +344,12 @@ func pinPanelAccount(cfg Config, sessionToken string, acc ToolAccount, bumpFailu
 
 // claimPanelAccount picks the least recently used active account with a live ChatGPT session.
 // Dead cookies still render the SPA shell (no send button) — probe /api/auth/session first.
-func claimPanelAccount(cfg Config) (ToolAccount, error) {
-	cands, err := listActivePanelAccounts(cfg, 0)
+func claimPanelAccount(cfg Config, websiteID ...int) (ToolAccount, error) {
+	wid := 0
+	if len(websiteID) > 0 {
+		wid = websiteID[0]
+	}
+	cands, err := listActivePanelAccounts(cfg, wid, 0)
 	if err != nil {
 		return ToolAccount{}, err
 	}
@@ -378,13 +384,17 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 		return ToolAccount{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	var assigned int
-	err = db.QueryRow(`SELECT assigned_account_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned)
+	var assigned, websiteID int
+	err = db.QueryRow(`SELECT assigned_account_id, website_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned, &websiteID)
+	if err == nil && !panelWebsiteSameTool(db, cfg.PublicHost, websiteID) {
+		panelPickMu.Unlock()
+		return ToolAccount{}, fmt.Errorf("session is for another website")
+	}
 	var assignedAcc ToolAccount
 	var assignedOK bool
 	if err == nil && assigned > 0 {
 		if acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost)); accErr == nil {
+			WHERE a.id = ? AND a.website_id = ? AND a.status = 'active' AND a.cookie != ''`, assigned, websiteID)); accErr == nil {
 			assignedAcc = acc
 			assignedOK = true
 		}
@@ -407,7 +417,7 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 		return ToolAccount{}, fmt.Errorf("assigned account logged out and no live alternate: %w", swErr)
 	}
 
-	acc, err := claimPanelAccount(cfg)
+	acc, err := claimPanelAccount(cfg, websiteID)
 	if err != nil {
 		return ToolAccount{}, err
 	}
@@ -419,7 +429,11 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 // panelSwitchAccount moves this session to the next live account (session probe required).
 // failure_count goes up. status stays active so the account can be used again later.
 func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentName, username, reason string) (ToolAccount, error) {
-	cands, err := listActivePanelAccounts(cfg, currentID)
+	wid := 0
+	if db, dbErr := openPanelDB(cfg); dbErr == nil {
+		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&wid)
+	}
+	cands, err := listActivePanelAccounts(cfg, wid, currentID)
 	if err != nil {
 		return ToolAccount{}, err
 	}

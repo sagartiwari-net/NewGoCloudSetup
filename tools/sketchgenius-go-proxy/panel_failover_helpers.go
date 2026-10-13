@@ -58,11 +58,11 @@ func tmRecordSwitchLogout(db *sql.DB, websiteID int, username, fromName, nextNam
 	}
 }
 
-func pickPanelAccount(db *sql.DB, domain string, excludeID int) (ToolAccount, error) {
+func pickPanelAccount(db *sql.DB, websiteID int, excludeID int) (ToolAccount, error) {
 	try := func(status string) (ToolAccount, error) {
 		q := panelAccountSelect + `
-			WHERE w.domain = ? AND a.status = ? AND a.cookie != ''`
-		args := []interface{}{domain, status}
+			WHERE a.website_id = ? AND a.status = ? AND a.cookie != ''`
+		args := []interface{}{websiteID, status}
 		if excludeID > 0 {
 			q += ` AND a.id != ?`
 			args = append(args, excludeID)
@@ -93,19 +93,22 @@ func panelReloadAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 		return ToolAccount{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	var assigned int
-	if err := db.QueryRow(`SELECT COALESCE(assigned_account_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned); err != nil {
+	var assigned, websiteID int
+	if err := db.QueryRow(`SELECT COALESCE(assigned_account_id, 0), website_id FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned, &websiteID); err != nil {
 		return ToolAccount{}, err
+	}
+	if !panelWebsiteSameTool(db, cfg.PublicHost, websiteID) {
+		return ToolAccount{}, fmt.Errorf("session is for another website")
 	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.cookie != '' AND a.status IN ('active','logged_out','inactive')`, assigned, cfg.PublicHost))
+			WHERE a.id = ? AND a.website_id = ? AND a.cookie != '' AND a.status IN ('active','logged_out','inactive')`, assigned, websiteID))
 		if accErr == nil {
 			_, _ = db.Exec(`UPDATE accounts SET status='active', failure_count=0 WHERE id=? AND status='logged_out'`, acc.ID)
 			return acc, nil
 		}
 	}
-	return pickPanelAccount(db, cfg.PublicHost, 0)
+	return pickPanelAccount(db, websiteID, 0)
 }
 
 func panelMarkAccountLoggedOut(cfg Config, accountID int, reason string) {
@@ -140,7 +143,7 @@ func panelSwitchToOtherAccount(cfg Config, sessionToken, reason string) (ToolAcc
 	}
 	var fromName string
 	_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, currentID).Scan(&fromName)
-	acc, err := pickPanelAccount(db, cfg.PublicHost, currentID)
+	acc, err := pickPanelAccount(db, websiteID, currentID)
 	if err != nil {
 		return ToolAccount{}, "", fmt.Errorf("no other active account")
 	}

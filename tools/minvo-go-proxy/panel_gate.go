@@ -154,7 +154,8 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 	var username, expires string
 	err = db.QueryRow(`SELECT s.username, s.expires_at FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
-		WHERE s.session_token = ? AND w.domain = ?`, token, cfg.PublicHost).Scan(&username, &expires)
+		JOIN websites owner ON owner.tool_id = w.tool_id
+		WHERE s.session_token = ? AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`, token, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&username, &expires)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +182,8 @@ func panelLiveSessionExists(sessionToken string) bool {
 	var n int
 	err = db.QueryRow(`SELECT COUNT(*) FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
-		WHERE s.session_token = ? AND w.domain = ?`, sessionToken, cfg.PublicHost).Scan(&n)
+		JOIN websites owner ON owner.tool_id = w.tool_id
+		WHERE s.session_token = ? AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`, sessionToken, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&n)
 	if err != nil {
 		log.Printf("[PANEL] live session lookup failed: %v", err)
 		return false
@@ -226,10 +228,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	reqHost := strings.TrimSpace(r.Host)
-	if i := strings.LastIndex(reqHost, ":"); i > 0 && strings.Count(reqHost, ":") == 1 {
-		reqHost = reqHost[:i]
-	}
+	reqHost := panelRequestHost(r, cfg.PublicHost)
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, durationMin int
 	// Consume OTT only when website domain matches public_host or request Host.
@@ -238,7 +237,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
 		)`,
-		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).
+		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost)).
 		Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	if err != nil {
 		log.Printf("[PANEL] token rejected host=%s public_host=%s err=%v", reqHost, cfg.PublicHost, err)

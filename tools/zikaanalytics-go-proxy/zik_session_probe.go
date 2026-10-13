@@ -17,8 +17,8 @@ import (
 var (
 	zikResearchHealthMu sync.Mutex
 	zikResearchHealth   = map[int]struct {
-		ok   bool
-		at   time.Time
+		ok     bool
+		at     time.Time
 		detail string
 	}{}
 )
@@ -162,9 +162,10 @@ func listPanelActiveAccounts(cfg Config) ([]ToolAccount, error) {
 	if err != nil {
 		return nil, err
 	}
+	websiteID := panelWebsiteIDForDomain(db, cfg.PublicHost)
 	rows, err := db.Query(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder, cfg.PublicHost)
+		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder, websiteID)
 	if err != nil {
 		return nil, err
 	}

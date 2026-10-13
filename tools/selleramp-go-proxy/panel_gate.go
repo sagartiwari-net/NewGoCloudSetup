@@ -241,10 +241,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	reqHost := strings.TrimSpace(r.Host)
-	if i := strings.LastIndex(reqHost, ":"); i > 0 && strings.Count(reqHost, ":") == 1 {
-		reqHost = reqHost[:i]
-	}
+	reqHost := panelRequestHost(r, cfg.PublicHost)
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, durationMin int
 	// Consume OTT only when website domain matches public_host or request Host.
@@ -253,7 +250,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
 		)`,
-		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).
+		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost)).
 		Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	if err != nil {
 		log.Printf("[PANEL] token rejected host=%s public_host=%s err=%v", reqHost, cfg.PublicHost, err)
@@ -276,7 +273,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		renderAccessDeniedPage(w, cfg)
 		return
 	}
-	acc, accErr := claimPanelAccount(cfg)
+	acc, accErr := claimPanelAccount(cfg, websiteID)
 	if accErr != nil {
 		log.Printf("[PANEL] no mapped account: %v", accErr)
 		renderNoActiveAccountsPage(w, cfg)
@@ -330,16 +327,26 @@ var panelPickMu sync.Mutex
 
 // claimPanelAccount picks the least recently used active account and stamps last_used_at.
 // Status is left unchanged. The next login then lands on a different account.
-func claimPanelAccount(cfg Config) (ToolAccount, error) {
+func claimPanelAccount(cfg Config, websiteID ...int) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
 	db, err := openPanelDB(cfg)
 	if err != nil {
 		return ToolAccount{}, err
 	}
+	wid := 0
+	if len(websiteID) > 0 {
+		wid = websiteID[0]
+	}
+	if wid <= 0 {
+		wid = panelWebsiteIDForDomain(db, cfg.PublicHost)
+	}
+	if wid <= 0 {
+		return ToolAccount{}, fmt.Errorf("website not found for %s", cfg.PublicHost)
+	}
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder+` LIMIT 1`, wid))
 	if err != nil {
 		return ToolAccount{}, err
 	}
@@ -351,14 +358,18 @@ func claimPanelAccount(cfg Config) (ToolAccount, error) {
 
 // loadActivePanelAccount returns one active mapped account without touching last_used_at.
 // Used for CSS/JS/image requests when the browser jar failed to keep ct_session.
-func loadActivePanelAccount(cfg Config) (ToolAccount, error) {
+func loadActivePanelAccount(cfg Config, host string) (ToolAccount, error) {
 	db, err := openPanelDB(cfg)
 	if err != nil {
 		return ToolAccount{}, err
 	}
+	websiteID := panelWebsiteIDForDomain(db, host)
+	if websiteID <= 0 {
+		return ToolAccount{}, fmt.Errorf("website not found")
+	}
 	return scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder+` LIMIT 1`, websiteID))
 }
 
 // loadPanelSessionAccount uses the account pinned on the live session.
@@ -371,21 +382,24 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 		return ToolAccount{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	var assigned int
-	err = db.QueryRow(`SELECT assigned_account_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned)
+	var assigned, websiteID int
+	err = db.QueryRow(`SELECT assigned_account_id, website_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned, &websiteID)
 	if err != nil {
 		return ToolAccount{}, err
 	}
+	if !panelWebsiteSameTool(db, cfg.PublicHost, websiteID) {
+		return ToolAccount{}, fmt.Errorf("session is for another website")
+	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE a.id = ? AND w.domain = ? AND a.status = 'active' AND a.cookie != ''`, assigned, cfg.PublicHost))
+			WHERE a.id = ? AND a.website_id = ? AND a.status = 'active' AND a.cookie != ''`, assigned, websiteID))
 		if accErr == nil {
 			return acc, nil
 		}
 	}
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost))
+		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder+` LIMIT 1`, websiteID))
 	if err != nil {
 		return ToolAccount{}, err
 	}

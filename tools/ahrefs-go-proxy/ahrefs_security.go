@@ -41,11 +41,12 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 		renderAhrefsDenied(w)
 		return
 	}
+	host := panelRequestHost(r, cfg.PublicHost)
 	var dbUser, clientIP string
 	err = db.QueryRow(`SELECT username, COALESCE(client_ip, '') FROM access_tokens
 		WHERE token = ? AND expires_at > ?
-		AND website_id IN (SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?))`,
-		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost).Scan(&dbUser, &clientIP)
+		AND website_id IN (SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))))`,
+		token, time.Now().UTC().Format(time.RFC3339), host, panelHostOnly(host)).Scan(&dbUser, &clientIP)
 	if err == nil {
 		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
 	}
@@ -56,8 +57,8 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var status string
-	_ = db.QueryRow(`SELECT status FROM panel_users WHERE website_id IN (SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?)) AND username=?`,
-		cfg.PublicHost, user).Scan(&status)
+	_ = db.QueryRow(`SELECT status FROM panel_users WHERE website_id=? AND username=?`,
+		ahrefsWebsiteID(db, host), user).Scan(&status)
 	if status == "suspended" {
 		renderAhrefsDenied(w)
 		return
@@ -68,7 +69,7 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sessionToken := hex.EncodeToString(buf)
-	websiteID, minutes := ahrefsSite(db, cfg.PublicHost)
+	websiteID, minutes := ahrefsSite(db, host)
 	if minutes < 1 {
 		minutes = 120
 	}
@@ -94,7 +95,8 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 }
 
 func ahrefsSite(db *sql.DB, publicHost string) (websiteID, minutes int) {
-	_ = db.QueryRow(`SELECT id, COALESCE(NULLIF(session_duration, ''), 120) FROM websites WHERE domain IN ('127.0.0.1:5291', ?) LIMIT 1`, publicHost).Scan(&websiteID, &minutes)
+	websiteID = ahrefsWebsiteID(db, publicHost)
+	_ = db.QueryRow(`SELECT COALESCE(NULLIF(session_duration, ''), 120) FROM websites WHERE id=?`, websiteID).Scan(&minutes)
 	return websiteID, minutes
 }
 

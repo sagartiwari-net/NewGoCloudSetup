@@ -332,7 +332,8 @@ func ahrefsMeterView(username, key string, fallbackLimit, resetDays int) (ahrefs
 	}
 	var websiteID int
 	var raw string
-	err = db.QueryRow(`SELECT id, COALESCE(default_limits_json, '{}') FROM websites WHERE domain IN ('127.0.0.1:5291', ?) LIMIT 1`, loadConfig().PublicHost).Scan(&websiteID, &raw)
+	websiteID = ahrefsWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	err = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}') FROM websites WHERE id=?`, websiteID).Scan(&raw)
 	if err != nil || websiteID == 0 {
 		return view, 0, false
 	}
@@ -368,7 +369,8 @@ func ahrefsSaveUsage(username string, hit ahrefsLimitHit) {
 		return
 	}
 	var websiteID int
-	if err = db.QueryRow(`SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?) LIMIT 1`, loadConfig().PublicHost).Scan(&websiteID); err != nil || websiteID == 0 {
+	websiteID = ahrefsWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	if websiteID == 0 {
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)

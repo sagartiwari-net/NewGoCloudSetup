@@ -98,6 +98,41 @@ func openAhrefsPanel() (*sql.DB, error) {
 	return ahrefsPanel, ahrefsPanelErr
 }
 
+func ahrefsWebsiteID(db *sql.DB, host string) int {
+	if db == nil {
+		return 0
+	}
+	var id int
+	bare := panelHostOnly(host)
+	_ = db.QueryRow(`SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))) LIMIT 1`, host, bare).Scan(&id)
+	if id > 0 {
+		return id
+	}
+	if panelHostIsLocal(host) {
+		_ = db.QueryRow(`SELECT id FROM websites WHERE domain=? LIMIT 1`, "127.0.0.1:5291").Scan(&id)
+	}
+	return id
+}
+
+func ahrefsWebsiteIDForUser(db *sql.DB, username, fallbackHost string) int {
+	if db == nil {
+		return 0
+	}
+	var id int
+	if strings.TrimSpace(username) != "" {
+		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE username=? AND expires_at > ? ORDER BY id DESC LIMIT 1`,
+			username, time.Now().UTC().Format(time.RFC3339Nano)).Scan(&id)
+		if id <= 0 {
+			_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE username=? AND expires_at > ? ORDER BY id DESC LIMIT 1`,
+				username, time.Now().UTC().Format(time.RFC3339)).Scan(&id)
+		}
+		if id > 0 {
+			return id
+		}
+	}
+	return ahrefsWebsiteID(db, fallbackHost)
+}
+
 func ahrefsPanelAccount(publicHost, sessionToken string) (AhrefsAccount, bool) {
 	db, err := openAhrefsPanel()
 	if err != nil {
@@ -106,16 +141,23 @@ func ahrefsPanelAccount(publicHost, sessionToken string) (AhrefsAccount, bool) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	assignedID := 0
+	websiteID := 0
 	if sessionToken != "" {
-		_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assignedID)
+		_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0), COALESCE(website_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assignedID, &websiteID)
+	}
+	if websiteID <= 0 {
+		websiteID = ahrefsWebsiteID(db, publicHost)
+	}
+	if websiteID <= 0 {
+		return AhrefsAccount{}, false
 	}
 	if assignedID > 0 {
-		if acc, err := ahrefsLoadAccount(db, publicHost, assignedID); err == nil {
+		if acc, err := ahrefsLoadAccount(db, websiteID, assignedID); err == nil {
 			log.Printf("[LB] assigned account %s id=%d", acc.Name, acc.ID)
 			return acc, true
 		}
 	}
-	acc, err := ahrefsLeastUsedAccount(db, publicHost, 0)
+	acc, err := ahrefsLeastUsedAccount(db, websiteID, 0)
 	if err != nil {
 		log.Printf("[PANEL] account lookup: %v", err)
 		return AhrefsAccount{}, false
@@ -128,7 +170,7 @@ func ahrefsPanelAccount(publicHost, sessionToken string) (AhrefsAccount, bool) {
 	return acc, true
 }
 
-func ahrefsLoadAccount(db *sql.DB, publicHost string, id int) (AhrefsAccount, error) {
+func ahrefsLoadAccount(db *sql.DB, websiteID int, id int) (AhrefsAccount, error) {
 	var acc AhrefsAccount
 	err := db.QueryRow(`SELECT a.id, a.name, a.cookie,
 		CASE WHEN TRIM(a.user_agent) != '' THEN a.user_agent ELSE COALESCE(ua.user_agent, '') END,
@@ -137,8 +179,8 @@ func ahrefsLoadAccount(db *sql.DB, publicHost string, id int) (AhrefsAccount, er
 		JOIN websites w ON w.id = a.website_id
 		LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
 		LEFT JOIN proxies p ON p.id = a.proxy_id
-		WHERE w.domain IN ('127.0.0.1:5291', ?) AND a.id=? AND a.status='active' AND TRIM(a.cookie) != ''`,
-		publicHost, id).Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy)
+		WHERE a.website_id=? AND a.id=? AND a.status='active' AND TRIM(a.cookie) != ''`,
+		websiteID, id).Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy)
 	if err != nil {
 		return acc, err
 	}
@@ -149,7 +191,7 @@ func ahrefsLoadAccount(db *sql.DB, publicHost string, id int) (AhrefsAccount, er
 	return acc, nil
 }
 
-func ahrefsLeastUsedAccount(db *sql.DB, publicHost string, excludeID int) (AhrefsAccount, error) {
+func ahrefsLeastUsedAccount(db *sql.DB, websiteID int, excludeID int) (AhrefsAccount, error) {
 	var acc AhrefsAccount
 	q := `SELECT a.id, a.name, a.cookie,
 		CASE WHEN TRIM(a.user_agent) != '' THEN a.user_agent ELSE COALESCE(ua.user_agent, '') END,
@@ -158,8 +200,8 @@ func ahrefsLeastUsedAccount(db *sql.DB, publicHost string, excludeID int) (Ahref
 		JOIN websites w ON w.id = a.website_id
 		LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
 		LEFT JOIN proxies p ON p.id = a.proxy_id
-		WHERE w.domain IN ('127.0.0.1:5291', ?) AND a.status='active' AND TRIM(a.cookie) != ''`
-	args := []any{publicHost}
+		WHERE a.website_id=? AND a.status='active' AND TRIM(a.cookie) != ''`
+	args := []any{websiteID}
 	if excludeID > 0 {
 		q += ` AND a.id != ?`
 		args = append(args, excludeID)
@@ -194,7 +236,14 @@ func switchAhrefsPanelAccount(publicHost, sessionToken string, current AhrefsAcc
 	if err != nil {
 		return AhrefsAccount{}, err
 	}
-	next, err := ahrefsLeastUsedAccount(db, publicHost, current.ID)
+	websiteID := 0
+	if sessionToken != "" {
+		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID)
+	}
+	if websiteID <= 0 {
+		websiteID = ahrefsWebsiteID(db, publicHost)
+	}
+	next, err := ahrefsLeastUsedAccount(db, websiteID, current.ID)
 	if err != nil {
 		return AhrefsAccount{}, err
 	}
@@ -203,8 +252,6 @@ func switchAhrefsPanelAccount(publicHost, sessionToken string, current AhrefsAcc
 	if sessionToken != "" {
 		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, next.ID, sessionToken)
 	}
-	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?) LIMIT 1`, publicHost).Scan(&websiteID)
 	if websiteID != 0 {
 		tmRecordSwitchLogout(db, websiteID, username, current.Name, next.Name, reason)
 	}

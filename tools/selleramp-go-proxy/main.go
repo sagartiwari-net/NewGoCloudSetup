@@ -2128,7 +2128,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if sessionErr != nil {
 			if isStatic {
 				var peekErr error
-				activeAcc, peekErr = loadActivePanelAccount(cfg)
+				activeAcc, peekErr = loadActivePanelAccount(cfg, panelRequestHost(r, cfg.PublicHost))
 				if peekErr != nil {
 					log.Printf("[PANEL] static asset account unavailable path=%s: %v", path, peekErr)
 					http.Error(w, "Not Found", http.StatusNotFound)

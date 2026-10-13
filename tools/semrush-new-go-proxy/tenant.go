@@ -27,7 +27,11 @@ func lookupWebsiteIDByHost(host string) int {
 		return 0
 	}
 	var wid int
-	err := db.QueryRow("SELECT id FROM ahrefs_websites WHERE LOWER(domain) = ?", host).Scan(&wid)
+	err := db.QueryRow("SELECT id FROM websites WHERE LOWER(TRIM(domain)) IN (?, ?) LIMIT 1", host, host).Scan(&wid)
+	if err == nil && wid > 0 {
+		return wid
+	}
+	err = db.QueryRow("SELECT id FROM ahrefs_websites WHERE LOWER(domain) = ?", host).Scan(&wid)
 	if err == nil && wid > 0 {
 		return wid
 	}
@@ -88,10 +92,22 @@ func websiteIDForRequest(r *http.Request) int {
 		return wid
 	}
 	cfg := loadConfig()
-	if cfg.WebsiteID > 0 {
-		return cfg.WebsiteID
+	host := ""
+	if r != nil {
+		host = panelRequestHost(r, cfg.PublicHost)
 	}
-	return 1
+	if wid := lookupWebsiteIDByHost(host); wid > 0 {
+		return wid
+	}
+	if panelHostIsLocal(host) {
+		if wid := lookupWebsiteIDByHost(cfg.PublicHost); wid > 0 {
+			return wid
+		}
+		if cfg.WebsiteID > 0 {
+			return cfg.WebsiteID
+		}
+	}
+	return 0
 }
 
 func withTenantWebsiteID(ctx context.Context, websiteID int) context.Context {

@@ -42,7 +42,10 @@ func isInternalRequestHost(host string) bool {
 }
 
 func hostMatchesPublic(reqHost, publicHost string, allowed []string) bool {
-	return proxysec.HostMatchesPublic(reqHost, publicHost, allowed)
+	if proxysec.HostMatchesPublic(reqHost, publicHost, allowed) {
+		return true
+	}
+	return panelHostAllowed(publicHost, reqHost)
 }
 
 func checkSessionIP(sessionToken, currentIP, sessionIP string, ipCfg proxysec.IPProtectionConfig) (updatedIP string, allow bool, kill bool) {
@@ -58,6 +61,12 @@ func corsOrigin(cfg Config) string {
 }
 
 func buildDomainCheckJS(cfg Config) string {
+	hosts := panelToolDomains(cfg.PublicHost)
+	if len(hosts) > 0 {
+		ss := cfg.SessionSecurity
+		ss.DomainCheck.AllowedHosts = append(append([]string{}, ss.DomainCheck.AllowedHosts...), hosts...)
+		cfg.SessionSecurity = ss
+	}
 	return proxysec.BuildDomainCheckJS(cfg.SessionSecurity, toolCtx(cfg), currentWebsiteSecurityEnabled)
 }
 
@@ -66,7 +75,11 @@ func buildSecurityHeartbeatJS(cfg Config) string {
 }
 
 func recordSecurityEvent(r *http.Request, username, eventType, details string) {
-	proxysec.RecordEvent(writeSecurityEvent, currentWebsiteID, r, username, eventType, details)
+	wid := currentWebsiteID
+	if id := panelWebsiteIDForRequest(r); id > 0 {
+		wid = id
+	}
+	proxysec.RecordEvent(writeSecurityEvent, wid, r, username, eventType, details)
 }
 
 func writeSecurityEvent(e proxysec.SecurityEvent) {

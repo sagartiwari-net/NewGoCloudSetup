@@ -137,20 +137,22 @@ func serveEnvatoPanelAccess(w http.ResponseWriter, r *http.Request, username, to
 		return
 	}
 	var dbUser, clientIP string
+	host := panelRequestHost(r, cfg.PublicHost)
 	err = db.QueryRow(`SELECT username, COALESCE(client_ip, '') FROM access_tokens
 		WHERE token = ? AND expires_at > ?
-		AND website_id IN (SELECT id FROM websites WHERE domain IN (?, ?))`,
-		token, time.Now().UTC().Format(time.RFC3339), "127.0.0.1:5261", cfg.PublicHost).
+		AND website_id IN (SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))))`,
+		token, time.Now().UTC().Format(time.RFC3339), host, panelHostOnly(host)).
 		Scan(&dbUser, &clientIP)
 	username = strings.TrimSpace(dbUser)
 	if err != nil || username == "" {
-		log.Printf("[PANEL] token rejected err=%v", err)
+		log.Printf("[PANEL] token rejected host=%s err=%v", host, err)
 		renderAccessDeniedPage(w)
 		return
 	}
 	var userStatus string
-	_ = db.QueryRow(`SELECT status FROM panel_users WHERE website_id IN (SELECT id FROM websites WHERE domain IN (?, ?)) AND username=?`,
-		"127.0.0.1:5261", cfg.PublicHost, username).Scan(&userStatus)
+	accessWebsiteID := envatoWebsiteID(db, host)
+	_ = db.QueryRow(`SELECT status FROM panel_users WHERE website_id=? AND username=?`,
+		accessWebsiteID, username).Scan(&userStatus)
 	if err == nil {
 		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
 	}
@@ -166,7 +168,7 @@ func serveEnvatoPanelAccess(w http.ResponseWriter, r *http.Request, username, to
 	}
 	sessionToken := hex.EncodeToString(buf)
 	seenIP := panelClientIP(r, clientIP)
-	websiteID, accountID, minutes := envatoSiteAccount(db, cfg.PublicHost)
+	websiteID, accountID, minutes := envatoSiteAccount(db, host)
 	if minutes < 1 {
 		minutes = 120
 	}
@@ -317,8 +319,8 @@ func envatoAccountByID(db *sql.DB, publicHost string, accountID int) (cookie, us
 		JOIN websites w ON w.id = a.website_id
 		LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
 		LEFT JOIN proxies p ON p.id = a.proxy_id
-		WHERE a.id=? AND w.domain IN (?, ?) AND a.status='active' AND TRIM(a.cookie) != ''`,
-		accountID, "127.0.0.1:5261", publicHost).Scan(&id, &cookie, &userAgent, &proxy)
+		WHERE a.id=? AND a.website_id=? AND a.status='active' AND TRIM(a.cookie) != ''`,
+		accountID, envatoWebsiteID(db, publicHost)).Scan(&id, &cookie, &userAgent, &proxy)
 	return cookie, userAgent, proxy, id, err
 }
 
@@ -329,7 +331,7 @@ const envatoAccountSelect = `SELECT a.id, a.cookie,
 		JOIN websites w ON w.id = a.website_id
 		LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
 		LEFT JOIN proxies p ON p.id = a.proxy_id
-		WHERE w.domain IN (?, ?) AND a.status='active' AND TRIM(a.cookie) != ''`
+		WHERE a.website_id = ? AND a.status='active' AND TRIM(a.cookie) != ''`
 
 // ChatGPT-style round-robin: least recently used first; unused (empty last_used_at) first.
 const envatoAccountOrder = ` ORDER BY CASE WHEN a.last_used_at = '' OR a.last_used_at IS NULL THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC`
@@ -337,7 +339,7 @@ const envatoAccountOrder = ` ORDER BY CASE WHEN a.last_used_at = '' OR a.last_us
 // envatoClaimAccountLocked picks the LRU active account and stamps last_used_at.
 // Caller must hold envatoPickMu.
 func envatoClaimAccountLocked(db *sql.DB, publicHost string) (cookie, userAgent, proxy string, id int, err error) {
-	err = db.QueryRow(envatoAccountSelect+envatoAccountOrder+` LIMIT 1`, "127.0.0.1:5261", publicHost).
+	err = db.QueryRow(envatoAccountSelect+envatoAccountOrder+` LIMIT 1`, envatoWebsiteID(db, publicHost)).
 		Scan(&id, &cookie, &userAgent, &proxy)
 	if err != nil {
 		return "", "", "", 0, err
@@ -539,11 +541,40 @@ func panelClientIP(r *http.Request, tokenIP string) string {
 	return seen
 }
 
+func envatoWebsiteID(db *sql.DB, host string) int {
+	if db == nil {
+		return 0
+	}
+	var id int
+	bare := panelHostOnly(host)
+	_ = db.QueryRow(`SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))) LIMIT 1`, host, bare).Scan(&id)
+	if id > 0 {
+		return id
+	}
+	if panelHostIsLocal(host) {
+		_ = db.QueryRow(`SELECT id FROM websites WHERE domain=? LIMIT 1`, "127.0.0.1:5261").Scan(&id)
+	}
+	return id
+}
+
+func envatoWebsiteIDForUser(db *sql.DB, username, fallbackHost string) int {
+	if db == nil {
+		return 0
+	}
+	var id int
+	if strings.TrimSpace(username) != "" {
+		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE username=? AND expires_at > ? ORDER BY id DESC LIMIT 1`,
+			username, time.Now().UTC().Format(time.RFC3339)).Scan(&id)
+		if id > 0 {
+			return id
+		}
+	}
+	return envatoWebsiteID(db, fallbackHost)
+}
+
 func envatoSiteAccount(db *sql.DB, publicHost string) (websiteID, accountID, minutes int) {
-	err := db.QueryRow(`SELECT w.id, COALESCE(w.session_duration, 120)
-		FROM websites w
-		WHERE w.domain IN ('127.0.0.1:5261', ?)
-		LIMIT 1`, publicHost).Scan(&websiteID, &minutes)
+	websiteID = envatoWebsiteID(db, publicHost)
+	err := db.QueryRow(`SELECT COALESCE(session_duration, 120) FROM websites WHERE id=?`, websiteID).Scan(&minutes)
 	if err != nil {
 		log.Printf("[PANEL] site lookup: %v", err)
 		return websiteID, accountID, minutes
@@ -950,7 +981,8 @@ func envatoPanelLimitView(username string) envatoLimitView {
 	}
 	var websiteID, showLimit, accountID int
 	var rawLimits string
-	err = db.QueryRow(`SELECT id, COALESCE(default_limits_json, '{}') FROM websites WHERE domain IN ('127.0.0.1:5261', ?) LIMIT 1`, cfg.PublicHost).Scan(&websiteID, &rawLimits)
+	websiteID = envatoWebsiteIDForUser(db, username, cfg.PublicHost)
+	err = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}') FROM websites WHERE id=?`, websiteID).Scan(&rawLimits)
 	if err != nil {
 		return view
 	}
@@ -1377,7 +1409,7 @@ func recordEnvatoDownload(username, displayName, dedupeKey string) {
 		return
 	}
 	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain IN ('127.0.0.1:5261', ?)`, loadConfig().PublicHost).Scan(&websiteID)
+	websiteID = envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
 	if websiteID == 0 {
 		return
 	}
@@ -1446,7 +1478,8 @@ func bumpEnvatoMeter(username string, view envatoLimitView) int {
 		return view.used + 1
 	}
 	var websiteID, userID int
-	if err = db.QueryRow(`SELECT id FROM websites WHERE domain IN ('127.0.0.1:5261', ?) LIMIT 1`, loadConfig().PublicHost).Scan(&websiteID); err != nil || websiteID == 0 {
+	websiteID = envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	if websiteID == 0 {
 		return view.used + 1
 	}
 	err = db.QueryRow(`SELECT id FROM panel_users WHERE website_id=? AND username=?`, websiteID, username).Scan(&userID)
@@ -1482,7 +1515,8 @@ func syncEnvatoPanelUser(username string, view envatoLimitView) {
 		return
 	}
 	var websiteID int
-	if err = db.QueryRow(`SELECT id FROM websites WHERE domain IN ('127.0.0.1:5261', ?) LIMIT 1`, loadConfig().PublicHost).Scan(&websiteID); err != nil || websiteID == 0 {
+	websiteID = envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	if websiteID == 0 {
 		return
 	}
 	var userID int

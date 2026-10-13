@@ -78,12 +78,16 @@ func panelSemrushCookie(publicHost string) string {
 	}
 	var id int
 	var name, raw string
+	websiteID := semrushWebsiteID(db, publicHost)
+	if websiteID <= 0 {
+		log.Printf("[PANEL] no website for host %s", publicHost)
+		return ""
+	}
 	err = db.QueryRow(`SELECT a.id, a.name, a.cookie
 		FROM accounts a
-		JOIN websites w ON w.id = a.website_id
-		WHERE w.domain IN ('127.0.0.1:5141', ?) AND a.status='active' AND TRIM(a.cookie) != ''
+		WHERE a.website_id=? AND a.status='active' AND TRIM(a.cookie) != ''
 		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC
-		LIMIT 1`, publicHost).Scan(&id, &name, &raw)
+		LIMIT 1`, websiteID).Scan(&id, &name, &raw)
 	if err != nil {
 		log.Printf("[PANEL] no Semrush account cookie: %v", err)
 		return ""
@@ -100,6 +104,22 @@ func panelSemrushCookie(publicHost string) string {
 	}
 	semrushPanelLogMu.Unlock()
 	return header
+}
+
+func semrushWebsiteID(db *sql.DB, host string) int {
+	if db == nil {
+		return 0
+	}
+	var id int
+	bare := panelHostOnly(host)
+	_ = db.QueryRow(`SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))) LIMIT 1`, host, bare).Scan(&id)
+	if id > 0 {
+		return id
+	}
+	if panelHostIsLocal(host) {
+		_ = db.QueryRow(`SELECT id FROM websites WHERE domain=? LIMIT 1`, "127.0.0.1:5141").Scan(&id)
+	}
+	return id
 }
 
 func panelMySQLDSN(cfg Config) string {

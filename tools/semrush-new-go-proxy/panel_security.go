@@ -175,8 +175,15 @@ func semrushPanelAccount(publicHost, sessionToken string) (semrushAccount, bool)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	assigned := 0
+	websiteID := 0
 	if sessionToken != "" {
-		_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned)
+		_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0), COALESCE(website_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned, &websiteID)
+	}
+	if websiteID <= 0 {
+		websiteID = semrushWebsiteID(db, publicHost)
+	}
+	if websiteID <= 0 {
+		return semrushAccount{}, false
 	}
 	load := func(where string, args ...any) (semrushAccount, error) {
 		var acc semrushAccount
@@ -195,12 +202,12 @@ func semrushPanelAccount(publicHost, sessionToken string) (semrushAccount, bool)
 		return acc, nil
 	}
 	if assigned > 0 {
-		if acc, err := load(`a.id=? AND w.domain IN ('127.0.0.1:5141', ?) AND a.status='active' AND TRIM(a.cookie)!=''`, assigned, publicHost); err == nil {
+		if acc, err := load(`a.id=? AND a.website_id=? AND a.status='active' AND TRIM(a.cookie)!=''`, assigned, websiteID); err == nil {
 			return acc, true
 		}
 	}
-	acc, err := load(`w.domain IN ('127.0.0.1:5141', ?) AND a.status='active' AND TRIM(a.cookie)!=''
-		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC LIMIT 1`, publicHost)
+	acc, err := load(`a.website_id=? AND a.status='active' AND TRIM(a.cookie)!=''
+		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC LIMIT 1`, websiteID)
 	if err != nil {
 		return semrushAccount{}, false
 	}
@@ -302,7 +309,11 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 		return semrushAccount{}, false
 	}
 	current := 0
-	_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0) FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&current)
+	websiteID := 0
+	_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0), COALESCE(website_id, 0) FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&current, &websiteID)
+	if websiteID <= 0 {
+		websiteID = semrushWebsiteID(db, publicHost)
+	}
 	if current > 0 {
 		semrushMarkTried(sessionToken, current)
 		_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339), current)
@@ -311,9 +322,8 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 	tried := semrushTried[sessionToken]
 	semrushTriedMu.Unlock()
 	rows, err := db.Query(`SELECT a.id, a.name FROM accounts a
-		JOIN websites w ON w.id = a.website_id
-		WHERE w.domain IN ('127.0.0.1:5141', ?) AND a.status='active' AND TRIM(a.cookie) != ''
-		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC`, publicHost)
+		WHERE a.website_id=? AND a.status='active' AND TRIM(a.cookie) != ''
+		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC`, websiteID)
 	if err != nil {
 		return semrushAccount{}, false
 	}
@@ -336,9 +346,8 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 	rows.Close()
 	if nextID == 0 && current > 0 {
 		again, err := db.Query(`SELECT a.id, a.name FROM accounts a
-			JOIN websites w ON w.id = a.website_id
-			WHERE w.domain IN ('127.0.0.1:5141', ?) AND a.status='active' AND TRIM(a.cookie) != '' AND a.id != ?
-			ORDER BY a.id ASC LIMIT 1`, publicHost, current)
+			WHERE a.website_id=? AND a.status='active' AND TRIM(a.cookie) != '' AND a.id != ?
+			ORDER BY a.id ASC LIMIT 1`, websiteID, current)
 		if err == nil {
 			if again.Next() {
 				_ = again.Scan(&nextID, &nextName)
@@ -346,7 +355,6 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 			again.Close()
 		}
 	}
-	var websiteID int
 	var username, fromName string
 	_ = db.QueryRow(`SELECT website_id, username FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID, &username)
 	if current > 0 {

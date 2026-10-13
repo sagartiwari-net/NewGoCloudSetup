@@ -213,7 +213,14 @@ func semrushMeter(username string) (used, limit, websiteID int, ok bool) {
 	}
 	cfg := loadConfig()
 	var raw string
-	err = db.QueryRow(`SELECT id, COALESCE(default_limits_json, '{}') FROM websites WHERE domain IN ('127.0.0.1:5141', ?) LIMIT 1`, cfg.PublicHost).Scan(&websiteID, &raw)
+	err = db.QueryRow(`SELECT w.id, COALESCE(w.default_limits_json, '{}')
+		FROM live_sessions s
+		JOIN websites w ON w.id = s.website_id
+		WHERE s.username=? AND s.expires_at > ?
+		ORDER BY s.id DESC LIMIT 1`, username, time.Now().UTC().Format(time.RFC3339)).Scan(&websiteID, &raw)
+	if err != nil || websiteID == 0 {
+		err = db.QueryRow(`SELECT id, COALESCE(default_limits_json, '{}') FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))) LIMIT 1`, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&websiteID, &raw)
+	}
 	if err != nil || websiteID == 0 {
 		return 0, limit, 0, false
 	}
@@ -243,7 +250,10 @@ func semrushLimitVisible(username, token string) bool {
 	}
 	cfg := loadConfig()
 	var websiteID int
-	if db.QueryRow(`SELECT id FROM websites WHERE domain IN ('127.0.0.1:5141', ?) LIMIT 1`, cfg.PublicHost).Scan(&websiteID) != nil || websiteID == 0 {
+	if token != "" {
+		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE session_token=?`, token).Scan(&websiteID)
+	}
+	if websiteID == 0 && (db.QueryRow(`SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))) LIMIT 1`, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&websiteID) != nil || websiteID == 0) {
 		return false
 	}
 	var mode string

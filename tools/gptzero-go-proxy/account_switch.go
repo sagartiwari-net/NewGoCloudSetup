@@ -108,9 +108,14 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	tried := gptzeroTriedAcc[sessionToken]
 	gptzeroTriedMu.Unlock()
 
+	var websiteID int
+	_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID)
+	if websiteID <= 0 {
+		websiteID = panelWebsiteIDForDomain(db, cfg.PublicHost)
+	}
 	rows, err := db.Query(panelAccountSelect+`
-		WHERE w.domain = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder, cfg.PublicHost)
+		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+		`+panelAccountOrder, websiteID)
 	if err != nil {
 		return ToolAccount{}, err
 	}
@@ -135,8 +140,8 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	if !found {
 		// Fallback: any other active account once all "tried" are exhausted.
 		acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
-			WHERE w.domain = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
-			`+panelAccountOrder+` LIMIT 1`, cfg.PublicHost, currentID))
+			WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
+			`+panelAccountOrder+` LIMIT 1`, websiteID, currentID))
 		if err != nil {
 			if currentID > 0 {
 				_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
@@ -160,8 +165,6 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	if sessionToken != "" {
 		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, next.ID, sessionToken)
 	}
-	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 	if websiteID > 0 {
 		tmRecordSwitchLogout(db, websiteID, username, currentName, next.Name, reason)
 	}

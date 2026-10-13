@@ -204,7 +204,11 @@ func panelCreditStateFor(username string) (panelCreditState, error) {
 		return state, err
 	}
 	var rawDefaults string
-	if err := db.QueryRow(`SELECT id, COALESCE(default_limits_json, '{}') FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&state.websiteID, &rawDefaults); err != nil {
+	state.websiteID = panelWebsiteIDForUser(db, cfg.PublicHost, username)
+	if state.websiteID <= 0 {
+		return state, fmt.Errorf("website not found")
+	}
+	if err := db.QueryRow(`SELECT COALESCE(default_limits_json, '{}') FROM websites WHERE id=?`, state.websiteID).Scan(&rawDefaults); err != nil {
 		return state, err
 	}
 	defaults := map[string]int{}
@@ -327,7 +331,8 @@ func panelAssignedShowLimit(r *http.Request, cfg Config, username string) bool {
 		return false
 	}
 	var websiteID, accountID int
-	if err = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID); err != nil || websiteID == 0 {
+	websiteID = panelWebsiteIDForUser(db, cfg.PublicHost, username)
+	if websiteID == 0 {
 		return false
 	}
 	if username != "" {

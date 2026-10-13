@@ -1251,7 +1251,13 @@ func ahrefsLimitVisible(username, sessionToken string) bool {
 		return false
 	}
 	var websiteID int
-	if err = db.QueryRow(`SELECT id FROM websites WHERE domain IN ('127.0.0.1:5291', ?) LIMIT 1`, loadConfig().PublicHost).Scan(&websiteID); err != nil || websiteID == 0 {
+	if sessionToken != "" {
+		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID)
+	}
+	if websiteID == 0 {
+		websiteID = ahrefsWebsiteID(db, loadConfig().PublicHost)
+	}
+	if websiteID == 0 {
 		return false
 	}
 	var mode string
