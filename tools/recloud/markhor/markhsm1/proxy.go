@@ -213,7 +213,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		token := sessionTokenFromRequest(r)
 		reason := "session_expired"
 		if isLoginPath(r.URL.Path) || strings.Contains(strings.ToLower(string(payload)), "this section is restricted") {
-			reason = "opened_/login"
+			reason = "logout"
 		}
 		switched, _ := noteLogout(cfg, r, acc, token, reason)
 		if switched && cfg.HomePath != "" {
