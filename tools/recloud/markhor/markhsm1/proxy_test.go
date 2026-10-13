@@ -10,9 +10,9 @@ import (
 )
 
 func TestRewriteKeepsBrowserOnPublicHost(t *testing.T) {
-	in := []byte(`<a href="https://sm01.markhorseotool.com/analytics/overview/">x</a><script src="https://static.markhorseotool.com/app.js"></script><script src="https://de.semrush.com/app.js"></script>{"cookie_domain":".markhorseotool.com"}`)
+	in := []byte(`<a href="https://sm01.markhorseotool.com/analytics/overview/">x</a><script src="https://static.markhorseotool.com/app.js"></script><script src="https://de.semrush.com/app.js"></script>{"cookie_domain":".markhorseotool.com","host":"sm01.markhorseotool.com"}`)
 	out := string(rewriteText(in, "sm01.markhorseotool.com", "https://markhsm1.gt4rents.com"))
-	if strings.Contains(out, "markhorseotool.com") || strings.Contains(out, "semrush.com") {
+	if strings.Contains(out, "markhorseotool.com") || strings.Contains(out, "semrush.com") || strings.Contains(out, "sm01.markhsm1") {
 		t.Fatalf("upstream host leaked: %s", out)
 	}
 	if !strings.Contains(out, "https://markhsm1.gt4rents.com/analytics/overview/") {
@@ -55,7 +55,10 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 }
 
 func TestLogoutPath(t *testing.T) {
-	if !isLogoutPath("/sso/logout") || isLogoutPath("/analytics/overview/") {
+	if !isLogoutPath("/sso/logout") || !isLogoutPath("/login") || isLogoutPath("/analytics/overview/") {
 		t.Fatal("logout path detection")
+	}
+	if !bodyLooksLoggedOut([]byte(`<h1>Access Denied</h1><p>This section is restricted.</p>`)) {
+		t.Fatal("restricted page should count as logged out")
 	}
 }

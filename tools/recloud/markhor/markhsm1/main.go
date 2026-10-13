@@ -71,12 +71,16 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		acc = loaded
 	}
 	if isLogoutPath(r.URL.Path) {
-		switched, _ := noteLogout(cfg, r, acc, token, "logout")
+		reason := "logout"
+		if isLoginPath(r.URL.Path) {
+			reason = "opened_/login"
+		}
+		switched, _ := noteLogout(cfg, r, acc, token, reason)
 		if switched && cfg.HomePath != "" {
 			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 			return
 		}
-		renderAccessDeniedPage(w, cfg)
+		renderLoggedOutPage(w, cfg)
 		return
 	}
 	proxyUpstream(w, r, cfg, acc)

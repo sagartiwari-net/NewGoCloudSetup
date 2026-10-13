@@ -625,6 +625,16 @@ func liveUpstream(cfg Config) string {
 	return raw
 }
 
+func renderLoggedOutPage(w http.ResponseWriter, cfg Config) {
+	name := html.EscapeString(toolDisplayName(cfg))
+	writeLightCard(w, http.StatusForbidden, lightCard{
+		Title:   "Logged out",
+		Heading: "Logged out",
+		Message: "<span class=\"brand\">" + name + "</span> signed out. Open it again from your access link.",
+		Footer:  "This logout is saved in Analytics",
+	})
+}
+
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusForbidden, lightCard{

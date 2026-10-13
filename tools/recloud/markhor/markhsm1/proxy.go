@@ -31,7 +31,7 @@ var (
 			return http.ErrUseLastResponse
 		},
 	}
-	markhorHost = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*markhorseotool\.com`)
+	markhorHost = regexp.MustCompile(`(?i)(?:[a-z0-9-]+\.)?markhorseotool\.com`)
 	semrushHost = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*semrush\.com`)
 )
 
@@ -68,8 +68,7 @@ func rewriteText(body []byte, upstreamHost, origin string) []byte {
 	s = strings.ReplaceAll(s, "//"+upstreamHost, "//"+hostOnly)
 	s = strings.ReplaceAll(s, "https://localhost", origin)
 	s = strings.ReplaceAll(s, "http://localhost", origin)
-	s = markhorHost.ReplaceAllString(s, origin)
-	s = strings.ReplaceAll(s, ".markhorseotool.com", "."+cookieDomain)
+	s = markhorHost.ReplaceAllString(s, hostOnly)
 	s = semrushHost.ReplaceAllString(s, origin)
 	s = strings.ReplaceAll(s, ".semrush.com", "."+cookieDomain)
 	return []byte(s)
@@ -212,12 +211,16 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	}
 	if bodyLooksLoggedOut(payload) {
 		token := sessionTokenFromRequest(r)
-		switched, _ := noteLogout(cfg, r, acc, token, "session_expired")
+		reason := "session_expired"
+		if isLoginPath(r.URL.Path) || strings.Contains(strings.ToLower(string(payload)), "this section is restricted") {
+			reason = "opened_/login"
+		}
+		switched, _ := noteLogout(cfg, r, acc, token, reason)
 		if switched && cfg.HomePath != "" {
 			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 			return
 		}
-		renderAccessDeniedPage(w, cfg)
+		renderLoggedOutPage(w, cfg)
 		return
 	}
 	if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {

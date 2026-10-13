@@ -12,12 +12,19 @@ var logoutSeen sync.Map
 
 func isLogoutPath(path string) bool {
 	p := strings.ToLower(path)
-	return strings.Contains(p, "logout") || strings.Contains(p, "sign-out") || strings.Contains(p, "signout")
+	return strings.Contains(p, "logout") || strings.Contains(p, "sign-out") || strings.Contains(p, "signout") || isLoginPath(p)
+}
+
+func isLoginPath(path string) bool {
+	p := strings.ToLower(path)
+	return p == "/login" || strings.HasPrefix(p, "/login/") || strings.HasPrefix(p, "/login?")
 }
 
 func bodyLooksLoggedOut(body []byte) bool {
 	text := strings.ToLower(string(body))
-	return strings.Contains(text, "session expired") || strings.Contains(text, "access again from dashboard")
+	return strings.Contains(text, "session expired") ||
+		strings.Contains(text, "access again from dashboard") ||
+		strings.Contains(text, "this section is restricted")
 }
 
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {
