@@ -12,6 +12,6 @@
   "mysql_db": "gt4rents",
   "target_url": "https://semrush2.xemrush.site",
   "home_path": "/analytics/overview/?searchType=domain",
-  "tool_name": "Semrush 2",
+  "tool_name": "Azad Semrush 2",
   "_note": "Live upstream is websites.upstream_url. target_url is only the fallback. Cookie is the Recloud account row. panel.db is not opened."
 }

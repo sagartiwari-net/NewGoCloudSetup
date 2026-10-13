@@ -35,7 +35,7 @@ func loadConfig() Config {
 			PublicScheme:           "http",
 			TargetURL:              "https://semrush2.xemrush.site",
 			HomePath:               "/analytics/overview/?searchType=domain",
-			ToolName:               "Semrush 2",
+			ToolName:               "Azad Semrush 2",
 			SessionDurationMinutes: 30,
 		}
 		body, err := os.ReadFile("config.json")
@@ -57,7 +57,7 @@ func usesPanelAccountMode(cfg Config) bool {
 func toolDisplayName(cfg Config) string {
 	name := strings.TrimSpace(cfg.ToolName)
 	if name == "" {
-		return "Semrush 2"
+		return "Azad Semrush 2"
 	}
 	return name
 }

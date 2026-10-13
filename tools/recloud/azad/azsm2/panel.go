@@ -504,42 +504,76 @@ func ensureRecloudSite(cfg Config) {
 		log.Printf("[PANEL] recloud site not ensured: %v", err)
 		return
 	}
-	var toolID int
-	err = db.QueryRow(`SELECT id FROM tools WHERE name=?`, toolDisplayName(cfg)).Scan(&toolID)
+	name := toolDisplayName(cfg)
+	upstream := strings.TrimSpace(cfg.TargetURL)
+	var websiteID, linkedTool int
+	var currentURL string
+	err = db.QueryRow(`SELECT id, tool_id, COALESCE(upstream_url, '') FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID, &linkedTool, &currentURL)
 	if err != nil {
-		res, insErr := db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES (?,?,?)`, toolDisplayName(cfg), "recloud", "[]")
-		if insErr != nil {
-			log.Printf("[PANEL] tool insert failed: %v", insErr)
+		toolID := ensureRecloudTool(db, name)
+		if toolID == 0 {
 			return
 		}
-		id, _ := res.LastInsertId()
-		toolID = int(id)
-	}
-	upstream := strings.TrimSpace(cfg.TargetURL)
-	var websiteID int
-	var kind, currentURL string
-	err = db.QueryRow(`SELECT id, COALESCE(kind, ''), COALESCE(upstream_url, '') FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID, &kind, &currentURL)
-	if err != nil {
 		buf := make([]byte, 16)
 		_, _ = rand.Read(buf)
 		secret := hex.EncodeToString(buf)
 		res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, kind, upstream_url)
-			VALUES (?,?,?,?,30,'{}',1,'recloud',?)`, toolID, toolDisplayName(cfg), cfg.PublicHost, secret, upstream)
+			VALUES (?,?,?,?,30,'{}',1,'recloud',?)`, toolID, name, cfg.PublicHost, secret, upstream)
 		if insErr != nil {
 			log.Printf("[PANEL] website insert failed: %v", insErr)
 			return
 		}
 		id, _ := res.LastInsertId()
 		websiteID = int(id)
-		log.Printf("[PANEL] recloud website created id=%d host=%s", websiteID, cfg.PublicHost)
-	} else if kind != "recloud" || (strings.TrimSpace(currentURL) == "" && upstream != "") {
-		nextURL := currentURL
-		if strings.TrimSpace(nextURL) == "" {
-			nextURL = upstream
-		}
-		_, _ = db.Exec(`UPDATE websites SET tool_id=?, kind='recloud', upstream_url=? WHERE id=?`, toolID, nextURL, websiteID)
+		log.Printf("[PANEL] recloud website created id=%d host=%s name=%s", websiteID, cfg.PublicHost, name)
+		importCookieFile(db, websiteID)
+		return
 	}
+	toolID := recloudToolID(db, name, linkedTool)
+	if toolID == 0 {
+		return
+	}
+	nextURL := strings.TrimSpace(currentURL)
+	if nextURL == "" {
+		nextURL = upstream
+	}
+	_, _ = db.Exec(`UPDATE websites SET tool_id=?, name=?, kind='recloud', upstream_url=? WHERE id=?`, toolID, name, nextURL, websiteID)
+	_, _ = db.Exec(`UPDATE accounts SET name=? WHERE website_id=?`, name, websiteID)
 	importCookieFile(db, websiteID)
+}
+
+func ensureRecloudTool(db *sql.DB, name string) int {
+	var toolID int
+	if db.QueryRow(`SELECT id FROM tools WHERE name=?`, name).Scan(&toolID) == nil {
+		return toolID
+	}
+	res, err := db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES (?,?,?)`, name, "recloud", "[]")
+	if err != nil {
+		log.Printf("[PANEL] tool insert failed: %v", err)
+		return 0
+	}
+	id, _ := res.LastInsertId()
+	return int(id)
+}
+
+// recloudToolID keeps one tool row for this website and renames it to the group label.
+func recloudToolID(db *sql.DB, name string, linkedTool int) int {
+	var linkedName, linkedCategory string
+	if db.QueryRow(`SELECT name, COALESCE(category, '') FROM tools WHERE id=?`, linkedTool).Scan(&linkedName, &linkedCategory) == nil && linkedCategory == "recloud" {
+		if linkedName == name {
+			return linkedTool
+		}
+		var taken int
+		if db.QueryRow(`SELECT id FROM tools WHERE name=? AND id<>?`, name, linkedTool).Scan(&taken) == nil {
+			return taken
+		}
+		if _, err := db.Exec(`UPDATE tools SET name=? WHERE id=?`, name, linkedTool); err != nil {
+			log.Printf("[PANEL] tool rename failed: %v", err)
+			return linkedTool
+		}
+		return linkedTool
+	}
+	return ensureRecloudTool(db, name)
 }
 
 func importCookieFile(db *sql.DB, websiteID int) {
