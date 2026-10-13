@@ -633,6 +633,13 @@
       "subdomain": "markhsm2",
       "port": 6101,
       "fqdn": "markhsm2.gt4rents.com"
+    },
+    {
+      "tool": "markhenv",
+      "folder": "recloud/markhor/markhenv",
+      "subdomain": "markhenv",
+      "port": 6102,
+      "fqdn": "markhenv.gt4rents.com"
     }
   ]
 }

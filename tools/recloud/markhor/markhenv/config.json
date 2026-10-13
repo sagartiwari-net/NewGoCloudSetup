@@ -1,0 +1,12 @@
+{
+  "port": "6102",
+  "public_host": "127.0.0.1:6102",
+  "public_scheme": "http",
+  "target_url": "https://env.markhorseotool.com",
+  "home_path": "/",
+  "tool_name": "Markhor Envato",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}
