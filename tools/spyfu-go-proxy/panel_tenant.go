@@ -121,3 +121,15 @@ func panelWebsiteIDForRequest(r *http.Request) int {
 	}
 	return id
 }
+
+func panelLogWebsite(db *sql.DB, sessionToken, publicHost string) (int, string) {
+	websiteID := 0
+	username := ""
+	if db != nil && strings.TrimSpace(sessionToken) != "" {
+		_ = db.QueryRow(`SELECT COALESCE(website_id, 0), COALESCE(username, '') FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID, &username)
+	}
+	if websiteID <= 0 {
+		websiteID = panelWebsiteIDForDomain(db, publicHost)
+	}
+	return websiteID, strings.TrimSpace(username)
+}

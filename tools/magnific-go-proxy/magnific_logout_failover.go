@@ -87,8 +87,7 @@ func serveMagnificCookieFailover(w http.ResponseWriter, r *http.Request, cfg Con
 		return
 	}
 	if db, dbErr := openPanelDB(cfg); dbErr == nil {
-		var websiteID int
-		_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+		websiteID, _ := panelLogWebsite(db, sessionToken, cfg.PublicHost)
 		tmRecordSwitchLogout(db, websiteID, currentUser, activeAcc.Name, "(none)", "no_other_active:"+reason)
 	}
 	renderMagnificContactAdmin(w, cfg, reason)

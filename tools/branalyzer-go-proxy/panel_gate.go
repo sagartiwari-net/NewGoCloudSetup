@@ -405,6 +405,12 @@ func panelSwitchToOtherAccount(cfg Config, sessionToken, reason string) (ToolAcc
 		WHERE a.website_id = COALESCE((SELECT website_id FROM live_sessions WHERE session_token=? LIMIT 1), (SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))) LIMIT 1)) AND a.status = 'active' AND a.cookie != '' AND a.id != ?
 		`+panelAccountOrder+` LIMIT 1`, sessionToken, cfg.PublicHost, panelHostOnly(cfg.PublicHost), currentID))
 	if err != nil {
+		if websiteID > 0 {
+			_, _ = db.Exec(`INSERT INTO switch_events (website_id, username, from_account_name, to_account_name, reason, switched_at) VALUES (?,?,?,?,?,?)`,
+				websiteID, username, fromName, "", reason, now)
+			_, _ = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
+				websiteID, username, fromName, "", reason, "", now)
+		}
 		return ToolAccount{}, "", fmt.Errorf("no other active account")
 	}
 	if currentID > 0 {

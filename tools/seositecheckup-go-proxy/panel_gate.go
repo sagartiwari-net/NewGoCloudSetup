@@ -503,6 +503,9 @@ func panelSwitchToOtherAccount(cfg Config, sessionToken, reason string) (ToolAcc
 	_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, currentID).Scan(&fromName)
 	acc, err := pickPanelAccount(db, websiteID, currentID)
 	if err != nil {
+		if websiteID > 0 {
+			tmRecordSwitchLogout(db, websiteID, username, fromName, "", reason)
+		}
 		return ToolAccount{}, "", fmt.Errorf("no other active account")
 	}
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)

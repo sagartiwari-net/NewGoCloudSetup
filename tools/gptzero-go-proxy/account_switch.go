@@ -146,8 +146,6 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 			if currentID > 0 {
 				_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)
 			}
-			var websiteID int
-			_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
 			if websiteID > 0 {
 				tmRecordSwitchLogout(db, websiteID, username, currentName, "(none)", "no_other_active:"+reason)
 			}

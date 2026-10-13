@@ -332,8 +332,10 @@ func pinPanelAccount(cfg Config, sessionToken string, acc ToolAccount, bumpFailu
 	if !record {
 		return
 	}
-	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+	websiteID, sessUser := panelLogWebsite(db, sessionToken, cfg.PublicHost)
+	if strings.TrimSpace(username) == "" {
+		username = sessUser
+	}
 	if websiteID > 0 && currentName != "" {
 		tmRecordSwitchLogout(db, websiteID, username, currentName, acc.Name, reason)
 		log.Printf("[LB] switched '%s' (ID:%d) -> '%s' (ID:%d) reason=%s", currentName, bumpFailureID, acc.Name, acc.ID, reason)
@@ -448,6 +450,11 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 		record := shouldRecordFailover(currentID, reason)
 		pinPanelAccount(cfg, sessionToken, acc, currentID, record, currentName, username, reason)
 		return acc, nil
+	}
+	if wid > 0 {
+		if db, dbErr := openPanelDB(cfg); dbErr == nil {
+			tmRecordSwitchLogout(db, wid, username, currentName, "", reason)
+		}
 	}
 	if lastErr != nil {
 		return ToolAccount{}, fmt.Errorf("no other live account: %w", lastErr)

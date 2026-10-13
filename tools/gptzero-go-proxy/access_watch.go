@@ -55,8 +55,7 @@ func recordBlockedPath(cfg Config, r *http.Request, username string) {
 	if err != nil {
 		return
 	}
-	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+	websiteID := panelWebsiteIDForDomain(db, panelRequestHost(r, cfg.PublicHost))
 	if websiteID == 0 {
 		return
 	}
@@ -78,8 +77,7 @@ func recordProxyFailure(cfg Config, r *http.Request, username, detail string) {
 	if err != nil {
 		return
 	}
-	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+	websiteID := panelWebsiteIDForDomain(db, panelRequestHost(r, cfg.PublicHost))
 	if websiteID == 0 {
 		return
 	}

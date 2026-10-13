@@ -374,6 +374,16 @@ func envatoPanelSwitch(sessionToken, reason string) (bool, string) {
 		WHERE a.website_id=? AND a.status='active' AND TRIM(a.cookie) != '' AND a.id != ?
 		`+envatoAccountOrder+` LIMIT 1`, websiteID, currentID).Scan(&nextID, &nextName)
 	if err != nil || nextID == 0 {
+		var fromName string
+		if currentID > 0 {
+			_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, currentID).Scan(&fromName)
+		}
+		if reason == "" {
+			reason = "envato login wall"
+		}
+		if websiteID > 0 {
+			tmRecordSwitchLogout(db, websiteID, username, fromName, "", reason)
+		}
 		log.Printf("[LB] no other envato account to switch to user=%s", username)
 		return false, ""
 	}

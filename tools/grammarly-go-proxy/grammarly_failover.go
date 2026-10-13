@@ -165,8 +165,7 @@ func serveGrammarlyCookieFailover(w http.ResponseWriter, r *http.Request, cfg Co
 	if activeAcc.ID > 0 {
 		if db, dbErr := openPanelDB(cfg); dbErr == nil {
 			_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, activeAcc.ID)
-			var websiteID int
-			_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+			websiteID, _ := panelLogWebsite(db, sessionToken, cfg.PublicHost)
 			tmRecordSwitchLogout(db, websiteID, currentUser, activeAcc.Name, "(none)", "no_other_active:"+reason)
 		}
 	}

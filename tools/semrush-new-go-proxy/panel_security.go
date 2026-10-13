@@ -403,7 +403,7 @@ func semrushSwitchingHTML(r *http.Request, acc semrushAccount) string {
 func semrushAccountSwapPage(r *http.Request) (string, bool) {
 	cfg := loadConfig()
 	token := semrushSessionToken(r)
-	if acc, ok := semrushRotatePanelAccount(cfg.PublicHost, token); ok {
+	if acc, ok := semrushRotatePanelAccount(panelRequestHost(r, cfg.PublicHost), token); ok {
 		return semrushSwitchingHTML(r, acc), true
 	}
 	return semrushLightPage("Temporarily Unavailable", "Temporarily Unavailable",
@@ -445,7 +445,7 @@ func trySemrushPanelAuthSwap(r *http.Request, status int, path string) (acc semr
 		log.Printf("[SWAP] debounce skip status=%d path=%s", status, path)
 		return semrushAccount{}, "", false
 	}
-	acc, ok := semrushRotatePanelAccount(cfg.PublicHost, token)
+	acc, ok := semrushRotatePanelAccount(panelRequestHost(r, cfg.PublicHost), token)
 	if !ok {
 		log.Printf("[SWAP] no next account after upstream %d on %s", status, path)
 		return semrushAccount{}, "", false

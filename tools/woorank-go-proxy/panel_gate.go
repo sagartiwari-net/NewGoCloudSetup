@@ -391,8 +391,10 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 		WHERE a.website_id = COALESCE((SELECT website_id FROM live_sessions WHERE session_token=? LIMIT 1), (SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))) LIMIT 1)) AND a.status = 'active' AND a.cookie != '' AND a.id != ?
 		`+panelAccountOrder+` LIMIT 1`, sessionToken, cfg.PublicHost, panelHostOnly(cfg.PublicHost), currentID))
-	var websiteID int
-	_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+	websiteID, sessUser := panelLogWebsite(db, sessionToken, cfg.PublicHost)
+	if strings.TrimSpace(username) == "" {
+		username = sessUser
+	}
 	if err != nil {
 		if currentID > 0 {
 			_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, currentID)

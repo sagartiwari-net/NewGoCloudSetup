@@ -124,8 +124,7 @@ func serveSeobilityCookieFailover(w http.ResponseWriter, r *http.Request, cfg Co
 	}
 	log.Printf("[FAILOVER] contact-admin user=%s account=%s reason=%s err=%v", currentUser, activeAcc.Name, reason, err)
 	if db, dbErr := openPanelDB(cfg); dbErr == nil {
-		var websiteID int
-		_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+		websiteID, _ := panelLogWebsite(db, sessionToken, cfg.PublicHost)
 		tmRecordSwitchLogout(db, websiteID, currentUser, activeAcc.Name, "(none)", "no_other_active:"+reason)
 	}
 	seobilityNoteContactAdmin(sessionToken)
