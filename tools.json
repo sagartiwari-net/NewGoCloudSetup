@@ -612,6 +612,13 @@
       "subdomain": "azsmaud1",
       "port": 6004,
       "fqdn": "azsmaud1.gt4rents.com"
+    },
+    {
+      "tool": "azkwfind",
+      "folder": "recloud/azad/azkwfind",
+      "subdomain": "azkwfind",
+      "port": 6005,
+      "fqdn": "azkwfind.gt4rents.com"
     }
   ]
 }
