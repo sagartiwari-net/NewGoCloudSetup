@@ -31,8 +31,7 @@ var (
 			return http.ErrUseLastResponse
 		},
 	}
-	semrushHost       = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*semrush\.com`)
-	publicAuthButtons = regexp.MustCompile(`(?is)<div[^>]*\bsrf-header__buttons\b[^>]*>.*?</div>`)
+	semrushHost = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*semrush\.com`)
 )
 
 func publicOrigin(r *http.Request, cfg Config) string {
@@ -209,9 +208,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		payload = rewriteText(payload, base.Host, origin)
 	}
 	if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {
-		loggedOut := bodyLooksLoggedOut(payload)
-		payload = publicAuthButtons.ReplaceAll(payload, nil)
-		if loggedOut {
+		if bodyLooksLoggedOut(payload) {
 			token := sessionTokenFromRequest(r)
 			switched, _ := noteLogout(cfg, r, acc, token, "session_expired")
 			if switched {

@@ -17,11 +17,13 @@ func isLogoutPath(path string) bool {
 
 func bodyLooksLoggedOut(body []byte) bool {
 	text := strings.ToLower(string(body))
-	if strings.Contains(text, "session expired") || strings.Contains(text, "access again from dashboard") {
-		return true
+	// The public Log In / Start for free header is part of the site. Do not
+	// treat it as a logout, or the only account is marked logged out and the
+	// next request becomes Temporarily Unavailable.
+	if strings.Contains(text, "srf-login-btn") && strings.Contains(text, "srf-register-btn") {
+		return false
 	}
-	// Public Semrush header: Log In and Start for free means the upstream session is gone.
-	return strings.Contains(text, "srf-login-btn") && strings.Contains(text, "srf-register-btn")
+	return strings.Contains(text, "session expired") || strings.Contains(text, "access again from dashboard")
 }
 
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {
