@@ -13,6 +13,7 @@ import {
   CloudIcon,
   GlobeIcon,
   KeyRoundIcon,
+  Link2Icon,
   LogInIcon,
   LayoutDashboardIcon,
   LogOutIcon,
@@ -62,7 +63,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { Role } from "@/lib/api/types"
 
-const masterRoutes = ["/proxies", "/user-agents", "/websites", "/resellers", "/automate", "/settings"]
+const masterRoutes = ["/proxies", "/user-agents", "/websites", "/resellers", "/automate", "/settings", "/shared-cookies"]
 
 const nav: Array<{
   label: string
@@ -79,6 +80,7 @@ const nav: Array<{
       { href: "/", label: "Overview", icon: LayoutDashboardIcon },
       { href: "/access", label: "Access", icon: LogInIcon },
       { href: "/accounts", label: "Mapped Accounts", icon: KeyRoundIcon },
+      { href: "/shared-cookies", label: "Shared cookies", icon: Link2Icon, masterOnly: true },
       { href: "/recloud", label: "Recloud", icon: CloudIcon },
       { href: "/limits", label: "Limits", icon: GaugeIcon },
       { href: "/sessions", label: "Active Logins", icon: ActivityIcon },

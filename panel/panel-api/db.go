@@ -156,6 +156,11 @@ func ensureAccessAlertSettings(db *sql.DB) {
 	ensureScaleIndexes(db)
 	ensureTelegramInbox(db)
 	ensureRecloudColumns(db)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS account_cookie_links (
+		follower_account_id INTEGER PRIMARY KEY,
+		source_account_id INTEGER NOT NULL,
+		created_at TEXT NOT NULL
+	)`)
 }
 
 // ensureRecloudColumns marks recloud websites apart from mapped accounts.

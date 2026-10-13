@@ -44,6 +44,35 @@ export type RecloudToolDetail = RecloudTool & {
   cookie: string
 }
 
+export type CookieLink = {
+  follower_account_id: number
+  source_account_id: number
+  follower_label: string
+  source_label: string
+  created_at: string
+}
+
+export type CookieLinkSource = {
+  id: number
+  label: string
+}
+
+export type CookieLinkSources = {
+  is_source: boolean
+  current: { source_account_id: number; source_label: string } | null
+  sources: CookieLinkSource[]
+}
+
+export type CookieLinkCopy = {
+  status: string
+  cookie: string
+  user_agent: string
+  user_agent_id: number | null
+  copied_user_agent: boolean
+  source_account_id: number
+  source_label: string
+}
+
 export type UserAgentProfile = {
   id: number
   name: string

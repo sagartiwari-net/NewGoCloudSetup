@@ -417,6 +417,7 @@ func (s *server) saveAccount(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		s.shareCookieFrom(body.ID)
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
@@ -451,6 +452,7 @@ func (s *server) assignUserAgent(w http.ResponseWriter, r *http.Request) {
 	_ = readBody(r, &body)
 	for _, id := range body.IDs {
 		_, _ = s.db.Exec(`UPDATE accounts SET user_agent_id=?, user_agent='' WHERE id=?`, body.ID, id)
+		s.shareCookieFrom(id)
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
@@ -499,6 +501,10 @@ func (s *server) deleteID(table string) http.HandlerFunc {
 			}
 		}
 		_, _ = s.db.Exec(`DELETE FROM `+table+` WHERE id=?`, id)
+		if table == "accounts" {
+			s.ensureCookieLinks()
+			_, _ = s.db.Exec(`DELETE FROM account_cookie_links WHERE follower_account_id=? OR source_account_id=?`, id, id)
+		}
 		writeJSON(w, 200, map[string]string{"status": "ok"})
 	}
 }

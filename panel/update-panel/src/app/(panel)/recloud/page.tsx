@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 
 import { useAuth } from "@/components/auth-provider"
+import { CookieSourceField } from "@/components/cookie-source-field"
 import { DataTable, type DataColumn } from "@/components/data-table"
 import { FormOverlay } from "@/components/form-overlay"
 import { PageHeader } from "@/components/page-header"
@@ -141,6 +142,7 @@ function RecloudEditor({ websiteId, onDone }: { websiteId: number; onDone: () =>
 }
 
 function RecloudForm({ tool, onDone }: { tool: RecloudToolDetail; onDone: () => void }) {
+  const { session } = useAuth()
   const [saving, setSaving] = useState(false)
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -180,6 +182,14 @@ function RecloudForm({ tool, onDone }: { tool: RecloudToolDetail; onDone: () => 
           <Input id="upstream_url" placeholder="https://example.com" {...form.register("upstream_url")} />
           <FieldError errors={[errors.upstream_url]} />
         </Field>
+        {session?.role === "master" && tool.account_id > 0 ? (
+          <CookieSourceField
+            accountId={tool.account_id}
+            onApply={(copied) => {
+              form.setValue("cookie", copied.cookie, { shouldValidate: true })
+            }}
+          />
+        ) : null}
         <Field data-invalid={Boolean(errors.cookie) || undefined}>
           <FieldLabel htmlFor="cookie">Cookie</FieldLabel>
           <Controller

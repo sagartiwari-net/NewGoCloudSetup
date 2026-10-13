@@ -27,6 +27,9 @@ import type {
   TelegramEvent,
   TelegramRoute,
   TelegramTemplates,
+  CookieLink,
+  CookieLinkCopy,
+  CookieLinkSources,
   RecloudTool,
   RecloudToolDetail,
   Tool,
@@ -259,6 +262,26 @@ export async function saveAccount(input: AccountInput): Promise<Ok> {
 
 export async function deleteAccount(id: number): Promise<Ok> {
   await api(`/api/accounts${qs({ id })}`, { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function listCookieLinks(): Promise<{ items: CookieLink[] }> {
+  return api("/api/cookie-links")
+}
+
+export async function cookieLinkSources(accountId: number): Promise<CookieLinkSources> {
+  return api(`/api/cookie-links/sources${qs({ accountId })}`)
+}
+
+export async function saveCookieLink(followerAccountId: number, sourceAccountId: number): Promise<CookieLinkCopy> {
+  return api("/api/cookie-links", {
+    method: "POST",
+    body: JSON.stringify({ follower_account_id: followerAccountId, source_account_id: sourceAccountId }),
+  })
+}
+
+export async function deleteCookieLink(followerAccountId: number): Promise<Ok> {
+  await api(`/api/cookie-links${qs({ follower: followerAccountId })}`, { method: "DELETE" })
   return { status: "ok" }
 }
 

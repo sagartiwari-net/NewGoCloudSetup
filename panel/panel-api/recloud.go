@@ -129,10 +129,12 @@ func (s *server) saveRecloud(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	if err := s.saveRecloudCookie(body.WebsiteID, cookie); err != nil {
+	accountID, err := s.saveRecloudCookie(body.WebsiteID, cookie)
+	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
+	s.shareCookieFrom(accountID)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -151,7 +153,7 @@ type stringError string
 
 func (e stringError) Error() string { return string(e) }
 
-func (s *server) saveRecloudCookie(websiteID int, cookie string) error {
+func (s *server) saveRecloudCookie(websiteID int, cookie string) (int, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	var accountID int
 	err := s.db.QueryRow(`SELECT id FROM accounts WHERE website_id=? ORDER BY id ASC LIMIT 1`, websiteID).Scan(&accountID)
@@ -161,13 +163,17 @@ func (s *server) saveRecloudCookie(websiteID int, cookie string) error {
 		if strings.TrimSpace(name) == "" {
 			name = "recloud"
 		}
-		_, err = s.db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent_id, user_agent, proxy_id, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
+		res, err := s.db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent_id, user_agent, proxy_id, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
 			VALUES (?,?,?,NULL,'',NULL,'','active',1,'','','',?,'')`, websiteID, name, cookie, now)
-		return err
+		if err != nil {
+			return 0, err
+		}
+		id, _ := res.LastInsertId()
+		return int(id), nil
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	_, err = s.db.Exec(`UPDATE accounts SET cookie=?, status='active', cookie_updated_at=?, failure_count=0 WHERE id=?`, cookie, now, accountID)
-	return err
+	return accountID, err
 }

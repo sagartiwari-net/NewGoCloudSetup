@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 
 import { ChoiceSelect } from "@/components/choice-select"
+import { CookieSourceField } from "@/components/cookie-source-field"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { SecretTextarea } from "@/components/secret-field"
 import { StatusBadge } from "@/components/status-badge"
@@ -200,6 +201,23 @@ export function AccountEditor({
         ) : null}
         <div className={role === "reseller" || tab === "basic" ? "flex flex-col gap-4" : "hidden"}>
           <FieldGroup>
+            {account && role === "master" ? (
+              <CookieSourceField
+                accountId={account.id}
+                onApply={(copied) => {
+                  form.setValue("cookie", copied.cookie, { shouldValidate: true })
+                  setCookieReady(true)
+                  setCookieError("")
+                  if (!copied.copied_user_agent) return
+                  const agentID = copied.user_agent_id ? String(copied.user_agent_id) : ""
+                  const agent = agents.find((item) => String(item.id) === agentID)
+                  form.setValue("user_agent_id", agentID, { shouldValidate: true })
+                  form.setValue("user_agent", copied.user_agent || agent?.user_agent || form.getValues("user_agent"), {
+                    shouldValidate: true,
+                  })
+                }}
+              />
+            ) : null}
             <Field data-invalid={Boolean(errors.cookie) || undefined}>
               <FieldLabel htmlFor="cookie">Cookie</FieldLabel>
               <Controller
