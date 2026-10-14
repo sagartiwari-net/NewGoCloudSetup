@@ -1,0 +1,12 @@
+{
+  "port": "6008",
+  "public_host": "127.0.0.1:6008",
+  "public_scheme": "http",
+  "target_url": "https://rewritify.site",
+  "home_path": "/",
+  "tool_name": "Azad Rewritify",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}

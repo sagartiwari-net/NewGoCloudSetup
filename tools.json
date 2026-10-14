@@ -635,6 +635,13 @@
       "fqdn": "azleo.gt4rents.com"
     },
     {
+      "tool": "azrewritify",
+      "folder": "recloud/azad/azrewritify",
+      "subdomain": "azrewritify",
+      "port": 6008,
+      "fqdn": "azrewritify.gt4rents.com"
+    },
+    {
       "tool": "markhsm1",
       "folder": "recloud/markhor/markhsm1",
       "subdomain": "markhsm1",

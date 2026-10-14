@@ -1,0 +1,16 @@
+{
+  "port": "6008",
+  "public_host": "azrewritify.gt4rents.com",
+  "public_scheme": "http",
+  "target_url": "https://rewritify.site",
+  "home_path": "/",
+  "tool_name": "Azad Rewritify",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30,
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "gt4rents",
+  "mysql_db": "gt4rents"
+}
