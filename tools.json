@@ -649,6 +649,13 @@
       "fqdn": "azjasper.gt4rents.com"
     },
     {
+      "tool": "azquill",
+      "folder": "recloud/azad/azquill",
+      "subdomain": "azquill",
+      "port": 6010,
+      "fqdn": "azquill.gt4rents.com"
+    },
+    {
       "tool": "markhsm1",
       "folder": "recloud/markhor/markhsm1",
       "subdomain": "markhsm1",

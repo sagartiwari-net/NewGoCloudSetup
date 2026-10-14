@@ -1,0 +1,12 @@
+{
+  "port": "6010",
+  "public_host": "127.0.0.1:6010",
+  "public_scheme": "http",
+  "target_url": "https://quillbot2.testingg.me",
+  "home_path": "/paraphrasing-tool",
+  "tool_name": "Azad Quillbot",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}
