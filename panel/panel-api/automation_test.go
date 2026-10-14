@@ -643,3 +643,26 @@ func TestAutomationSessionJobStoresHomepageOnly(t *testing.T) {
 		t.Fatalf("reason = %s", reason)
 	}
 }
+
+func TestAutomationFreshHomepageRunsBeforeItsInterval(t *testing.T) {
+	s, _ := openAutomationTestDB(t)
+	recipe := &scriptedRecipe{liveValue: "live-session-value", portalValue: "portal-session-value", toolValue: "tool-session-value"}
+	useAutomationRecipe(t, recipe)
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	if err := s.replaceAutomationStorage(cred, `[{"name":"session","value":"live-session-value","domain":"azadseo.com","path":"/"}]`); err != nil {
+		t.Fatal(err)
+	}
+	jobID := insertAutomationJob(t, s, "Azad homepage", cred, 0, 0)
+	later := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET job_kind='session', target_website_id=0, next_run_at=?, last_run_at='' WHERE id=?`, later, jobID); err != nil {
+		t.Fatal(err)
+	}
+	s.runDueAutomationJobs()
+	var reason, lastRun string
+	if err := s.db.QueryRow(`SELECT last_reason, last_run_at FROM automation_jobs WHERE id=?`, jobID).Scan(&reason, &lastRun); err != nil {
+		t.Fatal(err)
+	}
+	if reason != "stored homepage cookie" || strings.TrimSpace(lastRun) == "" {
+		t.Fatalf("homepage did not run, reason=%s last=%s", reason, lastRun)
+	}
+}

@@ -289,8 +289,8 @@ func (s *server) runDueAutomationJobs() {
 	s.ensureAutomationTables()
 	now := time.Now().UTC().Format(time.RFC3339)
 	rows, err := s.db.Query(`SELECT id, credential_id FROM automation_jobs
-		WHERE enabled=1 AND (run_requested=1 OR next_run_at<=?)
-		ORDER BY credential_id, id`, now)
+		WHERE enabled=1 AND (run_requested=1 OR next_run_at<=? OR (job_kind='session' AND TRIM(COALESCE(last_run_at,''))=''))
+		ORDER BY credential_id, CASE WHEN job_kind='session' THEN 0 ELSE 1 END, id`, now)
 	if err != nil {
 		return
 	}
@@ -326,10 +326,25 @@ func (s *server) runDueAutomationJobs() {
 	wg.Wait()
 }
 
+func (s *server) runFreshSessionJob(ctx context.Context, credentialID int) {
+	var id int
+	var lastRun string
+	err := s.db.QueryRow(`SELECT id, COALESCE(last_run_at,'') FROM automation_jobs
+		WHERE credential_id=? AND job_kind='session' AND enabled=1
+		ORDER BY id LIMIT 1`, credentialID).Scan(&id, &lastRun)
+	if err != nil || id <= 0 || strings.TrimSpace(lastRun) != "" {
+		return
+	}
+	s.runAutomationJob(ctx, id)
+}
+
 func (s *server) runAutomationJob(ctx context.Context, id int) {
 	job, ok := s.loadAutomationJob(id)
 	if !ok || job.Enabled != 1 {
 		return
+	}
+	if job.Kind != "session" {
+		s.runFreshSessionJob(ctx, job.CredentialID)
 	}
 	if !s.claimAutomationJob(job) {
 		return
@@ -474,7 +489,7 @@ func (s *server) claimAutomationJob(job automationJobRow) bool {
 		cause = "manual"
 	}
 	res, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=0, queued_cause='', running=1, run_cause=?, next_run_at=?, updated_at=?
-		WHERE id=? AND enabled=1 AND running=0 AND (run_requested=1 OR next_run_at<=? OR queued_cause<>'')`,
+		WHERE id=? AND enabled=1 AND running=0 AND (run_requested=1 OR next_run_at<=? OR queued_cause<>'' OR (job_kind='session' AND TRIM(COALESCE(last_run_at,''))=''))`,
 		cause, next, now.Format(time.RFC3339), job.ID, now.Format(time.RFC3339))
 	if err != nil {
 		return false
@@ -1033,6 +1048,9 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 	stamp := now.Format(time.RFC3339)
 	if body.ID == 0 {
 		next := now.Add(time.Duration(body.IntervalMinutes) * time.Minute).Format(time.RFC3339)
+		if body.JobKind == "session" {
+			next = stamp
+		}
 		res, err := s.db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
 			VALUES (?,?,?,?,?,?,?,0,?,'','','',?,?,?)`,
 			body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, stamp, body.JobKind)
