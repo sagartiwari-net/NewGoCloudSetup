@@ -416,7 +416,8 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		return
 	}
 	if len(tool) == 0 {
-		tool = portal
+		s.failAutomation(job, errAutomationLoginPage, secrets)
+		return
 	}
 	raw, err := cookiesToJSON(tool)
 	if err != nil || strings.TrimSpace(raw) == "" {

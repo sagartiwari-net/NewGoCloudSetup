@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"panel-api/automation"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,8 +28,13 @@ var (
 )
 
 var (
-	azadSemrushHref = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']*semrush[^"']*)["']`)
+	azadSemrushHref = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']*semrush2\.azadseo\.com[^"']*)["']`)
 	azadAttemptRE   = regexp.MustCompile(`(?i)name=["']login_attempt_id["'][^>]*value=["']([^"']+)["']|value=["']([^"']+)["'][^>]*name=["']login_attempt_id["']`)
+)
+
+var (
+	azadProxyHost    = "semrush2.azadseo.com"
+	azadCookieDomain = ".xemrush.site"
 )
 
 type Recipe struct{}
@@ -120,9 +126,9 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if azadShowsLogin(html, landed) {
 		return nil, automation.ErrLoginPage
 	}
-	launch := azadLaunchURL(html, parsed.Host)
+	launch := azadExtractSemrushURL(html)
 	if launch == "" {
-		launch = upstreamURL
+		launch = proxyOrigin() + "?tool_access_at=" + strconv.FormatInt(time.Now().Unix(), 10)
 	}
 	html, landed, err = azadGet(ctx, client, launch, azadMemberURL)
 	if err != nil {
@@ -132,8 +138,7 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		if azadShowsLogin(html, landed) {
 			return nil, automation.ErrLoginPage
 		}
-		origin := parsed.Scheme + "://" + parsed.Host + "/"
-		html, landed, err = azadGet(ctx, client, origin, landed)
+		html, landed, err = azadGet(ctx, client, proxyOrigin(), landed)
 		if err != nil {
 			return nil, err
 		}
@@ -142,17 +147,54 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if azadShowsLogin(html, landed) {
 		return nil, automation.ErrLoginPage
 	}
-	tool := toolCookies(jar, parsed.Host, landed)
+	tool := mapSemrushCookies(jar, landed)
 	if len(tool) == 0 {
-		if len(portal) == 0 {
-			return nil, automation.ErrLoginPage
-		}
-		return portal, nil
+		_, _, _ = azadGet(ctx, client, proxyOrigin(), azadMemberURL)
+		tool = mapSemrushCookies(jar, proxyOrigin())
 	}
-	return tool, nil
+	fresh := semrushFreshCookies(tool, portal)
+	if len(fresh) == 0 {
+		return nil, automation.ErrLoginPage
+	}
+	return fresh, nil
+}
+
+func proxyOrigin() string {
+	scheme := "https"
+	host := strings.TrimSpace(azadProxyHost)
+	if strings.HasPrefix(host, "127.") || strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "[::1]") {
+		scheme = "http"
+	}
+	return scheme + "://" + host + "/"
+}
+
+func azadExtractSemrushURL(html string) string {
+	pattern := regexp.MustCompile(`(?i)href\s*=\s*["']([^"']*` + regexp.QuoteMeta(azadProxyHost) + `[^"']*)["']`)
+	match := pattern.FindStringSubmatch(html)
+	if len(match) < 2 {
+		match = azadSemrushHref.FindStringSubmatch(html)
+	}
+	if len(match) < 2 {
+		return ""
+	}
+	href := strings.ReplaceAll(strings.TrimSpace(match[1]), "&amp;", "&")
+	if strings.HasPrefix(href, "//") {
+		href = "https:" + href
+	}
+	if strings.HasPrefix(href, "/") {
+		href = strings.TrimRight(azadBaseURL, "/") + href
+	}
+	return href
 }
 
 func azadLaunchURL(html, upstreamHost string) string {
+	if href := azadExtractSemrushURL(html); href != "" {
+		return href
+	}
+	return azadLaunchURLFallback(html, upstreamHost)
+}
+
+func azadLaunchURLFallback(html, upstreamHost string) string {
 	upstreamHost = strings.ToLower(strings.TrimSpace(upstreamHost))
 	matches := azadSemrushHref.FindAllStringSubmatch(html, -1)
 	fallback := ""
@@ -240,6 +282,19 @@ func newAzadClient() (*http.Client, *cookiejar.Jar, error) {
 func seedAzadPortal(jar *cookiejar.Jar, cookies []automation.Cookie) {
 	automation.SeedCookieJar(jar, cookies, "azadseo.com")
 	automation.SeedCookieJar(jar, cookies, "members.azadseo.com")
+	widened := make([]automation.Cookie, 0, len(cookies))
+	for _, cookie := range cookies {
+		domain := strings.ToLower(strings.TrimSpace(cookie.Domain))
+		if domain != "" && !strings.Contains(domain, "azadseo.com") {
+			continue
+		}
+		cookie.Domain = ".azadseo.com"
+		cookie.HostOnly = false
+		widened = append(widened, cookie)
+	}
+	if len(widened) > 0 {
+		automation.SeedCookieJar(jar, widened, azadProxyHost)
+	}
 }
 
 func portalCookies(jar *cookiejar.Jar) []automation.Cookie {
@@ -251,14 +306,75 @@ func portalCookies(jar *cookiejar.Jar) []automation.Cookie {
 	})
 }
 
-func toolCookies(jar *cookiejar.Jar, host, landed string) []automation.Cookie {
-	urls := []string{"https://" + host + "/"}
+func mapSemrushCookies(jar *cookiejar.Jar, landed string) []automation.Cookie {
+	hosts := []string{azadProxyHost, "azadseo.com", "members.azadseo.com"}
 	if parsed, err := url.Parse(landed); err == nil && parsed.Host != "" {
-		urls = append(urls, parsed.Scheme+"://"+parsed.Host+"/")
+		hosts = append(hosts, parsed.Host)
 	}
+	seen := map[string]struct{}{}
 	var out []automation.Cookie
-	for _, cookie := range automation.JarCookies(jar, urls) {
-		if strings.Contains(strings.ToLower(cookie.Name), "amember") {
+	for _, host := range hosts {
+		host = strings.TrimPrefix(strings.TrimSpace(host), ".")
+		if host == "" {
+			continue
+		}
+		raw := "https://" + host + "/"
+		if strings.HasPrefix(host, "127.") || strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "[::1]") {
+			raw = "http://" + host + "/"
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		for _, cookie := range jar.Cookies(parsed) {
+			if cookie.Name == "" || strings.Contains(strings.ToLower(cookie.Name), "amember") {
+				continue
+			}
+			key := cookie.Name + "|" + cookie.Value
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			path := cookie.Path
+			if path == "" {
+				path = "/"
+			}
+			session := cookie.Expires.IsZero()
+			var exp *float64
+			if !session {
+				value := float64(cookie.Expires.Unix())
+				exp = &value
+			}
+			out = append(out, automation.Cookie{
+				Name:           cookie.Name,
+				Value:          cookie.Value,
+				Domain:         azadCookieDomain,
+				Path:           path,
+				HostOnly:       false,
+				HTTPOnly:       cookie.HttpOnly,
+				Secure:         cookie.Secure,
+				Session:        session,
+				ExpirationDate: exp,
+			})
+		}
+	}
+	return out
+}
+
+func semrushFreshCookies(mapped, portal []automation.Cookie) []automation.Cookie {
+	known := map[string]struct{}{}
+	for _, cookie := range portal {
+		if cookie.Name == "" || cookie.Value == "" {
+			continue
+		}
+		known[cookie.Name+"|"+cookie.Value] = struct{}{}
+	}
+	out := make([]automation.Cookie, 0, len(mapped))
+	for _, cookie := range mapped {
+		if cookie.Name == "" || cookie.Value == "" {
+			continue
+		}
+		if _, ok := known[cookie.Name+"|"+cookie.Value]; ok {
 			continue
 		}
 		out = append(out, cookie)
