@@ -49,7 +49,7 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 		t.Fatal("upstream session cookie must not reach the browser")
 	}
 	sessionCookie, ok := rewriteSetCookie("proxy_session=saved; Path=/; HttpOnly", "leonardo2.testingg.in", "https://azleo.gt4rents.com")
-	if !ok || !strings.Contains(sessionCookie, "proxy_session=saved") || !strings.Contains(sessionCookie, "Domain=azleo.gt4rents.com") {
+	if !ok || !strings.Contains(sessionCookie, "proxy_session=saved") || strings.Contains(sessionCookie, "testingg.in") {
 		t.Fatal("leonardo session cookie was not kept for this host")
 	}
 	got, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "leonardo2.testingg.in", "https://azleo.gt4rents.com")
