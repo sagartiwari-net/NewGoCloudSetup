@@ -1,13 +1,14 @@
 package azad
 
 // Recipe is the Azad portal HTTP login from the old GoAuto client.
-// Login stores the members.azadseo.com cookie. Capture opens the Semrush
-// launch link on that session and keeps the tool cookies.
+// Login stores the members.azadseo.com cookie. Semrush 2 opens semrush2.azadseo.com
+// and writes .xemrush.site. Semrush 5 opens export1sem.azadseo.com and writes .6.semrush.com.in.
 
 import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -32,10 +34,24 @@ var (
 	azadAttemptRE   = regexp.MustCompile(`(?i)name=["']login_attempt_id["'][^>]*value=["']([^"']+)["']|value=["']([^"']+)["'][^>]*name=["']login_attempt_id["']`)
 )
 
-var (
-	azadProxyHost    = "semrush2.azadseo.com"
-	azadCookieDomain = ".xemrush.site"
-)
+type semrushTarget struct {
+	proxyHost    string
+	cookieDomain string
+}
+
+func semrushTargetFor(upstreamHost string) semrushTarget {
+	host := strings.ToLower(strings.TrimSpace(upstreamHost))
+	if split, _, err := net.SplitHostPort(host); err == nil {
+		host = split
+	}
+	if host == "6.semrush.com.in" || strings.HasSuffix(host, ".semrush.com.in") || host == "export1sem.azadseo.com" {
+		return semrushTarget{proxyHost: "export1sem.azadseo.com", cookieDomain: ".6.semrush.com.in"}
+	}
+	if net.ParseIP(host) != nil || host == "localhost" {
+		return semrushTarget{proxyHost: strings.TrimSpace(upstreamHost), cookieDomain: ".xemrush.site"}
+	}
+	return semrushTarget{proxyHost: "semrush2.azadseo.com", cookieDomain: ".xemrush.site"}
+}
 
 type Recipe struct{}
 
@@ -45,11 +61,11 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 	if len(cookies) == 0 {
 		return false, nil, nil
 	}
-	client, jar, err := newAzadClient()
+	client, jar, _, err := newAzadClient()
 	if err != nil {
 		return false, nil, automation.ErrTimeout
 	}
-	seedAzadPortal(jar, cookies)
+	seedAzadPortal(jar, cookies, "")
 	html, landed, err := azadGet(ctx, client, azadMemberURL, azadBaseURL)
 	if err != nil {
 		return false, nil, err
@@ -65,7 +81,7 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 }
 
 func (Recipe) Login(ctx context.Context, username, password string) ([]automation.Cookie, error) {
-	client, jar, err := newAzadClient()
+	client, jar, _, err := newAzadClient()
 	if err != nil {
 		return nil, automation.ErrTimeout
 	}
@@ -114,11 +130,15 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, automation.ErrUpstream
 	}
-	client, jar, err := newAzadClient()
+	return captureSemrush(ctx, portal, semrushTargetFor(parsed.Host))
+}
+
+func captureSemrush(ctx context.Context, portal []automation.Cookie, target semrushTarget) ([]automation.Cookie, error) {
+	client, jar, record, err := newAzadClient()
 	if err != nil {
 		return nil, automation.ErrTimeout
 	}
-	seedAzadPortal(jar, portal)
+	seedAzadPortal(jar, portal, target.proxyHost)
 	html, landed, err := azadGet(ctx, client, azadMemberURL, azadBaseURL)
 	if err != nil {
 		return nil, err
@@ -126,9 +146,9 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if azadShowsLogin(html, landed) {
 		return nil, automation.ErrLoginPage
 	}
-	launch := azadExtractSemrushURL(html)
+	launch := azadExtractSemrushURL(html, target.proxyHost)
 	if launch == "" {
-		launch = proxyOrigin() + "?tool_access_at=" + strconv.FormatInt(time.Now().Unix(), 10)
+		launch = proxyOrigin(target.proxyHost) + "?tool_access_at=" + strconv.FormatInt(time.Now().Unix(), 10)
 	}
 	html, landed, err = azadGet(ctx, client, launch, azadMemberURL)
 	if err != nil {
@@ -138,7 +158,7 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		if azadShowsLogin(html, landed) {
 			return nil, automation.ErrLoginPage
 		}
-		html, landed, err = azadGet(ctx, client, proxyOrigin(), landed)
+		html, landed, err = azadGet(ctx, client, proxyOrigin(target.proxyHost), landed)
 		if err != nil {
 			return nil, err
 		}
@@ -147,10 +167,10 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if azadShowsLogin(html, landed) {
 		return nil, automation.ErrLoginPage
 	}
-	tool := mapSemrushCookies(jar, landed)
+	tool := mapSemrushCookies(jar, record, landed, target)
 	if len(tool) == 0 {
-		_, _, _ = azadGet(ctx, client, proxyOrigin(), azadMemberURL)
-		tool = mapSemrushCookies(jar, proxyOrigin())
+		_, _, _ = azadGet(ctx, client, proxyOrigin(target.proxyHost), azadMemberURL)
+		tool = mapSemrushCookies(jar, record, proxyOrigin(target.proxyHost), target)
 	}
 	fresh := semrushFreshCookies(tool, portal)
 	if len(fresh) == 0 {
@@ -159,19 +179,23 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	return fresh, nil
 }
 
-func proxyOrigin() string {
+func proxyOrigin(proxyHost string) string {
 	scheme := "https"
-	host := strings.TrimSpace(azadProxyHost)
-	if strings.HasPrefix(host, "127.") || strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "[::1]") {
+	host := strings.TrimSpace(proxyHost)
+	name := host
+	if split, _, err := net.SplitHostPort(host); err == nil {
+		name = split
+	}
+	if net.ParseIP(name) != nil || strings.HasPrefix(host, "127.") || strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "[::1]") {
 		scheme = "http"
 	}
 	return scheme + "://" + host + "/"
 }
 
-func azadExtractSemrushURL(html string) string {
-	pattern := regexp.MustCompile(`(?i)href\s*=\s*["']([^"']*` + regexp.QuoteMeta(azadProxyHost) + `[^"']*)["']`)
+func azadExtractSemrushURL(html, proxyHost string) string {
+	pattern := regexp.MustCompile(`(?i)href\s*=\s*["']([^"']*` + regexp.QuoteMeta(proxyHost) + `[^"']*)["']`)
 	match := pattern.FindStringSubmatch(html)
-	if len(match) < 2 {
+	if len(match) < 2 && proxyHost == "semrush2.azadseo.com" {
 		match = azadSemrushHref.FindStringSubmatch(html)
 	}
 	if len(match) < 2 {
@@ -188,7 +212,8 @@ func azadExtractSemrushURL(html string) string {
 }
 
 func azadLaunchURL(html, upstreamHost string) string {
-	if href := azadExtractSemrushURL(html); href != "" {
+	target := semrushTargetFor(upstreamHost)
+	if href := azadExtractSemrushURL(html, target.proxyHost); href != "" {
 		return href
 	}
 	return azadLaunchURLFallback(html, upstreamHost)
@@ -254,14 +279,23 @@ func azadShowsDashboard(html, pageURL string) bool {
 		(strings.Contains(urlLower, "/member") && !strings.Contains(lower, "amember_login"))
 }
 
-func newAzadClient() (*http.Client, *cookiejar.Jar, error) {
+func newAzadClient() (*http.Client, *cookiejar.Jar, *cookieRecord, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	record := &cookieRecord{}
 	client := &http.Client{
 		Timeout: azadHTTPWait,
 		Jar:     jar,
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			base := http.DefaultTransport
+			resp, err := base.RoundTrip(req)
+			if err == nil && resp != nil {
+				record.note(resp.Cookies())
+			}
+			return resp, err
+		}),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 15 {
 				return automation.ErrLoginPage
@@ -276,10 +310,52 @@ func newAzadClient() (*http.Client, *cookiejar.Jar, error) {
 			return nil
 		},
 	}
-	return client, jar, nil
+	return client, jar, record, nil
 }
 
-func seedAzadPortal(jar *cookiejar.Jar, cookies []automation.Cookie) {
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+type cookieRecord struct {
+	mu    sync.Mutex
+	saved map[string]http.Cookie
+}
+
+func (r *cookieRecord) note(cookies []*http.Cookie) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.saved == nil {
+		r.saved = map[string]http.Cookie{}
+	}
+	for _, cookie := range cookies {
+		if cookie == nil || cookie.Name == "" {
+			continue
+		}
+		copy := *cookie
+		if copy.Expires.IsZero() && copy.MaxAge > 0 {
+			copy.Expires = time.Now().Add(time.Duration(copy.MaxAge) * time.Second)
+		}
+		r.saved[cookie.Name+"|"+cookie.Value] = copy
+	}
+}
+
+func (r *cookieRecord) get(name, value string) (http.Cookie, bool) {
+	if r == nil {
+		return http.Cookie{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cookie, ok := r.saved[name+"|"+value]
+	return cookie, ok
+}
+
+func seedAzadPortal(jar *cookiejar.Jar, cookies []automation.Cookie, proxyHost string) {
 	automation.SeedCookieJar(jar, cookies, "azadseo.com")
 	automation.SeedCookieJar(jar, cookies, "members.azadseo.com")
 	widened := make([]automation.Cookie, 0, len(cookies))
@@ -292,8 +368,8 @@ func seedAzadPortal(jar *cookiejar.Jar, cookies []automation.Cookie) {
 		cookie.HostOnly = false
 		widened = append(widened, cookie)
 	}
-	if len(widened) > 0 {
-		automation.SeedCookieJar(jar, widened, azadProxyHost)
+	if len(widened) > 0 && strings.TrimSpace(proxyHost) != "" {
+		automation.SeedCookieJar(jar, widened, proxyHost)
 	}
 }
 
@@ -306,8 +382,8 @@ func portalCookies(jar *cookiejar.Jar) []automation.Cookie {
 	})
 }
 
-func mapSemrushCookies(jar *cookiejar.Jar, landed string) []automation.Cookie {
-	hosts := []string{azadProxyHost, "azadseo.com", "members.azadseo.com"}
+func mapSemrushCookies(jar *cookiejar.Jar, record *cookieRecord, landed string, target semrushTarget) []automation.Cookie {
+	hosts := []string{target.proxyHost, "azadseo.com", "members.azadseo.com"}
 	if parsed, err := url.Parse(landed); err == nil && parsed.Host != "" {
 		hosts = append(hosts, parsed.Host)
 	}
@@ -336,23 +412,36 @@ func mapSemrushCookies(jar *cookiejar.Jar, landed string) []automation.Cookie {
 			}
 			seen[key] = struct{}{}
 			path := cookie.Path
+			httpOnly := cookie.HttpOnly
+			secure := cookie.Secure
+			expires := cookie.Expires
+			if saved, ok := record.get(cookie.Name, cookie.Value); ok {
+				if saved.Path != "" {
+					path = saved.Path
+				}
+				httpOnly = saved.HttpOnly
+				secure = saved.Secure
+				if !saved.Expires.IsZero() {
+					expires = saved.Expires
+				}
+			}
 			if path == "" {
 				path = "/"
 			}
-			session := cookie.Expires.IsZero()
+			session := expires.IsZero()
 			var exp *float64
 			if !session {
-				value := float64(cookie.Expires.Unix())
+				value := float64(expires.Unix())
 				exp = &value
 			}
 			out = append(out, automation.Cookie{
 				Name:           cookie.Name,
 				Value:          cookie.Value,
-				Domain:         azadCookieDomain,
+				Domain:         target.cookieDomain,
 				Path:           path,
 				HostOnly:       false,
-				HTTPOnly:       cookie.HttpOnly,
-				Secure:         cookie.Secure,
+				HTTPOnly:       httpOnly,
+				Secure:         secure,
 				Session:        session,
 				ExpirationDate: exp,
 			})
