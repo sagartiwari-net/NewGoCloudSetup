@@ -146,8 +146,10 @@ func serializeCookies(order []string, vals map[string]string) string {
 }
 
 func dropUpstreamCookie(name string) bool {
+	// proxy_token is the testingg.one login cookie saved on the Recloud account.
+	// Only the panel access cookie stays off the upstream request.
 	switch strings.ToLower(name) {
-	case "ct_session", "proxy_token":
+	case "ct_session":
 		return true
 	}
 	return false

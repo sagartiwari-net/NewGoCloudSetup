@@ -129,6 +129,18 @@ func TestLogoutPath(t *testing.T) {
 	}
 }
 
+func TestProxyTokenIsSentUpstream(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://azgram.gt4rents.com/", nil)
+	req.Header.Set("Cookie", "ct_session=panel-session")
+	got := cookiesForUpstream(ToolAccount{Cookie: "proxy_token=saved"}, req)
+	if !strings.Contains(got, "proxy_token=saved") {
+		t.Fatalf("proxy token was not sent upstream: %s", got)
+	}
+	if strings.Contains(got, "ct_session") || strings.Contains(got, "panel-session") {
+		t.Fatalf("panel session leaked upstream: %s", got)
+	}
+}
+
 func TestBrowserSessionCookiesAreForwarded(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://azgram.gt4rents.com/gateway/experimentation/properties", nil)
 	req.Header.Set("Cookie", "ct_session=panel-session; grauth=from-browser; csrf_token=tok; PHPSESSID=guest")
