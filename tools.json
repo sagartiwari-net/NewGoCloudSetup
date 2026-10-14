@@ -628,6 +628,13 @@
       "fqdn": "azgram.gt4rents.com"
     },
     {
+      "tool": "azleo",
+      "folder": "recloud/azad/azleo",
+      "subdomain": "azleo",
+      "port": 6007,
+      "fqdn": "azleo.gt4rents.com"
+    },
+    {
       "tool": "markhsm1",
       "folder": "recloud/markhor/markhsm1",
       "subdomain": "markhsm1",
