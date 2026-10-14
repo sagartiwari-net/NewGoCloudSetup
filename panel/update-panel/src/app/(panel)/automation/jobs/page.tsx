@@ -44,15 +44,19 @@ function jobSchema(websites: AutomationWebsite[]) {
       name: z.string().trim().min(1, "Enter a name"),
       provider: z.string().min(1, "Choose a provider"),
       credential_id: z.string().min(1, "Choose a credential"),
-      target_website_id: z.string().min(1, "Choose a website"),
+      target_website_id: z.string(),
       target_account_id: z.string(),
+      job_kind: z.enum(["tool", "session"]),
       interval_minutes: z.number().int().min(5, "Use at least 5 minutes").max(1440, "Use at most 1440 minutes"),
       enabled: z.boolean(),
       wake_website_ids: z.array(z.string()),
     })
     .superRefine((value, ctx) => {
+      if (value.job_kind !== "session" && value.target_website_id === "") {
+        ctx.addIssue({ code: "custom", path: ["target_website_id"], message: "Choose a website" })
+      }
       const website = websites.find((item) => String(item.id) === value.target_website_id)
-      if (website && website.kind !== "recloud" && value.target_account_id === "") {
+      if (value.job_kind !== "session" && website && website.kind !== "recloud" && value.target_account_id === "") {
         ctx.addIssue({ code: "custom", path: ["target_account_id"], message: "Choose an account" })
       }
     })
@@ -262,6 +266,7 @@ function JobForm({
       target_account_id: job && job.target_account_id > 0 ? String(job.target_account_id) : "",
       interval_minutes: job?.interval_minutes ?? 60,
       enabled: job?.enabled ?? true,
+      job_kind: job?.job_kind === "session" ? "session" : "tool",
       wake_website_ids: (job?.wake_website_ids ?? []).map(String),
     },
   })
@@ -270,7 +275,8 @@ function JobForm({
   const websiteId = form.watch("target_website_id")
   const website = options.websites.find((item) => String(item.id) === websiteId)
   const credentials = options.credentials.filter((item) => item.provider === provider)
-  const showAccount = Boolean(website) && website?.kind !== "recloud"
+  const jobKind = form.watch("job_kind")
+  const showAccount = jobKind !== "session" && Boolean(website) && website?.kind !== "recloud"
   const wakeSites = options.websites.filter((item) => item.kind === "recloud" && String(item.id) !== websiteId)
   const selectedWakes = form.watch("wake_website_ids")
 
@@ -286,11 +292,12 @@ function JobForm({
               name: values.name.trim(),
               provider: values.provider,
               credential_id: Number(values.credential_id),
-              target_website_id: Number(values.target_website_id),
-              target_account_id: selected?.kind === "recloud" ? 0 : Number(values.target_account_id),
+              target_website_id: values.job_kind === "session" ? 0 : Number(values.target_website_id),
+              target_account_id: values.job_kind === "session" || selected?.kind === "recloud" ? 0 : Number(values.target_account_id),
               interval_minutes: values.interval_minutes,
               enabled: values.enabled,
-              wake_website_ids: values.wake_website_ids.map(Number).filter((id) => id > 0 && id !== Number(values.target_website_id)),
+              job_kind: values.job_kind,
+              wake_website_ids: values.job_kind === "session" ? [] : values.wake_website_ids.map(Number).filter((id) => id > 0 && id !== Number(values.target_website_id)),
             }),
           "Job saved",
         )
@@ -333,6 +340,22 @@ function JobForm({
           />
           <FieldError errors={[errors.credential_id]} />
         </Field>
+        <Field>
+          <FieldLabel htmlFor="job-kind">Job</FieldLabel>
+          <ChoiceSelect
+            id="job-kind"
+            value={jobKind}
+            onValueChange={(value) => form.setValue("job_kind", value === "session" ? "session" : "tool", { shouldValidate: true })}
+            items={[
+              { label: "Update one tool", value: "tool" },
+              { label: "Store the homepage cookie", value: "session" },
+            ]}
+          />
+          <FieldDescription>
+            Homepage only keeps the portal login. A tool job uses that cookie and writes one tool.
+          </FieldDescription>
+        </Field>
+        {jobKind === "session" ? null : (
         <Field data-invalid={Boolean(errors.target_website_id) || undefined}>
           <FieldLabel htmlFor="job-website">Target website</FieldLabel>
           <ChoiceSelect
@@ -349,6 +372,7 @@ function JobForm({
           />
           <FieldError errors={[errors.target_website_id]} />
         </Field>
+        )}
         {showAccount ? (
           <Field data-invalid={Boolean(errors.target_account_id) || undefined}>
             <FieldLabel htmlFor="job-account">Account</FieldLabel>
@@ -369,7 +393,7 @@ function JobForm({
           <FieldDescription>Counted from the last run. If that time has already passed, the count starts when you save.</FieldDescription>
           <FieldError errors={[errors.interval_minutes]} />
         </Field>
-        {wakeSites.length > 0 ? (
+        {jobKind !== "session" && wakeSites.length > 0 ? (
           <Field>
             <FieldLabel>Also run when these log out</FieldLabel>
             <FieldDescription>

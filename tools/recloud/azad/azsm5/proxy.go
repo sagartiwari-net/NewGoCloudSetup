@@ -217,7 +217,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 			return
 		}
-		renderAccessDeniedPage(w, cfg)
+		renderLoggedOutPage(w, cfg)
 		return
 	}
 	if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {

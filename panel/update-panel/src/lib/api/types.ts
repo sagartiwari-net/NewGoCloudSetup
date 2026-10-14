@@ -68,6 +68,7 @@ export type AutomationJob = {
   target_label: string
   target_account_id: number
   target_account_name: string
+  job_kind: "tool" | "session"
   wake_website_ids: number[]
   interval_minutes: number
   enabled: boolean

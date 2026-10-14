@@ -597,3 +597,49 @@ func TestAutomationLogoutTrigger(t *testing.T) {
 		t.Fatal("automation log contains a cookie")
 	}
 }
+
+func TestAutomationSessionJobStoresHomepageOnly(t *testing.T) {
+	s, _ := openAutomationTestDB(t)
+	recipe := &scriptedRecipe{liveValue: "live-session-value", portalValue: "portal-session-value", toolValue: "tool-session-value"}
+	useAutomationRecipe(t, recipe)
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	if err := s.replaceAutomationStorage(cred, `[{"name":"session","value":"live-session-value","domain":"markhorseotool.com","path":"/"}]`); err != nil {
+		t.Fatal(err)
+	}
+	var websiteID int
+	if err := s.db.QueryRow(`SELECT id FROM websites WHERE kind='recloud'`).Scan(&websiteID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := s.db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
+		VALUES (?, 'tool', 'old-tool-cookie', '', '', 'active', 1, '', '', '', ?, '')`, websiteID, now); err != nil {
+		t.Fatal(err)
+	}
+	jobID := insertAutomationJob(t, s, "Azad homepage", cred, websiteID, 0)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET job_kind='session', target_website_id=0 WHERE id=?`, jobID); err != nil {
+		t.Fatal(err)
+	}
+	s.runDueAutomationJobs()
+	if recipe.loginCount() != 0 {
+		t.Fatalf("logins = %d", recipe.loginCount())
+	}
+	var stored, toolCookie, reason string
+	if err := s.db.QueryRow(`SELECT cookies_json FROM automation_storage WHERE credential_id=?`, cred).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stored, "live-session-value") {
+		t.Fatal("homepage cookie was not kept")
+	}
+	if err := s.db.QueryRow(`SELECT cookie FROM accounts WHERE website_id=?`, websiteID).Scan(&toolCookie); err != nil {
+		t.Fatal(err)
+	}
+	if toolCookie != "old-tool-cookie" {
+		t.Fatalf("session job wrote a tool cookie: %s", toolCookie)
+	}
+	if err := s.db.QueryRow(`SELECT last_reason FROM automation_jobs WHERE id=?`, jobID).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason != "stored homepage cookie" {
+		t.Fatalf("reason = %s", reason)
+	}
+}

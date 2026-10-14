@@ -2,6 +2,7 @@ package automation
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -130,10 +131,12 @@ func SeedCookieJar(jar http.CookieJar, cookies []Cookie, fallbackDomain string) 
 		hc := &http.Cookie{
 			Name:     cookie.Name,
 			Value:    cookie.Value,
-			Domain:   domain,
 			Path:     path,
 			HttpOnly: cookie.HTTPOnly,
 			Secure:   cookie.Secure,
+		}
+		if !cookie.HostOnly && net.ParseIP(host) == nil {
+			hc.Domain = domain
 		}
 		if cookie.ExpirationDate != nil && *cookie.ExpirationDate > 0 {
 			hc.Expires = time.Unix(int64(*cookie.ExpirationDate), 0)

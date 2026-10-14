@@ -76,7 +76,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 			return
 		}
-		renderAccessDeniedPage(w, cfg)
+		renderLoggedOutPage(w, cfg)
 		return
 	}
 	proxyUpstream(w, r, cfg, acc)

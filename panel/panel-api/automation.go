@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"panel-api/automation"
+	"panel-api/automation/azad"
 	"panel-api/automation/markhor"
 	"sort"
 	"strconv"
@@ -40,9 +41,12 @@ func parseStoredCookies(raw string) []cookieJSON         { return automation.Par
 func cookieValues(cookies []cookieJSON) []string         { return automation.CookieValues(cookies) }
 
 var (
-	recipeMu                sync.Mutex
-	automationRecipes       = map[string]automation.Recipe{"markhor": markhor.Recipe{}}
-	automationProviderNames = map[string]string{"markhor": "Markhor"}
+	recipeMu          sync.Mutex
+	automationRecipes = map[string]automation.Recipe{
+		"markhor": markhor.Recipe{},
+		"azad":    azad.Recipe{},
+	}
+	automationProviderNames = map[string]string{"markhor": "Markhor", "azad": "Azad"}
 	automationCredLocks     sync.Map
 	automationKeyWarn       sync.Once
 	automationMySQLIDs      sync.Once
@@ -193,6 +197,7 @@ func ensureAutomationTables(db *sql.DB) {
 		`ALTER TABLE automation_jobs ADD COLUMN running INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE automation_jobs ADD COLUMN run_cause TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE automation_jobs ADD COLUMN wake_website_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE automation_jobs ADD COLUMN job_kind TEXT NOT NULL DEFAULT 'tool'`,
 	} {
 		_, _ = db.Exec(statement)
 	}
@@ -254,6 +259,7 @@ type automationJobRow struct {
 	TargetAccountID int
 	IntervalMinutes int
 	Enabled         int
+	Kind            string
 }
 
 type automationSite struct {
@@ -324,10 +330,14 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	}
 	var wakeWebsiteID int
 	_ = s.db.QueryRow(`SELECT wake_website_id FROM automation_jobs WHERE id=?`, job.ID).Scan(&wakeWebsiteID)
-	site, ok := s.loadAutomationSite(job.TargetWebsiteID)
-	if !ok || strings.TrimSpace(site.Upstream) == "" {
-		s.failAutomation(job, errAutomationUpstream, nil)
-		return
+	var site automationSite
+	if job.Kind != "session" {
+		var siteOK bool
+		site, siteOK = s.loadAutomationSite(job.TargetWebsiteID)
+		if !siteOK || strings.TrimSpace(site.Upstream) == "" {
+			s.failAutomation(job, errAutomationUpstream, nil)
+			return
+		}
 	}
 	var username, passwordEnc string
 	err := s.db.QueryRow(`SELECT username, password_enc FROM automation_credentials WHERE id=?`, job.CredentialID).Scan(&username, &passwordEnc)
@@ -374,6 +384,11 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		return
 	}
 	secrets = append(secrets, cookieValues(portal)...)
+	if job.Kind == "session" {
+		s.writeAutomationLog(job, "info", "stored homepage cookie", secrets)
+		s.finishAutomation(job, "ok", "stored homepage cookie")
+		return
+	}
 	tool, err := recipe.Capture(ctx, portal, site.Upstream)
 	if err != nil {
 		s.failAutomation(job, err, secrets)
@@ -529,10 +544,10 @@ func (s *server) writeAutomationLog(job automationJobRow, level, message string,
 func (s *server) loadAutomationJob(id int) (automationJobRow, bool) {
 	var job automationJobRow
 	err := s.db.QueryRow(`SELECT j.id, j.name, j.provider, j.credential_id, COALESCE(c.name, ''),
-		j.target_website_id, j.target_account_id, j.interval_minutes, j.enabled
+		j.target_website_id, j.target_account_id, j.interval_minutes, j.enabled, COALESCE(j.job_kind, 'tool')
 		FROM automation_jobs j LEFT JOIN automation_credentials c ON c.id=j.credential_id
 		WHERE j.id=?`, id).Scan(&job.ID, &job.Name, &job.Provider, &job.CredentialID, &job.CredentialName,
-		&job.TargetWebsiteID, &job.TargetAccountID, &job.IntervalMinutes, &job.Enabled)
+		&job.TargetWebsiteID, &job.TargetAccountID, &job.IntervalMinutes, &job.Enabled, &job.Kind)
 	return job, err == nil
 }
 
@@ -898,7 +913,7 @@ func (s *server) listAutomationJobs(w http.ResponseWriter, r *http.Request) {
 	qargs := append(append([]any{}, args...), size, (page-1)*size)
 	rows, err := s.db.Query(`SELECT j.id, j.name, j.provider, j.credential_id, COALESCE(c.name, ''),
 		j.target_website_id, COALESCE(w.name, ''), COALESCE(w.domain, ''), j.target_account_id, COALESCE(a.name, ''),
-		j.interval_minutes, j.enabled, j.last_run_at, j.last_result, j.last_reason, j.next_run_at `+from+where+
+		j.interval_minutes, j.enabled, COALESCE(j.job_kind, 'tool'), j.last_run_at, j.last_result, j.last_reason, j.next_run_at `+from+where+
 		` ORDER BY j.name LIMIT ? OFFSET ?`, qargs...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
@@ -908,15 +923,23 @@ func (s *server) listAutomationJobs(w http.ResponseWriter, r *http.Request) {
 	items := []any{}
 	for rows.Next() {
 		var id, credID, websiteID, accountID, interval, enabled int
-		var name, provider, credName, siteName, domain, accountName, lastRun, lastResult, lastReason, nextRun string
+		var name, provider, credName, siteName, domain, accountName, kind, lastRun, lastResult, lastReason, nextRun string
 		if rows.Scan(&id, &name, &provider, &credID, &credName, &websiteID, &siteName, &domain, &accountID, &accountName,
-			&interval, &enabled, &lastRun, &lastResult, &lastReason, &nextRun) != nil {
+			&interval, &enabled, &kind, &lastRun, &lastResult, &lastReason, &nextRun) != nil {
 			continue
+		}
+		if kind != "session" {
+			kind = "tool"
+		}
+		label := websiteChoiceLabel(siteName, domain)
+		if kind == "session" {
+			label = "Homepage"
 		}
 		items = append(items, map[string]any{
 			"id": id, "name": name, "provider": provider,
 			"credential_id": credID, "credential_name": credName,
-			"target_website_id": websiteID, "target_label": websiteChoiceLabel(siteName, domain),
+			"target_website_id": websiteID, "target_label": label,
+			"job_kind":          kind,
 			"target_account_id": accountID, "target_account_name": accountName,
 			"wake_website_ids": s.automationWakeIDs(id),
 			"interval_minutes": interval, "enabled": enabled == 1,
@@ -941,6 +964,7 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 		IntervalMinutes int    `json:"interval_minutes"`
 		Enabled         bool   `json:"enabled"`
 		WakeWebsiteIDs  []int  `json:"wake_website_ids"`
+		JobKind         string `json:"job_kind"`
 	}
 	if err := readBody(r, &body); err != nil {
 		writeErr(w, 400, "Invalid body")
@@ -969,12 +993,24 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Credential provider does not match the job")
 		return
 	}
-	site, ok := s.loadAutomationSite(body.TargetWebsiteID)
-	if !ok {
-		writeErr(w, 400, "Choose a website")
-		return
+	body.JobKind = strings.TrimSpace(body.JobKind)
+	if body.JobKind != "session" {
+		body.JobKind = "tool"
 	}
-	if site.Kind == "recloud" {
+	var site automationSite
+	if body.JobKind == "session" {
+		body.TargetWebsiteID = 0
+		body.TargetAccountID = 0
+		body.WakeWebsiteIDs = nil
+	} else {
+		var siteOK bool
+		site, siteOK = s.loadAutomationSite(body.TargetWebsiteID)
+		if !siteOK {
+			writeErr(w, 400, "Choose a website")
+			return
+		}
+	}
+	if body.JobKind == "session" || site.Kind == "recloud" {
 		body.TargetAccountID = 0
 	} else {
 		var accountWebsite int
@@ -991,9 +1027,9 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 	stamp := now.Format(time.RFC3339)
 	if body.ID == 0 {
 		next := now.Add(time.Duration(body.IntervalMinutes) * time.Minute).Format(time.RFC3339)
-		res, err := s.db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,0,?,'','','',?,?)`,
-			body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, stamp)
+		res, err := s.db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
+			VALUES (?,?,?,?,?,?,?,0,?,'','','',?,?,?)`,
+			body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, stamp, body.JobKind)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1013,8 +1049,8 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 	if prevInterval != body.IntervalMinutes {
 		next = automationNextRun(lastRun, body.IntervalMinutes, now).Format(time.RFC3339)
 	}
-	if _, err := s.db.Exec(`UPDATE automation_jobs SET name=?, provider=?, credential_id=?, target_website_id=?, target_account_id=?, interval_minutes=?, enabled=?, next_run_at=?, updated_at=? WHERE id=?`,
-		body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, body.ID); err != nil {
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET name=?, provider=?, credential_id=?, target_website_id=?, target_account_id=?, interval_minutes=?, enabled=?, next_run_at=?, updated_at=?, job_kind=? WHERE id=?`,
+		body.Name, body.Provider, body.CredentialID, body.TargetWebsiteID, body.TargetAccountID, body.IntervalMinutes, enabled, next, stamp, body.JobKind, body.ID); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
