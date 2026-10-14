@@ -621,6 +621,13 @@
       "fqdn": "azkwfind.gt4rents.com"
     },
     {
+      "tool": "azgram",
+      "folder": "recloud/azad/azgram",
+      "subdomain": "azgram",
+      "port": 6006,
+      "fqdn": "azgram.gt4rents.com"
+    },
+    {
       "tool": "markhsm1",
       "folder": "recloud/markhor/markhsm1",
       "subdomain": "markhsm1",
