@@ -192,14 +192,20 @@ func ensureAutomationTables(db *sql.DB) {
 		_, _ = db.Exec(statement)
 	}
 	for _, statement := range []string{
-		`ALTER TABLE automation_jobs ADD COLUMN last_trigger_at TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE automation_jobs ADD COLUMN queued_cause TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE automation_jobs ADD COLUMN last_trigger_at VARCHAR(40) NOT NULL DEFAULT ''`,
+		`ALTER TABLE automation_jobs ADD COLUMN queued_cause VARCHAR(16) NOT NULL DEFAULT ''`,
 		`ALTER TABLE automation_jobs ADD COLUMN running INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE automation_jobs ADD COLUMN run_cause TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE automation_jobs ADD COLUMN run_cause VARCHAR(16) NOT NULL DEFAULT ''`,
 		`ALTER TABLE automation_jobs ADD COLUMN wake_website_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE automation_jobs ADD COLUMN job_kind TEXT NOT NULL DEFAULT 'tool'`,
+		`ALTER TABLE automation_jobs ADD COLUMN job_kind VARCHAR(16) NOT NULL DEFAULT 'tool'`,
 	} {
-		_, _ = db.Exec(statement)
+		if _, err := db.Exec(statement); err != nil {
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "already exists") {
+				continue
+			}
+			log.Printf("[automation] column update failed: %v", err)
+		}
 	}
 	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) == "" {
 		return
