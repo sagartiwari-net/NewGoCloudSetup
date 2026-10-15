@@ -47,7 +47,12 @@ function jobSchema(websites: AutomationWebsite[]) {
       target_website_id: z.string(),
       target_account_id: z.string(),
       job_kind: z.enum(["tool", "session"]),
-      interval_minutes: z.number().int().min(5, "Use at least 5 minutes").max(1440, "Use at most 1440 minutes"),
+      interval_minutes: z
+        .number()
+        .int()
+        .min(0, "Use 0 to turn the timer off, or 5 to 1440 minutes")
+        .max(1440, "Use 0 to turn the timer off, or 5 to 1440 minutes")
+        .refine((value) => value === 0 || value >= 5, "Use 0 to turn the timer off, or 5 to 1440 minutes"),
       enabled: z.boolean(),
       wake_website_ids: z.array(z.string()),
     })
@@ -94,7 +99,7 @@ export default function AutomationJobsPage() {
     {
       id: "interval",
       header: "Interval",
-      cell: (row) => `${row.interval_minutes} min`,
+      cell: (row) => (row.interval_minutes === 0 ? "Off" : `${row.interval_minutes} min`),
       sortValue: (row) => row.interval_minutes,
     },
     {
@@ -389,8 +394,10 @@ function JobForm({
         ) : null}
         <Field data-invalid={Boolean(errors.interval_minutes) || undefined}>
           <FieldLabel htmlFor="job-interval">Interval (minutes)</FieldLabel>
-          <Input id="job-interval" type="number" min={5} max={1440} {...form.register("interval_minutes", { valueAsNumber: true })} />
-          <FieldDescription>Counted from the last run. If that time has already passed, the count starts when you save.</FieldDescription>
+          <Input id="job-interval" type="number" min={0} max={1440} {...form.register("interval_minutes", { valueAsNumber: true })} />
+          <FieldDescription>
+            0 turns the timer off. Logout and Run now still run while Enabled is on. Turn Enabled off to stop the timer, logout, and Run now.
+          </FieldDescription>
           <FieldError errors={[errors.interval_minutes]} />
         </Field>
         {jobKind !== "session" && wakeSites.length > 0 ? (

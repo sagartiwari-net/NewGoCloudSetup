@@ -490,6 +490,92 @@ func TestAutomationNextRunUsesLastRun(t *testing.T) {
 	if !got.Equal(saved.Add(5 * time.Minute)) {
 		t.Fatal("a job with no last run should count from the save")
 	}
+
+	got = automationNextRun(last.Format(time.RFC3339), 0, saved)
+	if !got.Equal(saved) {
+		t.Fatal("timer off should not schedule another run")
+	}
+}
+
+func TestAutomationTimerOffKeepsLogoutAndManual(t *testing.T) {
+	s, mux := openAutomationTestDB(t)
+	recipe := &scriptedRecipe{liveValue: "live-session-value", portalValue: "portal-session-value", toolValue: "tool-session-value"}
+	useAutomationRecipe(t, recipe)
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	if err := s.replaceAutomationStorage(cred, `[{"name":"session","value":"live-session-value","domain":"markhorseotool.com","path":"/"}]`); err != nil {
+		t.Fatal(err)
+	}
+	var websiteID int
+	if err := s.db.QueryRow(`SELECT id FROM websites WHERE kind='recloud'`).Scan(&websiteID); err != nil {
+		t.Fatal(err)
+	}
+	jobID := insertAutomationJob(t, s, "Markhor Semrush 1", cred, websiteID, 0)
+	past := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET interval_minutes=0, next_run_at=?, last_run_at=? WHERE id=?`, past, past, jobID); err != nil {
+		t.Fatal(err)
+	}
+	s.runDueAutomationJobs()
+	var lastRun string
+	if err := s.db.QueryRow(`SELECT last_run_at FROM automation_jobs WHERE id=?`, jobID).Scan(&lastRun); err != nil {
+		t.Fatal(err)
+	}
+	if lastRun != past {
+		t.Fatal("timer off job ran on the interval")
+	}
+
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=1 WHERE id=?`, jobID); err != nil {
+		t.Fatal(err)
+	}
+	s.runDueAutomationJobs()
+	if err := s.db.QueryRow(`SELECT last_run_at FROM automation_jobs WHERE id=?`, jobID).Scan(&lastRun); err != nil {
+		t.Fatal(err)
+	}
+	if lastRun == past {
+		t.Fatal("timer off blocked Run now")
+	}
+
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET interval_minutes=0, last_run_at=?, next_run_at=?, run_requested=0, queued_cause='', last_trigger_at='' WHERE id=?`, past, past, jobID); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.enqueueAutomationTrigger(jobID, websiteID); got != "accepted" {
+		t.Fatalf("logout trigger %s", got)
+	}
+	s.startQueuedAutomation()
+	if err := s.db.QueryRow(`SELECT last_run_at FROM automation_jobs WHERE id=?`, jobID).Scan(&lastRun); err != nil {
+		t.Fatal(err)
+	}
+	if lastRun == past {
+		t.Fatal("timer off blocked a logout trigger")
+	}
+
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET enabled=0, run_requested=1, last_run_at=? WHERE id=?`, past, jobID); err != nil {
+		t.Fatal(err)
+	}
+	s.runDueAutomationJobs()
+	if err := s.db.QueryRow(`SELECT last_run_at FROM automation_jobs WHERE id=?`, jobID).Scan(&lastRun); err != nil {
+		t.Fatal(err)
+	}
+	if lastRun != past {
+		t.Fatal("disabled job ran from Run now")
+	}
+	blocked := callAuth(t, mux, http.MethodPost, fmt.Sprintf("/api/automation/jobs/%d/run", jobID), "", "recloud-test")
+	if blocked.Code != 400 {
+		t.Fatalf("disabled run status %d", blocked.Code)
+	}
+
+	sessionID := insertAutomationJob(t, s, "Azad homepage", cred, 0, 0)
+	later := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET job_kind='session', target_website_id=0, interval_minutes=0, next_run_at=?, last_run_at='' WHERE id=?`, later, sessionID); err != nil {
+		t.Fatal(err)
+	}
+	s.runDueAutomationJobs()
+	var sessionRun string
+	if err := s.db.QueryRow(`SELECT COALESCE(last_run_at,'') FROM automation_jobs WHERE id=?`, sessionID).Scan(&sessionRun); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(sessionRun) != "" {
+		t.Fatal("timer off homepage ran before anyone asked")
+	}
 }
 
 func insertMarkhorWebsite(t *testing.T, s *server, name, domain string) int {

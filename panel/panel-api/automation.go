@@ -323,7 +323,7 @@ func (s *server) runDueAutomationJobs() {
 	s.ensureAutomationTables()
 	now := time.Now().UTC().Format(time.RFC3339)
 	rows, err := s.db.Query(`SELECT id, credential_id FROM automation_jobs
-		WHERE enabled=1 AND (run_requested=1 OR next_run_at<=? OR (job_kind='session' AND TRIM(COALESCE(last_run_at,''))=''))
+		WHERE enabled=1 AND (run_requested=1 OR (interval_minutes>0 AND next_run_at<=?) OR (interval_minutes>0 AND job_kind='session' AND TRIM(COALESCE(last_run_at,''))=''))
 		ORDER BY credential_id, CASE WHEN job_kind='session' THEN 0 ELSE 1 END, id`, now)
 	if err != nil {
 		return
@@ -364,7 +364,7 @@ func (s *server) runFreshSessionJob(ctx context.Context, credentialID int) {
 	var id int
 	var lastRun string
 	err := s.db.QueryRow(`SELECT id, COALESCE(last_run_at,'') FROM automation_jobs
-		WHERE credential_id=? AND job_kind='session' AND enabled=1
+		WHERE credential_id=? AND job_kind='session' AND enabled=1 AND interval_minutes>0
 		ORDER BY id LIMIT 1`, credentialID).Scan(&id, &lastRun)
 	if err != nil || id <= 0 || strings.TrimSpace(lastRun) != "" {
 		return
@@ -503,7 +503,29 @@ func (s *server) automationLogin(ctx context.Context, recipe automation.Recipe, 
 	return cookies, nil
 }
 
+func automationKeptInterval(minutes int) int {
+	if minutes == 0 {
+		return 0
+	}
+	if minutes < 5 {
+		return 5
+	}
+	if minutes > 1440 {
+		return 1440
+	}
+	return minutes
+}
+
+func (s *server) automationRunInterval(job automationJobRow) int {
+	current := job.IntervalMinutes
+	_ = s.db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE id=?`, job.ID).Scan(&current)
+	return automationKeptInterval(current)
+}
+
 func automationNextRun(lastRun string, interval int, now time.Time) time.Time {
+	if interval == 0 {
+		return now
+	}
 	if interval < 5 {
 		interval = 5
 	}
@@ -521,10 +543,7 @@ func automationNextRun(lastRun string, interval int, now time.Time) time.Time {
 
 func (s *server) claimAutomationJob(job automationJobRow) bool {
 	now := time.Now().UTC()
-	interval := job.IntervalMinutes
-	if interval < 5 {
-		interval = 5
-	}
+	interval := automationKeptInterval(job.IntervalMinutes)
 	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
 	var queued string
 	var requested, running int
@@ -538,7 +557,7 @@ func (s *server) claimAutomationJob(job automationJobRow) bool {
 		cause = "manual"
 	}
 	res, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=0, queued_cause='', running=1, run_cause=?, next_run_at=?, updated_at=?
-		WHERE id=? AND enabled=1 AND running=0 AND (run_requested=1 OR next_run_at<=? OR queued_cause<>'' OR (job_kind='session' AND TRIM(COALESCE(last_run_at,''))=''))`,
+		WHERE id=? AND enabled=1 AND running=0 AND (run_requested=1 OR queued_cause<>'' OR (interval_minutes>0 AND next_run_at<=?) OR (interval_minutes>0 AND job_kind='session' AND TRIM(COALESCE(last_run_at,''))=''))`,
 		cause, next, now.Format(time.RFC3339), job.ID, now.Format(time.RFC3339))
 	if err != nil {
 		return false
@@ -553,15 +572,7 @@ func (s *server) finishAutomation(job automationJobRow, result, reason string) {
 		reason = "session still valid"
 	}
 	now := time.Now().UTC()
-	interval := job.IntervalMinutes
-	if interval < 5 {
-		interval = 5
-	}
-	var current int
-	_ = s.db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE id=?`, job.ID).Scan(&current)
-	if current >= 5 && current <= 1440 {
-		interval = current
-	}
+	interval := s.automationRunInterval(job)
 	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
 	stamp := now.Format(time.RFC3339)
 	triggerAt := automationTriggerStamp(s.db, job.ID, stamp)
@@ -577,15 +588,7 @@ func (s *server) failAutomation(job automationJobRow, err error, secrets []strin
 	}
 	s.writeAutomationLog(job, "error", reason, secrets)
 	now := time.Now().UTC()
-	interval := job.IntervalMinutes
-	if interval < 5 {
-		interval = 5
-	}
-	var current int
-	_ = s.db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE id=?`, job.ID).Scan(&current)
-	if current >= 5 && current <= 1440 {
-		interval = current
-	}
+	interval := s.automationRunInterval(job)
 	next := now.Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
 	stamp := now.Format(time.RFC3339)
 	triggerAt := automationTriggerStamp(s.db, job.ID, stamp)
@@ -1050,8 +1053,8 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Choose a provider")
 		return
 	}
-	if body.IntervalMinutes < 5 || body.IntervalMinutes > 1440 {
-		writeErr(w, 400, "Interval must be from 5 to 1440 minutes")
+	if body.IntervalMinutes != 0 && (body.IntervalMinutes < 5 || body.IntervalMinutes > 1440) {
+		writeErr(w, 400, "Use 0 to turn the timer off, or 5 to 1440 minutes")
 		return
 	}
 	var credProvider string
