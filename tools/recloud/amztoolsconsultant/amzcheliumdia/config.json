@@ -1,0 +1,12 @@
+{
+  "port": "6301",
+  "public_host": "127.0.0.1:6301",
+  "public_scheme": "http",
+  "target_url": "https://ht01.amztoolsconsultant.com",
+  "home_path": "/black-box/products",
+  "tool_name": "Amztoolsconsultant Helium10 Diamond",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}
