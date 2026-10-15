@@ -4,6 +4,7 @@ package azad
 // Login stores the members.azadseo.com cookie. Semrush 2 opens semrush2.azadseo.com
 // and writes .xemrush.site. Semrush 5 opens export1sem.azadseo.com and writes .6.semrush.com.in.
 // Grammarly opens grammarly2.azadseo.com and writes .testingg.one.
+// Jasper opens jasperai1.azadseo.com and keeps each cookie's own domain.
 
 import (
 	"context"
@@ -36,8 +37,11 @@ var (
 )
 
 type semrushTarget struct {
-	proxyHost    string
-	cookieDomain string
+	proxyHost     string
+	cookieDomain  string
+	otherDomain   string
+	keepSetDomain bool
+	readHosts     []string
 }
 
 func semrushTargetFor(upstreamHost string) semrushTarget {
@@ -50,6 +54,15 @@ func semrushTargetFor(upstreamHost string) semrushTarget {
 	}
 	if host == "testingg.one" || strings.HasSuffix(host, ".testingg.one") || host == "grammarly2.azadseo.com" {
 		return semrushTarget{proxyHost: "grammarly2.azadseo.com", cookieDomain: ".testingg.one"}
+	}
+	if host == "jasperpro.premiium.click" || strings.HasSuffix(host, ".premiium.click") || host == "premiium.click" || host == "jasperai1.azadseo.com" {
+		return semrushTarget{
+			proxyHost:     "jasperai1.azadseo.com",
+			cookieDomain:  ".jasperpro.premiium.click",
+			otherDomain:   ".premiium.click",
+			keepSetDomain: true,
+			readHosts:     []string{"jasperpro.premiium.click", "premiium.click"},
+		}
 	}
 	if net.ParseIP(host) != nil || host == "localhost" {
 		return semrushTarget{proxyHost: strings.TrimSpace(upstreamHost), cookieDomain: ".xemrush.site"}
@@ -388,6 +401,7 @@ func portalCookies(jar *cookiejar.Jar) []automation.Cookie {
 
 func mapSemrushCookies(jar *cookiejar.Jar, record *cookieRecord, landed string, target semrushTarget) []automation.Cookie {
 	hosts := []string{target.proxyHost, "azadseo.com", "members.azadseo.com"}
+	hosts = append(hosts, target.readHosts...)
 	if parsed, err := url.Parse(landed); err == nil && parsed.Host != "" {
 		hosts = append(hosts, parsed.Host)
 	}
@@ -419,6 +433,8 @@ func mapSemrushCookies(jar *cookiejar.Jar, record *cookieRecord, landed string, 
 			httpOnly := cookie.HttpOnly
 			secure := cookie.Secure
 			expires := cookie.Expires
+			domain := target.cookieDomain
+			var sameSite *string
 			if saved, ok := record.get(cookie.Name, cookie.Value); ok {
 				if saved.Path != "" {
 					path = saved.Path
@@ -428,6 +444,12 @@ func mapSemrushCookies(jar *cookiejar.Jar, record *cookieRecord, landed string, 
 				if !saved.Expires.IsZero() {
 					expires = saved.Expires
 				}
+				sameSite = sameSiteLabel(saved.SameSite)
+				if target.keepSetDomain {
+					domain = domainFromSetCookie(saved, cookie.Name, target.cookieDomain, target.otherDomain)
+				}
+			} else if target.keepSetDomain {
+				domain = domainFromSetCookie(http.Cookie{}, cookie.Name, target.cookieDomain, target.otherDomain)
 			}
 			if path == "" {
 				path = "/"
@@ -441,17 +463,48 @@ func mapSemrushCookies(jar *cookiejar.Jar, record *cookieRecord, landed string, 
 			out = append(out, automation.Cookie{
 				Name:           cookie.Name,
 				Value:          cookie.Value,
-				Domain:         target.cookieDomain,
+				Domain:         domain,
 				Path:           path,
 				HostOnly:       false,
 				HTTPOnly:       httpOnly,
 				Secure:         secure,
+				SameSite:       sameSite,
 				Session:        session,
 				ExpirationDate: exp,
 			})
 		}
 	}
 	return out
+}
+
+func domainFromSetCookie(saved http.Cookie, name, proxyFallback, otherFallback string) string {
+	domain := strings.TrimSpace(saved.Domain)
+	if domain != "" {
+		domain = strings.TrimPrefix(domain, ".")
+		return "." + domain
+	}
+	if strings.EqualFold(name, "proxy_token") && proxyFallback != "" {
+		return proxyFallback
+	}
+	if otherFallback != "" {
+		return otherFallback
+	}
+	return proxyFallback
+}
+
+func sameSiteLabel(mode http.SameSite) *string {
+	var label string
+	switch mode {
+	case http.SameSiteStrictMode:
+		label = "strict"
+	case http.SameSiteLaxMode:
+		label = "lax"
+	case http.SameSiteNoneMode:
+		label = "none"
+	default:
+		return nil
+	}
+	return &label
 }
 
 func semrushFreshCookies(mapped, portal []automation.Cookie) []automation.Cookie {
