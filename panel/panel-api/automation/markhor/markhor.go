@@ -35,7 +35,7 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 	if err != nil {
 		return false, nil, automation.ErrTimeout
 	}
-	automation.SeedCookieJar(jar, cookies, "markhorseotool.com")
+	seedMarkhorPortal(jar, cookies)
 	loggedIn, err := markhorLoggedIn(ctx, client)
 	if err != nil {
 		return false, nil, err
@@ -100,7 +100,7 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if err != nil {
 		return nil, automation.ErrTimeout
 	}
-	automation.SeedCookieJar(jar, portal, "markhorseotool.com")
+	seedMarkhorPortal(jar, portal)
 	client := &http.Client{
 		Timeout: markhorHTTPWait,
 		Jar:     jar,
@@ -283,6 +283,19 @@ func markhorShowsDenied(html string) bool {
 		return false
 	}
 	return strings.Contains(lower, "active subscription") || strings.Contains(lower, "do not have an active")
+}
+
+func seedMarkhorPortal(jar *cookiejar.Jar, cookies []automation.Cookie) {
+	widened := make([]automation.Cookie, 0, len(cookies))
+	for _, cookie := range cookies {
+		domain := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(cookie.Domain)), ".")
+		if domain == "" || domain == "markhorseotool.com" || strings.HasSuffix(domain, ".markhorseotool.com") {
+			cookie.Domain = ".markhorseotool.com"
+			cookie.HostOnly = false
+		}
+		widened = append(widened, cookie)
+	}
+	automation.SeedCookieJar(jar, widened, "markhorseotool.com")
 }
 
 func filterMarkhorCookies(cookies []automation.Cookie) []automation.Cookie {

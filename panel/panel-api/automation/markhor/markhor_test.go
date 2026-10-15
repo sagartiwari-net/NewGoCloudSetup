@@ -1,6 +1,11 @@
 package markhor
 
-import "testing"
+import (
+	"net/http/cookiejar"
+	"net/url"
+	"panel-api/automation"
+	"testing"
+)
 
 func TestPageSignals(t *testing.T) {
 	if !markhorShowsLogin(`<input name="username"><input name="password">`, "https://markhorseotool.com/member/") {
@@ -17,5 +22,28 @@ func TestPageSignals(t *testing.T) {
 	}
 	if !markhorShowsDenied("Access denied. You do not have an active subscription") {
 		t.Fatal("access denied was not detected")
+	}
+}
+
+func TestMarkhorPortalCookieReachesSemrushHost(t *testing.T) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedMarkhorPortal(jar, []automation.Cookie{{
+		Name: "session", Value: "portal-session", Domain: "markhorseotool.com", Path: "/", HostOnly: true,
+	}})
+	tool, err := url.Parse("https://sm01.markhorseotool.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, cookie := range jar.Cookies(tool) {
+		if cookie.Name == "session" && cookie.Value == "portal-session" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("portal cookie was not sent to sm01.markhorseotool.com")
 	}
 }
