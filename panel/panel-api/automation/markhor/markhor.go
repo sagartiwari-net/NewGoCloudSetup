@@ -12,6 +12,7 @@ import (
 	"panel-api/automation"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,7 +32,7 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 	if len(cookies) == 0 {
 		return false, nil, nil
 	}
-	client, jar, err := newMarkhorClient(12)
+	client, jar, record, err := newMarkhorClient(12)
 	if err != nil {
 		return false, nil, automation.ErrTimeout
 	}
@@ -43,11 +44,11 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 	if !loggedIn {
 		return false, nil, nil
 	}
-	updated := automation.MergeCookieSets(cookies, filterMarkhorCookies(automation.JarCookies(jar, []string{
+	updated := automation.MergeCookieSets(storedMarkhorCookies(cookies), markhorExportCookies(jar, record, []string{
 		markhorBaseURL + "/", markhorLoginURL, markhorMemberURL,
-	})))
+	}))
 	if len(updated) == 0 {
-		updated = cookies
+		updated = storedMarkhorCookies(cookies)
 	}
 	return true, updated, nil
 }
@@ -55,7 +56,7 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 func (Recipe) PortalHost() string { return "markhorseotool.com" }
 
 func (Recipe) Login(ctx context.Context, username, password string) ([]automation.Cookie, error) {
-	client, jar, err := newMarkhorClient(12)
+	client, jar, record, err := newMarkhorClient(12)
 	if err != nil {
 		return nil, automation.ErrTimeout
 	}
@@ -81,9 +82,9 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 	if !loggedIn {
 		return nil, automation.ErrLoginPage
 	}
-	cookies := filterMarkhorCookies(automation.JarCookies(jar, []string{
+	cookies := markhorExportCookies(jar, record, []string{
 		markhorBaseURL + "/", markhorLoginURL, markhorMemberURL,
-	}))
+	})
 	if len(cookies) == 0 {
 		return nil, automation.ErrLoginPage
 	}
@@ -96,21 +97,11 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, automation.ErrUpstream
 	}
-	jar, err := cookiejar.New(nil)
+	client, jar, record, err := newMarkhorClient(15)
 	if err != nil {
 		return nil, automation.ErrTimeout
 	}
 	seedMarkhorPortal(jar, portal)
-	client := &http.Client{
-		Timeout: markhorHTTPWait,
-		Jar:     jar,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 15 {
-				return automation.ErrLoginPage
-			}
-			return nil
-		},
-	}
 	html, landed, err := markhorGet(ctx, client, upstreamURL, markhorMemberURL)
 	if err != nil {
 		if errors.Is(err, automation.ErrLoginPage) {
@@ -128,24 +119,35 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if host == "" {
 		host = strings.ToLower(parsed.Host)
 	}
-	live := markhorCookiesForHost(jar, host)
+	live := markhorExportCookies(jar, record, []string{
+		"https://" + host + "/",
+		"https://markhorseotool.com/",
+	})
 	if !markhorAddedCookie(portal, live) {
 		if len(portal) == 0 {
 			return nil, automation.ErrLoginPage
 		}
-		return portal, nil
+		return storedMarkhorCookies(portal), nil
 	}
 	return live, nil
 }
 
-func newMarkhorClient(maxRedirects int) (*http.Client, *cookiejar.Jar, error) {
+func newMarkhorClient(maxRedirects int) (*http.Client, *cookiejar.Jar, *markhorRecord, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	record := &markhorRecord{}
 	client := &http.Client{
 		Timeout: markhorHTTPWait,
 		Jar:     jar,
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			resp, err := http.DefaultTransport.RoundTrip(req)
+			if err == nil && resp != nil {
+				record.note(resp.Cookies())
+			}
+			return resp, err
+		}),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {
 				return automation.ErrLoginPage
@@ -153,7 +155,131 @@ func newMarkhorClient(maxRedirects int) (*http.Client, *cookiejar.Jar, error) {
 			return nil
 		},
 	}
-	return client, jar, nil
+	return client, jar, record, nil
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+type markhorRecord struct {
+	mu    sync.Mutex
+	saved map[string]http.Cookie
+}
+
+func (r *markhorRecord) note(cookies []*http.Cookie) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.saved == nil {
+		r.saved = map[string]http.Cookie{}
+	}
+	for _, cookie := range cookies {
+		if cookie == nil || cookie.Name == "" {
+			continue
+		}
+		copy := *cookie
+		if copy.Expires.IsZero() && copy.MaxAge > 0 {
+			copy.Expires = time.Now().Add(time.Duration(copy.MaxAge) * time.Second)
+		}
+		r.saved[cookie.Name+"|"+cookie.Value] = copy
+	}
+}
+
+func (r *markhorRecord) get(name, value string) (http.Cookie, bool) {
+	if r == nil {
+		return http.Cookie{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cookie, ok := r.saved[name+"|"+value]
+	return cookie, ok
+}
+
+func markhorExportCookies(jar *cookiejar.Jar, record *markhorRecord, rawURLs []string) []automation.Cookie {
+	var out []automation.Cookie
+	for _, cookie := range automation.JarCookies(jar, rawURLs) {
+		if saved, ok := record.get(cookie.Name, cookie.Value); ok {
+			if strings.TrimSpace(saved.Domain) != "" {
+				cookie.Domain = saved.Domain
+			}
+			if saved.Path != "" {
+				cookie.Path = saved.Path
+			}
+			cookie.HTTPOnly = saved.HttpOnly
+			cookie.Secure = saved.Secure
+			cookie.SameSite = markhorSameSite(saved.SameSite)
+			if !saved.Expires.IsZero() {
+				value := float64(saved.Expires.Unix())
+				cookie.ExpirationDate = &value
+				cookie.Session = false
+			}
+		} else {
+			cookie = markhorPortalDefaults(cookie)
+		}
+		out = append(out, cookie)
+	}
+	return filterMarkhorCookies(normalizeMarkhorCookies(out))
+}
+
+func markhorSameSite(mode http.SameSite) *string {
+	var label string
+	switch mode {
+	case http.SameSiteStrictMode:
+		label = "strict"
+	case http.SameSiteLaxMode:
+		label = "lax"
+	case http.SameSiteNoneMode:
+		label = "none"
+	default:
+		return nil
+	}
+	return &label
+}
+
+func storedMarkhorCookies(cookies []automation.Cookie) []automation.Cookie {
+	out := make([]automation.Cookie, 0, len(cookies))
+	for _, cookie := range cookies {
+		out = append(out, markhorPortalDefaults(cookie))
+	}
+	return filterMarkhorCookies(normalizeMarkhorCookies(out))
+}
+
+func markhorPortalDefaults(cookie automation.Cookie) automation.Cookie {
+	switch strings.ToLower(cookie.Name) {
+	case "phpsessid", "mht_session":
+	default:
+		return cookie
+	}
+	cookie.Domain = ".markhorseotool.com"
+	cookie.HostOnly = false
+	cookie.Secure = true
+	cookie.HTTPOnly = true
+	if cookie.Path == "" {
+		cookie.Path = "/"
+	}
+	if cookie.SameSite == nil {
+		label := "lax"
+		cookie.SameSite = &label
+	}
+	return cookie
+}
+
+func normalizeMarkhorCookies(cookies []automation.Cookie) []automation.Cookie {
+	out := make([]automation.Cookie, 0, len(cookies))
+	for _, cookie := range cookies {
+		bare := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(cookie.Domain)), ".")
+		if bare == "" || bare == "markhorseotool.com" || strings.HasSuffix(bare, ".markhorseotool.com") {
+			cookie.Domain = ".markhorseotool.com"
+			cookie.HostOnly = false
+		}
+		out = append(out, cookie)
+	}
+	return out
 }
 
 func markhorLoggedIn(ctx context.Context, client *http.Client) (bool, error) {
@@ -319,22 +445,6 @@ func filterMarkhorCookies(cookies []automation.Cookie) []automation.Cookie {
 		}
 	}
 	return out
-}
-
-func markhorCookiesForHost(jar http.CookieJar, host string) []automation.Cookie {
-	host = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(host)), ".")
-	if host == "" {
-		return nil
-	}
-	hosts := []string{host}
-	if strings.HasSuffix(host, ".markhorseotool.com") {
-		hosts = append(hosts, "markhorseotool.com")
-	}
-	var urls []string
-	for _, item := range hosts {
-		urls = append(urls, "https://"+item+"/", "http://"+item+"/")
-	}
-	return automation.JarCookies(jar, urls)
 }
 
 func markhorAddedCookie(portal, live []automation.Cookie) bool {

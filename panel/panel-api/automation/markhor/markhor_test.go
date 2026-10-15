@@ -1,10 +1,12 @@
 package markhor
 
 import (
+	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"panel-api/automation"
 	"testing"
+	"time"
 )
 
 func TestPageSignals(t *testing.T) {
@@ -48,5 +50,43 @@ func TestMarkhorPortalCookieReachesSemrushHost(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("portal cookie was not sent to sm01.markhorseotool.com")
+	}
+}
+
+func TestMarkhorExportKeepsSetCookieFlags(t *testing.T) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedMarkhorPortal(jar, []automation.Cookie{
+		{Name: "PHPSESSID", Value: "portal-session", Domain: "markhorseotool.com", Path: "/", HostOnly: true, Session: true},
+		{Name: "mht_session", Value: "member-session", Domain: "markhorseotool.com", Path: "/", HostOnly: true, Session: true},
+	})
+	record := &markhorRecord{}
+	expires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+	record.note([]*http.Cookie{
+		{
+			Name: "PHPSESSID", Value: "portal-session", Domain: ".markhorseotool.com", Path: "/",
+			HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, Expires: expires,
+		},
+		{
+			Name: "mht_session", Value: "member-session", Domain: ".markhorseotool.com", Path: "/",
+			HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, Expires: expires,
+		},
+	})
+	got := markhorExportCookies(jar, record, []string{"https://markhorseotool.com/member/"})
+	if len(got) != 2 {
+		t.Fatalf("exported %d cookies", len(got))
+	}
+	for _, cookie := range got {
+		if cookie.Domain != ".markhorseotool.com" || cookie.HostOnly || !cookie.HTTPOnly || !cookie.Secure || cookie.Session {
+			t.Fatalf("%s lost Set-Cookie flags: %+v", cookie.Name, cookie)
+		}
+		if cookie.SameSite == nil || *cookie.SameSite != "lax" {
+			t.Fatalf("%s sameSite = %v", cookie.Name, cookie.SameSite)
+		}
+		if cookie.ExpirationDate == nil || int64(*cookie.ExpirationDate) != expires.Unix() {
+			t.Fatalf("%s expiry = %v", cookie.Name, cookie.ExpirationDate)
+		}
 	}
 }
