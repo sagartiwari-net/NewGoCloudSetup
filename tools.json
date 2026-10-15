@@ -717,6 +717,20 @@
       "subdomain": "markhanswer",
       "port": 6108,
       "fqdn": "markhanswer.gt4rents.com"
+    },
+    {
+      "tool": "tbaazarsm",
+      "folder": "recloud/toolbaazar/tbaazarsm",
+      "subdomain": "tbaazarsm",
+      "port": 6200,
+      "fqdn": "tbaazarsm.gt4rents.com"
+    },
+    {
+      "tool": "tbaazaraudit",
+      "folder": "recloud/toolbaazar/tbaazaraudit",
+      "subdomain": "tbaazaraudit",
+      "port": 6201,
+      "fqdn": "tbaazaraudit.gt4rents.com"
     }
   ]
 }
