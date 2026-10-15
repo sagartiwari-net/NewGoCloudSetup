@@ -3,12 +3,14 @@ package automation
 import (
 	"errors"
 	"net/url"
+	"strings"
 )
 
 var (
 	ErrLoginPage = errors.New("login page still showing")
 	ErrRejected  = errors.New("portal rejected the username or password")
 	ErrNoCookie  = errors.New("tool cookie was not set")
+	ErrDecrypt   = errors.New("credential could not be decrypted")
 	ErrCSRF      = errors.New("csrf token missing")
 	ErrTimeout   = errors.New("timed out")
 	ErrDenied    = errors.New("access denied")
@@ -52,4 +54,31 @@ func (e *PageError) Public() string {
 		return e.Kind.Error()
 	}
 	return e.Kind.Error() + " at " + e.Host + e.Path
+}
+
+// Where is the host and path only. Query strings can carry tokens, so they stay out of logs.
+func Where(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Hostname() == "" {
+		return "unknown"
+	}
+	path := parsed.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	return parsed.Hostname() + path
+}
+
+func Names(cookies []Cookie) string {
+	names := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		name := strings.TrimSpace(cookie.Name)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ",")
 }

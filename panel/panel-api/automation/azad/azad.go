@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -146,6 +147,7 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 		return nil, automation.At(automation.ErrLoginPage, memberURL)
 	}
 	cookies := portalCookies(jar)
+	log.Printf("[automation] azad login page=%s cookies=%s", automation.Where(memberURL), automation.Names(cookies))
 	if len(cookies) == 0 {
 		return nil, automation.At(automation.ErrLoginPage, memberURL)
 	}
@@ -201,6 +203,7 @@ func captureSemrush(ctx context.Context, portal []automation.Cookie, target semr
 		tool = mapSemrushCookies(jar, record, proxyOrigin(target.proxyHost), target)
 	}
 	fresh := semrushFreshCookies(tool, portal)
+	log.Printf("[automation] azad capture page=%s tool=%s fresh=%s", automation.Where(landed), automation.Names(tool), automation.Names(fresh))
 	if len(fresh) == 0 {
 		return nil, automation.At(automation.ErrNoCookie, landed)
 	}
@@ -337,14 +340,21 @@ func newAzadClient() (*http.Client, *cookiejar.Jar, *cookieRecord, error) {
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			base := http.DefaultTransport
 			resp, err := base.RoundTrip(req)
-			if err == nil && resp != nil {
+			if err != nil {
+				log.Printf("[automation] azad hop %s failed before a response", automation.Where(requestURL(req)))
+				return resp, err
+			}
+			if resp != nil {
 				record.note(resp.Cookies())
+				log.Printf("[automation] azad hop %s status=%d set=%s", automation.Where(requestURL(req)), resp.StatusCode, cookieHeaderNames(resp.Cookies()))
 			}
 			return resp, err
 		}),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			log.Printf("[automation] azad redirect %s -> %s (%d)", automation.Where(requestURL(via[len(via)-1])), automation.Where(requestURL(req)), len(via))
 			if len(via) >= 15 {
-				return automation.ErrLoginPage
+				log.Printf("[automation] azad stopped after %d redirects at %s", len(via), automation.Where(requestURL(req)))
+				return automation.At(automation.ErrLoginPage, requestURL(req))
 			}
 			if req.URL != nil && strings.Contains(strings.ToLower(req.URL.String()), "protect/new-rewrite") {
 				for _, previous := range via {
@@ -587,17 +597,22 @@ func azadHeaders(req *http.Request, referer string) {
 }
 
 func azadDo(ctx context.Context, client *http.Client, req *http.Request) (string, string, error) {
+	log.Printf("[automation] azad %s %s", req.Method, automation.Where(req.URL.String()))
 	resp, err := client.Do(req)
 	if err != nil {
 		if errors.Is(err, automation.ErrLoginPage) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				log.Printf("[automation] azad %s %s timed out", req.Method, automation.Where(req.URL.String()))
 				return "", "", automation.ErrTimeout
 			}
+			log.Printf("[automation] azad %s %s stopped: %s", req.Method, automation.Where(req.URL.String()), err.Error())
 			return "", "", err
 		}
 		if strings.Contains(strings.ToLower(err.Error()), "timeout") || strings.Contains(strings.ToLower(err.Error()), "deadline") {
+			log.Printf("[automation] azad %s %s timed out", req.Method, automation.Where(req.URL.String()))
 			return "", "", automation.ErrTimeout
 		}
+		log.Printf("[automation] azad %s %s request failed", req.Method, automation.Where(req.URL.String()))
 		return "", "", automation.ErrUpstream
 	}
 	defer resp.Body.Close()
@@ -609,5 +624,29 @@ func azadDo(ctx context.Context, client *http.Client, req *http.Request) (string
 	if resp.Request != nil && resp.Request.URL != nil {
 		final = resp.Request.URL.String()
 	}
+	log.Printf("[automation] azad %s landed %s status=%d bytes=%d login=%t dashboard=%t rejected=%t", req.Method, automation.Where(final), resp.StatusCode, len(body), azadShowsLogin(string(body), final), azadShowsDashboard(string(body), final), azadRejected(string(body)))
 	return string(body), final, nil
+}
+
+func requestURL(req *http.Request) string {
+	if req == nil || req.URL == nil {
+		return ""
+	}
+	return req.URL.String()
+}
+
+func cookieHeaderNames(cookies []*http.Cookie) string {
+	if len(cookies) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie != nil && cookie.Name != "" {
+			names = append(names, cookie.Name)
+		}
+	}
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ",")
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -89,6 +90,7 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 	cookies := markhorExportCookies(jar, record, []string{
 		markhorBaseURL + "/", markhorLoginURL, markhorMemberURL,
 	})
+	log.Printf("[automation] markhor login page=%s cookies=%s", automation.Where(memberURL), automation.Names(cookies))
 	if len(cookies) == 0 {
 		return nil, automation.At(automation.ErrLoginPage, memberURL)
 	}
@@ -127,6 +129,7 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		"https://" + host + "/",
 		"https://markhorseotool.com/",
 	})
+	log.Printf("[automation] markhor capture page=%s cookies=%s new=%t", automation.Where(landed), automation.Names(live), markhorAddedCookie(portal, live))
 	if !markhorAddedCookie(portal, live) {
 		if len(portal) == 0 {
 			return nil, automation.At(automation.ErrNoCookie, landed)
@@ -147,14 +150,21 @@ func newMarkhorClient(maxRedirects int) (*http.Client, *cookiejar.Jar, *markhorR
 		Jar:     jar,
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			resp, err := http.DefaultTransport.RoundTrip(req)
-			if err == nil && resp != nil {
+			if err != nil {
+				log.Printf("[automation] markhor hop %s failed before a response", automation.Where(requestURL(req)))
+				return resp, err
+			}
+			if resp != nil {
 				record.note(resp.Cookies())
+				log.Printf("[automation] markhor hop %s status=%d set=%s", automation.Where(requestURL(req)), resp.StatusCode, cookieHeaderNames(resp.Cookies()))
 			}
 			return resp, err
 		}),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			log.Printf("[automation] markhor redirect %s -> %s (%d)", automation.Where(requestURL(via[len(via)-1])), automation.Where(requestURL(req)), len(via))
 			if len(via) >= maxRedirects {
-				return automation.ErrLoginPage
+				log.Printf("[automation] markhor stopped after %d redirects at %s", len(via), automation.Where(requestURL(req)))
+				return automation.At(automation.ErrLoginPage, requestURL(req))
 			}
 			return nil
 		},
@@ -347,8 +357,10 @@ func markhorGet(ctx context.Context, client *http.Client, rawURL, referer string
 }
 
 func markhorRead(client *http.Client, req *http.Request, rawURL string) (string, string, error) {
+	log.Printf("[automation] markhor %s %s", req.Method, automation.Where(rawURL))
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[automation] markhor %s %s stopped: %s", req.Method, automation.Where(rawURL), safeMarkhorErr(err))
 		return "", "", err
 	}
 	defer resp.Body.Close()
@@ -360,7 +372,45 @@ func markhorRead(client *http.Client, req *http.Request, rawURL string) (string,
 	if resp.Request != nil && resp.Request.URL != nil {
 		landed = resp.Request.URL.String()
 	}
+	log.Printf("[automation] markhor %s landed %s status=%d bytes=%d login=%t dashboard=%t rejected=%t", req.Method, automation.Where(landed), resp.StatusCode, len(body), markhorShowsLogin(string(body), landed), markhorShowsDashboard(string(body), landed), markhorRejected(string(body)))
 	return string(body), landed, nil
+}
+
+func safeMarkhorErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	var page *automation.PageError
+	if errors.As(err, &page) {
+		return page.Public()
+	}
+	if errors.Is(err, automation.ErrLoginPage) || errors.Is(err, automation.ErrTimeout) || errors.Is(err, automation.ErrDenied) || errors.Is(err, automation.ErrCSRF) {
+		return err.Error()
+	}
+	return "request failed"
+}
+
+func requestURL(req *http.Request) string {
+	if req == nil || req.URL == nil {
+		return ""
+	}
+	return req.URL.String()
+}
+
+func cookieHeaderNames(cookies []*http.Cookie) string {
+	if len(cookies) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie != nil && cookie.Name != "" {
+			names = append(names, cookie.Name)
+		}
+	}
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ",")
 }
 
 func setMarkhorHeaders(req *http.Request) {

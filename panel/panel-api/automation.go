@@ -32,6 +32,7 @@ var (
 	errAutomationLoginPage = automation.ErrLoginPage
 	errAutomationRejected  = automation.ErrRejected
 	errAutomationNoCookie  = automation.ErrNoCookie
+	errAutomationDecrypt   = automation.ErrDecrypt
 	errAutomationCSRF      = automation.ErrCSRF
 	errAutomationTimeout   = automation.ErrTimeout
 	errAutomationDenied    = automation.ErrDenied
@@ -233,6 +234,8 @@ func automationPublicReason(err error) string {
 		return errAutomationRejected.Error()
 	case errors.Is(err, errAutomationNoCookie):
 		return errAutomationNoCookie.Error()
+	case errors.Is(err, errAutomationDecrypt):
+		return errAutomationDecrypt.Error()
 	case errors.Is(err, errAutomationCSRF):
 		return errAutomationCSRF.Error()
 	case errors.Is(err, errAutomationTimeout):
@@ -359,6 +362,7 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	if !s.claimAutomationJob(job) {
 		return
 	}
+	log.Printf("[automation] job %d %q start provider=%s kind=%s", job.ID, job.Name, job.Provider, job.Kind)
 	var wakeWebsiteID int
 	_ = s.db.QueryRow(`SELECT wake_website_id FROM automation_jobs WHERE id=?`, job.ID).Scan(&wakeWebsiteID)
 	var site automationSite
@@ -373,12 +377,14 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	var username, passwordEnc string
 	err := s.db.QueryRow(`SELECT username, password_enc FROM automation_credentials WHERE id=?`, job.CredentialID).Scan(&username, &passwordEnc)
 	if err != nil {
+		log.Printf("[automation] job %d credential row missing", job.ID)
 		s.failAutomation(job, errAutomationLoginPage, nil)
 		return
 	}
 	password, err := decryptAutomation(passwordEnc)
 	if err != nil || strings.TrimSpace(password) == "" {
-		s.failAutomation(job, errAutomationLoginPage, nil)
+		log.Printf("[automation] job %d credential could not be decrypted", job.ID)
+		s.failAutomation(job, errAutomationDecrypt, nil)
 		return
 	}
 	secrets := []string{password}
@@ -389,10 +395,12 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	}
 	stored := s.readAutomationCookies(job.CredentialID)
 	secrets = append(secrets, cookieValues(stored)...)
+	log.Printf("[automation] job %d stored cookies %d [%s]", job.ID, len(stored), automation.Names(stored))
 	portal := stored
 	if len(stored) > 0 {
 		valid, updated, checkErr := recipe.Check(ctx, stored)
 		if checkErr != nil {
+			log.Printf("[automation] job %d session check failed: %s", job.ID, automationPublicReason(checkErr))
 			s.failAutomation(job, checkErr, secrets)
 			return
 		}
@@ -405,14 +413,21 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 				return
 			}
 			s.writeAutomationLog(job, "info", "session still valid", secrets)
+			log.Printf("[automation] job %d session still valid", job.ID)
 			portal = updated
-		} else if portal, err = s.automationLogin(ctx, recipe, job, username, password, secrets); err != nil {
-			s.failAutomation(job, err, append(secrets, cookieValues(portal)...))
+		} else {
+			log.Printf("[automation] job %d session not valid, logging in", job.ID)
+			if portal, err = s.automationLogin(ctx, recipe, job, username, password, secrets); err != nil {
+				s.failAutomation(job, err, append(secrets, cookieValues(portal)...))
+				return
+			}
+		}
+	} else {
+		log.Printf("[automation] job %d no stored cookie, logging in", job.ID)
+		if portal, err = s.automationLogin(ctx, recipe, job, username, password, secrets); err != nil {
+			s.failAutomation(job, err, secrets)
 			return
 		}
-	} else if portal, err = s.automationLogin(ctx, recipe, job, username, password, secrets); err != nil {
-		s.failAutomation(job, err, secrets)
-		return
 	}
 	secrets = append(secrets, cookieValues(portal)...)
 	if job.Kind == "session" {
@@ -420,6 +435,7 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		s.finishAutomation(job, "ok", "stored homepage cookie")
 		return
 	}
+	log.Printf("[automation] job %d capture %s", job.ID, automation.Where(site.Upstream))
 	tool, err := recipe.Capture(ctx, portal, site.Upstream)
 	if err != nil {
 		s.failAutomation(job, err, secrets)
@@ -462,6 +478,7 @@ func (s *server) automationLogin(ctx context.Context, recipe automation.Recipe, 
 		return nil, errAutomationLoginPage
 	}
 	s.writeAutomationLog(job, "info", "logged in", append(secrets, cookieValues(cookies)...))
+	log.Printf("[automation] job %d logged in [%s]", job.ID, automation.Names(cookies))
 	return cookies, nil
 }
 
