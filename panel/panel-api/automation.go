@@ -1220,6 +1220,18 @@ func (s *server) listAutomationLogs(w http.ResponseWriter, r *http.Request) {
 	s.writePage(w, page, size, total, items)
 }
 
+func (s *server) clearAutomationLogs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	if _, err := s.db.Exec(`DELETE FROM automation_logs`); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
 func (s *server) automationOptions(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.master(w, r); !ok {
 		return

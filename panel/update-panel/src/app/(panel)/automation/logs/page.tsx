@@ -3,24 +3,29 @@
 import { useState } from "react"
 
 import { ChoiceSelect } from "@/components/choice-select"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataColumn } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useResource } from "@/hooks/use-resource"
-import { automationOptions, listAutomationLogs } from "@/lib/api/client"
+import { automationOptions, clearAutomationLogs, listAutomationLogs } from "@/lib/api/client"
 import type { AutomationLog } from "@/lib/api/types"
 import { formatIst } from "@/lib/format"
+import { runMutation } from "@/lib/mutate"
 import { useListPage } from "@/lib/page-size"
 
 export default function AutomationLogsPage() {
   const [query, setQuery] = useState("")
   const [jobId, setJobId] = useState("all")
   const [level, setLevel] = useState("all")
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const { page, setPage, pageSize } = useListPage()
-  const { data, loading } = useResource(`automation-logs-${page}-${pageSize}-${query}-${jobId}-${level}`, async () => {
+  const { data, loading, reload } = useResource(`automation-logs-${page}-${pageSize}-${query}-${jobId}-${level}`, async () => {
     const [logs, options] = await Promise.all([
       listAutomationLogs({
         page,
@@ -61,7 +66,15 @@ export default function AutomationLogsPage() {
 
   return (
     <>
-      <PageHeader title="Logs" description="What the worker did in the last 3 hours." />
+      <PageHeader
+        title="Logs"
+        description="What the worker did in the last 3 hours."
+        action={
+          <Button variant="outline" onClick={() => setConfirmClear(true)}>
+            Clear logs
+          </Button>
+        }
+      />
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
         <Field className="md:max-w-sm md:flex-1">
           <FieldLabel htmlFor="log-search">Search</FieldLabel>
@@ -126,6 +139,24 @@ export default function AutomationLogsPage() {
           />
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title="Clear logs"
+        description="Delete every automation log? Jobs, credentials, and saved cookies stay."
+        confirmLabel="Clear"
+        pending={clearing}
+        onConfirm={() => {
+          setClearing(true)
+          void runMutation(clearAutomationLogs, "Logs cleared").then((ok) => {
+            setClearing(false)
+            if (!ok) return
+            setConfirmClear(false)
+            setPage(1)
+            reload()
+          })
+        }}
+      />
     </>
   )
 }

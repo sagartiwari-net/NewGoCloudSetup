@@ -754,6 +754,11 @@ export async function listAutomationLogs(query: {
   return api(`/api/automation/logs${qs(query)}`)
 }
 
+export async function clearAutomationLogs(): Promise<Ok> {
+  await api("/api/automation/logs", { method: "DELETE" })
+  return { status: "ok" }
+}
+
 export async function saveWebsite(input: WebsiteInput): Promise<Ok> {
   clearCatalogCache("websites")
   await api("/api/websites", { method: "POST", body: JSON.stringify(input) })

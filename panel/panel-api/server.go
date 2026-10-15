@@ -165,6 +165,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/automation/jobs/{id}/run", s.runAutomationJobNow)
 	mux.HandleFunc("DELETE /api/automation/jobs", s.deleteAutomationJob)
 	mux.HandleFunc("GET /api/automation/logs", s.listAutomationLogs)
+	mux.HandleFunc("DELETE /api/automation/logs", s.clearAutomationLogs)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

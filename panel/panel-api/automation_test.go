@@ -346,6 +346,36 @@ func TestAutomationLogPurgeKeepsStorage(t *testing.T) {
 	}
 }
 
+func TestAutomationClearLogsKeepsStorage(t *testing.T) {
+	s, mux := openAutomationTestDB(t)
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := s.db.Exec(`INSERT INTO automation_storage (credential_id, cookies_json, updated_at) VALUES (?, ?, ?)`, cred, `[{"name":"session","value":"`+automationFakeCookie+`"}]`, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO automation_logs (job_id, job_name, credential_id, credential_name, level, message, created_at) VALUES (1, 'Markhor', ?, 'Markhor', 'error', 'login page still showing', ?)`, cred, now); err != nil {
+		t.Fatal(err)
+	}
+	cleared := callAuth(t, mux, http.MethodDelete, "/api/automation/logs", "", "recloud-test")
+	if cleared.Code != 200 {
+		t.Fatalf("clear status %d body %s", cleared.Code, cleared.Body.String())
+	}
+	var logs int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_logs`).Scan(&logs); err != nil {
+		t.Fatal(err)
+	}
+	if logs != 0 {
+		t.Fatalf("logs left = %d", logs)
+	}
+	var stored string
+	if err := s.db.QueryRow(`SELECT cookies_json FROM automation_storage WHERE credential_id=?`, cred).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stored, automationFakeCookie) {
+		t.Fatal("clear deleted storage")
+	}
+}
+
 func TestAutomationListsHideCookies(t *testing.T) {
 	s, mux := openAutomationTestDB(t)
 	cred := insertAutomationCredential(t, s, "portal-secret")
