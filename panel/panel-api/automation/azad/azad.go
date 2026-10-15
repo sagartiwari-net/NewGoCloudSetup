@@ -132,19 +132,22 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 	if err != nil {
 		return nil, err
 	}
-	if azadShowsLogin(body, landed) {
-		return nil, automation.ErrLoginPage
+	if azadRejected(body) {
+		return nil, automation.At(automation.ErrRejected, landed)
 	}
 	member, memberURL, err := azadGet(ctx, client, azadMemberURL, azadBaseURL)
 	if err != nil {
 		return nil, err
 	}
+	if azadRejected(member) {
+		return nil, automation.At(automation.ErrRejected, memberURL)
+	}
 	if azadShowsLogin(member, memberURL) || !azadShowsDashboard(member, memberURL) {
-		return nil, automation.ErrLoginPage
+		return nil, automation.At(automation.ErrLoginPage, memberURL)
 	}
 	cookies := portalCookies(jar)
 	if len(cookies) == 0 {
-		return nil, automation.ErrLoginPage
+		return nil, automation.At(automation.ErrLoginPage, memberURL)
 	}
 	return cookies, nil
 }
@@ -169,7 +172,7 @@ func captureSemrush(ctx context.Context, portal []automation.Cookie, target semr
 		return nil, err
 	}
 	if azadShowsLogin(html, landed) {
-		return nil, automation.ErrLoginPage
+		return nil, automation.At(automation.ErrLoginPage, landed)
 	}
 	launch := azadExtractSemrushURL(html, target.proxyHost)
 	if launch == "" {
@@ -181,7 +184,7 @@ func captureSemrush(ctx context.Context, portal []automation.Cookie, target semr
 	}
 	if strings.Contains(strings.ToLower(landed), "protect/new-rewrite") {
 		if azadShowsLogin(html, landed) {
-			return nil, automation.ErrLoginPage
+			return nil, automation.At(automation.ErrLoginPage, landed)
 		}
 		html, landed, err = azadGet(ctx, client, proxyOrigin(target.proxyHost), landed)
 		if err != nil {
@@ -190,7 +193,7 @@ func captureSemrush(ctx context.Context, portal []automation.Cookie, target semr
 		_ = html
 	}
 	if azadShowsLogin(html, landed) {
-		return nil, automation.ErrLoginPage
+		return nil, automation.At(automation.ErrLoginPage, landed)
 	}
 	tool := mapSemrushCookies(jar, record, landed, target)
 	if len(tool) == 0 {
@@ -199,7 +202,7 @@ func captureSemrush(ctx context.Context, portal []automation.Cookie, target semr
 	}
 	fresh := semrushFreshCookies(tool, portal)
 	if len(fresh) == 0 {
-		return nil, automation.ErrLoginPage
+		return nil, automation.At(automation.ErrNoCookie, landed)
 	}
 	return fresh, nil
 }
@@ -276,8 +279,26 @@ func azadLaunchURLFallback(html, upstreamHost string) string {
 	return ""
 }
 
-func azadShowsLogin(html, pageURL string) bool {
+func azadRejected(html string) bool {
 	lower := strings.ToLower(html)
+	return strings.Contains(lower, "user name or password is incorrect") ||
+		strings.Contains(lower, "username or password is incorrect") ||
+		strings.Contains(lower, "invalid username or password")
+}
+
+func azadShowsLogin(html, pageURL string) bool {
+	parsed, _ := url.Parse(pageURL)
+	host := ""
+	if parsed != nil {
+		host = strings.ToLower(parsed.Hostname())
+	}
+	if host != "" && host != "members.azadseo.com" && host != "www.members.azadseo.com" && host != "azadseo.com" {
+		return false
+	}
+	lower := strings.ToLower(html)
+	if strings.Contains(lower, "logout") || strings.Contains(lower, "/logout") {
+		return false
+	}
 	urlLower := strings.ToLower(pageURL)
 	if strings.Contains(urlLower, "/login") && strings.Contains(lower, "amember_login") {
 		return true

@@ -37,7 +37,7 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 		return false, nil, automation.ErrTimeout
 	}
 	seedMarkhorPortal(jar, cookies)
-	loggedIn, err := markhorLoggedIn(ctx, client)
+	loggedIn, _, err := markhorLoggedIn(ctx, client)
 	if err != nil {
 		return false, nil, err
 	}
@@ -72,21 +72,25 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 	if err != nil {
 		return nil, err
 	}
-	if markhorShowsLogin(html, landed) {
-		return nil, automation.ErrLoginPage
+	if markhorRejected(html) {
+		return nil, automation.At(automation.ErrRejected, landed)
 	}
-	loggedIn, err := markhorLoggedIn(ctx, client)
+	loggedIn, memberURL, err := markhorLoggedIn(ctx, client)
 	if err != nil {
 		return nil, err
 	}
 	if !loggedIn {
-		return nil, automation.ErrLoginPage
+		where := memberURL
+		if where == "" {
+			where = landed
+		}
+		return nil, automation.At(automation.ErrLoginPage, where)
 	}
 	cookies := markhorExportCookies(jar, record, []string{
 		markhorBaseURL + "/", markhorLoginURL, markhorMemberURL,
 	})
 	if len(cookies) == 0 {
-		return nil, automation.ErrLoginPage
+		return nil, automation.At(automation.ErrLoginPage, memberURL)
 	}
 	return cookies, nil
 }
@@ -110,7 +114,7 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		return nil, markhorTransportErr(ctx, err)
 	}
 	if markhorShowsLogin(html, landed) {
-		return nil, automation.ErrLoginPage
+		return nil, automation.At(automation.ErrLoginPage, landed)
 	}
 	if markhorShowsDenied(html) {
 		return nil, automation.ErrDenied
@@ -125,7 +129,7 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	})
 	if !markhorAddedCookie(portal, live) {
 		if len(portal) == 0 {
-			return nil, automation.ErrLoginPage
+			return nil, automation.At(automation.ErrNoCookie, landed)
 		}
 		return storedMarkhorCookies(portal), nil
 	}
@@ -282,18 +286,18 @@ func normalizeMarkhorCookies(cookies []automation.Cookie) []automation.Cookie {
 	return out
 }
 
-func markhorLoggedIn(ctx context.Context, client *http.Client) (bool, error) {
+func markhorLoggedIn(ctx context.Context, client *http.Client) (bool, string, error) {
 	html, landed, err := markhorGet(ctx, client, markhorMemberURL, "")
 	if err != nil {
 		if errors.Is(err, automation.ErrLoginPage) {
-			return false, nil
+			return false, landed, nil
 		}
-		return false, markhorTransportErr(ctx, err)
+		return false, "", markhorTransportErr(ctx, err)
 	}
-	if markhorShowsLogin(html, landed) {
-		return false, nil
+	if markhorRejected(html) || markhorShowsLogin(html, landed) {
+		return false, landed, nil
 	}
-	return markhorShowsDashboard(html, landed), nil
+	return markhorShowsDashboard(html, landed), landed, nil
 }
 
 func markhorFetchCSRF(ctx context.Context, client *http.Client) (string, error) {
@@ -379,6 +383,13 @@ func markhorTransportErr(ctx context.Context, err error) error {
 	return automation.ErrTimeout
 }
 
+func markhorRejected(html string) bool {
+	lower := strings.ToLower(html)
+	return strings.Contains(lower, "invalid username or password") ||
+		strings.Contains(lower, "user name or password is incorrect") ||
+		strings.Contains(lower, "username or password is incorrect")
+}
+
 func markhorShowsLogin(html, pageURL string) bool {
 	parsed, _ := url.Parse(pageURL)
 	host := ""
@@ -391,10 +402,13 @@ func markhorShowsLogin(html, pageURL string) bool {
 	if host != "" && host != "markhorseotool.com" && host != "www.markhorseotool.com" {
 		return false
 	}
+	lower := strings.ToLower(html)
+	if strings.Contains(lower, "logout") || strings.Contains(lower, "my tools") {
+		return false
+	}
 	if strings.Contains(path, "/login") {
 		return true
 	}
-	lower := strings.ToLower(html)
 	if strings.Contains(lower, `name="username"`) && strings.Contains(lower, `name="password"`) {
 		return true
 	}

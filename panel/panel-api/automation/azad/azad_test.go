@@ -24,6 +24,16 @@ func TestAzadPageSignals(t *testing.T) {
 	if azadShowsDashboard(login, "https://members.azadseo.com/member") {
 		t.Fatal("login form was treated as a dashboard")
 	}
+	if azadShowsLogin(login, "https://semrush2.azadseo.com/?tool_access_at=1") {
+		t.Fatal("tool host was treated as the portal login")
+	}
+	withLogout := login + `<a href="/logout">Logout</a>`
+	if azadShowsLogin(withLogout, "https://members.azadseo.com/member") {
+		t.Fatal("a member page with logout was treated as logged out")
+	}
+	if !azadRejected(`<ul class="am-errors"><li>The user name or password is incorrect</li></ul>`) {
+		t.Fatal("rejected password was not detected")
+	}
 	got := azadLaunchURL(dash, "semrush2.azadseo.com")
 	if !strings.Contains(got, "semrush2.azadseo.com") {
 		t.Fatalf("launch = %s", got)

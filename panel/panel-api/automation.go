@@ -30,6 +30,8 @@ type cookieJSON = automation.Cookie
 
 var (
 	errAutomationLoginPage = automation.ErrLoginPage
+	errAutomationRejected  = automation.ErrRejected
+	errAutomationNoCookie  = automation.ErrNoCookie
 	errAutomationCSRF      = automation.ErrCSRF
 	errAutomationTimeout   = automation.ErrTimeout
 	errAutomationDenied    = automation.ErrDenied
@@ -218,11 +220,19 @@ func ensureAutomationTables(db *sql.DB) {
 }
 
 func automationPublicReason(err error) string {
+	var page *automation.PageError
+	if errors.As(err, &page) {
+		return page.Public()
+	}
 	switch {
 	case err == nil:
 		return ""
 	case errors.Is(err, errAutomationLoginPage):
 		return errAutomationLoginPage.Error()
+	case errors.Is(err, errAutomationRejected):
+		return errAutomationRejected.Error()
+	case errors.Is(err, errAutomationNoCookie):
+		return errAutomationNoCookie.Error()
 	case errors.Is(err, errAutomationCSRF):
 		return errAutomationCSRF.Error()
 	case errors.Is(err, errAutomationTimeout):
