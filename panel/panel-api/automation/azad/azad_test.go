@@ -195,6 +195,21 @@ func TestAzadJasperIsSeparate(t *testing.T) {
 	}
 }
 
+func TestAzadQuillbotIsSeparate(t *testing.T) {
+	html := `<a href="https://jasperai1.azadseo.com/?tool_access_at=1">j</a><a href="https://quillbot1.azadseo.com/?tool_access_at=1792024853">q</a>`
+	got := azadExtractSemrushURL(html, "quillbot1.azadseo.com")
+	if got != "https://quillbot1.azadseo.com/?tool_access_at=1792024853" {
+		t.Fatalf("quillbot launch = %s", got)
+	}
+	if strings.Contains(azadExtractSemrushURL(html, "jasperai1.azadseo.com"), "quillbot1") {
+		t.Fatal("jasper picked the quillbot link")
+	}
+	target := semrushTargetFor("quillbot2.testingg.me")
+	if target.proxyHost != "quillbot1.azadseo.com" || target.cookieDomain != ".quillbot2.testingg.me" || target.keepSetDomain {
+		t.Fatalf("quillbot target = %+v", target)
+	}
+}
+
 func TestAzadSemrush5CaptureWritesProxyCookie(t *testing.T) {
 	mux := http.NewServeMux()
 	launchHref := ""
@@ -419,5 +434,78 @@ func TestAzadJasperCaptureKeepsBothCookieDomains(t *testing.T) {
 	dd := byName["_dd_s"]
 	if dd.Domain != ".premiium.click" || dd.HTTPOnly || dd.Secure || dd.SameSite == nil || *dd.SameSite != "strict" || dd.HostOnly || dd.Session {
 		t.Fatalf("_dd_s = %+v", dd)
+	}
+}
+
+func TestAzadQuillbotCaptureWritesBothCookies(t *testing.T) {
+	mux := http.NewServeMux()
+	launchHref := ""
+	mux.HandleFunc("/member", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			_, _ = w.Write([]byte(`<input name="amember_login">login to your account`))
+			return
+		}
+		_, _ = w.Write([]byte(`<a href="/logout">Logout</a><a href="` + launchHref + `">q</a>`))
+	})
+	portal := httptest.NewServer(mux)
+	defer portal.Close()
+	tool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			http.Error(w, "login to your account", http.StatusOK)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "proxy_server", Value: "1", Path: "/"})
+		http.SetCookie(w, &http.Cookie{
+			Name: "proxy_token", Value: "tool-session", Path: "/", HttpOnly: true,
+			Expires: time.Unix(1823515875, 0),
+		})
+		http.SetCookie(w, &http.Cookie{Name: "amember_nr", Value: "portal-token", Path: "/"})
+		_, _ = w.Write([]byte(`<a href="/logout">Logout</a> quillbot ready`))
+	}))
+	defer tool.Close()
+	launchHref = tool.URL + "/?tool_access_at=1792024853"
+
+	previousBase, previousLogin, previousMember := azadBaseURL, azadLoginURL, azadMemberURL
+	azadBaseURL = portal.URL
+	azadLoginURL = portal.URL + "/login"
+	azadMemberURL = portal.URL + "/member"
+	t.Cleanup(func() {
+		azadBaseURL, azadLoginURL, azadMemberURL = previousBase, previousLogin, previousMember
+	})
+	toolURL, err := url.Parse(tool.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captured, err := captureSemrush(context.Background(), []automation.Cookie{{
+		Name: "PHPSESSID", Value: "portal-session", Domain: toolURL.Hostname(), Path: "/", HostOnly: true, HTTPOnly: true,
+	}}, semrushTarget{proxyHost: toolURL.Host, cookieDomain: ".quillbot2.testingg.me"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := automation.CookiesToJSON(captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var written []automation.Cookie
+	if err := json.Unmarshal([]byte(raw), &written); err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]automation.Cookie{}
+	for _, cookie := range written {
+		if strings.Contains(strings.ToLower(cookie.Name), "amember") || cookie.Name == "PHPSESSID" {
+			t.Fatalf("portal cookie %s was written", cookie.Name)
+		}
+		byName[cookie.Name] = cookie
+	}
+	server := byName["proxy_server"]
+	if server.Value != "1" || server.Domain != ".quillbot2.testingg.me" || !server.Session || server.ExpirationDate != nil || server.HTTPOnly || server.Secure || server.HostOnly || server.SameSite != nil {
+		t.Fatalf("proxy_server = %+v", server)
+	}
+	token := byName["proxy_token"]
+	if token.Domain != ".quillbot2.testingg.me" || !token.HTTPOnly || token.Secure || token.Session || token.HostOnly || token.SameSite != nil {
+		t.Fatalf("proxy_token = %+v", token)
+	}
+	if token.ExpirationDate == nil || *token.ExpirationDate != 1823515875 {
+		t.Fatalf("expiration = %v", token.ExpirationDate)
 	}
 }

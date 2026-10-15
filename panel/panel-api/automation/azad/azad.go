@@ -5,6 +5,7 @@ package azad
 // and writes .xemrush.site. Semrush 5 opens export1sem.azadseo.com and writes .6.semrush.com.in.
 // Grammarly opens grammarly2.azadseo.com and writes .testingg.one.
 // Jasper opens jasperai1.azadseo.com and keeps each cookie's own domain.
+// Quillbot opens quillbot1.azadseo.com and writes .quillbot2.testingg.me.
 
 import (
 	"context"
@@ -62,6 +63,13 @@ func semrushTargetFor(upstreamHost string) semrushTarget {
 			otherDomain:   ".premiium.click",
 			keepSetDomain: true,
 			readHosts:     []string{"jasperpro.premiium.click", "premiium.click"},
+		}
+	}
+	if host == "quillbot2.testingg.me" || strings.HasSuffix(host, ".testingg.me") || host == "testingg.me" || host == "quillbot1.azadseo.com" {
+		return semrushTarget{
+			proxyHost:    "quillbot1.azadseo.com",
+			cookieDomain: ".quillbot2.testingg.me",
+			readHosts:    []string{"quillbot2.testingg.me", "testingg.me"},
 		}
 	}
 	if net.ParseIP(host) != nil || host == "localhost" {
