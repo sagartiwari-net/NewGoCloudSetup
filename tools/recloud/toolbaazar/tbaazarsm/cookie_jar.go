@@ -17,11 +17,10 @@ type accountJar struct {
 var derivedCookies sync.Map
 
 func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
-	// gateway_bootstrap saved on the account is only the seed. A later
-	// Set-Cookie with the same name replaces it until the saved cookie changes.
-	// user_pool is never taken from the panel or the customer browser. The
-	// gateway's Set-Cookie is the only source, so a renamed pool still follows.
-	panel := withoutCookieNames(strings.TrimSpace(acc.Cookie), "user_pool")
+	// The saved gateway_bootstrap and user_pool are the seed for this cookie.
+	// A later Set-Cookie replaces either name until the saved bootstrap changes.
+	// The customer browser cannot pick a different pool.
+	panel := strings.TrimSpace(acc.Cookie)
 	browser := ""
 	if r != nil {
 		browser = withoutCookieNames(browserCookiesForUpstream(r), "gateway_bootstrap", "user_pool")

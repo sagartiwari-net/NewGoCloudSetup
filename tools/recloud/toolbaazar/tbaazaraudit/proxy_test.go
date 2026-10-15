@@ -142,11 +142,11 @@ func TestGatewayPoolFollowsUpstream(t *testing.T) {
 	req.Header.Set("Cookie", "ct_session=panel-session; user_pool=pool_9; gateway_bootstrap=from-browser")
 	acc := ToolAccount{ID: id, Cookie: "gateway_bootstrap=seed; user_pool=pool_2"}
 	got := cookiesForUpstream(acc, req)
-	if !strings.Contains(got, "gateway_bootstrap=seed") {
-		t.Fatalf("saved bootstrap was not sent: %s", got)
+	if !strings.Contains(got, "gateway_bootstrap=seed") || !strings.Contains(got, "user_pool=pool_2") {
+		t.Fatalf("saved bootstrap and pool were not sent: %s", got)
 	}
-	if strings.Contains(got, "user_pool") || strings.Contains(got, "pool_2") || strings.Contains(got, "pool_9") || strings.Contains(got, "from-browser") {
-		t.Fatalf("pool was pinned from the panel or browser: %s", got)
+	if strings.Contains(got, "pool_9") || strings.Contains(got, "from-browser") {
+		t.Fatalf("browser pool replaced the saved session: %s", got)
 	}
 	if strings.Contains(got, "ct_session") || strings.Contains(got, "panel-session") {
 		t.Fatalf("panel session leaked upstream: %s", got)
