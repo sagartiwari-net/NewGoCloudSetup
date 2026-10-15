@@ -731,6 +731,13 @@
       "subdomain": "tbaazaraudit",
       "port": 6201,
       "fqdn": "tbaazaraudit.gt4rents.com"
+    },
+    {
+      "tool": "amzckeepa",
+      "folder": "recloud/amztoolsconsultant/amzckeepa",
+      "subdomain": "amzckeepa",
+      "port": 6300,
+      "fqdn": "amzckeepa.gt4rents.com"
     }
   ]
 }

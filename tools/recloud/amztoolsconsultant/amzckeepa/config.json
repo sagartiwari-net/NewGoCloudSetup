@@ -1,0 +1,12 @@
+{
+  "port": "6300",
+  "public_host": "127.0.0.1:6300",
+  "public_scheme": "http",
+  "target_url": "https://app03.browseanywhere.com",
+  "home_path": "/amztoolsconsultant-kp01/",
+  "tool_name": "Amztoolsconsultant Keepa",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}
