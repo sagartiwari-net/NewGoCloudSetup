@@ -26,8 +26,12 @@ func isLoginPath(path string) bool {
 
 func bodyLooksLoggedOut(body []byte) bool {
 	text := strings.ToLower(string(body))
-	return strings.Contains(text, "session expired") ||
-		strings.Contains(text, "access again from dashboard") ||
+	// The open Semrush page includes a timer that logs "Session expired".
+	// Only the gateway's own signed-out page is a logout.
+	if strings.Contains(text, "your session has expired") && strings.Contains(text, "access the dashboard again") {
+		return true
+	}
+	return strings.Contains(text, "access again from dashboard") ||
 		strings.Contains(text, "this section is restricted") ||
 		(strings.Contains(text, "member login") && strings.Contains(text, "forgot password"))
 }

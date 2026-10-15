@@ -51,6 +51,9 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 	if _, ok := rewriteSetCookie("user_pool=pool_2; Path=/", "site.verygoodtool.com", "https://tbaazaraudit.gt4rents.com"); ok {
 		t.Fatal("user pool must not reach the browser")
 	}
+	if _, ok := rewriteSetCookie("tsoe-biao-a1rc=secret; Path=/; HttpOnly; Secure", "site.verygoodtool.com", "https://tbaazaraudit.gt4rents.com"); ok {
+		t.Fatal("gateway session cookie must not reach the browser")
+	}
 	got, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "site.verygoodtool.com", "https://tbaazaraudit.gt4rents.com")
 	if !ok || !strings.Contains(got, "Domain=tbaazaraudit.gt4rents.com") || strings.Contains(got, "semrush.com") {
 		t.Fatal("sidebar cookie domain was not rewritten")
@@ -132,6 +135,9 @@ func TestLogoutPath(t *testing.T) {
 	}
 	if !bodyLooksLoggedOut([]byte(`<h1>Session Expired</h1><p>Your session has expired. Please access the dashboard again.</p>`)) {
 		t.Fatal("toolbaazar session page should count as logged out")
+	}
+	if bodyLooksLoggedOut([]byte(`<title>Semrush Projects</title><script>console.log('Session expired, redirecting to logout...');</script>`)) {
+		t.Fatal("semrush session timer is not a signed-out page")
 	}
 }
 

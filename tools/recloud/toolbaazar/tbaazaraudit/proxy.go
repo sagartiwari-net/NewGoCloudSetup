@@ -455,7 +455,7 @@ func rewriteSetCookie(raw, upstreamHost, origin string) (string, bool) {
 	}
 	name := strings.TrimSpace(strings.SplitN(parts[0], "=", 2)[0])
 	switch strings.ToLower(name) {
-	case "gateway_bootstrap", "user_pool", "ct_session":
+	case "gateway_bootstrap", "user_pool", "tsoe-biao-a1rc", "ct_session":
 		return "", false
 	}
 	host := origin

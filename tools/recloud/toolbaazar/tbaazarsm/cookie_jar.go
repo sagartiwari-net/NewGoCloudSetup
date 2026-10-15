@@ -23,7 +23,7 @@ func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
 	panel := strings.TrimSpace(acc.Cookie)
 	browser := ""
 	if r != nil {
-		browser = withoutCookieNames(browserCookiesForUpstream(r), "gateway_bootstrap", "user_pool")
+		browser = withoutCookieNames(browserCookiesForUpstream(r), "gateway_bootstrap", "user_pool", "tsoe-biao-a1rc")
 	}
 	seed := cookieValue(panel, "gateway_bootstrap")
 	if acc.ID != 0 {
