@@ -77,10 +77,14 @@ func automationKey() []byte {
 	if raw == "" {
 		if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) != "" {
 			automationKeyWarn.Do(func() {
-				log.Printf("[automation] GT4RENTS_AUTOMATION_KEY is empty; set it in mysql.env before saving credentials")
+				log.Printf("[automation] GT4RENTS_AUTOMATION_KEY is empty; using the built-in key")
 			})
 		}
 		raw = "panel-automation-sqlite-test-key"
+	} else {
+		automationKeyWarn.Do(func() {
+			log.Printf("[automation] GT4RENTS_AUTOMATION_KEY is set")
+		})
 	}
 	sum := sha256.Sum256([]byte(raw))
 	return sum[:]
@@ -103,11 +107,28 @@ func encryptAutomation(plain string) (string, error) {
 }
 
 func decryptAutomation(enc string) (string, error) {
+	plain, err := openAutomationSecret(enc, automationKey())
+	if err == nil {
+		return plain, nil
+	}
+	if strings.TrimSpace(os.Getenv("GT4RENTS_AUTOMATION_KEY")) == "" {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte("panel-automation-sqlite-test-key"))
+	plain, fallbackErr := openAutomationSecret(enc, sum[:])
+	if fallbackErr != nil {
+		return "", err
+	}
+	log.Printf("[automation] credential opened with the previous key")
+	return plain, nil
+}
+
+func openAutomationSecret(enc string, key []byte) (string, error) {
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(enc))
 	if err != nil {
 		return "", err
 	}
-	block, err := aes.NewCipher(automationKey())
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}

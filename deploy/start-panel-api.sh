@@ -37,15 +37,20 @@ elif [[ -f "${PIDF}" ]] && kill -0 "$(cat "${PIDF}")" 2>/dev/null; then
 fi
 
 if [[ -f "${BASE}/_secrets/mysql.env" ]]; then
+  # Drop a stale shell value so mysql.env is the only source of the automation key.
+  unset GT4RENTS_AUTOMATION_KEY
   # shellcheck disable=SC1090
+  set -a
   source "${BASE}/_secrets/mysql.env"
+  set +a
 fi
 
 cd "${PANEL}"
-# TOOL_PUBLIC_SCHEME from mysql.env (http now; https after SSL) for access-link URLs
+# Name the automation key here so the panel process receives the mysql.env value.
 nohup env \
   PANEL_API_ADDR="${ADDR}" \
   TOOL_PUBLIC_SCHEME="${TOOL_PUBLIC_SCHEME:-http}" \
+  GT4RENTS_AUTOMATION_KEY="${GT4RENTS_AUTOMATION_KEY:-}" \
   GT4RENTS_MYSQL_PASSWORD="${GT4RENTS_MYSQL_PASSWORD:-}" \
   GT4RENTS_MYSQL_HOST="${GT4RENTS_MYSQL_HOST:-127.0.0.1}" \
   GT4RENTS_MYSQL_PORT="${GT4RENTS_MYSQL_PORT:-3306}" \
