@@ -3,6 +3,7 @@ package azad
 // Recipe is the Azad portal HTTP login from the old GoAuto client.
 // Login stores the members.azadseo.com cookie. Semrush 2 opens semrush2.azadseo.com
 // and writes .xemrush.site. Semrush 5 opens export1sem.azadseo.com and writes .6.semrush.com.in.
+// Grammarly opens grammarly2.azadseo.com and writes .testingg.one.
 
 import (
 	"context"
@@ -46,6 +47,9 @@ func semrushTargetFor(upstreamHost string) semrushTarget {
 	}
 	if host == "6.semrush.com.in" || strings.HasSuffix(host, ".semrush.com.in") || host == "export1sem.azadseo.com" {
 		return semrushTarget{proxyHost: "export1sem.azadseo.com", cookieDomain: ".6.semrush.com.in"}
+	}
+	if host == "testingg.one" || strings.HasSuffix(host, ".testingg.one") || host == "grammarly2.azadseo.com" {
+		return semrushTarget{proxyHost: "grammarly2.azadseo.com", cookieDomain: ".testingg.one"}
 	}
 	if net.ParseIP(host) != nil || host == "localhost" {
 		return semrushTarget{proxyHost: strings.TrimSpace(upstreamHost), cookieDomain: ".xemrush.site"}

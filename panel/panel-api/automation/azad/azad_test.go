@@ -159,6 +159,21 @@ func TestAzadSemrush5IsSeparateFromSemrush2(t *testing.T) {
 	}
 }
 
+func TestAzadGrammarlyIsSeparate(t *testing.T) {
+	html := `<a href="https://semrush2.azadseo.com/?tool_access_at=1">2</a><a href="https://export1sem.azadseo.com/?tool_access_at=9">5</a><a href="https://grammarly2.azadseo.com/?tool_access_at=1791993330">g</a>`
+	got := azadExtractSemrushURL(html, "grammarly2.azadseo.com")
+	if got != "https://grammarly2.azadseo.com/?tool_access_at=1791993330" {
+		t.Fatalf("grammarly launch = %s", got)
+	}
+	if strings.Contains(azadExtractSemrushURL(html, "semrush2.azadseo.com"), "grammarly2") {
+		t.Fatal("semrush 2 picked the grammarly link")
+	}
+	target := semrushTargetFor("testingg.one")
+	if target.proxyHost != "grammarly2.azadseo.com" || target.cookieDomain != ".testingg.one" {
+		t.Fatalf("grammarly target = %+v", target)
+	}
+}
+
 func TestAzadSemrush5CaptureWritesProxyCookie(t *testing.T) {
 	mux := http.NewServeMux()
 	launchHref := ""
@@ -234,6 +249,76 @@ func TestAzadSemrush5CaptureWritesProxyCookie(t *testing.T) {
 		t.Fatalf("cookie shape = %+v", cookie)
 	}
 	if cookie.ExpirationDate == nil || *cookie.ExpirationDate != 1823530692 {
+		t.Fatalf("expiration = %v", cookie.ExpirationDate)
+	}
+}
+
+func TestAzadGrammarlyCaptureWritesProxyCookie(t *testing.T) {
+	mux := http.NewServeMux()
+	launchHref := ""
+	mux.HandleFunc("/member", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			_, _ = w.Write([]byte(`<input name="amember_login">login to your account`))
+			return
+		}
+		_, _ = w.Write([]byte(`<a href="/logout">Logout</a><a href="https://semrush2.azadseo.com/?tool_access_at=1">2</a><a href="` + launchHref + `">g</a>`))
+	})
+	portal := httptest.NewServer(mux)
+	defer portal.Close()
+	tool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("tool_access_at") != "1791993330" {
+			http.Error(w, "bad access", http.StatusBadRequest)
+			return
+		}
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			http.Error(w, "login to your account", http.StatusOK)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name: "proxy_token", Value: "tool-session", Path: "/", HttpOnly: true,
+			Expires: time.Unix(1823560863, 0),
+		})
+		_, _ = w.Write([]byte(`<a href="/logout">Logout</a> grammarly ready`))
+	}))
+	defer tool.Close()
+	launchHref = tool.URL + "/?tool_access_at=1791993330"
+
+	previousBase, previousLogin, previousMember := azadBaseURL, azadLoginURL, azadMemberURL
+	azadBaseURL = portal.URL
+	azadLoginURL = portal.URL + "/login"
+	azadMemberURL = portal.URL + "/member"
+	t.Cleanup(func() {
+		azadBaseURL, azadLoginURL, azadMemberURL = previousBase, previousLogin, previousMember
+	})
+	toolURL, err := url.Parse(tool.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captured, err := captureSemrush(context.Background(), []automation.Cookie{{
+		Name: "PHPSESSID", Value: "portal-session", Domain: toolURL.Hostname(), Path: "/", HostOnly: true, HTTPOnly: true,
+	}}, semrushTarget{proxyHost: toolURL.Host, cookieDomain: ".testingg.one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := automation.CookiesToJSON(captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var written []automation.Cookie
+	if err := json.Unmarshal([]byte(raw), &written); err != nil {
+		t.Fatal(err)
+	}
+	if len(written) != 1 {
+		t.Fatalf("wrote %d cookies", len(written))
+	}
+	cookie := written[0]
+	if cookie.Name != "proxy_token" || cookie.Domain != ".testingg.one" || cookie.Secure || cookie.HostOnly || !cookie.HTTPOnly || cookie.Session {
+		t.Fatalf("cookie = %+v", cookie)
+	}
+	if cookie.SameSite != nil || cookie.StoreID != nil || cookie.Path != "/" {
+		t.Fatalf("cookie shape = %+v", cookie)
+	}
+	if cookie.ExpirationDate == nil || *cookie.ExpirationDate != 1823560863 {
 		t.Fatalf("expiration = %v", cookie.ExpirationDate)
 	}
 }
