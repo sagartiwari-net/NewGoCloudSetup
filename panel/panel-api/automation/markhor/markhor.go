@@ -254,11 +254,21 @@ func markhorTransportErr(ctx context.Context, err error) error {
 }
 
 func markhorShowsLogin(html, pageURL string) bool {
-	lower := strings.ToLower(html)
-	urlLower := strings.ToLower(pageURL)
-	if strings.Contains(urlLower, "/login") {
+	parsed, _ := url.Parse(pageURL)
+	host := ""
+	path := ""
+	if parsed != nil {
+		host = strings.ToLower(parsed.Hostname())
+		path = strings.ToLower(parsed.EscapedPath())
+	}
+	// sm01 and the other tools serve their own app. Their HTML can mention a login field.
+	if host != "" && host != "markhorseotool.com" && host != "www.markhorseotool.com" {
+		return false
+	}
+	if strings.Contains(path, "/login") {
 		return true
 	}
+	lower := strings.ToLower(html)
 	if strings.Contains(lower, `name="username"`) && strings.Contains(lower, `name="password"`) {
 		return true
 	}

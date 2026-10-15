@@ -11,8 +11,11 @@ func TestPageSignals(t *testing.T) {
 	if !markhorShowsLogin(`<input name="username"><input name="password">`, "https://markhorseotool.com/member/") {
 		t.Fatal("username and password inputs are a login page")
 	}
-	if !markhorShowsLogin("Member login. Sign in", "https://markhorseotool.com/member/") {
+	if !markhorShowsLogin("Member login. Sign in", "https://markhorseotool.com/login") {
 		t.Fatal("member login copy is a login page")
+	}
+	if markhorShowsLogin(`<input name="username"><input name="password"> Domain Overview`, "https://sm01.markhorseotool.com/analytics/overview/") {
+		t.Fatal("semrush tool page was treated as the portal login")
 	}
 	if !markhorShowsDashboard(`<a href="/logout">Logout</a> My tools`, "https://markhorseotool.com/member/") {
 		t.Fatal("member dashboard was not detected")
