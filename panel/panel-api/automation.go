@@ -15,6 +15,7 @@ import (
 	"panel-api/automation"
 	"panel-api/automation/azad"
 	"panel-api/automation/markhor"
+	"panel-api/automation/toolbaazar"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,10 +47,11 @@ func cookieValues(cookies []cookieJSON) []string         { return automation.Coo
 var (
 	recipeMu          sync.Mutex
 	automationRecipes = map[string]automation.Recipe{
-		"markhor": markhor.Recipe{},
-		"azad":    azad.Recipe{},
+		"markhor":    markhor.Recipe{},
+		"azad":       azad.Recipe{},
+		"toolbaazar": toolbaazar.Recipe{},
 	}
-	automationProviderNames = map[string]string{"markhor": "Markhor", "azad": "Azad"}
+	automationProviderNames = map[string]string{"markhor": "Markhor", "azad": "Azad", "toolbaazar": "Toolbaazar"}
 	automationCredLocks     sync.Map
 	automationKeyWarn       sync.Once
 	automationMySQLIDs      sync.Once
