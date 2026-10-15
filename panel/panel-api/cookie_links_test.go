@@ -69,13 +69,24 @@ func TestCookieLinkFollowsUntilStopped(t *testing.T) {
 	if cookie != "new-cookie" || ua != "ua-source" || proxy != "socks5://keep" || status != "inactive" {
 		t.Fatalf("fan-out mismatch cookie=%q ua=%q proxy=%q status=%q", cookie, ua, proxy, status)
 	}
+	if _, err := db.Exec(`UPDATE accounts SET status='logged_out' WHERE id=?`, followerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE accounts SET cookie='revived-cookie' WHERE id=?`, sourceID); err != nil {
+		t.Fatal(err)
+	}
+	s.shareCookieFrom(sourceID)
+	cookie, _, _, status = followerShare(t, db, int(followerID))
+	if cookie != "revived-cookie" || status != "active" {
+		t.Fatalf("logged out follower stayed down cookie=%q status=%q", cookie, status)
+	}
 
 	if _, err := db.Exec(`UPDATE accounts SET cookie='' WHERE id=?`, sourceID); err != nil {
 		t.Fatal(err)
 	}
 	s.shareCookieFrom(sourceID)
 	cookie, _, _, _ = followerShare(t, db, int(followerID))
-	if cookie != "new-cookie" {
+	if cookie != "revived-cookie" {
 		t.Fatal("empty source cookie wiped the follower")
 	}
 
@@ -88,7 +99,7 @@ func TestCookieLinkFollowsUntilStopped(t *testing.T) {
 	}
 	s.shareCookieFrom(sourceID)
 	cookie, _, _, _ = followerShare(t, db, int(followerID))
-	if cookie != "new-cookie" {
+	if cookie != "revived-cookie" {
 		t.Fatal("stopped link still copied")
 	}
 

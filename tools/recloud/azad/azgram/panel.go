@@ -539,6 +539,8 @@ func ensureRecloudSite(cfg Config) {
 	}
 	_, _ = db.Exec(`UPDATE websites SET tool_id=?, name=?, kind='recloud', upstream_url=? WHERE id=?`, toolID, name, nextURL, websiteID)
 	_, _ = db.Exec(`UPDATE accounts SET name=? WHERE website_id=?`, name, websiteID)
+	// A dead session used to mark the only account logged out, which replaces the tool with Temporarily Unavailable.
+	_, _ = db.Exec(`UPDATE accounts SET status='active' WHERE website_id=? AND status='logged_out' AND TRIM(cookie) <> ''`, websiteID)
 	importCookieFile(db, websiteID)
 }
 

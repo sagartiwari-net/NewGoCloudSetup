@@ -51,7 +51,13 @@ func (s *server) shareCookieFrom(sourceID int) {
 		agentID = userAgentID.Int64
 	}
 	for _, followerID := range followers {
-		_, _ = s.db.Exec(`UPDATE accounts SET cookie=?, cookie_updated_at=? WHERE id=?`, cookie, now, followerID)
+		var status string
+		_ = s.db.QueryRow(`SELECT COALESCE(status, '') FROM accounts WHERE id=?`, followerID).Scan(&status)
+		if status == "logged_out" {
+			_, _ = s.db.Exec(`UPDATE accounts SET cookie=?, status='active', cookie_updated_at=?, failure_count=0 WHERE id=?`, cookie, now, followerID)
+		} else {
+			_, _ = s.db.Exec(`UPDATE accounts SET cookie=?, cookie_updated_at=? WHERE id=?`, cookie, now, followerID)
+		}
 		if copyAgent {
 			_, _ = s.db.Exec(`UPDATE accounts SET user_agent_id=?, user_agent=? WHERE id=?`, agentID, userAgent, followerID)
 		}
