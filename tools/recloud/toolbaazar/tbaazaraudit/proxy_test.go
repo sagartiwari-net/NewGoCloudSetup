@@ -272,3 +272,31 @@ func TestMenuClickDoesNotFollowIntoAccessDenied(t *testing.T) {
 		t.Fatalf("location %s", rr.Header().Get("Location"))
 	}
 }
+
+func TestLoggedOutPoolOpensTheOtherPool(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if !strings.Contains(r.Header.Get("Cookie"), "gateway_bootstrap=seed") {
+			_, _ = w.Write([]byte(`<title>session expired</title>`))
+			return
+		}
+		if strings.Contains(r.Header.Get("Cookie"), "user_pool=pool_1") {
+			_, _ = w.Write([]byte(`<html>Site Audit projects</html>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<a>Log In</a><a>Start for free</a><h1>SEO Checker</h1>`))
+	}))
+	defer upstream.Close()
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/siteaudit", PublicHost: "tbaazaraudit.gt4rents.com", PublicScheme: "http", ToolName: "Toolbaazar Site Audit"}
+	req := httptest.NewRequest(http.MethodGet, "http://tbaazaraudit.gt4rents.com/siteaudit/", nil)
+	req.Host = "tbaazaraudit.gt4rents.com"
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "gateway_bootstrap=seed; user_pool=pool_2"})
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "Site Audit projects") {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "Start for free") {
+		t.Fatal("logged-out pool was shown")
+	}
+}

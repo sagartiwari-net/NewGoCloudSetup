@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"io"
 	"log"
@@ -175,6 +176,73 @@ func responseLooksLoggedOut(status int, location string, body []byte) bool {
 	return bodyLooksLoggedOut(body)
 }
 
+// poolAccountLoggedOut is the public Semrush page, or the gateway session-expired page.
+// The real tool does not show "Start for free". A script that mentions "Session expired" is not this page.
+func poolAccountLoggedOut(body []byte) bool {
+	text := strings.ToLower(string(body))
+	if strings.Contains(text, "start for free") {
+		return true
+	}
+	return strings.Contains(text, "<title>session expired</title>")
+}
+
+func pinCookie(header, name, value string) string {
+	order, vals := parseCookieHeader(header)
+	found := false
+	for _, item := range order {
+		if strings.EqualFold(item, name) {
+			vals[item] = value
+			found = true
+		}
+	}
+	if !found {
+		order = append(order, name)
+		vals[name] = value
+	}
+	return serializeCookies(order, vals)
+}
+
+// fetchLoggedInPool tries pool_1 and pool_2 when the pool just used is logged out.
+// gateway_bootstrap stays the saved one. The pool that opens the tool is the one kept.
+func fetchLoggedInPool(ctx context.Context, base *url.URL, requestURI, jar string) (*http.Response, []byte, string, bool) {
+	boot := cookieValue(jar, "gateway_bootstrap")
+	if boot == "" || base == nil {
+		return nil, nil, jar, false
+	}
+	current := cookieValue(jar, "user_pool")
+	for _, pool := range []string{"pool_1", "pool_2"} {
+		if pool == current {
+			continue
+		}
+		trial := "gateway_bootstrap=" + boot + "; user_pool=" + pool
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL(base, requestURI), nil)
+		if err != nil {
+			return nil, nil, jar, false
+		}
+		req.Host = base.Host
+		req.Header.Set("Host", base.Host)
+		req.Header.Set("Cookie", trial)
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		req.Header.Set("Accept", "text/html")
+		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		resp, err := upstreamClient.Do(req)
+		if err != nil {
+			continue
+		}
+		body, err := readUpstreamBody(resp)
+		resp.Body.Close()
+		if err != nil || resp.StatusCode >= 300 || poolAccountLoggedOut(body) {
+			continue
+		}
+		trial = absorbSetCookies(trial, resp.Header)
+		trial = pinCookie(trial, "gateway_bootstrap", boot)
+		trial = pinCookie(trial, "user_pool", pool)
+		log.Printf("[UP] user_pool %s opened the tool", pool)
+		return resp, body, trial, true
+	}
+	return nil, nil, jar, false
+}
+
 func upstreamURL(base *url.URL, requestURI string) string {
 	u := *base
 	rel, err := url.Parse(requestURI)
@@ -325,6 +393,17 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		}
 		if resp == nil {
 			continue
+		}
+		if isDocumentNavigation(r) && r.Method == http.MethodGet && poolAccountLoggedOut(payload) {
+			if nextResp, nextBody, nextJar, ok := fetchLoggedInPool(r.Context(), base, requestURI, jar); ok {
+				resp = nextResp
+				payload = nextBody
+				jar = nextJar
+				rememberUpstreamCookies(acc, jar)
+			} else {
+				renderLoggedOutPage(w, cfg)
+				return
+			}
 		}
 		ct = resp.Header.Get("Content-Type")
 		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
