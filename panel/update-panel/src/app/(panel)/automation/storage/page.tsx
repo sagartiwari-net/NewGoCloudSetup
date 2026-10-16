@@ -21,17 +21,9 @@ import { formatIst } from "@/lib/format"
 import { runMutation } from "@/lib/mutate"
 import { useListPage } from "@/lib/page-size"
 
-const schema = z
-  .object({
-    cookie: z.string().trim().min(1, "Enter a cookie"),
-    user_agent: z.string(),
-    provider: z.string(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.provider === "ahrefs" && value.user_agent.trim() === "") {
-      ctx.addIssue({ code: "custom", path: ["user_agent"], message: "Enter the user agent that belongs to this cookie" })
-    }
-  })
+const schema = z.object({
+  cookie: z.string().trim().min(1, "Enter a cookie"),
+})
 
 type FormValues = z.infer<typeof schema>
 
@@ -77,7 +69,7 @@ export default function AutomationStoragePage() {
     <>
       <PageHeader
         title="Storage"
-        description="The saved cookie for each credential. Ahrefs also keeps the user agent that created that cookie."
+        description="One JSON per credential. For Ahrefs, put userAgent next to cookies in that same JSON."
       />
       <Field className="md:max-w-sm">
         <FieldLabel htmlFor="storage-search">Search</FieldLabel>
@@ -147,7 +139,7 @@ function StorageEditor({ credentialId, onDone }: { credentialId: number; onDone:
 function StorageForm({ detail, onDone }: { detail: AutomationStorageDetail; onDone: () => void }) {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { cookie: detail.cookie, user_agent: detail.user_agent ?? "", provider: detail.provider ?? "" },
+    defaultValues: { cookie: detail.cookie },
   })
   const errors = form.formState.errors
 
@@ -156,7 +148,7 @@ function StorageForm({ detail, onDone }: { detail: AutomationStorageDetail; onDo
       className="flex flex-col gap-4"
       onSubmit={form.handleSubmit(async (values) => {
         const ok = await runMutation(
-          () => saveAutomationStorage(detail.credential_id, values.cookie.trim(), values.user_agent.trim()),
+          () => saveAutomationStorage(detail.credential_id, values.cookie.trim()),
           "Cookie saved",
         )
         if (ok) onDone()
@@ -177,17 +169,12 @@ function StorageForm({ detail, onDone }: { detail: AutomationStorageDetail; onDo
               />
             )}
           />
+          {detail.provider === "ahrefs" ? (
+            <FieldDescription>
+              Use one object with userAgent and cookies. There is no separate user agent box.
+            </FieldDescription>
+          ) : null}
           <FieldError errors={[errors.cookie]} />
-        </Field>
-        <Field data-invalid={Boolean(errors.user_agent) || undefined}>
-          <FieldLabel htmlFor="storage-user-agent">User agent</FieldLabel>
-          <Input id="storage-user-agent" autoComplete="off" {...form.register("user_agent")} />
-          <FieldDescription>
-            {detail.provider === "ahrefs"
-              ? "Paste the exact browser user agent from the profile that created this cookie. Refresh and the tool account both use it."
-              : "Leave this blank unless this cookie only works with one browser string."}
-          </FieldDescription>
-          <FieldError errors={[errors.user_agent]} />
         </Field>
       </FieldGroup>
       <div className="flex flex-wrap items-center justify-between gap-3">

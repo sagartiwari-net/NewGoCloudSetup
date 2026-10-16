@@ -705,10 +705,10 @@ export async function getAutomationStorage(credentialId: number): Promise<Automa
   return api(`/api/automation/storage/${credentialId}`)
 }
 
-export async function saveAutomationStorage(credentialId: number, cookie: string, userAgent: string): Promise<Ok> {
+export async function saveAutomationStorage(credentialId: number, cookie: string): Promise<Ok> {
   await api("/api/automation/storage", {
     method: "POST",
-    body: JSON.stringify({ credential_id: credentialId, cookie, user_agent: userAgent }),
+    body: JSON.stringify({ credential_id: credentialId, cookie }),
   })
   return { status: "ok" }
 }

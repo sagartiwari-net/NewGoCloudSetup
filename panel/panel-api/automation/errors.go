@@ -17,7 +17,7 @@ var (
 	ErrToolClosed   = errors.New("saved cookie did not open the tool")
 	ErrUpstream     = errors.New("upstream URL missing")
 	ErrStoredCookie = errors.New("paste a fresh cookie in Storage")
-	ErrUserAgent    = errors.New("paste the user agent that belongs to this cookie")
+	ErrUserAgent    = errors.New(`put "userAgent" inside the cookie JSON`)
 )
 
 // PageError keeps the failure and the host plus path that was open.

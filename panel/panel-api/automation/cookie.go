@@ -38,6 +38,46 @@ type Cookie struct {
 	Value          string   `json:"value"`
 }
 
+// UserAgentFromCookie reads the browser string stored beside the cookies.
+// The paste is one JSON object: {"userAgent":"...","cookies":[...]}.
+func UserAgentFromCookie(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.HasPrefix(raw, "{") {
+		return ""
+	}
+	var wrapped struct {
+		UserAgent  string `json:"userAgent"`
+		UserAgent2 string `json:"user_agent"`
+	}
+	if json.Unmarshal([]byte(raw), &wrapped) != nil {
+		return ""
+	}
+	if strings.TrimSpace(wrapped.UserAgent) != "" {
+		return strings.TrimSpace(wrapped.UserAgent)
+	}
+	return strings.TrimSpace(wrapped.UserAgent2)
+}
+
+// CookiesWithUserAgent keeps the browser string inside the same JSON as the cookies.
+func CookiesWithUserAgent(cookies []Cookie, userAgent string) (string, error) {
+	encoded, err := CookiesToJSON(cookies)
+	if err != nil {
+		return "", err
+	}
+	var cleaned []Cookie
+	if json.Unmarshal([]byte(encoded), &cleaned) != nil {
+		return "", ErrLoginPage
+	}
+	raw, err := json.Marshal(map[string]any{
+		"userAgent": strings.TrimSpace(userAgent),
+		"cookies":   cleaned,
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
 func CookiesToJSON(cookies []Cookie) (string, error) {
 	cleaned := make([]Cookie, 0, len(cookies))
 	for _, cookie := range cookies {

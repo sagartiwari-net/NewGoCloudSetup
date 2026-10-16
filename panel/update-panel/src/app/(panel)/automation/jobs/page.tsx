@@ -354,7 +354,7 @@ function JobForm({
           <FieldError errors={[errors.credential_id]} />
           {provider === "ahrefs" && credentials.length === 0 ? (
             <FieldDescription>
-              Create an Ahrefs credential first. Leave the password blank, then paste the cookie and its user agent on Storage.
+              Create an Ahrefs credential first. Leave the password blank, then paste one JSON on Storage with userAgent and cookies.
             </FieldDescription>
           ) : null}
         </Field>
