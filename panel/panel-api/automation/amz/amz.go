@@ -7,6 +7,7 @@ package amz
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"html"
@@ -43,6 +44,7 @@ var (
 	metaRefreshRE = regexp.MustCompile(`(?i)http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"'>\s]+)`)
 	rawURLRE      = regexp.MustCompile(`(?i)https?://[a-z0-9._/-]+(?:\?[^\s"'<>]*)?`)
 	formRE        = regexp.MustCompile(`(?is)<form([^>]*)>(.*?)</form>`)
+	atobRE        = regexp.MustCompile(`atob\(\s*["']([A-Za-z0-9+/=]+)["']\s*\)`)
 	inputRE       = regexp.MustCompile(`(?i)<input([^>]+)>`)
 	buttonRE      = regexp.MustCompile(`(?i)<(?:button|input)([^>]+)>`)
 	attrRE        = regexp.MustCompile(`(?i)([a-z0-9_-]+)\s*=\s*["']([^"']*)["']`)
@@ -238,16 +240,27 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 		return nil, automation.At(automation.ErrDenied, landed)
 	}
 	// /page/kp01 is the Keepa launch. Open it with the member cookie, then the tool host.
+	// The page hides the app03 address in base64 and posts the signed form from the browser.
 	// /cloud/kp01 signs a form for app01, which does not host this site. Use it only when this page links there.
 	log.Printf("[automation] amz keepa page %s", automation.Where(landed))
-	if next := upstreamBrowseURL(page, landed, upstream); next != "" && !samePage(next, landed) {
+	postedSSO := false
+	if action, values, ok := ssoAccessForm(page); ok {
+		postedSSO = true
+		log.Printf("[automation] amz keepa form %s fields=%s", automation.Where(action), formFieldNames(values))
+		page, landed, err = submitKeepaForm(ctx, client, action, landed, values, upstream)
+		if err != nil {
+			return nil, err
+		}
+	} else if next := upstreamBrowseURL(page, landed, upstream); next != "" && !samePage(next, landed) {
 		log.Printf("[automation] amz keepa follow %s", automation.Where(next))
 		nextPage, nextLanded, nextErr := get(ctx, client, next, landed)
 		if nextErr == nil {
 			page, landed = nextPage, nextLanded
 		}
 	}
-	if action, values, ok := pickKeepaForm(page, landed, upstream); ok && formHostMatches(action, upstream) {
+	if postedSSO {
+		// The decoded form already opened the tool host. Do not also open /cloud/kp01.
+	} else if action, values, ok := pickKeepaForm(page, landed, upstream); ok && formHostMatches(action, upstream) {
 		log.Printf("[automation] amz keepa form %s", automation.Where(action))
 		page, landed, err = submitKeepaForm(ctx, client, action, landed, values, upstream)
 		if err != nil {
@@ -463,6 +476,55 @@ func samePage(a, b string) bool {
 		return a == b
 	}
 	return strings.EqualFold(left.Host, right.Host) && left.EscapedPath() == right.EscapedPath()
+}
+
+// ssoAccessForm reads the virtual-browser page. The form has no action until the
+// browser decodes atob(...) and posts username, email, timestamp, and signature.
+func ssoAccessForm(page string) (string, url.Values, bool) {
+	encoded := atobRE.FindStringSubmatch(page)
+	if len(encoded) < 2 {
+		return "", nil, false
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded[1])
+	if err != nil {
+		return "", nil, false
+	}
+	action := strings.TrimSpace(string(raw))
+	parsed, err := url.Parse(action)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return "", nil, false
+	}
+	path := strings.ToLower(parsed.EscapedPath())
+	if !strings.Contains(path, "auth/login") && !strings.Contains(path, "kp01") {
+		return "", nil, false
+	}
+	values := url.Values{}
+	for _, match := range formRE.FindAllStringSubmatch(page, -1) {
+		if len(match) < 3 {
+			continue
+		}
+		attrs := parseAttrs(match[1])
+		body := match[2]
+		if attrs["id"] != "sso-access-form" && !strings.Contains(strings.ToLower(body), "signature") {
+			continue
+		}
+		for _, input := range inputRE.FindAllStringSubmatch(body, -1) {
+			fields := parseAttrs(input[1])
+			name := strings.TrimSpace(fields["name"])
+			if name == "" {
+				continue
+			}
+			values.Set(name, fields["value"])
+		}
+		if values.Get("signature") != "" {
+			break
+		}
+		values = url.Values{}
+	}
+	if values.Get("signature") == "" {
+		return "", nil, false
+	}
+	return action, values, true
 }
 
 func keepaLaunch(page, base string) string {

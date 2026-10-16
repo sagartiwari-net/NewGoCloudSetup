@@ -2,6 +2,7 @@ package amz
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -281,6 +282,59 @@ func TestKeepaPageOpensToolBeforeCloud(t *testing.T) {
 	}
 	if cloudHit {
 		t.Fatal("opened /cloud/kp01 instead of the tool host")
+	}
+	if !hasCookie(got, "auth_session", "app03-session") {
+		t.Fatalf("keepa cookies %#v", got)
+	}
+}
+
+func TestKeepaPagePostsDecodedSSOForm(t *testing.T) {
+	var posted bool
+	tool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "auth/login") {
+			if err := r.ParseForm(); err != nil {
+				t.Error(err)
+			}
+			if r.Form.Get("username") != "SAN_726" || r.Form.Get("signature") != "signed" {
+				t.Errorf("form fields username=%q", r.Form.Get("username"))
+			}
+			posted = true
+			http.SetCookie(w, &http.Cookie{Name: "auth_session", Value: "app03-session", Path: "/"})
+			http.Redirect(w, r, "/amztoolsconsultant-kp01/", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(`keepa ready`))
+	}))
+	defer tool.Close()
+	action := base64.StdEncoding.EncodeToString([]byte(tool.URL + "/amztoolsconsultant-kp01/auth/login"))
+	page := `<form id="sso-access-form" method="POST">
+		<input type="hidden" name="username" value="SAN_726">
+		<input type="hidden" name="signature" value="signed">
+	</form>
+	<script>var t = atob("` + action + `"); document.getElementById("sso-access-form").action = t;</script>`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(page))
+	}))
+	defer server.Close()
+	previous := []string{baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL}
+	baseURL = server.URL
+	loginURL = server.URL + "/login"
+	memberURL = server.URL + "/member"
+	keepaPageURL = server.URL + "/page/kp01"
+	keepaLaunchURL = server.URL + "/cloud/kp01"
+	t.Cleanup(func() {
+		baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL = previous[0], previous[1], previous[2], previous[3], previous[4]
+	})
+	got, err := Recipe{}.Capture(context.Background(), []automation.Cookie{{Name: "PHPSESSID", Value: "portal-session", Domain: ".amztoolsconsultant.com", Path: "/"}}, tool.URL+"/kp01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !posted {
+		t.Fatal("decoded form was not posted")
 	}
 	if !hasCookie(got, "auth_session", "app03-session") {
 		t.Fatalf("keepa cookies %#v", got)
