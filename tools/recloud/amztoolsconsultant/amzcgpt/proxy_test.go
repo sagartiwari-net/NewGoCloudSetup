@@ -115,6 +115,33 @@ func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
 	if !strings.Contains(out, `docs-lnk`) || strings.Contains(out, `docs-lnk{display:none`) {
 		t.Fatal("docs link was hidden")
 	}
+	if !strings.Contains(out, `[data-chatgpt-proxy-clear-cache-btn]{display:none!important}`) {
+		t.Fatal("clear cache button hide missing")
+	}
+	if strings.Contains(out, `button{display:none`) {
+		t.Fatal("clear cache hide must not hide every button")
+	}
+}
+
+func TestCodexAPIUsesBackendPath(t *testing.T) {
+	var got string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.RequestURI()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"user"}`))
+	}))
+	defer upstream.Close()
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/", PublicHost: "amzccg.gt4rents.com", PublicScheme: "http", ToolName: "Amztoolsconsultant ChatGPT"}
+	req := httptest.NewRequest(http.MethodGet, "http://amzccg.gt4rents.com/__codex-api/models?limit=false&include_icons=false", nil)
+	req.Host = "amzccg.gt4rents.com"
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=session"})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+	if got != "/backend-api/models?limit=false&include_icons=false" {
+		t.Fatalf("upstream path %s", got)
+	}
 }
 
 func TestLogoutPath(t *testing.T) {

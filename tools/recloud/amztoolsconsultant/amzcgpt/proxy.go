@@ -193,7 +193,18 @@ func upstreamURL(base *url.URL, requestURI string) string {
 	return u.String()
 }
 
+func rewriteCodexAPIPath(r *http.Request) {
+	if r == nil || r.URL == nil {
+		return
+	}
+	path := r.URL.Path
+	if path == "/__codex-api" || strings.HasPrefix(path, "/__codex-api/") {
+		r.URL.Path = "/backend-api" + strings.TrimPrefix(path, "/__codex-api")
+	}
+}
+
 func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount) {
+	rewriteCodexAPIPath(r)
 	base, err := url.Parse(liveUpstream(cfg))
 	if err != nil || base.Host == "" {
 		http.Error(w, "Upstream URL is not configured", http.StatusBadGateway)

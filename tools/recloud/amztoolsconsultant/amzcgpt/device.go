@@ -195,8 +195,13 @@ func viewerNameScript(username string) string {
 	return `<script data-tm-viewer-name>(function(){var name=` + strconv.Quote(username) + `;var sel='span.min-w-0.truncate.text-default > span.min-w-0.flex-1.truncate';function apply(){document.querySelectorAll(sel).forEach(function(el){if(el.childElementCount)return;if(el.textContent!==name)el.textContent=name;});}apply();if(document.documentElement){try{new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true,characterData:true});}catch(e){}}})();</script>`
 }
 
+func clearCacheButtonHide() string {
+	return `<style data-tm-hide-clear-cache>[data-chatgpt-proxy-clear-cache-btn]{display:none!important}</style>` +
+		`<script data-tm-hide-clear-cache>(function(){var sel="[data-chatgpt-proxy-clear-cache-btn]";function hide(){document.querySelectorAll(sel).forEach(function(el){el.style.setProperty("display","none","important")})}hide();try{new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true})}catch(e){}})();</script>`
+}
+
 func injectDeviceHTML(body []byte, username string) []byte {
-	script := []byte(devicePageScript() + `<style data-tm-hide-notice>.srf-layout__notification{display:none!important}ul[class*="experiment-sidebar-navigationList"]{display:none!important}</style>` + viewerNameScript(username))
+	script := []byte(devicePageScript() + `<style data-tm-hide-notice>.srf-layout__notification{display:none!important}ul[class*="experiment-sidebar-navigationList"]{display:none!important}</style>` + clearCacheButtonHide() + viewerNameScript(username))
 	if bytes.Contains(body, []byte("data-tm-device")) {
 		return body
 	}
