@@ -100,6 +100,20 @@ func TestLoginPageRetriesThenOpensHome(t *testing.T) {
 	}
 }
 
+func TestOnlyAccountMenuIsHidden(t *testing.T) {
+	in := []byte(`<html><head></head><body><a href="/library">My Courses</a><a href="/logout">Logout</a><span class="user-name">Wendy</span></body></html>`)
+	out := string(injectDeviceHTML(in, "sagar"))
+	if !strings.Contains(out, `span.user:has(> img.user__avatar):has(> .user__dropdown){display:none!important}`) {
+		t.Fatal("account menu hide missing")
+	}
+	if strings.Contains(out, `.user{display:none`) || strings.Contains(out, `a[href="/logout"]`) || strings.Contains(out, `user-name{display:none`) {
+		t.Fatal("account menu hide is broader than the avatar dropdown")
+	}
+	if !strings.Contains(out, `href="/library"`) || !strings.Contains(out, `href="/logout"`) {
+		t.Fatal("course and logout links were removed")
+	}
+}
+
 func TestLibraryRequestHidesPublicHost(t *testing.T) {
 	var host, forwarded string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

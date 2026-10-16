@@ -186,9 +186,14 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(deviceSWSource))
 }
 
+func accountMenuHide() string {
+	return `<style data-tm-hide-account>span.user:has(> img.user__avatar):has(> .user__dropdown){display:none!important}</style>` +
+		`<script data-tm-hide-account>(function(){function hide(){document.querySelectorAll("span.user").forEach(function(el){if(el.querySelector(":scope > img.user__avatar")&&el.querySelector(":scope > .user__dropdown"))el.style.setProperty("display","none","important")})}hide();try{new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true})}catch(e){}})();</script>`
+}
+
 func injectDeviceHTML(body []byte, username string) []byte {
 	_ = username
-	script := []byte(devicePageScript())
+	script := []byte(devicePageScript() + accountMenuHide())
 	if bytes.Contains(body, []byte("data-tm-device")) {
 		return body
 	}
