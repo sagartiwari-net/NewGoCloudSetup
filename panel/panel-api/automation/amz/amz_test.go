@@ -253,6 +253,13 @@ func TestProbeDiamondRejectsLoginPage(t *testing.T) {
 	}
 }
 
+func TestPHPSESSIDAloneIsNotASession(t *testing.T) {
+	ok, _, err := Recipe{}.Check(context.Background(), []automation.Cookie{{Name: "PHPSESSID", Value: "only-session", Domain: ".amztoolsconsultant.com", Path: "/"}})
+	if err != nil || ok {
+		t.Fatalf("php session alone valid=%v err=%v", ok, err)
+	}
+}
+
 func TestLoginPageMentioningKeepaIsNotASession(t *testing.T) {
 	page := `<a href="/logout">Logout</a><a href="/page/keepa">Keepa</a><input name="amember_login"><input name="amember_pass">`
 	if !showsLogin(page, "https://members.amztoolsconsultant.com/login") || showsDashboard(page, "https://members.amztoolsconsultant.com/login") {

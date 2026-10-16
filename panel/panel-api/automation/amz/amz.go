@@ -50,7 +50,7 @@ type Recipe struct{}
 func (Recipe) PortalHost() string { return "amztoolsconsultant.com" }
 
 func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []automation.Cookie, error) {
-	if len(cookies) == 0 {
+	if !memberSessionReady(cookies) {
 		return false, nil, nil
 	}
 	client, jar, _, err := newClient()
@@ -73,7 +73,7 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 }
 
 func (Recipe) Login(ctx context.Context, username, password string) ([]automation.Cookie, error) {
-	client, jar, _, err := newClient()
+	client, jar, record, err := newClient()
 	if err != nil {
 		return nil, automation.ErrTimeout
 	}
@@ -110,7 +110,7 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 	if showsLogin(member, memberLanded) || !showsDashboard(member, memberLanded) {
 		return nil, automation.At(automation.ErrLoginPage, memberLanded)
 	}
-	cookies := HomepageCookies(portalCookies(jar))
+	cookies := HomepageCookies(append(portalCookies(jar), recordedPortal(record)...))
 	log.Printf("[automation] amz login page=%s cookies=%s", automation.Where(memberLanded), automation.Names(cookies))
 	if len(cookies) == 0 {
 		return nil, automation.At(automation.ErrLoginPage, memberLanded)
@@ -137,6 +137,43 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	default:
 		return nil, automation.ErrUpstream
 	}
+}
+
+func memberSessionReady(cookies []automation.Cookie) bool {
+	have := map[string]bool{}
+	for _, cookie := range cookies {
+		if cookie.Name != "" && cookie.Value != "" {
+			have[cookie.Name] = true
+		}
+	}
+	return have["PHPSESSID"] && have["amember_nr"] && have["amember_user"]
+}
+
+func recordedPortal(record *cookieRecord) []automation.Cookie {
+	if record == nil {
+		return nil
+	}
+	var out []automation.Cookie
+	for _, cookie := range record.all() {
+		name := strings.TrimSpace(cookie.Name)
+		if name == "" || cookie.Value == "" {
+			continue
+		}
+		domain := strings.TrimSpace(cookie.Domain)
+		hostOnly := domain == ""
+		if hostOnly {
+			domain = cookie.Host
+		}
+		path := cookie.Path
+		if path == "" {
+			path = "/"
+		}
+		out = append(out, automation.Cookie{
+			Name: name, Value: cookie.Value, Domain: domain, Path: path, HostOnly: hostOnly,
+			HTTPOnly: cookie.HTTPOnly, Secure: cookie.Secure,
+		})
+	}
+	return out
 }
 
 // HomepageCookies is the member login, widened so Helium10 Diamond can send it.
