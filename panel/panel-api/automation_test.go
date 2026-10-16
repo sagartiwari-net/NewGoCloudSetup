@@ -783,6 +783,74 @@ func TestAutomationFreshHomepageRunsBeforeItsInterval(t *testing.T) {
 	}
 }
 
+func TestAmzToolAsksHomepageToLogin(t *testing.T) {
+	s, _ := openAutomationTestDB(t)
+	recipe := &scriptedRecipe{liveValue: "live-session-value", portalValue: "portal-session-value", toolValue: "tool-session-value"}
+	recipeMu.Lock()
+	prev := automationRecipes["amztoolsconsultant"]
+	automationRecipes["amztoolsconsultant"] = recipe
+	recipeMu.Unlock()
+	t.Cleanup(func() {
+		recipeMu.Lock()
+		automationRecipes["amztoolsconsultant"] = prev
+		recipeMu.Unlock()
+	})
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	if _, err := s.db.Exec(`UPDATE automation_credentials SET provider='amztoolsconsultant' WHERE id=?`, cred); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.replaceAutomationStorage(cred, `[{"name":"PHPSESSID","value":"dead","domain":".amztoolsconsultant.com","path":"/"}]`); err != nil {
+		t.Fatal(err)
+	}
+	site := insertMarkhorWebsite(t, s, "Helium10 Diamond", "amzcheliumdia.example")
+	toolID := insertAutomationJob(t, s, "Amz diamond", cred, site, 0)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET provider='amztoolsconsultant', run_requested=1 WHERE id=?`, toolID); err != nil {
+		t.Fatal(err)
+	}
+	s.runAutomationJob(context.Background(), toolID)
+	if recipe.loginCount() != 0 {
+		t.Fatalf("tool logged in itself %d", recipe.loginCount())
+	}
+	var reason string
+	if err := s.db.QueryRow(`SELECT last_reason FROM automation_jobs WHERE id=?`, toolID).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason != "enable the homepage job first" {
+		t.Fatalf("reason %q", reason)
+	}
+	homeID := insertAutomationJob(t, s, "Amz homepage", cred, 0, 0)
+	past := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET job_kind='session', provider='amztoolsconsultant', target_website_id=0, last_run_at=? WHERE id=?`, past, homeID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=1 WHERE id=?`, toolID); err != nil {
+		t.Fatal(err)
+	}
+	s.runAutomationJob(context.Background(), toolID)
+	if recipe.loginCount() != 1 {
+		t.Fatalf("homepage logins %d", recipe.loginCount())
+	}
+	if err := s.db.QueryRow(`SELECT last_reason FROM automation_jobs WHERE id=?`, homeID).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason != "stored homepage cookie" {
+		t.Fatalf("homepage reason %q", reason)
+	}
+	if err := s.db.QueryRow(`SELECT last_reason FROM automation_jobs WHERE id=?`, toolID).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(reason, "wrote cookie to") {
+		t.Fatalf("diamond reason %q", reason)
+	}
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=1 WHERE id=?`, toolID); err != nil {
+		t.Fatal(err)
+	}
+	s.runAutomationJob(context.Background(), toolID)
+	if recipe.loginCount() != 1 {
+		t.Fatalf("valid cookie logged in again %d", recipe.loginCount())
+	}
+}
+
 func TestAmzHomepageCookieLandsOnDiamond(t *testing.T) {
 	s, _ := openAutomationTestDB(t)
 	id := insertMarkhorWebsite(t, s, "Helium10 Diamond", "amzcheliumdia.example")

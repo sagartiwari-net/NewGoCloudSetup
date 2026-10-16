@@ -39,6 +39,7 @@ var (
 	errAutomationTimeout   = automation.ErrTimeout
 	errAutomationDenied    = automation.ErrDenied
 	errAutomationUpstream  = automation.ErrUpstream
+	errAutomationHomepage  = errors.New("enable the homepage job first")
 )
 
 func cookiesToJSON(cookies []cookieJSON) (string, error) { return automation.CookiesToJSON(cookies) }
@@ -272,6 +273,8 @@ func automationPublicReason(err error) string {
 		return errAutomationDenied.Error()
 	case errors.Is(err, errAutomationUpstream):
 		return errAutomationUpstream.Error()
+	case errors.Is(err, errAutomationHomepage):
+		return errAutomationHomepage.Error()
 	default:
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline") || strings.Contains(msg, "timed out") {
@@ -443,40 +446,18 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 			s.writeAutomationLog(job, "info", "session still valid", secrets)
 			log.Printf("[automation] job %d session still valid", job.ID)
 			portal = updated
-		} else {
-			log.Printf("[automation] job %d session not valid, logging in", job.ID)
-			if portal, err = s.automationLogin(ctx, recipe, job, username, password, secrets); err != nil {
-				s.failAutomation(job, err, append(secrets, cookieValues(portal)...))
-				return
-			}
-		}
-	} else {
-		log.Printf("[automation] job %d no stored cookie, logging in", job.ID)
-		if portal, err = s.automationLogin(ctx, recipe, job, username, password, secrets); err != nil {
-			s.failAutomation(job, err, secrets)
+		} else if portal, err = s.loginForAutomationJob(ctx, recipe, job, username, password, secrets); err != nil {
+			s.failAutomation(job, err, append(secrets, cookieValues(portal)...))
 			return
 		}
+	} else if portal, err = s.loginForAutomationJob(ctx, recipe, job, username, password, secrets); err != nil {
+		s.failAutomation(job, err, secrets)
+		return
 	}
 	secrets = append(secrets, cookieValues(portal)...)
 	if job.Kind == "session" {
 		s.writeAutomationLog(job, "info", "stored homepage cookie", secrets)
-		reason := "stored homepage cookie"
-		if job.Provider == "amztoolsconsultant" {
-			if err := amz.ProbeDiamond(ctx, portal); err != nil {
-				s.failAutomation(job, err, secrets)
-				return
-			}
-			wrote, err := s.writeAmzDiamondCookie(portal)
-			if err != nil {
-				s.failAutomation(job, err, secrets)
-				return
-			}
-			if wrote != "" {
-				reason = reason + "; " + wrote
-				s.writeAutomationLog(job, "info", wrote, secrets)
-			}
-		}
-		s.finishAutomation(job, "ok", reason)
+		s.finishAutomation(job, "ok", "stored homepage cookie")
 		return
 	}
 	log.Printf("[automation] job %d capture %s", job.ID, automation.Where(site.Upstream))
@@ -508,6 +489,52 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		}
 	}
 	s.finishAutomation(job, "ok", message)
+}
+
+func (s *server) loginForAutomationJob(ctx context.Context, recipe automation.Recipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {
+	if job.Kind != "session" && job.Provider == "amztoolsconsultant" {
+		log.Printf("[automation] job %d cookie expired, running the homepage job", job.ID)
+		if err := s.runAmzHomepage(ctx, job.CredentialID); err != nil {
+			return nil, err
+		}
+		s.writeAutomationLog(job, "info", "homepage logged in", secrets)
+		portal := s.readAutomationCookies(job.CredentialID)
+		valid, updated, err := recipe.Check(ctx, portal)
+		if err != nil {
+			return nil, err
+		}
+		if !valid {
+			return nil, errAutomationLoginPage
+		}
+		if len(updated) > 0 {
+			portal = updated
+		}
+		return portal, nil
+	}
+	log.Printf("[automation] job %d logging in", job.ID)
+	return s.automationLogin(ctx, recipe, job, username, password, secrets)
+}
+
+func (s *server) runAmzHomepage(ctx context.Context, credentialID int) error {
+	var id int
+	var before string
+	err := s.db.QueryRow(`SELECT id, COALESCE(last_run_at,'') FROM automation_jobs
+		WHERE credential_id=? AND job_kind='session' AND enabled=1 ORDER BY id LIMIT 1`, credentialID).Scan(&id, &before)
+	if err != nil || id <= 0 {
+		return errAutomationHomepage
+	}
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=1 WHERE id=? AND running=0`, id); err != nil {
+		return errAutomationHomepage
+	}
+	s.runAutomationJob(ctx, id)
+	var after, result string
+	if err := s.db.QueryRow(`SELECT COALESCE(last_run_at,''), COALESCE(last_result,'') FROM automation_jobs WHERE id=?`, id).Scan(&after, &result); err != nil {
+		return errAutomationLoginPage
+	}
+	if after == before || result != "ok" {
+		return errAutomationLoginPage
+	}
+	return nil
 }
 
 func (s *server) automationLogin(ctx context.Context, recipe automation.Recipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {

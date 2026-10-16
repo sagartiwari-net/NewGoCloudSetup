@@ -1,8 +1,9 @@
 package amz
 
 // Recipe is the Amz Tools Consultant HTTP login.
-// The homepage job stores the member cookie and that same cookie is written to Helium10 Diamond.
-// Keepa is the only tool job: it opens the Keepa page, follows /cloud/kp01, and saves the browseanywhere cookie.
+// The homepage job only logs in and stores the member cookie.
+// Helium10 Diamond copies that cookie after the homepage job has logged in.
+// Keepa opens the Keepa page from the same cookie and saves the browseanywhere cookie.
 
 import (
 	"context"
@@ -133,6 +134,9 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		log.Printf("[automation] amz diamond uses homepage cookies=%s", automation.Names(cookies))
 		if len(cookies) == 0 {
 			return nil, automation.ErrNoCookie
+		}
+		if err := ProbeDiamond(ctx, cookies); err != nil {
+			return nil, err
 		}
 		return cookies, nil
 	case "keepa":

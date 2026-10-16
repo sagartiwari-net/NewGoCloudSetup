@@ -11,6 +11,27 @@ import (
 )
 
 func TestDiamondUsesHomepageCookie(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<input name="amember_login"><input name="amember_pass">`))
+	})
+	mux.HandleFunc("/black-box/products", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(`<a href="/logout">Logout</a> helium products`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	previousHome := diamondHomeURL
+	previousBase := baseURL
+	diamondHomeURL = server.URL + "/black-box/products"
+	baseURL = server.URL
+	t.Cleanup(func() {
+		diamondHomeURL = previousHome
+		baseURL = previousBase
+	})
 	portal := []automation.Cookie{{Name: "PHPSESSID", Value: "portal-session", Domain: "members.amztoolsconsultant.com", Path: "/"}}
 	got, err := Recipe{}.Capture(context.Background(), portal, "https://ht01.amztoolsconsultant.com/black-box/products")
 	if err != nil {
