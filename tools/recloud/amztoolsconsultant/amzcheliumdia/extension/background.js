@@ -1,2 +1,3 @@
+import "./tool-hosts.js";
 import "./bg-cookie-bridge.js";
 import "./background-script.js";

@@ -7,10 +7,9 @@
 (function() {
   if (typeof window === "undefined") return;
 
-  const hostname = window.location.hostname;
-  const proxyHost = "__H10_PROXY_HOST__";
-  if (!hostname.includes('amztoolsconsultant.com') && hostname !== proxyHost) return;
-  const proxyOrigin = "__H10_PROXY_ORIGIN__";
+  const hostname = window.location.hostname.toLowerCase();
+  const proxyOrigin = (globalThis.h10ToolOrigin && globalThis.h10ToolOrigin(hostname)) || "";
+  if (!proxyOrigin) return;
   function rewriteApiUrl(url) {
     if (typeof url !== "string") return url;
     return url

@@ -34,10 +34,12 @@
         "*://*.helium10.com/*",
         "*://*.helium-staging.com/*",
         "*://*.amztoolsconsultant.com/*",
-        "*://__H10_PROXY_HOST__/*"
+        "*://amzcheliumdia.gt4rents.com/*",
+        "*://amzcheliumplat.gt4rents.com/*"
       ],
       "css": [],
       "js": [
+        "tool-hosts.js",
         "api-redirector.js",
         "marketplace-config.js",
         "domain-detector.js",
@@ -174,7 +176,8 @@
       "*://*.helium10.com/*",
       "*://*.helium-staging.com/*",
       "*://*.amztoolsconsultant.com/*",
-      "*://__H10_PROXY_HOST__/*"
+      "*://amzcheliumdia.gt4rents.com/*",
+      "*://amzcheliumplat.gt4rents.com/*"
     ]
   }
 }

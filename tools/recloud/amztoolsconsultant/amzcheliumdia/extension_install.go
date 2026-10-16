@@ -181,6 +181,9 @@ func resolveExtensionDir() (string, error) {
 		seen[dir] = true
 		st, err := os.Stat(dir)
 		if err == nil && st.IsDir() {
+			if resolved, err2 := filepath.EvalSymlinks(dir); err2 == nil {
+				return resolved, nil
+			}
 			return dir, nil
 		}
 	}
@@ -229,15 +232,6 @@ func bakeExtensionBytes(origin, hostOnly string) ([]byte, error) {
 		"__H10_PROXY_ORIGIN__", origin,
 		"__H10_PROXY_HOST__", hostOnly,
 		"__H10_PROXY_HOST_ESC__", hostEsc,
-		// Never leave CN / production Helium hosts in the packed extension.
-		"https://members.h10.com.cn", origin,
-		"http://members.h10.com.cn", origin,
-		"https://members.helium10.com", origin,
-		"http://members.helium10.com", origin,
-		"https://members.amztoolsconsultant.com", origin,
-		"http://members.amztoolsconsultant.com", origin,
-		"dev.h10.com.cn", hostOnly,
-		"h10.com.cn", hostOnly,
 	)
 
 	var buf bytes.Buffer
@@ -318,7 +312,7 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-bottom:10px}
 <div class="card">
   <div class="badge">Chrome Extension</div>
   <h1>Install Amzc Helium10 Extension</h1>
-  <p class="lead">Download Amzc Helium10 Extension, then open Helium 10 from your access link before you use it.</p>
+  <p class="lead">One download covers Helium 10 Diamond and Platinum. Open the plan from your access link, then use the extension.</p>
   <div class="warn"><strong>Important:</strong> If this extension is already loaded, remove that copy first and load this new zip. Leave any other Helium 10 extension installed.</div>
   <div class="origin">This zip is baked for: %s</div>
   <a class="btn" href="/extension.zip">Download Amzc Helium10 Extension</a>

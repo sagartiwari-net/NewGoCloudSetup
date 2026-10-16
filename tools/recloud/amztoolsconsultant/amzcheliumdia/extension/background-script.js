@@ -10,10 +10,18 @@ const DEFAULT_DOMAIN = null;
 let suppressInstallTab = false;
 let queuedDomainSwitch = Promise.resolve();
 
+function toolHosts() {
+  return globalThis.H10_TOOL_HOSTS || [];
+}
+
+function isToolHost(domain) {
+  return !!domain && toolHosts().indexOf(String(domain).toLowerCase()) >= 0;
+}
+
 function getSoftzillaDomain(url) {
   try {
     const host = new URL(url).hostname.toLowerCase();
-    if (host === "__H10_PROXY_HOST__") return "ht01";
+    if (globalThis.h10ToolOrigin && globalThis.h10ToolOrigin(host)) return host;
     const match = host.match(/^(ht\d+)\.amztoolsconsultant\.com$/i);
     return match ? match[1].toLowerCase() : null;
   } catch (e) {
@@ -34,7 +42,7 @@ async function resetExtensionAccountState() {
 // Keep one shared account, but ensure that the most recently refreshed htXX
 // tab wins even when another account tab finishes loading later.
 function switchToLatestDomain(domain, refreshTime = Date.now()) {
-  if (!/^ht\d+$/.test(domain || "")) return;
+  if (!isToolHost(domain)) return;
   const eventTime = Number.isFinite(refreshTime) ? refreshTime : Date.now();
   queuedDomainSwitch = queuedDomainSwitch.then(async () => {
     const stored = await chrome.storage.local.get([DOMAIN_STORAGE_KEY, DOMAIN_REFRESH_TIME_KEY]);
@@ -97,8 +105,8 @@ function getCustomDomain() {
     try {
       chrome.storage.local.get([DOMAIN_STORAGE_KEY], (result) => {
         const domain = result[DOMAIN_STORAGE_KEY];
-        if (domain && /^ht\d+$/.test(domain)) {
-          resolve(domain);
+        if (isToolHost(domain)) {
+          resolve(String(domain).toLowerCase());
         } else {
           resolve(null);
         }
@@ -112,7 +120,8 @@ function getCustomDomain() {
 // Replace URLs with custom domain
 function replaceUrl(url, domain) {
   if (!url || typeof url !== "string") return url;
-  const baseUrl = "__H10_PROXY_ORIGIN__";
+  if (!isToolHost(domain)) return url;
+  const baseUrl = "https://" + String(domain).toLowerCase();
   return url
     .replace(/https?:\/\/re-cdn\.helium10\.com/gi, baseUrl + "/__re-cdn")
     .replace(/https?:\/\/(?:members\.)?helium10\.com/gi, baseUrl)

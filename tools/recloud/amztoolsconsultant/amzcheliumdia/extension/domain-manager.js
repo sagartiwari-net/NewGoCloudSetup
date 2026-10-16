@@ -75,7 +75,18 @@ class DomainManager {
    * Get the base URL for API calls
    */
   async getBaseUrl() {
-    return "__H10_PROXY_ORIGIN__";
+    const hosts = globalThis.H10_TOOL_HOSTS || [];
+    const stored = await new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(["ht_custom_domain"], (result) => {
+          resolve(result && result.ht_custom_domain ? String(result.ht_custom_domain).toLowerCase() : "");
+        });
+      } catch (e) {
+        resolve("");
+      }
+    });
+    if (stored && hosts.indexOf(stored) >= 0) return "https://" + stored;
+    return "";
   }
 
   /**

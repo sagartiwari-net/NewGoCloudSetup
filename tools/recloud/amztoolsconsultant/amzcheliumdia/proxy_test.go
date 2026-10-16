@@ -311,12 +311,16 @@ func TestBakedExtensionNameAndProxy(t *testing.T) {
 	if !strings.Contains(manifest, "Amzc Helium10 Extension for product research") {
 		t.Fatal("manifest description was not set")
 	}
-	bg := read("background-script.js")
-	if !strings.Contains(bg, "https://amzcheliumdia.gt4rents.com") {
-		t.Fatal("extension API host was not baked to this tool")
+	hosts := read("tool-hosts.js")
+	if !strings.Contains(hosts, "amzcheliumdia.gt4rents.com") || !strings.Contains(hosts, "amzcheliumplat.gt4rents.com") {
+		t.Fatal("extension must list both Helium tool hosts")
 	}
-	if strings.Contains(bg, "members.amztoolsconsultant.com") || strings.Contains(bg, "https://members.helium10.com") {
-		t.Fatal("extension still sends API calls to the upstream host")
+	bg := read("background-script.js")
+	if strings.Contains(bg, "__H10_PROXY_ORIGIN__") {
+		t.Fatal("extension still bakes a single tool origin")
+	}
+	if !strings.Contains(bg, "isToolHost") {
+		t.Fatal("extension does not choose the open tool host")
 	}
 	req := httptest.NewRequest(http.MethodGet, "https://amzcheliumdia.gt4rents.com/extension.zip", nil)
 	req.Host = "amzcheliumdia.gt4rents.com"

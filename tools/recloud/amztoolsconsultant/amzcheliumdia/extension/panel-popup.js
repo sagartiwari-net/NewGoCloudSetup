@@ -2,7 +2,6 @@
 (function () {
   "use strict";
 
-  var PROXY_ORIGIN = "__H10_PROXY_ORIGIN__";
   var MSG =
     "To use the Helium 10 extension, please access Helium 10 from the panel first.";
 
@@ -54,10 +53,6 @@
       setTimeout(function () {
         finish("");
       }, 2500);
-      if (!PROXY_ORIGIN || PROXY_ORIGIN.indexOf("__H10_") === 0) {
-        finish("");
-        return;
-      }
       try {
         chrome.runtime.sendMessage({ type: "tm_panel_username" }, function (res) {
           if (chrome.runtime.lastError) {

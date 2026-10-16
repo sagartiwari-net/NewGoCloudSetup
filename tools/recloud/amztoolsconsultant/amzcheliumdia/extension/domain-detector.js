@@ -15,13 +15,10 @@
    * updates so that the most recently refreshed account tab always wins.
    */
   function detectAndStoreDomain() {
-    const hostname = window.location.hostname;
+    const hostname = window.location.hostname.toLowerCase();
+    const onTool = globalThis.h10ToolOrigin && globalThis.h10ToolOrigin(hostname);
     const match = hostname.match(/^(ht\d+)\.amztoolsconsultant\.com$/);
-    if (match || hostname === "__H10_PROXY_HOST__") {
-      const domain = match[1];
-      
-      // Do not write storage here: a slower tab must not overwrite the most
-      // recently refreshed account after it finishes loading.
+    if (onTool || match) {
       try {
         chrome.runtime.sendMessage({
           type: "LINKED_DOMAIN_REFRESHED",
