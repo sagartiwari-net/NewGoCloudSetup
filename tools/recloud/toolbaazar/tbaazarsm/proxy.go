@@ -244,6 +244,16 @@ func fetchLoggedInPool(ctx context.Context, base *url.URL, requestURI, jar strin
 	return nil, nil, jar, false
 }
 
+func signOut(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount) {
+	token := sessionTokenFromRequest(r)
+	switched, _ := recordLogout(cfg, r, acc, token, "logout")
+	if switched && cfg.HomePath != "" {
+		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
+		return
+	}
+	renderLoggedOutPage(w, cfg)
+}
+
 func marketingRedirect(loc string) bool {
 	u, err := url.Parse(strings.TrimSpace(loc))
 	if err != nil {
@@ -481,7 +491,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				jar = nextJar
 				rememberUpstreamCookies(acc, jar)
 			} else {
-				renderLoggedOutPage(w, cfg)
+				signOut(w, r, cfg, acc)
 				return
 			}
 		}
@@ -495,17 +505,11 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			continue
 		}
 		if loggedOut {
-			token := sessionTokenFromRequest(r)
-			switched, _ := noteLogout(cfg, r, acc, token, "logout")
-			if switched && cfg.HomePath != "" {
-				http.Redirect(w, r, cfg.HomePath, http.StatusFound)
-				return
-			}
-			renderLoggedOutPage(w, cfg)
+			signOut(w, r, cfg, acc)
 			return
 		}
 		if resp.StatusCode >= 300 && resp.StatusCode < 400 && marketingRedirect(resp.Header.Get("Location")) {
-			renderLoggedOutPage(w, cfg)
+			signOut(w, r, cfg, acc)
 			return
 		}
 		if isLoginPath(r.URL.Path) && resp.StatusCode < 400 {

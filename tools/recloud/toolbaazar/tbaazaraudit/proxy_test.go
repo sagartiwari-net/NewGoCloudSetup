@@ -300,3 +300,30 @@ func TestLoggedOutPoolOpensTheOtherPool(t *testing.T) {
 		t.Fatal("logged-out pool was shown")
 	}
 }
+
+func TestSignedOutPageRecordsLogout(t *testing.T) {
+	recorded := false
+	previous := recordLogout
+	recordLogout = func(Config, *http.Request, ToolAccount, string, string) (bool, string) {
+		recorded = true
+		return false, ""
+	}
+	t.Cleanup(func() { recordLogout = previous })
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<title>session expired</title>`))
+	}))
+	defer upstream.Close()
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/siteaudit", PublicHost: "tbaazaraudit.gt4rents.com", PublicScheme: "http", ToolName: "Toolbaazar Site Audit"}
+	req := httptest.NewRequest(http.MethodGet, "http://tbaazaraudit.gt4rents.com/siteaudit/", nil)
+	req.Host = "tbaazaraudit.gt4rents.com"
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "gateway_bootstrap=seed"})
+	if !recorded {
+		t.Fatal("signed-out page did not record a logout")
+	}
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "Signing you in") {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+}

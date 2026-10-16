@@ -36,6 +36,8 @@ func bodyLooksLoggedOut(body []byte) bool {
 		(strings.Contains(text, "member login") && strings.Contains(text, "forgot password"))
 }
 
+var recordLogout = noteLogout
+
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {
 	if strings.TrimSpace(cfg.PanelDB) == "" {
 		return false, ""
