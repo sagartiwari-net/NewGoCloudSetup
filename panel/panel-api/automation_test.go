@@ -972,7 +972,7 @@ func TestAhrefsCopyWritesTheOtherOwnWebsite(t *testing.T) {
 		websiteID, _ := res.LastInsertId()
 		now := time.Now().UTC().Format(time.RFC3339)
 		res, err = s.db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
-			VALUES (?, 'main', 'old', '', '', 'active', 1, '', '', '', ?, '')`, websiteID, now)
+			VALUES (?, 'main', 'old', 'Mozilla/5.0 AhrefsTest', '', 'active', 1, '', '', '', ?, '')`, websiteID, now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -988,7 +988,7 @@ func TestAhrefsCopyWritesTheOtherOwnWebsite(t *testing.T) {
 	if !ok {
 		t.Fatal("target missing")
 	}
-	message := s.writeAhrefsCopies(automationJobRow{ID: jobID}, target, `[{"name":"BSSESSID","value":"fresh"}]`, "Mozilla/5.0 AhrefsTest", "ahrefs.com")
+	message := s.writeAhrefsCopies(automationJobRow{ID: jobID}, target, `[{"name":"BSSESSID","value":"fresh"}]`, "ahrefs.com")
 	if !strings.Contains(message, "Ahrefs two") {
 		t.Fatalf("message %q", message)
 	}
@@ -998,5 +998,8 @@ func TestAhrefsCopyWritesTheOtherOwnWebsite(t *testing.T) {
 	}
 	if !strings.Contains(cookie, "BSSESSID") || agent != "Mozilla/5.0 AhrefsTest" {
 		t.Fatalf("copied cookie %s agent %s", cookie, agent)
+	}
+	if got := s.readAccountUserAgent(secondAccount); got != "Mozilla/5.0 AhrefsTest" {
+		t.Fatalf("mapped user agent %q", got)
 	}
 }

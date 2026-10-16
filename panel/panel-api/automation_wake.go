@@ -256,22 +256,10 @@ func (s *server) captureAutomationWake(ctx context.Context, recipe automation.Re
 		s.writeAutomationLog(job, "error", "could not refresh "+strings.TrimSpace(wake.Name), secrets)
 		return ""
 	}
-	ua := ""
-	if job.Provider == "ahrefs" {
-		ua = s.readAutomationUserAgent(job.CredentialID)
-		if ua != "" {
-			if wrapped, wrapErr := automation.CookiesWithUserAgent(tool, ua); wrapErr == nil {
-				raw = wrapped
-			}
-		}
-	}
 	accountID, err := s.writeAutomationAccountCookie(wake, 0, raw)
 	if err != nil {
 		s.writeAutomationLog(job, "error", "could not refresh "+strings.TrimSpace(wake.Name), append(secrets, raw))
 		return ""
-	}
-	if ua != "" {
-		_ = s.writeAccountUserAgent(accountID, ua)
 	}
 	s.shareCookieFrom(accountID)
 	message := "wrote cookie to " + strings.TrimSpace(wake.Name)

@@ -452,10 +452,17 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		s.failAutomation(job, errAutomationLoginPage, secrets)
 		return
 	}
-	userAgent := s.readAutomationUserAgent(job.CredentialID)
-	if job.Provider == "ahrefs" && userAgent == "" {
-		s.failAutomation(job, automation.ErrUserAgent, secrets)
-		return
+	userAgent := ""
+	if job.Provider == "ahrefs" && job.Kind != "session" {
+		accountID := job.TargetAccountID
+		if accountID <= 0 {
+			accountID = s.firstAutomationAccount(site.ID)
+		}
+		userAgent = s.readAccountUserAgent(accountID)
+		if userAgent == "" {
+			s.failAutomation(job, automation.ErrUserAgent, secrets)
+			return
+		}
 	}
 	ctx = automation.WithUserAgent(ctx, userAgent)
 	stored := s.readAutomationCookies(job.CredentialID)
@@ -512,33 +519,16 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		s.failAutomation(job, errAutomationLoginPage, append(secrets, cookieValues(tool)...))
 		return
 	}
-	if job.Provider == "ahrefs" && userAgent != "" {
-		wrapped, wrapErr := automation.CookiesWithUserAgent(tool, userAgent)
-		if wrapErr != nil {
-			s.failAutomation(job, errAutomationLoginPage, append(secrets, cookieValues(tool)...))
-			return
-		}
-		raw = wrapped
-	}
 	accountID, err := s.writeAutomationAccountCookie(site, job.TargetAccountID, raw)
 	if err != nil {
 		s.failAutomation(job, errAutomationLoginPage, append(secrets, raw))
 		return
 	}
-	if job.Provider == "ahrefs" {
-		if err := s.writeAccountUserAgent(accountID, userAgent); err != nil {
-			s.failAutomation(job, errAutomationLoginPage, append(secrets, raw))
-			return
-		}
-	}
 	s.shareCookieFrom(accountID)
 	message := "wrote cookie to " + strings.TrimSpace(site.Name)
-	if job.Provider == "ahrefs" {
-		message = "wrote cookie and user agent to " + strings.TrimSpace(site.Name)
-	}
 	s.writeAutomationLog(job, "info", message, append(secrets, raw))
 	if job.Provider == "ahrefs" {
-		if extra := s.writeAhrefsCopies(job, site, raw, userAgent, recipe.PortalHost()); extra != "" {
+		if extra := s.writeAhrefsCopies(job, site, raw, recipe.PortalHost()); extra != "" {
 			message = message + "; " + extra
 		}
 	}
@@ -560,7 +550,7 @@ func automationAccountBody(recipe automation.Recipe, cookies []cookieJSON) (stri
 	return cookiesToJSON(cookies)
 }
 
-func (s *server) writeAhrefsCopies(job automationJobRow, target automationSite, raw, userAgent, portal string) string {
+func (s *server) writeAhrefsCopies(job automationJobRow, target automationSite, raw, portal string) string {
 	names := []string{}
 	for _, id := range s.automationWakeIDs(job.ID) {
 		if id == target.ID {
@@ -583,9 +573,6 @@ func (s *server) writeAhrefsCopies(job automationJobRow, target automationSite, 
 		}
 		accountID, err := s.writeAutomationAccountCookie(site, accountID, raw)
 		if err != nil {
-			continue
-		}
-		if err := s.writeAccountUserAgent(accountID, userAgent); err != nil {
 			continue
 		}
 		s.shareCookieFrom(accountID)
@@ -811,22 +798,17 @@ func (s *server) firstAutomationAccount(websiteID int) int {
 	return id
 }
 
-func (s *server) readAutomationUserAgent(credentialID int) string {
-	var raw, column string
-	_ = s.db.QueryRow(`SELECT COALESCE(cookies_json, ''), COALESCE(user_agent, '') FROM automation_storage WHERE credential_id=?`, credentialID).Scan(&raw, &column)
-	if ua := automation.UserAgentFromCookie(raw); ua != "" {
-		return ua
+func (s *server) readAccountUserAgent(accountID int) string {
+	if accountID <= 0 {
+		return ""
 	}
-	return strings.TrimSpace(column)
-}
-
-func (s *server) writeAccountUserAgent(accountID int, userAgent string) error {
-	userAgent = strings.TrimSpace(userAgent)
-	if accountID <= 0 || userAgent == "" {
-		return nil
+	var ua string
+	err := s.db.QueryRow(`SELECT CASE WHEN TRIM(COALESCE(a.user_agent, '')) != '' THEN a.user_agent ELSE COALESCE(ua.user_agent, '') END
+		FROM accounts a LEFT JOIN user_agents ua ON ua.id=a.user_agent_id WHERE a.id=?`, accountID).Scan(&ua)
+	if err != nil {
+		return ""
 	}
-	_, err := s.db.Exec(`UPDATE accounts SET user_agent=?, user_agent_id=NULL WHERE id=?`, userAgent, accountID)
-	return err
+	return strings.TrimSpace(ua)
 }
 
 func (s *server) readAutomationCookies(credentialID int) []cookieJSON {
@@ -838,22 +820,17 @@ func (s *server) readAutomationCookies(credentialID int) []cookieJSON {
 }
 
 func (s *server) saveAutomationCookies(credentialID int, cookies []cookieJSON) error {
-	ua := s.readAutomationUserAgent(credentialID)
-	var raw string
-	var err error
-	if ua != "" {
-		raw, err = automation.CookiesWithUserAgent(cookies, ua)
-	} else {
-		raw, err = cookiesToJSON(cookies)
-	}
+	raw, err := cookiesToJSON(cookies)
 	if err != nil {
 		return err
 	}
-	return s.writeAutomationStorage(credentialID, raw, ua)
+	return s.replaceAutomationStorage(credentialID, raw)
 }
 
 func (s *server) replaceAutomationStorage(credentialID int, raw string) error {
-	return s.writeAutomationStorage(credentialID, raw, s.readAutomationUserAgent(credentialID))
+	var ua string
+	_ = s.db.QueryRow(`SELECT COALESCE(user_agent, '') FROM automation_storage WHERE credential_id=?`, credentialID).Scan(&ua)
+	return s.writeAutomationStorage(credentialID, raw, ua)
 }
 
 func (s *server) writeAutomationStorage(credentialID int, raw, userAgent string) error {
@@ -1197,8 +1174,8 @@ func (s *server) saveAutomationStorage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Choose a credential")
 		return
 	}
-	var provider string
-	if err := s.db.QueryRow(`SELECT provider FROM automation_credentials WHERE id=?`, body.CredentialID).Scan(&provider); err != nil {
+	var exists int
+	if err := s.db.QueryRow(`SELECT id FROM automation_credentials WHERE id=?`, body.CredentialID).Scan(&exists); err != nil {
 		writeErr(w, 404, "Credential not found")
 		return
 	}
@@ -1206,15 +1183,7 @@ func (s *server) saveAutomationStorage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Enter a cookie")
 		return
 	}
-	userAgent := automation.UserAgentFromCookie(body.Cookie)
-	if userAgent == "" {
-		userAgent = strings.TrimSpace(body.UserAgent)
-	}
-	if provider == "ahrefs" && userAgent == "" {
-		writeErr(w, 400, `Put "userAgent" inside the cookie JSON`)
-		return
-	}
-	if err := s.writeAutomationStorage(body.CredentialID, body.Cookie, userAgent); err != nil {
+	if err := s.writeAutomationStorage(body.CredentialID, body.Cookie, strings.TrimSpace(body.UserAgent)); err != nil {
 		writeErr(w, 500, "Could not save the cookie")
 		return
 	}

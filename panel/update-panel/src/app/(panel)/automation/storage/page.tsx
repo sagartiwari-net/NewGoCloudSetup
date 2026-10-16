@@ -69,7 +69,7 @@ export default function AutomationStoragePage() {
     <>
       <PageHeader
         title="Storage"
-        description="One JSON per credential. For Ahrefs, put userAgent next to cookies in that same JSON."
+        description="The saved cookie for each credential. Ahrefs reads the user agent from the mapped account."
       />
       <Field className="md:max-w-sm">
         <FieldLabel htmlFor="storage-search">Search</FieldLabel>
@@ -170,9 +170,7 @@ function StorageForm({ detail, onDone }: { detail: AutomationStorageDetail; onDo
             )}
           />
           {detail.provider === "ahrefs" ? (
-            <FieldDescription>
-              Use one object with userAgent and cookies. There is no separate user agent box.
-            </FieldDescription>
+            <FieldDescription>Paste the cookie array only. The job uses the user agent already saved on that account.</FieldDescription>
           ) : null}
           <FieldError errors={[errors.cookie]} />
         </Field>
