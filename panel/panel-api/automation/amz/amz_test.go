@@ -106,6 +106,60 @@ func TestLoginAndKeepa(t *testing.T) {
 	}
 }
 
+func TestKeepaPostsLaunchFormBeforeOpeningWorkspace(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/keepa-page", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(`<a href="/amztoolsconsultant-kp01/">Open</a><form method="get" action="/amztoolsconsultant-kp01/"><input type="hidden" name="token" value="sso"><button formaction="/auth/login" formmethod="post">Launch</button></form>`))
+	})
+	mux.HandleFunc("/amztoolsconsultant-kp01/", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "auth_session=app01-session") {
+			_, _ = w.Write([]byte(`workspace without cookie`))
+			return
+		}
+		_, _ = w.Write([]byte(`keepa ready`))
+	})
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.FormValue("token") != "sso" {
+			http.Error(w, "missing sso", http.StatusBadRequest)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "auth_session", Value: "app01-session", Path: "/amztoolsconsultant-kp01", HttpOnly: true})
+		http.Redirect(w, r, "/amztoolsconsultant-kp01/", http.StatusFound)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	previous := []string{baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL}
+	baseURL = server.URL
+	loginURL = server.URL + "/login"
+	memberURL = server.URL + "/member"
+	keepaPageURL = server.URL + "/keepa-page"
+	keepaLaunchURL = server.URL + "/cloud/kp01"
+	t.Cleanup(func() {
+		baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL = previous[0], previous[1], previous[2], previous[3], previous[4]
+	})
+
+	portal := []automation.Cookie{{Name: "PHPSESSID", Value: "portal-session", Domain: "members.amztoolsconsultant.com", Path: "/"}}
+	got, err := Recipe{}.Capture(context.Background(), portal, server.URL+"/kp01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCookie(got, "auth_session", "app01-session") {
+		t.Fatalf("keepa cookies %#v", got)
+	}
+	if hasCookie(got, "PHPSESSID", "portal-session") {
+		t.Fatal("keepa kept the homepage cookie")
+	}
+	for _, cookie := range got {
+		if cookie.Name == "auth_session" && cookie.Path != "/amztoolsconsultant-kp01" {
+			t.Fatalf("auth_session path %q", cookie.Path)
+		}
+	}
+}
+
 func hasCookie(cookies []automation.Cookie, name, value string) bool {
 	for _, cookie := range cookies {
 		if cookie.Name == name && cookie.Value == value {

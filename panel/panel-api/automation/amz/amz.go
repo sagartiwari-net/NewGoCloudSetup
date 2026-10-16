@@ -23,20 +23,25 @@ import (
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 var (
-	baseURL        = "https://members.amztoolsconsultant.com"
-	loginURL       = "https://members.amztoolsconsultant.com/login"
-	memberURL      = "https://members.amztoolsconsultant.com/member"
-	keepaPageURL   = "https://members.amztoolsconsultant.com/page/b7m84YAgLseP+Keepa+New+Access"
-	keepaLaunchURL = "https://members.amztoolsconsultant.com/cloud/kp01"
-	httpWait       = 25 * time.Second
+	baseURL           = "https://members.amztoolsconsultant.com"
+	loginURL          = "https://members.amztoolsconsultant.com/login"
+	memberURL         = "https://members.amztoolsconsultant.com/member"
+	keepaPageURL      = "https://members.amztoolsconsultant.com/page/b7m84YAgLseP+Keepa+New+Access"
+	keepaLaunchURL    = "https://members.amztoolsconsultant.com/cloud/kp01"
+	keepaWorkspaceURL = "https://app01.browseanywhere.com/amztoolsconsultant-kp01/"
+	httpWait          = 25 * time.Second
 )
 
 var (
-	attemptRE = regexp.MustCompile(`(?i)name=["']login_attempt_id["'][^>]*value=["']([^"']+)["']|value=["']([^"']+)["'][^>]*name=["']login_attempt_id["']`)
-	hrefRE    = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']+)["']`)
-	formRE    = regexp.MustCompile(`(?is)<form([^>]*)>(.*?)</form>`)
-	inputRE   = regexp.MustCompile(`(?i)<input([^>]+)>`)
-	attrRE    = regexp.MustCompile(`(?i)([a-z0-9_-]+)\s*=\s*["']([^"']*)["']`)
+	attemptRE     = regexp.MustCompile(`(?i)name=["']login_attempt_id["'][^>]*value=["']([^"']+)["']|value=["']([^"']+)["'][^>]*name=["']login_attempt_id["']`)
+	hrefRE        = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']+)["']`)
+	windowOpenRE  = regexp.MustCompile(`(?i)window\.(?:open|location(?:\.href)?)\s*(?:=|\()\s*["']([^"']+)["']`)
+	metaRefreshRE = regexp.MustCompile(`(?i)http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"'>\s]+)`)
+	rawURLRE      = regexp.MustCompile(`(?i)https?://[a-z0-9._/-]+(?:\?[^\s"'<>]*)?`)
+	formRE        = regexp.MustCompile(`(?is)<form([^>]*)>(.*?)</form>`)
+	inputRE       = regexp.MustCompile(`(?i)<input([^>]+)>`)
+	buttonRE      = regexp.MustCompile(`(?i)<(?:button|input)([^>]+)>`)
+	attrRE        = regexp.MustCompile(`(?i)([a-z0-9_-]+)\s*=\s*["']([^"']*)["']`)
 )
 
 type Recipe struct{}
@@ -186,12 +191,18 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 	if denied(page) {
 		return nil, automation.At(automation.ErrDenied, landed)
 	}
-	launch := keepaLaunch(page, landed)
-	if launch == "" {
-		launch = keepaLaunchURL
+	// The access page is a form post. A plain GET of the workspace does not set auth_session.
+	if action, values, ok := browseAnywhereForm(page, landed); ok {
+		log.Printf("[automation] amz keepa form %s", automation.Where(action))
+		page, landed, err = postForm(ctx, client, action, landed, values)
+	} else {
+		launch := keepaLaunch(page, landed)
+		if launch == "" {
+			launch = keepaLaunchURL
+		}
+		log.Printf("[automation] amz keepa open %s", automation.Where(launch))
+		page, landed, err = get(ctx, client, launch, keepaPageURL)
 	}
-	log.Printf("[automation] amz keepa open %s", automation.Where(launch))
-	page, landed, err = get(ctx, client, launch, keepaPageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +212,12 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 	if action, values, ok := browseAnywhereForm(page, landed); ok {
 		log.Printf("[automation] amz keepa form %s", automation.Where(action))
 		page, landed, err = postForm(ctx, client, action, landed, values)
+		if err != nil {
+			return nil, err
+		}
+	} else if next := browseAnywhereURL(page, landed); next != "" && !samePage(next, landed) {
+		log.Printf("[automation] amz keepa follow %s", automation.Where(next))
+		page, landed, err = get(ctx, client, next, landed)
 		if err != nil {
 			return nil, err
 		}
@@ -215,20 +232,18 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 			return nil, err
 		}
 	}
-	if isAuthLogin(landed) || !strings.Contains(strings.ToLower(landed), "/amztoolsconsultant-kp01") {
-		workspace := workspaceURL(upstream, landed)
-		if workspace != "" && workspace != landed {
-			log.Printf("[automation] amz keepa workspace %s", automation.Where(workspace))
-			nextPage, nextLanded, nextErr := get(ctx, client, workspace, landed)
-			if nextErr == nil {
-				page, landed = nextPage, nextLanded
-			}
+	workspace := keepaWorkspace(upstream, landed)
+	if workspace != "" {
+		log.Printf("[automation] amz keepa workspace %s", automation.Where(workspace))
+		nextPage, nextLanded, nextErr := get(ctx, client, workspace, landed)
+		if nextErr == nil {
+			page, landed = nextPage, nextLanded
 		}
 	}
 	if isAuthLogin(landed) {
 		return nil, automation.At(automation.ErrLoginPage, landed)
 	}
-	fresh := freshCookies(record.all(), portal)
+	fresh := keepaCookies(jar, record, landed, portal)
 	log.Printf("[automation] amz keepa page=%s cookies=%s", automation.Where(landed), automation.Names(fresh))
 	if len(fresh) == 0 {
 		return nil, automation.At(automation.ErrNoCookie, landed)
@@ -237,38 +252,42 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 	return fresh, nil
 }
 
-func workspaceURL(upstream *url.URL, landed string) string {
-	host := ""
-	scheme := "https"
-	if upstream != nil && strings.Contains(strings.ToLower(upstream.Hostname()), "browseanywhere.com") {
-		host = upstream.Hostname()
-		if upstream.Scheme != "" {
-			scheme = upstream.Scheme
-		}
-	}
+func keepaWorkspace(upstream *url.URL, landed string) string {
 	if landedHost := hostOf(landed); strings.Contains(strings.ToLower(landedHost), "browseanywhere.com") {
-		host = landedHost
+		scheme := "https"
 		if parsed, err := url.Parse(landed); err == nil && parsed.Scheme != "" {
 			scheme = parsed.Scheme
 		}
+		return scheme + "://" + landedHost + "/amztoolsconsultant-kp01/"
 	}
-	if host == "" {
-		return ""
+	// Tests use the local upstream. Live Keepa is app01, even when the tool record still says app03.
+	if upstream != nil && upstream.Hostname() != "" && !strings.Contains(strings.ToLower(upstream.Hostname()), "browseanywhere.com") {
+		scheme := upstream.Scheme
+		if scheme == "" {
+			scheme = "https"
+		}
+		return scheme + "://" + upstream.Host + "/amztoolsconsultant-kp01/"
 	}
-	return scheme + "://" + host + "/amztoolsconsultant-kp01/"
+	return keepaWorkspaceURL
+}
+
+func samePage(a, b string) bool {
+	left, errA := url.Parse(a)
+	right, errB := url.Parse(b)
+	if errA != nil || errB != nil || left == nil || right == nil {
+		return a == b
+	}
+	return strings.EqualFold(left.Host, right.Host) && left.EscapedPath() == right.EscapedPath()
 }
 
 func keepaLaunch(page, base string) string {
 	parsed, _ := url.Parse(base)
 	best := ""
 	bestScore := 0
-	for _, match := range hrefRE.FindAllStringSubmatch(page, -1) {
-		if len(match) < 2 {
-			continue
-		}
-		href := resolve(parsed, html.UnescapeString(match[1]))
+	consider := func(raw string, extra int) {
+		href := resolve(parsed, html.UnescapeString(raw))
 		lower := strings.ToLower(href)
-		score := 0
+		score := extra
 		if strings.Contains(lower, "/cloud/kp01") {
 			score += 100
 		}
@@ -278,10 +297,70 @@ func keepaLaunch(page, base string) string {
 		if strings.Contains(lower, "browseanywhere.com") && !strings.Contains(lower, "auth/login") {
 			score += 80
 		}
+		if strings.Contains(lower, "auth/login") {
+			score += 60
+		}
 		if score > bestScore {
 			bestScore = score
 			best = href
 		}
+	}
+	for _, match := range hrefRE.FindAllStringSubmatch(page, -1) {
+		if len(match) > 1 {
+			consider(match[1], 0)
+		}
+	}
+	for _, match := range windowOpenRE.FindAllStringSubmatch(page, -1) {
+		if len(match) > 1 {
+			consider(match[1], 10)
+		}
+	}
+	if match := metaRefreshRE.FindStringSubmatch(page); len(match) > 1 {
+		consider(match[1], 10)
+	}
+	return best
+}
+
+func browseAnywhereURL(page, base string) string {
+	parsed, _ := url.Parse(base)
+	best := ""
+	bestScore := 0
+	consider := func(raw string) {
+		href := resolve(parsed, html.UnescapeString(strings.TrimSpace(raw)))
+		lower := strings.ToLower(href)
+		if !strings.Contains(lower, "browseanywhere.com") {
+			return
+		}
+		score := 10
+		if strings.Contains(lower, "auth/login") {
+			score = 80
+		}
+		if strings.Contains(lower, "app01.browseanywhere.com") {
+			score += 20
+		}
+		if strings.Contains(lower, "/amztoolsconsultant-kp01") && !strings.Contains(lower, "auth/login") {
+			score = 30
+		}
+		if score > bestScore {
+			bestScore = score
+			best = href
+		}
+	}
+	for _, match := range hrefRE.FindAllStringSubmatch(page, -1) {
+		if len(match) > 1 {
+			consider(match[1])
+		}
+	}
+	for _, match := range windowOpenRE.FindAllStringSubmatch(page, -1) {
+		if len(match) > 1 {
+			consider(match[1])
+		}
+	}
+	for _, raw := range rawURLRE.FindAllString(page, -1) {
+		consider(raw)
+	}
+	if match := metaRefreshRE.FindStringSubmatch(page); len(match) > 1 {
+		consider(match[1])
 	}
 	return best
 }
@@ -295,8 +374,11 @@ func browseAnywhereForm(page, pageURL string) (string, url.Values, bool) {
 		if len(match) < 3 {
 			continue
 		}
+		if strings.Contains(strings.ToLower(match[2]), "amember_login") {
+			continue
+		}
 		attrs := parseAttrs(match[1])
-		action := resolve(base, attrs["action"])
+		action, method := formTarget(base, attrs, match[2])
 		if action == "" {
 			action = pageURL
 		}
@@ -308,16 +390,13 @@ func browseAnywhereForm(page, pageURL string) (string, url.Values, bool) {
 		if strings.Contains(lower, "auth/login") || strings.Contains(lower, "/cloud/kp01") {
 			score += 30
 		}
-		if strings.EqualFold(attrs["method"], "post") {
+		if strings.EqualFold(method, "post") {
 			score += 10
 		}
 		if score == 0 && strings.Contains(strings.ToLower(pageURL), "browseanywhere.com") {
 			score = 5
 		}
-		if score < bestScore && bestScore > 0 {
-			continue
-		}
-		if score == 0 {
+		if score <= bestScore {
 			continue
 		}
 		values := url.Values{}
@@ -325,7 +404,7 @@ func browseAnywhereForm(page, pageURL string) (string, url.Values, bool) {
 			fields := parseAttrs(input[1])
 			name := strings.TrimSpace(fields["name"])
 			kind := strings.ToLower(fields["type"])
-			if name == "" || kind == "submit" || kind == "button" {
+			if name == "" || kind == "submit" || kind == "button" || kind == "image" {
 				continue
 			}
 			values.Set(name, fields["value"])
@@ -338,6 +417,113 @@ func browseAnywhereForm(page, pageURL string) (string, url.Values, bool) {
 		return "", nil, false
 	}
 	return bestAction, best, true
+}
+
+func formTarget(base *url.URL, attrs map[string]string, inner string) (string, string) {
+	action := attrs["action"]
+	method := attrs["method"]
+	for _, match := range buttonRE.FindAllStringSubmatch(inner, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		fields := parseAttrs(match[1])
+		if fields["formaction"] == "" {
+			continue
+		}
+		action = fields["formaction"]
+		if fields["formmethod"] != "" {
+			method = fields["formmethod"]
+		} else if method == "" {
+			method = "post"
+		}
+	}
+	return resolve(base, action), method
+}
+
+func keepaCookies(jar *cookiejar.Jar, record *cookieRecord, landed string, portal []automation.Cookie) []automation.Cookie {
+	fresh := freshCookies(record.all(), portal)
+	var onTool []automation.Cookie
+	var other []automation.Cookie
+	for _, cookie := range fresh {
+		if browseanywhereCookie(cookie) {
+			onTool = append(onTool, cookie)
+			continue
+		}
+		other = append(other, cookie)
+	}
+	onTool = mergeCookies(onTool, jarBrowseAnywhere(jar, landed, portal))
+	if len(onTool) > 0 {
+		return onTool
+	}
+	if strings.Contains(strings.ToLower(hostOf(landed)), "browseanywhere.com") {
+		return nil
+	}
+	return other
+}
+
+func browseanywhereCookie(cookie automation.Cookie) bool {
+	domain := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(cookie.Domain), "."))
+	return strings.Contains(domain, "browseanywhere.com")
+}
+
+func jarBrowseAnywhere(jar *cookiejar.Jar, landed string, portal []automation.Cookie) []automation.Cookie {
+	if jar == nil {
+		return nil
+	}
+	urls := []string{
+		keepaWorkspaceURL,
+		"https://app01.browseanywhere.com/",
+	}
+	if parsed, err := url.Parse(landed); err == nil && strings.Contains(strings.ToLower(parsed.Hostname()), "browseanywhere.com") {
+		urls = append(urls, parsed.Scheme+"://"+parsed.Host+"/amztoolsconsultant-kp01/", parsed.Scheme+"://"+parsed.Host+"/")
+	}
+	known := map[string]struct{}{}
+	for _, cookie := range portal {
+		if cookie.Name != "" && cookie.Value != "" {
+			known[cookie.Name+"|"+cookie.Value] = struct{}{}
+		}
+	}
+	var out []automation.Cookie
+	for _, cookie := range automation.JarCookies(jar, urls) {
+		if cookie.Name == "" || cookie.Value == "" {
+			continue
+		}
+		if _, ok := known[cookie.Name+"|"+cookie.Value]; ok {
+			continue
+		}
+		if !browseanywhereCookie(cookie) {
+			cookie.Domain = "app01.browseanywhere.com"
+			cookie.HostOnly = true
+			if cookie.Path == "" || cookie.Path == "/" {
+				cookie.Path = "/amztoolsconsultant-kp01"
+			}
+		}
+		out = append(out, cookie)
+	}
+	return out
+}
+
+func mergeCookies(primary, extra []automation.Cookie) []automation.Cookie {
+	seen := map[string]struct{}{}
+	out := make([]automation.Cookie, 0, len(primary)+len(extra))
+	add := func(cookie automation.Cookie) {
+		key := cookie.Name + "|" + cookie.Value
+		if cookie.Name == "" || cookie.Value == "" {
+			return
+		}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, cookie)
+	}
+	for _, cookie := range primary {
+		add(cookie)
+	}
+	for _, cookie := range extra {
+		add(cookie)
+	}
+	return out
 }
 
 func parseAttrs(raw string) map[string]string {
