@@ -782,3 +782,25 @@ func TestAutomationFreshHomepageRunsBeforeItsInterval(t *testing.T) {
 		t.Fatalf("homepage did not run, reason=%s last=%s", reason, lastRun)
 	}
 }
+
+func TestAmzHomepageCookieLandsOnDiamond(t *testing.T) {
+	s, _ := openAutomationTestDB(t)
+	id := insertMarkhorWebsite(t, s, "Helium10 Diamond", "amzcheliumdia.example")
+	if _, err := s.db.Exec(`UPDATE websites SET upstream_url=? WHERE id=?`, "https://ht01.amztoolsconsultant.com", id); err != nil {
+		t.Fatal(err)
+	}
+	wrote, err := s.writeAmzDiamondCookie([]cookieJSON{{Name: "PHPSESSID", Value: "portal-session", Path: "/"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(wrote, "Helium10 Diamond") {
+		t.Fatalf("wrote %q", wrote)
+	}
+	var cookie string
+	if err := s.db.QueryRow(`SELECT cookie FROM accounts WHERE website_id=?`, id).Scan(&cookie); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cookie, "portal-session") || !strings.Contains(cookie, ".amztoolsconsultant.com") {
+		t.Fatalf("diamond cookie %s", cookie)
+	}
+}

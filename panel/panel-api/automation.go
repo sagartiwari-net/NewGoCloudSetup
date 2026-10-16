@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"panel-api/automation"
+	"panel-api/automation/amz"
 	"panel-api/automation/azad"
 	"panel-api/automation/markhor"
 	"panel-api/automation/toolbaazar"
@@ -47,14 +48,18 @@ func cookieValues(cookies []cookieJSON) []string         { return automation.Coo
 var (
 	recipeMu          sync.Mutex
 	automationRecipes = map[string]automation.Recipe{
-		"markhor":    markhor.Recipe{},
-		"azad":       azad.Recipe{},
-		"toolbaazar": toolbaazar.Recipe{},
+		"markhor":            markhor.Recipe{},
+		"azad":               azad.Recipe{},
+		"toolbaazar":         toolbaazar.Recipe{},
+		"amztoolsconsultant": amz.Recipe{},
 	}
-	automationProviderNames = map[string]string{"markhor": "Markhor", "azad": "Azad", "toolbaazar": "Toolbaazar"}
-	automationCredLocks     sync.Map
-	automationKeyWarn       sync.Once
-	automationMySQLIDs      sync.Once
+	automationProviderNames = map[string]string{
+		"markhor": "Markhor", "azad": "Azad", "toolbaazar": "Toolbaazar",
+		"amztoolsconsultant": "Amz Tools Consultant",
+	}
+	automationCredLocks sync.Map
+	automationKeyWarn   sync.Once
+	automationMySQLIDs  sync.Once
 )
 
 func recipeFor(id string) (automation.Recipe, bool) {
@@ -455,7 +460,19 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	secrets = append(secrets, cookieValues(portal)...)
 	if job.Kind == "session" {
 		s.writeAutomationLog(job, "info", "stored homepage cookie", secrets)
-		s.finishAutomation(job, "ok", "stored homepage cookie")
+		reason := "stored homepage cookie"
+		if job.Provider == "amztoolsconsultant" {
+			wrote, err := s.writeAmzDiamondCookie(portal)
+			if err != nil {
+				s.failAutomation(job, err, secrets)
+				return
+			}
+			if wrote != "" {
+				reason = reason + "; " + wrote
+				s.writeAutomationLog(job, "info", wrote, secrets)
+			}
+		}
+		s.finishAutomation(job, "ok", reason)
 		return
 	}
 	log.Printf("[automation] job %d capture %s", job.ID, automation.Where(site.Upstream))
@@ -667,6 +684,43 @@ func (s *server) replaceAutomationStorage(credentialID int, raw string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *server) writeAmzDiamondCookie(portal []cookieJSON) (string, error) {
+	cookies := amz.HomepageCookies(portal)
+	raw, err := cookiesToJSON(cookies)
+	if err != nil {
+		return "", err
+	}
+	rows, err := s.db.Query(`SELECT id FROM websites WHERE kind='recloud' AND upstream_url LIKE ?`, "https://ht01.amztoolsconsultant.com%")
+	if err != nil {
+		return "", err
+	}
+	var ids []int
+	for rows.Next() {
+		var id int
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	var wrote []string
+	for _, id := range ids {
+		site, ok := s.loadAutomationSite(id)
+		if !ok {
+			continue
+		}
+		accountID, err := s.writeAutomationAccountCookie(site, 0, raw)
+		if err != nil {
+			return "", err
+		}
+		s.shareCookieFrom(accountID)
+		wrote = append(wrote, strings.TrimSpace(site.Name))
+	}
+	if len(wrote) == 0 {
+		return "", nil
+	}
+	return "wrote homepage cookie to " + strings.Join(wrote, ", "), nil
 }
 
 func (s *server) writeAutomationAccountCookie(site automationSite, accountID int, cookie string) (int, error) {
