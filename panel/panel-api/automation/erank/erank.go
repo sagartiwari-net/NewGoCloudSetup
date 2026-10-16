@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -71,14 +72,15 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	switch resp.StatusCode {
 	case http.StatusUnauthorized, http.StatusNotFound, http.StatusUnprocessableEntity:
-		return nil, automation.ErrRejected
+		return nil, erankStatus(origin+"/api/login", raw, automation.ErrRejected)
 	case http.StatusForbidden:
-		return nil, automation.ErrDenied
+		return nil, erankStatus(origin+"/api/login", raw, errors.New("eRank refused this login"))
 	case http.StatusOK, http.StatusCreated:
+	case 419:
+		return nil, automation.ErrCSRF
 	default:
 		return nil, automation.ErrLoginPage
 	}
-	_ = raw
 	ok, err := loggedIn(ctx, client)
 	if err != nil {
 		return nil, err
@@ -151,12 +153,49 @@ func get(ctx context.Context, client *http.Client, rawURL string) error {
 func setAPI(req *http.Request, token string) {
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("X-User-Agent", "erank-app/3.0")
 	req.Header.Set("Origin", origin)
-	req.Header.Set("Referer", origin+"/dashboard")
+	req.Header.Set("Referer", origin+"/login")
 	if token != "" {
 		req.Header.Set("X-XSRF-TOKEN", token)
 	}
+}
+
+func erankStatus(rawURL string, body []byte, fallback error) error {
+	msg := erankMessage(body)
+	if msg == "" {
+		return automation.At(fallback, rawURL)
+	}
+	return automation.At(errors.New(msg), rawURL)
+}
+
+func erankMessage(raw []byte) string {
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		return ""
+	}
+	var asString string
+	if json.Unmarshal(raw, &asString) == nil && strings.TrimSpace(asString) != "" {
+		text = asString
+	} else {
+		var obj struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(raw, &obj) == nil && strings.TrimSpace(obj.Message) != "" {
+			text = obj.Message
+		}
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	lower := strings.ToLower(text)
+	if strings.Contains(lower, "<html") || strings.Contains(lower, "<!doctype") {
+		return ""
+	}
+	if len(text) > 160 {
+		text = text[:160]
+	}
+	return text
 }
 
 func xsrf(jar http.CookieJar) string {

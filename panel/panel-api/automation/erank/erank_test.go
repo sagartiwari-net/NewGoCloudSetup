@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"panel-api/automation"
+	"strings"
 	"testing"
 )
 
@@ -64,6 +65,30 @@ func TestLoginStoresSidEr(t *testing.T) {
 	tool, err := Recipe{}.Capture(context.Background(), cookies, srv.URL)
 	if err != nil || !hasName(tool, "sid_er") {
 		t.Fatalf("capture err=%v", err)
+	}
+}
+
+func TestForbiddenLoginShowsTheSiteMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/login" {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`"Unauthorized to login."`))
+			return
+		}
+		if r.URL.Path == "/sanctum/csrf-cookie" {
+			http.SetCookie(w, &http.Cookie{Name: "XSRF-TOKEN", Value: "csrf-1", Path: "/"})
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	origin = srv.URL
+	t.Cleanup(func() { origin = "https://members.erank.com" })
+
+	_, err := Recipe{}.Login(context.Background(), "owner@example.com", "secret")
+	if err == nil || !strings.Contains(err.Error(), "Unauthorized to login") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
