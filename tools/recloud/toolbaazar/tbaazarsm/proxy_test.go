@@ -272,3 +272,55 @@ func TestMenuClickDoesNotFollowIntoAccessDenied(t *testing.T) {
 		t.Fatalf("location %s", rr.Header().Get("Location"))
 	}
 }
+
+func TestOfficialSiteRedirectStaysInsideTheProxy(t *testing.T) {
+	oldWait := loginRetryWait
+	oldGateway := semrushGatewayURL
+	loginRetryWait = 0
+	t.Cleanup(func() {
+		loginRetryWait = oldWait
+		semrushGatewayURL = oldGateway
+	})
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "gateway_bootstrap=ready") {
+			http.Redirect(w, r, "https://toolbaazar.com/", http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<html><body>Semrush projects</body></html>`))
+	}))
+	defer upstream.Close()
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal") {
+			http.Redirect(w, r, "https://app.toolbaazar.com/login", http.StatusFound)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "gateway_bootstrap", Value: "ready", Path: "/"})
+		http.Redirect(w, r, upstream.URL+"/projects", http.StatusFound)
+	}))
+	defer gateway.Close()
+	semrushGatewayURL = gateway.URL + "/?backup=1"
+
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/", PublicHost: "tbaazarsm.gt4rents.com", PublicScheme: "http", ToolName: "Toolbaazar Semrush"}
+	req := httptest.NewRequest(http.MethodGet, "http://tbaazarsm.gt4rents.com/", nil)
+	req.Host = "tbaazarsm.gt4rents.com"
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=portal"})
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "Semrush projects") {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Header().Get("Location"), "toolbaazar.com") {
+		t.Fatal("browser was sent to the official site")
+	}
+
+	rr = httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{})
+	if strings.Contains(rr.Header().Get("Location"), "toolbaazar.com") || strings.Contains(rr.Body.String(), "toolbaazar.com/") {
+		t.Fatalf("dead session still left the proxy: %d %s %s", rr.Code, rr.Header().Get("Location"), rr.Body.String())
+	}
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "Signing you in") {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+}

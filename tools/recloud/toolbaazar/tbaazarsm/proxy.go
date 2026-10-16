@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"io"
 	"log"
@@ -31,8 +32,9 @@ var (
 			return http.ErrUseLastResponse
 		},
 	}
-	verygoodHost = regexp.MustCompile(`(?i)(?:[a-z0-9-]+\.)*verygoodtool\.com`)
-	semrushHost  = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*semrush\.com`)
+	verygoodHost      = regexp.MustCompile(`(?i)(?:[a-z0-9-]+\.)*verygoodtool\.com`)
+	semrushHost       = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*semrush\.com`)
+	semrushGatewayURL = "https://s2new.toolbaazar.com/?backup=1"
 )
 
 func publicOrigin(r *http.Request, cfg Config) string {
@@ -169,10 +171,76 @@ func locationIsLogin(loc string) bool {
 }
 
 func responseLooksLoggedOut(status int, location string, body []byte) bool {
-	if status >= 300 && status < 400 && locationIsLogin(location) {
+	if status >= 300 && status < 400 && (locationIsLogin(location) || marketingRedirect(location)) {
 		return true
 	}
 	return bodyLooksLoggedOut(body)
+}
+
+func marketingRedirect(loc string) bool {
+	u, err := url.Parse(strings.TrimSpace(loc))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "toolbaazar.com" || host == "www.toolbaazar.com"
+}
+
+func gatewayHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == "s2new.toolbaazar.com" || host == "verygoodtool.com" || strings.HasSuffix(host, ".verygoodtool.com")
+}
+
+// enterSemrushGateway opens the member access link with the saved login.
+// A missing session comes back as toolbaazar.com. That address stays off the browser.
+func enterSemrushGateway(ctx context.Context, jar, upstreamHost string) (string, string, bool) {
+	current := semrushGatewayURL
+	for range 5 {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, current, nil)
+		if err != nil {
+			return "", jar, false
+		}
+		if jar != "" {
+			req.Header.Set("Cookie", jar)
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml")
+		resp, err := upstreamClient.Do(req)
+		if err != nil {
+			return "", jar, false
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		jar = absorbSetCookies(jar, resp.Header)
+		if resp.StatusCode < 300 || resp.StatusCode >= 400 {
+			parsed, err := url.Parse(current)
+			if err != nil || strings.EqualFold(parsed.Hostname(), "s2new.toolbaazar.com") || (!gatewayHost(parsed.Hostname()) && !sameHostname(parsed.Hostname(), upstreamHost)) {
+				return "", jar, false
+			}
+			if parsed.Path == "" {
+				parsed.Path = "/"
+			}
+			return parsed.RequestURI(), jar, true
+		}
+		next, err := url.Parse(resp.Header.Get("Location"))
+		if err != nil {
+			return "", jar, false
+		}
+		base, _ := url.Parse(current)
+		next = base.ResolveReference(next)
+		if marketingRedirect(next.String()) || (locationIsLogin(next.Path) && strings.Contains(strings.ToLower(next.Hostname()), "toolbaazar.com")) {
+			return "", jar, false
+		}
+		if !gatewayHost(next.Hostname()) && !sameHostname(next.Hostname(), upstreamHost) {
+			return "", jar, false
+		}
+		current = next.String()
+	}
+	return "", jar, false
+}
+
+func sameHostname(left, right string) bool {
+	return left != "" && strings.EqualFold(left, right)
 }
 
 func upstreamURL(base *url.URL, requestURI string) string {
@@ -248,6 +316,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			hops = maxCookieHops
 		}
 		bare := false
+		gatewayTried := false
 		originalURI := requestURI
 		for hop := 0; hop < hops; hop++ {
 			var body io.Reader
@@ -315,6 +384,18 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				continue
 			}
 			rememberUpstreamCookies(acc, jar)
+			if marketingRedirect(resp.Header.Get("Location")) && !gatewayTried && isDocumentNavigation(r) && r.Method == http.MethodGet {
+				gatewayTried = true
+				if path, nextJar, ok := enterSemrushGateway(r.Context(), jar, base.Hostname()); ok {
+					jar = nextJar
+					requestURI = path
+					rememberUpstreamCookies(acc, jar)
+					if hop+1 >= hops {
+						hops = hop + 2
+					}
+					continue
+				}
+			}
 			next, ok := sameSiteRequestURI(resp.Header.Get("Location"), base.Host, origin)
 			if ok && resp.StatusCode >= 300 && resp.StatusCode < 400 && hop+1 < hops {
 				log.Printf("[UP] session cookie hop %d -> %s", hop+1, next)
@@ -342,6 +423,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 				return
 			}
+			renderLoggedOutPage(w, cfg)
+			return
+		}
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 && marketingRedirect(resp.Header.Get("Location")) {
 			renderLoggedOutPage(w, cfg)
 			return
 		}
