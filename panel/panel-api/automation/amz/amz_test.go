@@ -253,6 +253,14 @@ func TestProbeDiamondRejectsLoginPage(t *testing.T) {
 	}
 }
 
+func TestPageKindNamesTheDashboard(t *testing.T) {
+	login := pageKind(`<form><input name="amember_login"><input name="amember_pass"></form>`, "https://members.amztoolsconsultant.com/login")
+	dash := pageKind(`<div class="am-member-main"><a href="/logout">Logout</a></div>`, "https://members.amztoolsconsultant.com/member")
+	if login != "login-form" || dash != "dashboard" {
+		t.Fatalf("login=%s dashboard=%s", login, dash)
+	}
+}
+
 func TestPHPSESSIDAloneIsNotASession(t *testing.T) {
 	ok, _, err := Recipe{}.Check(context.Background(), []automation.Cookie{{Name: "PHPSESSID", Value: "only-session", Domain: ".amztoolsconsultant.com", Path: "/"}})
 	if err != nil || ok {

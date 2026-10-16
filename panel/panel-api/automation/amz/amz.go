@@ -7,6 +7,7 @@ package amz
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html"
 	"io"
 	"log"
@@ -111,7 +112,8 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 		return nil, automation.At(automation.ErrLoginPage, memberLanded)
 	}
 	cookies := HomepageCookies(append(portalCookies(jar), recordedPortal(record)...))
-	log.Printf("[automation] amz login page=%s cookies=%s", automation.Where(memberLanded), automation.Names(cookies))
+	log.Printf("[automation] amz result logged in on the panel server. %s is the member dashboard (%d bytes). PHPSESSID is the session cookie. Saved %s", automation.Where(memberLanded), len(member), cookieShapes(cookies))
+	log.Printf("[automation] amz result the same PHPSESSID still shows the login form in your own browser, because aMember tied this session to the panel server. Open https://amzcheliumdia.gt4rents.com/black-box/products to view it")
 	if len(cookies) == 0 {
 		return nil, automation.At(automation.ErrLoginPage, memberLanded)
 	}
@@ -558,10 +560,10 @@ func ProbeDiamond(ctx context.Context, cookies []automation.Cookie) error {
 		return err
 	}
 	if !toolOpened(page, landed) {
-		log.Printf("[automation] amz diamond probe closed %s", automation.Where(landed))
+		log.Printf("[automation] amz result Helium10 Diamond stayed closed at %s (%d bytes, %s)", automation.Where(landed), len(page), pageKind(page, landed))
 		return automation.At(automation.ErrToolClosed, landed)
 	}
-	log.Printf("[automation] amz diamond probe open %s", automation.Where(landed))
+	log.Printf("[automation] amz result Helium10 Diamond opened from the panel server at %s (%d bytes)", automation.Where(landed), len(page))
 	return nil
 }
 
@@ -678,6 +680,30 @@ func resolve(base *url.URL, raw string) string {
 func isAuthLogin(raw string) bool {
 	lower := strings.ToLower(raw)
 	return strings.Contains(lower, "browseanywhere.com") && strings.Contains(lower, "auth/login")
+}
+
+func pageKind(page, pageURL string) string {
+	if showsLogin(page, pageURL) {
+		return "login-form"
+	}
+	if showsDashboard(page, pageURL) {
+		return "dashboard"
+	}
+	if !toolOpened(page, pageURL) {
+		return "closed"
+	}
+	return "open"
+}
+
+func cookieShapes(cookies []automation.Cookie) string {
+	parts := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie.Name == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s domain=%s path=%s secure=%t httponly=%t", cookie.Name, cookie.Domain, cookie.Path, cookie.Secure, cookie.HTTPOnly))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func showsLogin(page, pageURL string) bool {
@@ -960,7 +986,7 @@ func do(client *http.Client, req *http.Request) (string, string, error) {
 	if resp.Request != nil && resp.Request.URL != nil {
 		final = resp.Request.URL.String()
 	}
-	log.Printf("[automation] amz %s landed %s status=%d bytes=%d login=%t", req.Method, automation.Where(final), resp.StatusCode, len(body), showsLogin(string(body), final))
+	log.Printf("[automation] amz %s landed %s status=%d bytes=%d page=%s", req.Method, automation.Where(final), resp.StatusCode, len(body), pageKind(string(body), final))
 	return string(body), final, nil
 }
 
