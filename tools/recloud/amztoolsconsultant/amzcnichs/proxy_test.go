@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -20,6 +21,47 @@ func TestRewriteKeepsBrowserOnPublicHost(t *testing.T) {
 	}
 	if !strings.Contains(out, ".amzcnichs.gt4rents.com") {
 		t.Fatal("cookie domain was not rewritten")
+	}
+}
+
+func TestProtectLinkKeepsUpstreamSite(t *testing.T) {
+	in := []byte(`<link rel="stylesheet" href="https://members.amztoolsconsultant.com/protect/new-rewrite?f=132&amp;url=/app.css&amp;host=ns01.amztoolsconsultant.com&amp;ssl=on">`)
+	out := string(rewriteText(in, "ns01.amztoolsconsultant.com", "https://amzcnichs.gt4rents.com"))
+	if !strings.Contains(out, "https://amzcnichs.gt4rents.com/protect/new-rewrite?") {
+		t.Fatalf("protect link was not kept on this tool: %s", out)
+	}
+	if !strings.Contains(out, "host=ns01.amztoolsconsultant.com") || strings.Contains(out, "host=amzcnichs.gt4rents.com") {
+		t.Fatalf("member site host was rewritten: %s", out)
+	}
+	base, err := url.Parse("https://ns01.amztoolsconsultant.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := membersProtectURL(base, "/protect/new-rewrite?f=132&url=/app.css&host=amzcnichs.gt4rents.com&ssl=on", "https://amzcnichs.gt4rents.com")
+	if got != "https://members.amztoolsconsultant.com/protect/new-rewrite?f=132&url=/app.css&host=ns01.amztoolsconsultant.com&ssl=on" {
+		t.Fatalf("protect target %s", got)
+	}
+}
+
+func TestStylesheetRedirectIsFollowed(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/app.css" {
+			http.Redirect(w, r, "/static/app.css", http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/css")
+		_, _ = w.Write([]byte("body{color:#111}"))
+	}))
+	defer upstream.Close()
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/scraper/", PublicHost: "amzcnichs.gt4rents.com", PublicScheme: "http", ToolName: "Amztoolsconsultant Niche Scraper"}
+	req := httptest.NewRequest(http.MethodGet, "http://amzcnichs.gt4rents.com/app.css", nil)
+	req.Host = "amzcnichs.gt4rents.com"
+	req.Header.Set("Accept", "text/css")
+	req.Header.Set("Sec-Fetch-Dest", "style")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=session"})
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "color:#111") {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
 	}
 }
 

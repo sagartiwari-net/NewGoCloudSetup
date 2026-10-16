@@ -72,6 +72,13 @@ func rewriteText(body []byte, upstreamHost, origin string) []byte {
 	s = semrushHost.ReplaceAllString(s, origin)
 	s = strings.ReplaceAll(s, ".semrush.com", "."+cookieDomain)
 	s = strings.ReplaceAll(s, "ns01."+cookieDomain, cookieDomain)
+	// aMember uses host= as the real site. Rewriting that value to this tool
+	// makes every stylesheet and script bounce through protect again.
+	s = strings.ReplaceAll(s, "host="+cookieDomain, "host="+upstreamHost)
+	if encPub, encUp := url.QueryEscape(cookieDomain), url.QueryEscape(upstreamHost); encPub != cookieDomain {
+		s = strings.ReplaceAll(s, "host%3D"+encPub, "host%3D"+encUp)
+		s = strings.ReplaceAll(s, "host%3d"+encPub, "host%3d"+encUp)
+	}
 	return []byte(s)
 }
 
@@ -176,6 +183,35 @@ func responseLooksLoggedOut(status int, location string, body []byte) bool {
 	return bodyLooksLoggedOut(body)
 }
 
+func membersProtectURL(base *url.URL, requestURI, origin string) string {
+	u, err := url.Parse(requestURI)
+	if err != nil || base == nil {
+		return ""
+	}
+	path := u.Path
+	if path != "/protect/new-rewrite" && !strings.HasPrefix(path, "/protect/") {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	up := strings.ToLower(base.Hostname())
+	pub := origin
+	if i := strings.Index(pub, "://"); i >= 0 {
+		pub = pub[i+3:]
+	}
+	if i := strings.Index(pub, ":"); i >= 0 {
+		pub = pub[:i]
+	}
+	pub = strings.ToLower(pub)
+	if host != "" && host != up && host != pub && host != "members.amztoolsconsultant.com" {
+		return ""
+	}
+	raw := u.RawQuery
+	raw = strings.ReplaceAll(raw, "host="+url.QueryEscape(pub), "host="+url.QueryEscape(up))
+	raw = strings.ReplaceAll(raw, "host="+pub, "host="+up)
+	out := url.URL{Scheme: "https", Host: "members.amztoolsconsultant.com", Path: path, RawQuery: raw}
+	return out.String()
+}
+
 func upstreamURL(base *url.URL, requestURI string) string {
 	if abs, err := url.Parse(requestURI); err == nil && abs.Host != "" && (abs.Scheme == "http" || abs.Scheme == "https") {
 		return abs.String()
@@ -248,9 +284,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		var payload []byte
 		var ct string
 		hops := 1
-		if r.Method == http.MethodGet && isDocumentNavigation(r) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			hops = maxCookieHops
 		}
+		seenHop := map[string]struct{}{}
 		for hop := 0; hop < hops; hop++ {
 			var body io.Reader
 			if bodyBytes != nil && hop == 0 {
@@ -261,6 +298,13 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				method = http.MethodGet
 			}
 			target := upstreamURL(base, requestURI)
+			if abs := membersProtectURL(base, requestURI, origin); abs != "" {
+				target = abs
+			}
+			if _, done := seenHop[target]; done {
+				break
+			}
+			seenHop[target] = struct{}{}
 			upReq, err := http.NewRequestWithContext(r.Context(), method, target, body)
 			if err != nil {
 				http.Error(w, "Bad gateway", http.StatusBadGateway)
