@@ -113,7 +113,16 @@ func TestKeepaPostsLaunchFormBeforeOpeningWorkspace(t *testing.T) {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
-		_, _ = w.Write([]byte(`<a href="/amztoolsconsultant-kp01/">Open</a><form method="get" action="/amztoolsconsultant-kp01/"><input type="hidden" name="token" value="sso"><button formaction="/auth/login" formmethod="post">Launch</button></form>`))
+		_, _ = w.Write([]byte(`<a href="/session-watch/revoke-copied?next=/cloud/kp01&name=Keepa">watch</a><a href="/cloud/kp01">Launch Keepa Workspace</a>`))
+	})
+	mux.HandleFunc("/session-watch/revoke-copied", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/login", http.StatusFound)
+	})
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<input name="amember_login"><input name="amember_pass">`))
+	})
+	mux.HandleFunc("/cloud/kp01", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<form method="get" action="/amztoolsconsultant-kp01/"><input type="hidden" name="token" value="sso"><button formaction="/auth/login" formmethod="post">Launch</button></form>`))
 	})
 	mux.HandleFunc("/amztoolsconsultant-kp01/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.Header.Get("Cookie"), "auth_session=app01-session") {
@@ -157,6 +166,56 @@ func TestKeepaPostsLaunchFormBeforeOpeningWorkspace(t *testing.T) {
 		if cookie.Name == "auth_session" && cookie.Path != "/amztoolsconsultant-kp01" {
 			t.Fatalf("auth_session path %q", cookie.Path)
 		}
+	}
+}
+
+func TestKeepaRetriesFormOnToolHost(t *testing.T) {
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`Site not found. Use your-domain.com/<site-name>`))
+	}))
+	defer dead.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/keepa-page", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(`<a href="/cloud/kp01">Launch Keepa Workspace</a>`))
+	})
+	mux.HandleFunc("/cloud/kp01", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<form method="post" action="` + dead.URL + `/amztoolsconsultant-kp01/auth/login"><input name="signature" value="signed"></form>`))
+	})
+	mux.HandleFunc("/amztoolsconsultant-kp01/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.FormValue("signature") != "signed" {
+			http.Error(w, "missing signature", http.StatusBadRequest)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "auth_session", Value: "tool-session", Path: "/amztoolsconsultant-kp01", HttpOnly: true})
+		http.Redirect(w, r, "/amztoolsconsultant-kp01/", http.StatusFound)
+	})
+	mux.HandleFunc("/amztoolsconsultant-kp01/", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`keepa ready`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	previous := []string{baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL}
+	baseURL = server.URL
+	loginURL = server.URL + "/login"
+	memberURL = server.URL + "/member"
+	keepaPageURL = server.URL + "/keepa-page"
+	keepaLaunchURL = server.URL + "/cloud/kp01"
+	t.Cleanup(func() {
+		baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL = previous[0], previous[1], previous[2], previous[3], previous[4]
+	})
+
+	portal := []automation.Cookie{{Name: "PHPSESSID", Value: "portal-session", Domain: "members.amztoolsconsultant.com", Path: "/"}}
+	got, err := Recipe{}.Capture(context.Background(), portal, server.URL+"/kp01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCookie(got, "auth_session", "tool-session") {
+		t.Fatalf("keepa cookies %#v", got)
 	}
 }
 

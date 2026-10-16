@@ -191,18 +191,13 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 	if denied(page) {
 		return nil, automation.At(automation.ErrDenied, landed)
 	}
-	// The access page is a form post. A plain GET of the workspace does not set auth_session.
-	if action, values, ok := browseAnywhereForm(page, landed); ok {
-		log.Printf("[automation] amz keepa form %s", automation.Where(action))
-		page, landed, err = postForm(ctx, client, action, landed, values)
-	} else {
-		launch := keepaLaunch(page, landed)
-		if launch == "" {
-			launch = keepaLaunchURL
-		}
-		log.Printf("[automation] amz keepa open %s", automation.Where(launch))
-		page, landed, err = get(ctx, client, launch, keepaPageURL)
+	// Only /cloud/kp01 is the launch. session-watch/revoke-copied sends the browser to the login page.
+	launch := keepaLaunch(page, landed)
+	if launch == "" {
+		launch = keepaLaunchURL
 	}
+	log.Printf("[automation] amz keepa open %s", automation.Where(launch))
+	page, landed, err = get(ctx, client, launch, keepaPageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +206,7 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 	}
 	if action, values, ok := browseAnywhereForm(page, landed); ok {
 		log.Printf("[automation] amz keepa form %s", automation.Where(action))
-		page, landed, err = postForm(ctx, client, action, landed, values)
+		page, landed, err = submitKeepaForm(ctx, client, action, landed, values, upstream)
 		if err != nil {
 			return nil, err
 		}
@@ -224,7 +219,7 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 	}
 	if isAuthLogin(landed) {
 		if action, values, ok := browseAnywhereForm(page, landed); ok {
-			page, landed, err = postForm(ctx, client, action, landed, values)
+			page, landed, err = submitKeepaForm(ctx, client, action, landed, values, upstream)
 		} else {
 			page, landed, err = postJSON(ctx, client, landed, "{}")
 		}
@@ -253,6 +248,14 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 }
 
 func keepaWorkspace(upstream *url.URL, landed string) string {
+	// The tool record is the host that actually serves Keepa. app01 currently has no site.
+	if upstream != nil && strings.Contains(strings.ToLower(upstream.Hostname()), "browseanywhere.com") {
+		scheme := upstream.Scheme
+		if scheme == "" {
+			scheme = "https"
+		}
+		return scheme + "://" + upstream.Host + "/amztoolsconsultant-kp01/"
+	}
 	if landedHost := hostOf(landed); strings.Contains(strings.ToLower(landedHost), "browseanywhere.com") {
 		scheme := "https"
 		if parsed, err := url.Parse(landed); err == nil && parsed.Scheme != "" {
@@ -260,8 +263,7 @@ func keepaWorkspace(upstream *url.URL, landed string) string {
 		}
 		return scheme + "://" + landedHost + "/amztoolsconsultant-kp01/"
 	}
-	// Tests use the local upstream. Live Keepa is app01, even when the tool record still says app03.
-	if upstream != nil && upstream.Hostname() != "" && !strings.Contains(strings.ToLower(upstream.Hostname()), "browseanywhere.com") {
+	if upstream != nil && upstream.Host != "" {
 		scheme := upstream.Scheme
 		if scheme == "" {
 			scheme = "https"
@@ -269,6 +271,38 @@ func keepaWorkspace(upstream *url.URL, landed string) string {
 		return scheme + "://" + upstream.Host + "/amztoolsconsultant-kp01/"
 	}
 	return keepaWorkspaceURL
+}
+
+func submitKeepaForm(ctx context.Context, client *http.Client, action, referer string, values url.Values, upstream *url.URL) (string, string, error) {
+	page, landed, err := postForm(ctx, client, action, referer, values)
+	if err != nil || !siteMissing(page) {
+		return page, landed, err
+	}
+	swapped := swapBrowseHost(action, upstream)
+	if swapped == "" {
+		return page, landed, nil
+	}
+	log.Printf("[automation] amz keepa retry %s", automation.Where(swapped))
+	return postForm(ctx, client, swapped, referer, values)
+}
+
+func siteMissing(page string) bool {
+	return strings.Contains(page, "Site not found")
+}
+
+func swapBrowseHost(action string, upstream *url.URL) string {
+	if upstream == nil || upstream.Host == "" {
+		return ""
+	}
+	parsed, err := url.Parse(action)
+	if err != nil || parsed.Host == "" || strings.EqualFold(parsed.Host, upstream.Host) {
+		return ""
+	}
+	if upstream.Scheme != "" {
+		parsed.Scheme = upstream.Scheme
+	}
+	parsed.Host = upstream.Host
+	return parsed.String()
 }
 
 func samePage(a, b string) bool {
@@ -282,43 +316,42 @@ func samePage(a, b string) bool {
 
 func keepaLaunch(page, base string) string {
 	parsed, _ := url.Parse(base)
-	best := ""
-	bestScore := 0
-	consider := func(raw string, extra int) {
+	consider := func(raw string) string {
 		href := resolve(parsed, html.UnescapeString(raw))
-		lower := strings.ToLower(href)
-		score := extra
-		if strings.Contains(lower, "/cloud/kp01") {
-			score += 100
+		if isKeepaLaunchURL(href) {
+			return href
 		}
-		if strings.Contains(lower, "keepa") {
-			score += 40
-		}
-		if strings.Contains(lower, "browseanywhere.com") && !strings.Contains(lower, "auth/login") {
-			score += 80
-		}
-		if strings.Contains(lower, "auth/login") {
-			score += 60
-		}
-		if score > bestScore {
-			bestScore = score
-			best = href
-		}
+		return ""
 	}
 	for _, match := range hrefRE.FindAllStringSubmatch(page, -1) {
 		if len(match) > 1 {
-			consider(match[1], 0)
+			if href := consider(match[1]); href != "" {
+				return href
+			}
 		}
 	}
 	for _, match := range windowOpenRE.FindAllStringSubmatch(page, -1) {
 		if len(match) > 1 {
-			consider(match[1], 10)
+			if href := consider(match[1]); href != "" {
+				return href
+			}
 		}
 	}
 	if match := metaRefreshRE.FindStringSubmatch(page); len(match) > 1 {
-		consider(match[1], 10)
+		if href := consider(match[1]); href != "" {
+			return href
+		}
 	}
-	return best
+	return ""
+}
+
+func isKeepaLaunchURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	path := strings.TrimSuffix(strings.ToLower(parsed.EscapedPath()), "/")
+	return path == "/cloud/kp01"
 }
 
 func browseAnywhereURL(page, base string) string {
