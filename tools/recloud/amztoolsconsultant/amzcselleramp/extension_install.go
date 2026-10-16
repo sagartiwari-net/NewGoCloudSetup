@@ -205,7 +205,7 @@ func publicOriginFromRequest(r *http.Request, cfg Config) (origin, hostOnly stri
 			scheme = "http"
 		}
 	}
-	if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+	if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || strings.HasSuffix(strings.ToLower(hostOnly), ".gt4rents.com") {
 		scheme = "https"
 	}
 	// Keep port in origin (e.g. http://127.0.0.1:5201). Stripping it breaks the

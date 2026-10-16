@@ -112,18 +112,28 @@ func requestHost(r *http.Request) string {
 	return host
 }
 
+func panelSessionToken(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if cookie, err := r.Cookie("ct_session"); err == nil && strings.TrimSpace(cookie.Value) != "" {
+		return cookie.Value
+	}
+	return strings.TrimSpace(r.Header.Get("X-Ct-Session"))
+}
+
 func panelSessionUsername(r *http.Request) (string, error) {
-	cookie, err := r.Cookie("ct_session")
-	if err != nil || cookie.Value == "" {
+	token := panelSessionToken(r)
+	if token == "" {
 		return "", fmt.Errorf("missing session")
 	}
-	raw, ok := panelSess.Load(cookie.Value)
+	raw, ok := panelSess.Load(token)
 	if !ok {
-		restored, restoreErr := restorePanelSession(cookie.Value)
+		restored, restoreErr := restorePanelSession(token)
 		if restoreErr != nil {
 			return "", fmt.Errorf("session not found")
 		}
-		panelSess.Store(cookie.Value, restored)
+		panelSess.Store(token, restored)
 		raw = restored
 	}
 	sess := raw.(*panelGateSession)
@@ -134,22 +144,22 @@ func panelSessionUsername(r *http.Request) (string, error) {
 	fresh := sess.liveOK && time.Since(sess.liveChecked) < 3*time.Second
 	sess.mu.Unlock()
 	if expired {
-		panelSess.Delete(cookie.Value)
+		panelSess.Delete(token)
 		return "", fmt.Errorf("session expired")
 	}
 	if tracked && !fresh {
-		okLive := panelLiveSessionExists(cookie.Value)
+		okLive := panelLiveSessionExists(token)
 		sess.mu.Lock()
 		sess.liveChecked = time.Now()
 		sess.liveOK = okLive
 		sess.mu.Unlock()
 		if !okLive {
-			panelSess.Delete(cookie.Value)
+			panelSess.Delete(token)
 			log.Printf("[PANEL] session ended from panel user=%s", username)
 			return "", fmt.Errorf("session ended")
 		}
 	}
-	extendPanelSession(cookie.Value, sess)
+	extendPanelSession(token, sess)
 	return username, nil
 }
 
@@ -309,14 +319,19 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 		seen = clientIP
 	}
 	recordPanelLogin(db, domain, username, sessionToken, seen, r.UserAgent(), sessionExpiry, acc.ID)
+	sameSite := http.SameSiteLaxMode
+	secure := cookieSecure(r, cfg)
+	if secure {
+		sameSite = http.SameSiteNoneMode
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ct_session",
 		Value:    sessionToken,
 		Path:     "/",
 		Expires:  sessionExpiry,
 		HttpOnly: true,
-		Secure:   cookieSecure(r, cfg),
-		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+		SameSite: sameSite,
 	})
 	log.Printf("[PANEL] access granted user=%s", username)
 	renderPanelLoadingPage(w, cfg)
@@ -476,24 +491,17 @@ func cookieEntriesToHeader(cookies []browserCookieEntry) string {
 }
 
 func cookieSecure(r *http.Request, cfg Config) bool {
-	if strings.EqualFold(strings.TrimSpace(cfg.PublicScheme), "http") {
-		return false
-	}
-	if r.TLS != nil {
+	if r != nil && strings.Contains(strings.ToLower(r.Header.Get("X-Forwarded-Proto")), "https") {
 		return true
 	}
-	if strings.Contains(strings.ToLower(r.Header.Get("X-Forwarded-Proto")), "https") {
+	if r != nil && r.TLS != nil {
 		return true
 	}
 	return strings.EqualFold(cfg.PublicScheme, "https")
 }
 
 func sessionTokenFromRequest(r *http.Request) string {
-	c, err := r.Cookie("ct_session")
-	if err != nil {
-		return ""
-	}
-	return c.Value
+	return panelSessionToken(r)
 }
 
 // ensureRecloudSite creates the panel website row so the Recloud page lists this tool.

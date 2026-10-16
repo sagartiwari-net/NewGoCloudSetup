@@ -308,12 +308,16 @@ func TestBakedExtensionNameAndProxy(t *testing.T) {
 	if !strings.Contains(manifest, `"name": "Amzc SellerAmp Extension"`) {
 		t.Fatal("manifest name was not set")
 	}
-	if strings.Contains(manifest, `"key"`) {
-		t.Fatal("extension key would replace the existing SellerAmp extension")
+	if !strings.Contains(manifest, `"key":`) {
+		t.Fatal("extension id key missing, SellerAmp will not detect it")
 	}
 	urls := read("js/content/constants/urlConstants.js")
 	if !strings.Contains(urls, "https://amzcselleramp.gt4rents.com") || strings.Contains(urls, "__SAS_PROXY_ORIGIN__") {
 		t.Fatal("extension was not baked for this SellerAmp tool")
+	}
+	parser := read("js/background/utility/sasUrlParser.js")
+	if !strings.Contains(parser, "amzcselleramp\\.gt4rents\\.com") {
+		t.Fatal("extension does not inject on this SellerAmp host")
 	}
 	linked := rewriteSellerAmpExtensionURLs([]byte(`<a href="https://selleramp.com/extension">Download</a>`), "https://amzcselleramp.gt4rents.com")
 	if !bytes.Contains(linked, []byte("https://amzcselleramp.gt4rents.com/ext-install")) || bytes.Contains(linked, []byte("selleramp.com/extension")) {

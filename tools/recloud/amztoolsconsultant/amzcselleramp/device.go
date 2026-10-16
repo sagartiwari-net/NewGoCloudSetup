@@ -12,15 +12,15 @@ import (
 const deviceProofKey = "tm_device_proof"
 
 func sessionFromRequest(r *http.Request) (string, *panelGateSession, bool) {
-	cookie, err := r.Cookie("ct_session")
-	if err != nil || cookie.Value == "" {
+	token := panelSessionToken(r)
+	if token == "" {
 		return "", nil, false
 	}
-	raw, ok := panelSess.Load(cookie.Value)
+	raw, ok := panelSess.Load(token)
 	if !ok {
-		return cookie.Value, nil, false
+		return token, nil, false
 	}
-	return cookie.Value, raw.(*panelGateSession), true
+	return token, raw.(*panelGateSession), true
 }
 
 func bindPanelDevice(sessionToken, fp, proof string) error {

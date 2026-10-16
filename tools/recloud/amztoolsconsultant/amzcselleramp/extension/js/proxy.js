@@ -48,16 +48,6 @@
       return;
     }
 
-    // Always load the SAS panel. Auth is handled by the recloud proxy
-    // (premium cookie injection + extension_api_paths). Never show the
-    // old third-party login gate.
-    if(auth)auth.style.display="none";
-    frame.style.display="block";
-    if(!loaded){
-      frame.src=appUrl;
-      loaded=true;
-    }
-
     try{
       await chrome.runtime.sendMessage({type:MSG});
       try{sessionStorage.removeItem("proxyContextReloaded")}catch(e){}
@@ -65,7 +55,15 @@
       const msg=e?.message||String(e);
       if(msg.includes("Extension context invalidated")){
         if(!tryContextReload())showRefresh();
+        return;
       }
+    }
+
+    if(auth)auth.style.display="none";
+    frame.style.display="block";
+    if(!loaded){
+      frame.src=appUrl;
+      loaded=true;
     }
   }
 
