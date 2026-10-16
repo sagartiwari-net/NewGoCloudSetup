@@ -234,6 +234,8 @@ func bakeExtensionBytes(origin, hostOnly string) ([]byte, error) {
 		"http://members.h10.com.cn", origin,
 		"https://members.helium10.com", origin,
 		"http://members.helium10.com", origin,
+		"https://members.amztoolsconsultant.com", origin,
+		"http://members.amztoolsconsultant.com", origin,
 		"dev.h10.com.cn", hostOnly,
 		"h10.com.cn", hostOnly,
 	)
@@ -291,7 +293,7 @@ func extensionInstallPageHandler(w http.ResponseWriter, r *http.Request) {
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Install Helium 10 Extension</title>
+<title>Install Amzc Helium10 Extension</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -315,11 +317,11 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-bottom:10px}
 <body>
 <div class="card">
   <div class="badge">Chrome Extension</div>
-  <h1>Install Helium 10</h1>
-  <p class="lead">Download this extension, then open Helium 10 from your access link before you use it.</p>
+  <h1>Install Amzc Helium10 Extension</h1>
+  <p class="lead">Download Amzc Helium10 Extension, then open Helium 10 from your access link before you use it.</p>
   <div class="warn"><strong>Important:</strong> If this extension is already loaded, remove that copy first and load this new zip. Leave any other Helium 10 extension installed.</div>
   <div class="origin">This zip is baked for: %s</div>
-  <a class="btn" href="/extension.zip">Download Extension (.zip)</a>
+  <a class="btn" href="/extension.zip">Download Amzc Helium10 Extension</a>
   <div class="steps">
     <h2>Install steps</h2>
     <ol>
@@ -345,7 +347,7 @@ func extensionZipHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to build extension package", http.StatusInternalServerError)
 		return
 	}
-	filename := "amzcheliumdia-helium10-extension.zip"
+	filename := "Amzc Helium10 Extension.zip"
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(zipBytes)))

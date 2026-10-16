@@ -1,10 +1,11 @@
 {
+  "update_url": "https://clients2.google.com/service/update2/crx",
   "manifest_version": 3,
-  "name": "Helium 10 for Amztoolsconsultant",
-  "short_name": "H10 Amztools",
-  "description": "Unlock product research, keyword insights, profit analysis to boost your Amazon, Walmart, TikTok sales! For sellers & influencers.",
-  "version": "8.34.3",
-  "version_name": "8.34.3",
+  "name": "Amzc Helium10 Extension",
+  "short_name": "Amzc Helium10",
+  "description": "Amzc Helium10 Extension for product research, keyword insights, and profit analysis on Amazon, Walmart, and TikTok.",
+  "version": "8.43.1",
+  "version_name": "8.43.1",
   "author": "Helium10 <support@helium10.com>",
   "default_locale": "en",
   "icons": {
@@ -22,7 +23,7 @@
       "16": "icon/16-off.png",
       "48": "icon/48.png"
     },
-    "default_title": "Helium 10",
+    "default_title": "Amzc Helium10 Extension",
     "default_popup": "popup.html"
   },
   "content_scripts": [
@@ -32,16 +33,23 @@
         "*://*.helium10-dev.com/*",
         "*://*.helium10.com/*",
         "*://*.helium-staging.com/*",
-        "*://__H10_PROXY_HOST__/*",
-        "http://127.0.0.1/*",
-        "http://localhost/*"
+        "*://*.amztoolsconsultant.com/*",
+        "*://__H10_PROXY_HOST__/*"
       ],
       "css": [],
       "js": [
+        "api-redirector.js",
+        "marketplace-config.js",
+        "domain-detector.js",
+        "vendor-react.js",
+        "vendor-helium.js",
+        "vendor-charts.js",
         "vendors.js",
+        "vendor-shared-src.js",
+        "vendor-i18n.js",
         "helium-script.js"
       ],
-      "run_at": "document_end",
+      "run_at": "document_start",
       "all_frames": false
     },
     {
@@ -64,9 +72,13 @@
       ],
       "css": [],
       "js": [
-        "h10-tab-boot.js",
-        "panel-account-lock.js",
+        "domain-detector.js",
+        "vendor-react.js",
+        "vendor-helium.js",
+        "vendor-charts.js",
         "vendors.js",
+        "vendor-shared-src.js",
+        "vendor-i18n.js",
         "amazon-script.js"
       ],
       "run_at": "document_end",
@@ -78,16 +90,66 @@
       ],
       "css": [],
       "js": [
-        "panel-account-lock.js",
+        "domain-detector.js",
+        "vendor-react.js",
+        "vendor-helium.js",
+        "vendor-charts.js",
         "vendors.js",
+        "vendor-shared-src.js",
+        "vendor-i18n.js",
         "walmart-script.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://shop.tiktok.com/us/*",
+        "*://www.tiktok.com/shop/us/*",
+        "*://shop.tiktok.com/*",
+        "*://www.tiktok.com/shop/*"
+      ],
+      "exclude_matches": [
+        "*://shop.tiktok.com/jp/*",
+        "*://shop.tiktok.com/gb/*",
+        "*://shop.tiktok.com/uk/*",
+        "*://shop.tiktok.com/id/*",
+        "*://shop.tiktok.com/th/*",
+        "*://shop.tiktok.com/vn/*",
+        "*://shop.tiktok.com/ph/*",
+        "*://shop.tiktok.com/sg/*",
+        "*://shop.tiktok.com/my/*",
+        "*://shop.tiktok.com/mx/*",
+        "*://shop.tiktok.com/br/*",
+        "*://www.tiktok.com/shop/jp/*",
+        "*://www.tiktok.com/shop/gb/*",
+        "*://www.tiktok.com/shop/uk/*",
+        "*://www.tiktok.com/shop/id/*",
+        "*://www.tiktok.com/shop/th/*",
+        "*://www.tiktok.com/shop/vn/*",
+        "*://www.tiktok.com/shop/ph/*",
+        "*://www.tiktok.com/shop/sg/*",
+        "*://www.tiktok.com/shop/my/*",
+        "*://www.tiktok.com/shop/mx/*",
+        "*://www.tiktok.com/shop/br/*"
+      ],
+      "css": [],
+      "js": [
+        "domain-detector.js",
+        "vendor-react.js",
+        "vendor-helium.js",
+        "vendor-charts.js",
+        "vendors.js",
+        "vendor-shared-src.js",
+        "vendor-i18n.js",
+        "tiktok-script.js"
       ],
       "run_at": "document_end",
       "all_frames": false
     }
   ],
   "options_page": "options.html",
-  "incognito": "spanning",
+  "incognito": "split",
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
@@ -95,7 +157,6 @@
     "background",
     "activeTab",
     "tabs",
-    "scripting",
     "storage",
     "unlimitedStorage",
     "browsingData",
@@ -109,10 +170,11 @@
   ],
   "externally_connectable": {
     "matches": [
+      "*://*.helium-dev.com/*",
       "*://*.helium10.com/*",
-      "*://__H10_PROXY_HOST__/*",
-      "http://127.0.0.1/*",
-      "http://localhost/*"
+      "*://*.helium-staging.com/*",
+      "*://*.amztoolsconsultant.com/*",
+      "*://__H10_PROXY_HOST__/*"
     ]
   }
 }

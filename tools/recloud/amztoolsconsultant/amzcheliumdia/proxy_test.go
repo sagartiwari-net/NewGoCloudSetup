@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -270,5 +272,61 @@ func TestMenuClickDoesNotFollowIntoAccessDenied(t *testing.T) {
 	}
 	if rr.Header().Get("Location") != "/en/project?domain=semrushtoolz.com" {
 		t.Fatalf("location %s", rr.Header().Get("Location"))
+	}
+}
+
+func TestBakedExtensionNameAndProxy(t *testing.T) {
+	raw, err := bakeExtensionBytes("https://amzcheliumdia.gt4rents.com", "amzcheliumdia.gt4rents.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(name string) string {
+		t.Helper()
+		for _, f := range zr.File {
+			if f.Name != name {
+				continue
+			}
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rc.Close()
+			buf := new(bytes.Buffer)
+			if _, err := buf.ReadFrom(rc); err != nil {
+				t.Fatal(err)
+			}
+			return buf.String()
+		}
+		t.Fatalf("missing %s", name)
+		return ""
+	}
+	manifest := read("manifest.json")
+	if !strings.Contains(manifest, `"name": "Amzc Helium10 Extension"`) {
+		t.Fatal("manifest name was not set")
+	}
+	if !strings.Contains(manifest, "Amzc Helium10 Extension for product research") {
+		t.Fatal("manifest description was not set")
+	}
+	bg := read("background-script.js")
+	if !strings.Contains(bg, "https://amzcheliumdia.gt4rents.com") {
+		t.Fatal("extension API host was not baked to this tool")
+	}
+	if strings.Contains(bg, "members.amztoolsconsultant.com") || strings.Contains(bg, "https://members.helium10.com") {
+		t.Fatal("extension still sends API calls to the upstream host")
+	}
+	req := httptest.NewRequest(http.MethodGet, "https://amzcheliumdia.gt4rents.com/extension.zip", nil)
+	req.Host = "amzcheliumdia.gt4rents.com"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rr := httptest.NewRecorder()
+	extensionZipHandler(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("zip status %d", rr.Code)
+	}
+	if got := rr.Header().Get("Content-Disposition"); got != `attachment; filename="Amzc Helium10 Extension.zip"` {
+		t.Fatalf("download name %s", got)
 	}
 }
