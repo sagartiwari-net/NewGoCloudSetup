@@ -70,6 +70,14 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		}
 		acc = loaded
 	}
+	if r.Method == http.MethodGet && (r.URL.Path == "/ext-install" || r.URL.Path == "/extension.zip") {
+		if r.URL.Path == "/extension.zip" {
+			extensionZipHandler(w, r)
+			return
+		}
+		extensionInstallPageHandler(w, r)
+		return
+	}
 	if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "") && cfg.HomePath != "" && cfg.HomePath != "/" {
 		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 		return

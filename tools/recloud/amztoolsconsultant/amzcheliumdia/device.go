@@ -188,10 +188,11 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 
 func injectDeviceHTML(body []byte, username string) []byte {
 	_ = username
-	script := []byte(devicePageScript())
+	body = injectResetButtonHide(body)
 	if bytes.Contains(body, []byte("data-tm-device")) {
 		return body
 	}
+	script := []byte(devicePageScript())
 	lower := bytes.ToLower(body)
 	if h := bytes.Index(lower, []byte("<head")); h >= 0 {
 		if gt := bytes.IndexByte(lower[h:], '>'); gt >= 0 {
@@ -204,6 +205,15 @@ func injectDeviceHTML(body []byte, username string) []byte {
 		}
 	}
 	return append(script, body...)
+}
+
+func injectResetButtonHide(body []byte) []byte {
+	if bytes.Contains(body, []byte("data-tm-hide-reset")) {
+		return body
+	}
+	snippet := `<style data-tm-hide-reset>#ht05-storage-reset-button{display:none!important}</style>` +
+		`<script data-tm-hide-reset>(function(){var id="ht05-storage-reset-button";function hide(){var el=document.getElementById(id);if(el)el.style.setProperty("display","none","important")}hide();try{new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true})}catch(e){}})();</script>`
+	return injectIntoHTMLHead(body, snippet)
 }
 
 func deviceBootScript(home string) string {

@@ -341,6 +341,9 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		ct = resp.Header.Get("Content-Type")
 		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
 			payload = rewriteText(payload, base.Host, origin)
+			if strings.Contains(strings.ToLower(ct), "text/html") {
+				payload = rewriteH10ChromeStoreURLs(payload, origin)
+			}
 		}
 		loggedOut := attempts > 1 && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload)
 		if loggedOut && attempt < attempts {
@@ -367,6 +370,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				viewer = name
 			}
 			payload = injectDeviceHTML(payload, viewer)
+			payload = injectIntoHTMLHead(payload, h10ExtInstallGuardScript())
 		}
 		if cdnKey != "" && resp.StatusCode == http.StatusOK {
 			cdncache.Store(cdnKey, resp.StatusCode, ct, payload)
