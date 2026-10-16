@@ -219,6 +219,49 @@ func TestKeepaRetriesFormOnToolHost(t *testing.T) {
 	}
 }
 
+func TestProbeDiamondRejectsLoginPage(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/black-box/products", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(`<a href="/logout">Logout</a> helium products`))
+	})
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<input name="amember_login"><input name="amember_pass"><a href="/page/keepa">Keepa</a>`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	previousHome := diamondHomeURL
+	previousBase := baseURL
+	diamondHomeURL = server.URL + "/black-box/products"
+	baseURL = server.URL
+	t.Cleanup(func() {
+		diamondHomeURL = previousHome
+		baseURL = previousBase
+	})
+
+	portal := []automation.Cookie{{Name: "PHPSESSID", Value: "portal-session", Domain: ".amztoolsconsultant.com", Path: "/"}}
+	if err := ProbeDiamond(context.Background(), portal); err != nil {
+		t.Fatal(err)
+	}
+	if err := ProbeDiamond(context.Background(), []automation.Cookie{{Name: "PHPSESSID", Value: "dead", Domain: ".amztoolsconsultant.com", Path: "/"}}); err == nil {
+		t.Fatal("dead cookie was accepted")
+	}
+}
+
+func TestLoginPageMentioningKeepaIsNotASession(t *testing.T) {
+	page := `<a href="/logout">Logout</a><a href="/page/keepa">Keepa</a><input name="amember_login"><input name="amember_pass">`
+	if !showsLogin(page, "https://members.amztoolsconsultant.com/login") || showsDashboard(page, "https://members.amztoolsconsultant.com/login") {
+		t.Fatal("login page counted as a live session")
+	}
+	member := `<a href="/logout">Logout</a><div class="am-member-main">plans</div>`
+	if !showsDashboard(member, "https://members.amztoolsconsultant.com/member") {
+		t.Fatal("member page was rejected")
+	}
+}
+
 func hasCookie(cookies []automation.Cookie, name, value string) bool {
 	for _, cookie := range cookies {
 		if cookie.Name == name && cookie.Value == value {

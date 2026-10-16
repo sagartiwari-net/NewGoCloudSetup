@@ -462,6 +462,10 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		s.writeAutomationLog(job, "info", "stored homepage cookie", secrets)
 		reason := "stored homepage cookie"
 		if job.Provider == "amztoolsconsultant" {
+			if err := amz.ProbeDiamond(ctx, portal); err != nil {
+				s.failAutomation(job, err, secrets)
+				return
+			}
 			wrote, err := s.writeAmzDiamondCookie(portal)
 			if err != nil {
 				s.failAutomation(job, err, secrets)

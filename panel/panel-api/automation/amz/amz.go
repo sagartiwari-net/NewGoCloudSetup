@@ -29,6 +29,7 @@ var (
 	keepaPageURL      = "https://members.amztoolsconsultant.com/page/b7m84YAgLseP+Keepa+New+Access"
 	keepaLaunchURL    = "https://members.amztoolsconsultant.com/cloud/kp01"
 	keepaWorkspaceURL = "https://app01.browseanywhere.com/amztoolsconsultant-kp01/"
+	diamondHomeURL    = "https://ht01.amztoolsconsultant.com/black-box/products"
 	httpWait          = 25 * time.Second
 )
 
@@ -237,6 +238,9 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 	}
 	if isAuthLogin(landed) {
 		return nil, automation.At(automation.ErrLoginPage, landed)
+	}
+	if !toolOpened(page, landed) {
+		return nil, automation.At(automation.ErrToolClosed, landed)
 	}
 	fresh := keepaCookies(jar, record, landed, portal)
 	log.Printf("[automation] amz keepa page=%s cookies=%s", automation.Where(landed), automation.Names(fresh))
@@ -491,7 +495,55 @@ func keepaCookies(jar *cookiejar.Jar, record *cookieRecord, landed string, porta
 	if strings.Contains(strings.ToLower(hostOf(landed)), "browseanywhere.com") {
 		return nil
 	}
-	return other
+	var kept []automation.Cookie
+	for _, cookie := range other {
+		if strings.Contains(strings.ToLower(cookie.Domain), "amztoolsconsultant.com") {
+			continue
+		}
+		kept = append(kept, cookie)
+	}
+	return kept
+}
+
+// ProbeDiamond opens Helium10 with the homepage cookie. A member page that merely looks logged in is not enough.
+func ProbeDiamond(ctx context.Context, cookies []automation.Cookie) error {
+	if len(HomepageCookies(cookies)) == 0 {
+		return automation.ErrNoCookie
+	}
+	client, jar, _, err := newClient()
+	if err != nil {
+		return automation.ErrTimeout
+	}
+	seedPortal(jar, cookies)
+	page, landed, err := get(ctx, client, diamondHomeURL, memberURL)
+	if err != nil {
+		return err
+	}
+	if !toolOpened(page, landed) {
+		log.Printf("[automation] amz diamond probe closed %s", automation.Where(landed))
+		return automation.At(automation.ErrToolClosed, landed)
+	}
+	log.Printf("[automation] amz diamond probe open %s", automation.Where(landed))
+	return nil
+}
+
+func toolOpened(page, pageURL string) bool {
+	lowerURL := strings.ToLower(pageURL)
+	lower := strings.ToLower(page)
+	if strings.Contains(lowerURL, "/login") || strings.Contains(lowerURL, "protect/new-rewrite") || strings.Contains(lowerURL, "auth/login") {
+		return false
+	}
+	if strings.Contains(lower, "amember_login") && strings.Contains(lower, "amember_pass") {
+		return false
+	}
+	if strings.Contains(lower, "direct access is not allowed") || strings.Contains(lower, "access again from dashboard") ||
+		strings.Contains(lower, "site not found") || strings.Contains(lower, "this section is restricted") {
+		return false
+	}
+	if strings.Contains(lower, "member login") && strings.Contains(lower, "forgot password") {
+		return false
+	}
+	return true
 }
 
 func browseanywhereCookie(cookie automation.Cookie) bool {
@@ -595,9 +647,6 @@ func showsLogin(page, pageURL string) bool {
 		return false
 	}
 	lower := strings.ToLower(page)
-	if strings.Contains(lower, "logout") || strings.Contains(lower, "/logout") {
-		return false
-	}
 	if strings.Contains(strings.ToLower(pathOf(pageURL)), "/login") {
 		return true
 	}
@@ -608,14 +657,12 @@ func showsDashboard(page, pageURL string) bool {
 	if showsLogin(page, pageURL) {
 		return false
 	}
-	lower := strings.ToLower(page)
-	urlLower := strings.ToLower(pageURL)
-	if !strings.Contains(urlLower, "/member") && !strings.Contains(lower, "logout") {
+	if !strings.Contains(strings.ToLower(pathOf(pageURL)), "/member") {
 		return false
 	}
-	return strings.Contains(lower, "logout") || strings.Contains(lower, "/logout") ||
-		strings.Contains(lower, "am-member-main") || strings.Contains(lower, "active subscriptions") ||
-		strings.Contains(lower, "helpdesk") || strings.Contains(lower, "keepa")
+	lower := strings.ToLower(page)
+	return strings.Contains(lower, "am-member-main") || strings.Contains(lower, "active subscriptions") ||
+		strings.Contains(lower, "/logout")
 }
 
 func portalPage(pageURL string) bool {

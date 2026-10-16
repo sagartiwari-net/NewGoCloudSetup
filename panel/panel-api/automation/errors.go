@@ -7,14 +7,15 @@ import (
 )
 
 var (
-	ErrLoginPage = errors.New("login page still showing")
-	ErrRejected  = errors.New("portal rejected the username or password")
-	ErrNoCookie  = errors.New("tool cookie was not set")
-	ErrDecrypt   = errors.New("credential could not be decrypted")
-	ErrCSRF      = errors.New("csrf token missing")
-	ErrTimeout   = errors.New("timed out")
-	ErrDenied    = errors.New("access denied")
-	ErrUpstream  = errors.New("upstream URL missing")
+	ErrLoginPage  = errors.New("login page still showing")
+	ErrRejected   = errors.New("portal rejected the username or password")
+	ErrNoCookie   = errors.New("tool cookie was not set")
+	ErrDecrypt    = errors.New("credential could not be decrypted")
+	ErrCSRF       = errors.New("csrf token missing")
+	ErrTimeout    = errors.New("timed out")
+	ErrDenied     = errors.New("access denied")
+	ErrToolClosed = errors.New("saved cookie did not open the tool")
+	ErrUpstream   = errors.New("upstream URL missing")
 )
 
 // PageError keeps the failure and the host plus path that was open.
