@@ -492,7 +492,7 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 }
 
 func (s *server) loginForAutomationJob(ctx context.Context, recipe automation.Recipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {
-	if job.Kind != "session" && job.Provider == "amztoolsconsultant" {
+	if job.Kind != "session" && job.Provider == "amztoolsconsultant" && !s.amzKeepaJob(job) {
 		log.Printf("[automation] job %d cookie expired, running the homepage job", job.ID)
 		if err := s.runAmzHomepage(ctx, job.CredentialID); err != nil {
 			return nil, err
@@ -513,6 +513,14 @@ func (s *server) loginForAutomationJob(ctx context.Context, recipe automation.Re
 	}
 	log.Printf("[automation] job %d logging in", job.ID)
 	return s.automationLogin(ctx, recipe, job, username, password, secrets)
+}
+
+func (s *server) amzKeepaJob(job automationJobRow) bool {
+	site, ok := s.loadAutomationSite(job.TargetWebsiteID)
+	if !ok {
+		return false
+	}
+	return strings.Contains(strings.ToLower(site.Upstream), "browseanywhere.com")
 }
 
 func (s *server) runAmzHomepage(ctx context.Context, credentialID int) error {

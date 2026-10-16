@@ -851,6 +851,53 @@ func TestAmzToolAsksHomepageToLogin(t *testing.T) {
 	}
 }
 
+func TestAmzKeepaLogsInWithoutHomepage(t *testing.T) {
+	s, _ := openAutomationTestDB(t)
+	recipe := &scriptedRecipe{liveValue: "live-session-value", portalValue: "portal-session-value", toolValue: "tool-session-value"}
+	recipeMu.Lock()
+	prev := automationRecipes["amztoolsconsultant"]
+	automationRecipes["amztoolsconsultant"] = recipe
+	recipeMu.Unlock()
+	t.Cleanup(func() {
+		recipeMu.Lock()
+		automationRecipes["amztoolsconsultant"] = prev
+		recipeMu.Unlock()
+	})
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	if _, err := s.db.Exec(`UPDATE automation_credentials SET provider='amztoolsconsultant' WHERE id=?`, cred); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.replaceAutomationStorage(cred, `[{"name":"PHPSESSID","value":"dead","domain":".amztoolsconsultant.com","path":"/"}]`); err != nil {
+		t.Fatal(err)
+	}
+	site := insertMarkhorWebsite(t, s, "Keepa", "amzckeepa.example")
+	if _, err := s.db.Exec(`UPDATE websites SET upstream_url=? WHERE id=?`, "https://app03.browseanywhere.com", site); err != nil {
+		t.Fatal(err)
+	}
+	toolID := insertAutomationJob(t, s, "Amz Keepa", cred, site, 0)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET provider='amztoolsconsultant', run_requested=1 WHERE id=?`, toolID); err != nil {
+		t.Fatal(err)
+	}
+	s.runAutomationJob(context.Background(), toolID)
+	if recipe.loginCount() != 1 {
+		t.Fatalf("keepa logins %d", recipe.loginCount())
+	}
+	var reason string
+	if err := s.db.QueryRow(`SELECT last_reason FROM automation_jobs WHERE id=?`, toolID).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(reason, "wrote cookie to") {
+		t.Fatalf("keepa reason %q", reason)
+	}
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=1 WHERE id=?`, toolID); err != nil {
+		t.Fatal(err)
+	}
+	s.runAutomationJob(context.Background(), toolID)
+	if recipe.loginCount() != 1 {
+		t.Fatalf("stored cookie logged in again %d", recipe.loginCount())
+	}
+}
+
 func TestAmzHomepageCookieLandsOnDiamond(t *testing.T) {
 	s, _ := openAutomationTestDB(t)
 	id := insertMarkhorWebsite(t, s, "Helium10 Diamond", "amzcheliumdia.example")
