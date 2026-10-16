@@ -780,6 +780,13 @@
       "subdomain": "amzcnichs",
       "port": 6306,
       "fqdn": "amzcnichs.gt4rents.com"
+    },
+    {
+      "tool": "amzcenv",
+      "folder": "recloud/amztoolsconsultant/amzcenv",
+      "subdomain": "amzcenv",
+      "port": 6307,
+      "fqdn": "amzcenv.gt4rents.com"
     }
   ]
 }

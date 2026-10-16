@@ -1,0 +1,12 @@
+{
+  "port": "6307",
+  "public_host": "127.0.0.1:6307",
+  "public_scheme": "http",
+  "target_url": "https://en01.amztoolsconsultant.com",
+  "home_path": "/",
+  "tool_name": "Amztoolsconsultant Envato",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}
