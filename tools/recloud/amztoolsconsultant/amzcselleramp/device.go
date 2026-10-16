@@ -269,6 +269,10 @@ function tmReveal() {
   if (lock) lock.remove();
 }
 (function () {
+  if (window.top !== window) {
+    tmReveal();
+    return;
+  }
   if (navigator.serviceWorker) {
     navigator.serviceWorker.register = function () { return Promise.reject(new Error("sw-disabled")); };
     navigator.serviceWorker.getRegistrations().then(function (regs) {

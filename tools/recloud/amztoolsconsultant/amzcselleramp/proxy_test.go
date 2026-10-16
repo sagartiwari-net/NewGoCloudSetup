@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +122,23 @@ func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
 	}
 	if !strings.Contains(out, `docs-lnk`) || strings.Contains(out, `docs-lnk{display:none`) {
 		t.Fatal("docs link was hidden")
+	}
+	if !strings.Contains(out, "window.top !== window") {
+		t.Fatal("extension iframe must skip the device bind that ends the session")
+	}
+}
+
+func TestExtensionDoesNotReplaceLiveCookie(t *testing.T) {
+	src, err := os.ReadFile("extension/js/background/utility/amemberSession.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(src)
+	if strings.Contains(js, `header:"cookie"`) {
+		t.Fatal("extension must not replace the live Cookie header")
+	}
+	if !strings.Contains(js, "X-Ct-Session") {
+		t.Fatal("extension must still send the panel session")
 	}
 }
 
