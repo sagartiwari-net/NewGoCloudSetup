@@ -351,7 +351,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				resp = nil
 				break
 			}
-			jar = absorbSetCookies(jar, resp.Header)
+			jar = keepPanelSession(absorbSetCookies(jar, resp.Header), acc.Cookie)
 			rememberUpstreamCookies(acc, jar)
 			next, ok := sameSiteRequestURI(resp.Header.Get("Location"), base.Host, origin)
 			if ok && resp.StatusCode >= 300 && resp.StatusCode < 400 {

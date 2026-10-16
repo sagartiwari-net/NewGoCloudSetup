@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"panel-api/automation"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -233,39 +234,54 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 		return nil, automation.At(automation.ErrDenied, landed)
 	}
 	// Only /cloud/kp01 is the launch. session-watch/revoke-copied sends the browser to the login page.
-	launch := keepaLaunch(page, landed)
-	if launch == "" {
-		launch = keepaLaunchURL
-	}
-	log.Printf("[automation] amz keepa open %s", automation.Where(launch))
-	page, landed, err = get(ctx, client, launch, keepaPageURL)
-	if err != nil {
-		return nil, err
-	}
-	if showsLogin(page, landed) {
-		return nil, automation.At(automation.ErrLoginPage, landed)
-	}
-	if action, values, ok := browseAnywhereForm(page, landed); ok {
+	// A form whose signature was minted for another host is not rewritten onto the tool host.
+	if action, values, ok := pickKeepaForm(page, landed, upstream); ok && formHostMatches(action, upstream) {
 		log.Printf("[automation] amz keepa form %s", automation.Where(action))
 		page, landed, err = submitKeepaForm(ctx, client, action, landed, values, upstream)
 		if err != nil {
 			return nil, err
 		}
-	} else if next := browseAnywhereURL(page, landed); next != "" && !samePage(next, landed) {
-		log.Printf("[automation] amz keepa follow %s", automation.Where(next))
-		page, landed, err = get(ctx, client, next, landed)
+	} else {
+		launch := keepaLaunch(page, landed)
+		if launch == "" {
+			launch = keepaLaunchURL
+		}
+		log.Printf("[automation] amz keepa open %s", automation.Where(launch))
+		page, landed, err = get(ctx, client, launch, keepaPageURL)
 		if err != nil {
 			return nil, err
 		}
-	}
-	if isAuthLogin(landed) {
-		if action, values, ok := browseAnywhereForm(page, landed); ok {
+		if showsLogin(page, landed) {
+			return nil, automation.At(automation.ErrLoginPage, landed)
+		}
+		if next := upstreamBrowseURL(page, upstream); next != "" && !samePage(next, landed) {
+			log.Printf("[automation] amz keepa follow %s", automation.Where(next))
+			nextPage, nextLanded, nextErr := get(ctx, client, next, landed)
+			if nextErr == nil {
+				page, landed = nextPage, nextLanded
+			}
+		}
+		if action, values, ok := pickKeepaForm(page, landed, upstream); ok {
+			log.Printf("[automation] amz keepa form %s fields=%s", automation.Where(action), formFieldNames(values))
 			page, landed, err = submitKeepaForm(ctx, client, action, landed, values, upstream)
-		} else {
-			page, landed, err = postJSON(ctx, client, landed, "{}")
+			if err != nil {
+				return nil, err
+			}
+		} else if next := browseAnywhereURL(page, landed); next != "" && !samePage(next, landed) {
+			log.Printf("[automation] amz keepa follow %s", automation.Where(next))
+			page, landed, err = get(ctx, client, next, landed)
+			if err != nil {
+				return nil, err
+			}
 		}
-		if err != nil {
-			return nil, err
+		if isAuthLogin(landed) {
+			if action, values, ok := pickKeepaForm(page, landed, upstream); ok {
+				log.Printf("[automation] amz keepa form %s fields=%s", automation.Where(action), formFieldNames(values))
+				page, landed, err = submitKeepaForm(ctx, client, action, landed, values, upstream)
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 	workspace := keepaWorkspace(upstream, landed)
@@ -322,12 +338,81 @@ func submitKeepaForm(ctx context.Context, client *http.Client, action, referer s
 	if err != nil || !siteMissing(page) {
 		return page, landed, err
 	}
+	// The signature is minted for the form host. Posting that body on the tool host is rejected.
+	if values.Get("signature") != "" {
+		log.Printf("[automation] amz keepa %s has no site; left the signed form on that host", automation.Where(action))
+		return page, landed, nil
+	}
 	swapped := swapBrowseHost(action, upstream)
 	if swapped == "" {
 		return page, landed, nil
 	}
 	log.Printf("[automation] amz keepa retry %s", automation.Where(swapped))
 	return postForm(ctx, client, swapped, referer, values)
+}
+
+func pickKeepaForm(page, pageURL string, upstream *url.URL) (string, url.Values, bool) {
+	action, values, ok := browseAnywhereForm(page, pageURL)
+	if !ok {
+		return "", nil, false
+	}
+	if formHostMatches(action, upstream) || upstream == nil {
+		return action, values, true
+	}
+	for _, match := range formRE.FindAllStringSubmatch(page, -1) {
+		if len(match) < 3 || strings.Contains(strings.ToLower(match[2]), "amember_login") {
+			continue
+		}
+		base, _ := url.Parse(pageURL)
+		attrs := parseAttrs(match[1])
+		candidate, _ := formTarget(base, attrs, match[2])
+		if !formHostMatches(candidate, upstream) {
+			continue
+		}
+		found, fields, ready := browseAnywhereForm(match[0], pageURL)
+		if ready && formHostMatches(found, upstream) {
+			return found, fields, true
+		}
+	}
+	return action, values, true
+}
+
+func upstreamBrowseURL(page string, upstream *url.URL) string {
+	if upstream == nil || upstream.Hostname() == "" {
+		return ""
+	}
+	best := ""
+	for _, raw := range rawURLRE.FindAllString(page, -1) {
+		parsed, err := url.Parse(raw)
+		if err != nil || !strings.EqualFold(parsed.Host, upstream.Host) {
+			continue
+		}
+		path := strings.ToLower(parsed.EscapedPath())
+		if strings.Contains(path, "kp01") || strings.Contains(path, "auth/login") {
+			return raw
+		}
+		if best == "" {
+			best = raw
+		}
+	}
+	return best
+}
+
+func formHostMatches(action string, upstream *url.URL) bool {
+	if upstream == nil || upstream.Hostname() == "" {
+		return false
+	}
+	parsed, err := url.Parse(action)
+	return err == nil && strings.EqualFold(parsed.Host, upstream.Host)
+}
+
+func formFieldNames(values url.Values) string {
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }
 
 func siteMissing(page string) bool {

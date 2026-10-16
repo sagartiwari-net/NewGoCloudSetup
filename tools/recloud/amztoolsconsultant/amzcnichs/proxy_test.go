@@ -221,9 +221,9 @@ func TestLogoutPath(t *testing.T) {
 
 func TestBrowserSessionCookiesAreForwarded(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://amzcnichs.gt4rents.com/gateway/experimentation/properties", nil)
-	req.Header.Set("Cookie", "ct_session=panel-session; grauth=from-browser; csrf_token=tok")
+	req.Header.Set("Cookie", "ct_session=panel-session; PHPSESSID=guest; grauth=from-browser; csrf_token=tok")
 	got := cookiesForUpstream(ToolAccount{Cookie: "PHPSESSID=session"}, req)
-	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=from-browser") || !strings.Contains(got, "csrf_token=tok") {
+	if !strings.Contains(got, "PHPSESSID=session") || strings.Contains(got, "PHPSESSID=guest") || !strings.Contains(got, "grauth=from-browser") || !strings.Contains(got, "csrf_token=tok") {
 		t.Fatalf("browser session cookies were dropped: %s", got)
 	}
 	if strings.Contains(got, "ct_session") || strings.Contains(got, "panel-session") {
@@ -257,7 +257,12 @@ func TestSessionCookieFollowsUpstream(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			http.SetCookie(w, &http.Cookie{Name: "grauth", Value: "fresh", Path: "/"})
+			http.SetCookie(w, &http.Cookie{Name: "PHPSESSID", Value: "guest", Path: "/"})
 			http.Redirect(w, r, "/docs", http.StatusFound)
+			return
+		}
+		if strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=guest") {
+			_, _ = w.Write([]byte(`<h1>Member Login</h1><a>Forgot password?</a>`))
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

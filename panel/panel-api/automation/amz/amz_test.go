@@ -186,7 +186,7 @@ func TestKeepaRetriesFormOnToolHost(t *testing.T) {
 		_, _ = w.Write([]byte(`<a href="/cloud/kp01">Launch Keepa Workspace</a>`))
 	})
 	mux.HandleFunc("/cloud/kp01", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`<form method="post" action="` + dead.URL + `/amztoolsconsultant-kp01/auth/login"><input name="signature" value="signed"></form>`))
+		_, _ = w.Write([]byte(`<form method="post" action="` + dead.URL + `/amztoolsconsultant-kp01/auth/login"><input name="signature" value="stale"></form><form method="post" action="/amztoolsconsultant-kp01/auth/login"><input name="signature" value="signed"></form>`))
 	})
 	mux.HandleFunc("/amztoolsconsultant-kp01/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.FormValue("signature") != "signed" {
@@ -218,6 +218,46 @@ func TestKeepaRetriesFormOnToolHost(t *testing.T) {
 	}
 	if !hasCookie(got, "auth_session", "tool-session") {
 		t.Fatalf("keepa cookies %#v", got)
+	}
+}
+
+func TestSignedKeepaFormStaysOnItsHost(t *testing.T) {
+	var toolHit bool
+	tool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			toolHit = true
+		}
+		http.Error(w, "should not be called", http.StatusForbidden)
+	}))
+	defer tool.Close()
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`Site not found. Use your-domain.com/<site-name>`))
+	}))
+	defer dead.Close()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/keepa-page", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<a href="/cloud/kp01">Launch Keepa Workspace</a>`))
+	})
+	mux.HandleFunc("/cloud/kp01", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<form method="post" action="` + dead.URL + `/amztoolsconsultant-kp01/auth/login"><input name="signature" value="stale"></form>`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	previous := []string{baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL}
+	baseURL = server.URL
+	loginURL = server.URL + "/login"
+	memberURL = server.URL + "/member"
+	keepaPageURL = server.URL + "/keepa-page"
+	keepaLaunchURL = server.URL + "/cloud/kp01"
+	t.Cleanup(func() {
+		baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL = previous[0], previous[1], previous[2], previous[3], previous[4]
+	})
+	_, err := Recipe{}.Capture(context.Background(), []automation.Cookie{{Name: "PHPSESSID", Value: "portal-session", Domain: ".amztoolsconsultant.com", Path: "/"}}, tool.URL+"/kp01")
+	if err == nil {
+		t.Fatal("signed form for a missing site should not become a tool cookie")
+	}
+	if toolHit {
+		t.Fatal("signed form was replayed on the tool host")
 	}
 }
 

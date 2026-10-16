@@ -12,16 +12,31 @@ const maxCookieHops = 6
 var derivedCookies sync.Map
 
 func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
-	base := strings.TrimSpace(acc.Cookie)
+	// The saved account cookie is the member session. A browser cookie or a
+	// later Set-Cookie must not replace those names, or the next request is a
+	// guest session and aMember answers with the login page.
+	panel := strings.TrimSpace(acc.Cookie)
+	derived := ""
 	if acc.ID != 0 {
 		if extra, ok := derivedCookies.Load(acc.ID); ok {
-			base = mergeCookieHeaders(extra.(string), base)
+			derived = extra.(string)
 		}
 	}
-	if r == nil {
-		return base
+	browser := ""
+	if r != nil {
+		browser = browserCookiesForUpstream(r)
 	}
-	return mergeCookieHeaders(base, browserCookiesForUpstream(r))
+	merged := mergeCookieHeaders(browser, derived)
+	return keepPanelSession(mergeCookieHeaders(merged, panel), panel)
+}
+
+func keepPanelSession(jar, panel string) string {
+	_, vals := parseCookieHeader(panel)
+	session := vals["PHPSESSID"]
+	if session == "" {
+		return jar
+	}
+	return mergeCookieHeaders(jar, "PHPSESSID="+session)
 }
 
 func browserCookiesForUpstream(r *http.Request) string {
