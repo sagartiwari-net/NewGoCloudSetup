@@ -349,7 +349,6 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				viewer = name
 			}
 			payload = injectDeviceHTML(payload, viewer)
-			payload = injectProductSwitcher(payload, r.URL.Path)
 		}
 		if cdnKey != "" && resp.StatusCode == http.StatusOK {
 			cdncache.Store(cdnKey, resp.StatusCode, ct, payload)
@@ -377,7 +376,8 @@ func copyRequestHeaders(dst *http.Request, src *http.Request) {
 	for key, values := range src.Header {
 		lk := strings.ToLower(key)
 		switch lk {
-		case "cookie", "host", "content-length", "accept-encoding", "connection", "upgrade", "proxy-connection", "x-device-fp", "x-device-proof":
+		case "cookie", "host", "content-length", "accept-encoding", "connection", "upgrade", "proxy-connection", "x-device-fp", "x-device-proof",
+			"cf-connecting-ip", "cf-ray", "cf-ipcountry", "cf-visitor", "cf-worker", "cdn-loop", "true-client-ip", "x-forwarded-host", "x-forwarded-server", "forwarded":
 			continue
 		}
 		for _, v := range values {

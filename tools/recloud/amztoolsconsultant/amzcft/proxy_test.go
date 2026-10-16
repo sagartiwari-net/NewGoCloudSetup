@@ -100,30 +100,28 @@ func TestLoginPageRetriesThenOpensHome(t *testing.T) {
 	}
 }
 
-func TestProductButtonsStayOnThisTool(t *testing.T) {
-	old := append([]productButton(nil), productButtons...)
-	t.Cleanup(func() { productButtons = old })
-	productButtons = append(productButtons, productButton{Label: "Future Course", Path: "/products/future-course"})
-
-	page := renderProductLauncherHTML(Config{ToolName: "Amztoolsconsultant Freedom Ticket"})
-	bar := string(injectProductSwitcher([]byte(`<html><body><a class="docs-lnk">Docs</a></body></html>`), "/products/future-course/lesson"))
-	for _, btn := range productButtons {
-		href := `href="` + btn.Path + `"`
-		if !strings.Contains(page, href) || !strings.Contains(page, btn.Label) {
-			t.Fatalf("launcher missing %s", btn.Label)
-		}
-		if !strings.Contains(bar, href) || !strings.Contains(bar, btn.Label) {
-			t.Fatalf("switcher missing %s", btn.Label)
-		}
+func TestLibraryRequestHidesPublicHost(t *testing.T) {
+	var host, forwarded string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host = r.Header.Get("X-Forwarded-Host")
+		forwarded = r.Header.Get("Forwarded")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<html><body>library</body></html>`))
+	}))
+	defer upstream.Close()
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/library", PublicHost: "amzcft.gt4rents.com", PublicScheme: "http", ToolName: "Amztoolsconsultant Freedom Ticket"}
+	req := httptest.NewRequest(http.MethodGet, "http://amzcft.gt4rents.com/library", nil)
+	req.Host = "amzcft.gt4rents.com"
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("X-Forwarded-Host", "amzcft.gt4rents.com")
+	req.Header.Set("Forwarded", "host=amzcft.gt4rents.com")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=session"})
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "library") {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(bar, `class="tm-product active"`) || !strings.Contains(bar, `href="/products/future-course"`) {
-		t.Fatal("open product was not marked active")
-	}
-	if strings.Contains(bar, `docs-lnk{display:none`) || strings.Contains(page, `button{display:none`) {
-		t.Fatal("product buttons hid other controls")
-	}
-	if validProductPath("https://example.com/course") || validProductPath("//example.com") {
-		t.Fatal("a button path must stay on this tool")
+	if host != "" || forwarded != "" {
+		t.Fatalf("public host leaked upstream host=%q forwarded=%q", host, forwarded)
 	}
 }
 

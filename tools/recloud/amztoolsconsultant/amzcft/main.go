@@ -71,7 +71,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		acc = loaded
 	}
 	if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/" {
-		renderProductLauncher(w, cfg)
+		http.Redirect(w, r, "/library", http.StatusFound)
 		return
 	}
 	if isHardLogoutPath(r.URL.Path) {

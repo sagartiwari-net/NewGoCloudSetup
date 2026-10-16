@@ -34,7 +34,7 @@ func loadConfig() Config {
 			PublicHost:             "amzcft.gt4rents.com",
 			PublicScheme:           "http",
 			TargetURL:              "https://ft01.amztoolsconsultant.com",
-			HomePath:               "/",
+			HomePath:               "/library",
 			ToolName:               "Amztoolsconsultant Freedom Ticket",
 			SessionDurationMinutes: 30,
 		}
