@@ -31,7 +31,7 @@ func loadConfig() Config {
 	cfgOnce.Do(func() {
 		cfgVal = Config{
 			Port:                   "6304",
-			PublicHost:             "amzcgpt.gt4rents.com",
+			PublicHost:             "amzccg.gt4rents.com",
 			PublicScheme:           "http",
 			TargetURL:              "https://cg02.amztoolsconsultant.com",
 			HomePath:               "/",

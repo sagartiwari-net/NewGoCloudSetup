@@ -10,15 +10,15 @@ import (
 )
 
 func TestRewriteKeepsBrowserOnPublicHost(t *testing.T) {
-	in := []byte(`<a href="https://cg02.amztoolsconsultant.com/analytics/overview/">x</a><script src="https://static.amztoolsconsultant.com/app.js"></script><script src="https://de.semrush.com/app.js"></script>{"cookie_domain":".amztoolsconsultant.com","host":"cg02.amztoolsconsultant.com","bad":"cg.amzcgpt.gt4rents.com"}`)
-	out := string(rewriteText(in, "cg02.amztoolsconsultant.com", "https://amzcgpt.gt4rents.com"))
-	if strings.Contains(out, "amztoolsconsultant.com") || strings.Contains(out, "semrush.com") || strings.Contains(out, "cg.amzcgpt") || strings.Contains(out, "cg02.amzcgpt") {
+	in := []byte(`<a href="https://cg02.amztoolsconsultant.com/analytics/overview/">x</a><script src="https://static.amztoolsconsultant.com/app.js"></script><script src="https://de.semrush.com/app.js"></script>{"cookie_domain":".amztoolsconsultant.com","host":"cg02.amztoolsconsultant.com","bad":"cg.amzccg.gt4rents.com"}`)
+	out := string(rewriteText(in, "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com"))
+	if strings.Contains(out, "amztoolsconsultant.com") || strings.Contains(out, "semrush.com") || strings.Contains(out, "cg.amzccg") || strings.Contains(out, "cg02.amzccg") {
 		t.Fatalf("upstream host leaked: %s", out)
 	}
-	if !strings.Contains(out, "https://amzcgpt.gt4rents.com/analytics/overview/") {
+	if !strings.Contains(out, "https://amzccg.gt4rents.com/analytics/overview/") {
 		t.Fatal("public origin was not applied")
 	}
-	if !strings.Contains(out, ".amzcgpt.gt4rents.com") {
+	if !strings.Contains(out, ".amzccg.gt4rents.com") {
 		t.Fatal("cookie domain was not rewritten")
 	}
 }
@@ -45,11 +45,11 @@ func TestCookieJSONBecomesHeader(t *testing.T) {
 }
 
 func TestSetCookieDropsUpstreamSession(t *testing.T) {
-	if _, ok := rewriteSetCookie("PHPSESSID=secret; Path=/; Secure", "cg02.amztoolsconsultant.com", "https://amzcgpt.gt4rents.com"); ok {
+	if _, ok := rewriteSetCookie("PHPSESSID=secret; Path=/; Secure", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com"); ok {
 		t.Fatal("upstream session cookie must not reach the browser")
 	}
-	got, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "cg02.amztoolsconsultant.com", "https://amzcgpt.gt4rents.com")
-	if !ok || !strings.Contains(got, "Domain=amzcgpt.gt4rents.com") || strings.Contains(got, "semrush.com") {
+	got, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com")
+	if !ok || !strings.Contains(got, "Domain=amzccg.gt4rents.com") || strings.Contains(got, "semrush.com") {
 		t.Fatal("sidebar cookie domain was not rewritten")
 	}
 }
@@ -77,13 +77,13 @@ func TestLoginPageRetriesThenOpensHome(t *testing.T) {
 	cfg := Config{
 		TargetURL:    upstream.URL,
 		HomePath:     "/analytics/overview/?searchType=domain",
-		PublicHost:   "amzcgpt.gt4rents.com",
+		PublicHost:   "amzccg.gt4rents.com",
 		PublicScheme: "http",
 		ToolName:     "Amztoolsconsultant ChatGPT",
 	}
-	req := httptest.NewRequest(http.MethodGet, "http://amzcgpt.gt4rents.com/login?url=%2F&host=cg.amzcgpt.gt4rents.com&ssl=on", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://amzccg.gt4rents.com/login?url=%2F&host=cg.amzccg.gt4rents.com&ssl=on", nil)
 	req.Header.Set("Accept", "text/html")
-	req.Host = "amzcgpt.gt4rents.com"
+	req.Host = "amzccg.gt4rents.com"
 	rr := httptest.NewRecorder()
 	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=fresh"})
 	if hits != loginAttempts {
@@ -139,7 +139,7 @@ func TestLogoutPath(t *testing.T) {
 }
 
 func TestBrowserSessionCookiesAreForwarded(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "http://amzcgpt.gt4rents.com/gateway/experimentation/properties", nil)
+	req := httptest.NewRequest(http.MethodPost, "http://amzccg.gt4rents.com/gateway/experimentation/properties", nil)
 	req.Header.Set("Cookie", "ct_session=panel-session; grauth=from-browser; csrf_token=tok")
 	got := cookiesForUpstream(ToolAccount{Cookie: "PHPSESSID=session"}, req)
 	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=from-browser") || !strings.Contains(got, "csrf_token=tok") {
@@ -155,18 +155,18 @@ func TestSessionCookieFollowsUpstream(t *testing.T) {
 	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=fresh") || !strings.Contains(got, "csrf_token=tok") {
 		t.Fatalf("cookies were not merged: %s", got)
 	}
-	next, ok := sameSiteRequestURI("https://cg02.amztoolsconsultant.com/docs?x=1", "cg02.amztoolsconsultant.com", "https://amzcgpt.gt4rents.com")
+	next, ok := sameSiteRequestURI("https://cg02.amztoolsconsultant.com/docs?x=1", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com")
 	if !ok || next != "/docs?x=1" {
 		t.Fatalf("same-site redirect %q %v", next, ok)
 	}
-	next, ok = sameSiteRequestURI("https://members.amztoolsconsultant.com/protect/new-rewrite?f=77&url=/", "cg02.amztoolsconsultant.com", "https://amzcgpt.gt4rents.com")
+	next, ok = sameSiteRequestURI("https://members.amztoolsconsultant.com/protect/new-rewrite?f=77&url=/", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com")
 	if !ok || !strings.HasPrefix(next, "https://members.amztoolsconsultant.com/protect/new-rewrite") {
 		t.Fatalf("members hop %q %v", next, ok)
 	}
-	if _, ok := sameSiteRequestURI("https://example.com/docs", "cg02.amztoolsconsultant.com", "https://amzcgpt.gt4rents.com"); ok {
+	if _, ok := sameSiteRequestURI("https://example.com/docs", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com"); ok {
 		t.Fatal("off-site redirect must stay with the browser")
 	}
-	if _, ok := sameSiteRequestURI("/cdn-cgi/challenge-platform/h/g/scripts/precursor/main.js", "cg02.amztoolsconsultant.com", "https://amzcgpt.gt4rents.com"); ok {
+	if _, ok := sameSiteRequestURI("/cdn-cgi/challenge-platform/h/g/scripts/precursor/main.js", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com"); ok {
 		t.Fatal("cloudflare challenge must not be followed")
 	}
 
@@ -187,10 +187,10 @@ func TestSessionCookieFollowsUpstream(t *testing.T) {
 		_, _ = w.Write([]byte(`<html><body>My docs</body></html>`))
 	}))
 	defer upstream.Close()
-	cfg := Config{TargetURL: upstream.URL, HomePath: "/", PublicHost: "amzcgpt.gt4rents.com", PublicScheme: "http", ToolName: "Amztoolsconsultant ChatGPT"}
-	req := httptest.NewRequest(http.MethodGet, "http://amzcgpt.gt4rents.com/", nil)
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/", PublicHost: "amzccg.gt4rents.com", PublicScheme: "http", ToolName: "Amztoolsconsultant ChatGPT"}
+	req := httptest.NewRequest(http.MethodGet, "http://amzccg.gt4rents.com/", nil)
 	req.Header.Set("Accept", "text/html")
-	req.Host = "amzcgpt.gt4rents.com"
+	req.Host = "amzccg.gt4rents.com"
 	rr := httptest.NewRecorder()
 	proxyUpstream(rr, req, cfg, ToolAccount{Cookie: "PHPSESSID=session"})
 	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "My docs") {

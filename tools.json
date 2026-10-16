@@ -761,11 +761,11 @@
       "fqdn": "amzcselleramp.gt4rents.com"
     },
     {
-      "tool": "amzcgpt",
+      "tool": "amzccg",
       "folder": "recloud/amztoolsconsultant/amzcgpt",
-      "subdomain": "amzcgpt",
+      "subdomain": "amzccg",
       "port": 6304,
-      "fqdn": "amzcgpt.gt4rents.com"
+      "fqdn": "amzccg.gt4rents.com"
     }
   ]
 }

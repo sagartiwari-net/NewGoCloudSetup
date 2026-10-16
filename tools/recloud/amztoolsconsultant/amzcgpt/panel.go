@@ -506,6 +506,7 @@ func ensureRecloudSite(cfg Config) {
 	}
 	name := toolDisplayName(cfg)
 	upstream := strings.TrimSpace(cfg.TargetURL)
+	moveFlaggedHost(db, cfg.PublicHost)
 	var websiteID, linkedTool int
 	var currentURL string
 	err = db.QueryRow(`SELECT id, tool_id, COALESCE(upstream_url, '') FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID, &linkedTool, &currentURL)
@@ -540,6 +541,26 @@ func ensureRecloudSite(cfg Config) {
 	_, _ = db.Exec(`UPDATE websites SET tool_id=?, name=?, kind='recloud', upstream_url=? WHERE id=?`, toolID, name, nextURL, websiteID)
 	_, _ = db.Exec(`UPDATE accounts SET name=? WHERE website_id=?`, name, websiteID)
 	importCookieFile(db, websiteID)
+}
+
+func moveFlaggedHost(db *sql.DB, host string) {
+	const flagged = "amzcgpt.gt4rents.com"
+	host = strings.TrimSpace(host)
+	if host == "" || host == flagged {
+		return
+	}
+	var existing int
+	if db.QueryRow(`SELECT id FROM websites WHERE domain=?`, host).Scan(&existing) == nil {
+		return
+	}
+	res, err := db.Exec(`UPDATE websites SET domain=? WHERE domain=?`, host, flagged)
+	if err != nil {
+		log.Printf("[PANEL] host move failed: %v", err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[PANEL] moved website host %s -> %s", flagged, host)
+	}
 }
 
 func ensureRecloudTool(db *sql.DB, name string) int {
