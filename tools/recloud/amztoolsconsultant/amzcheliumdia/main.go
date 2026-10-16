@@ -78,6 +78,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		extensionInstallPageHandler(w, r)
 		return
 	}
+	if r.URL.Path == "/api/user-limits" {
+		userLimitsHandler(w, r)
+		return
+	}
 	if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "") && cfg.HomePath != "" && cfg.HomePath != "/" {
 		http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 		return

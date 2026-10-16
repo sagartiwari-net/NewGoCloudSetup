@@ -291,7 +291,7 @@ func extensionInstallPageHandler(w http.ResponseWriter, r *http.Request) {
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Install Amztoolsconsultant Helium 10</title>
+<title>Install Helium 10 Extension</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -315,19 +315,19 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-bottom:10px}
 <body>
 <div class="card">
   <div class="badge">Chrome Extension</div>
-  <h1>Install Helium 10 for Amztoolsconsultant</h1>
-  <p class="lead">This package is only for Amztoolsconsultant Helium10 Diamond. The original Helium 10 extension is separate and stays installed.</p>
-  <div class="warn"><strong>Important:</strong> If you already loaded an older copy of this Amztoolsconsultant zip, remove that copy first. Do not remove the original Helium 10 extension.</div>
+  <h1>Install Helium 10</h1>
+  <p class="lead">Download this extension, then open Helium 10 from your access link before you use it.</p>
+  <div class="warn"><strong>Important:</strong> If this extension is already loaded, remove that copy first and load this new zip. Leave any other Helium 10 extension installed.</div>
   <div class="origin">This zip is baked for: %s</div>
   <a class="btn" href="/extension.zip">Download Extension (.zip)</a>
   <div class="steps">
     <h2>Install steps</h2>
     <ol>
-      <li>Open <code>chrome://extensions</code>. Remove an older <strong>Helium 10 for Amztoolsconsultant</strong> copy if it is already loaded. Leave the original Helium 10 extension in place.</li>
+      <li>Open <code>chrome://extensions</code> and remove an older copy of this extension if it is already loaded.</li>
       <li>Download and unzip this file into a new folder.</li>
       <li>Enable <strong>Developer mode</strong> (top right).</li>
       <li>Click <strong>Load unpacked</strong> and select that new folder.</li>
-      <li>Open Amztoolsconsultant Helium10 Diamond from Panel Access first, then use this extension.</li>
+      <li>Open Helium 10 from your access link first, then use this extension.</li>
     </ol>
   </div>
   <p class="note">This extension signs in through %s. Download it again from this tool if the host changes.</p>

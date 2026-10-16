@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"recloud.dev/cdncache"
 )
@@ -118,6 +119,19 @@ func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
 	}
 	if !strings.Contains(out, `docs-lnk`) || strings.Contains(out, `docs-lnk{display:none`) {
 		t.Fatal("docs link was hidden")
+	}
+}
+
+func TestExtensionLimitsReturnsPanelUser(t *testing.T) {
+	token := "ext-limits-token"
+	panelSess.Store(token, &panelGateSession{username: "sagar", expires: time.Now().Add(time.Hour)})
+	t.Cleanup(func() { panelSess.Delete(token) })
+	req := httptest.NewRequest(http.MethodGet, "https://amzcheliumdia.gt4rents.com/api/user-limits", nil)
+	req.AddCookie(&http.Cookie{Name: "ct_session", Value: token})
+	rr := httptest.NewRecorder()
+	userLimitsHandler(rr, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"username":"sagar"`) {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
 	}
 }
 

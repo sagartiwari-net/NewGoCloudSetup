@@ -778,3 +778,19 @@ func panelSettingInt(db *sql.DB, key string, fallback int) int {
 	}
 	return n
 }
+
+func userLimitsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	username, err := panelSessionUsername(r)
+	if err != nil || strings.TrimSpace(username) == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]string{"username": username})
+}
