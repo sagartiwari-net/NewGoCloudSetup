@@ -766,6 +766,13 @@
       "subdomain": "amzccg",
       "port": 6304,
       "fqdn": "amzccg.gt4rents.com"
+    },
+    {
+      "tool": "amzcft",
+      "folder": "recloud/amztoolsconsultant/amzcft",
+      "subdomain": "amzcft",
+      "port": 6305,
+      "fqdn": "amzcft.gt4rents.com"
     }
   ]
 }
