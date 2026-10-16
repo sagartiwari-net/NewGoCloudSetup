@@ -105,6 +105,7 @@ export type AutomationLog = {
 
 export type AutomationWebsite = {
   id: number
+  tool_id: number
   name: string
   domain: string
   kind: string

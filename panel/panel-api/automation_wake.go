@@ -294,8 +294,8 @@ func (s *server) saveAutomationWakeSites(jobID, targetID int, ids []int) {
 			continue
 		}
 		seen[id] = true
-		var kind string
-		if err := s.db.QueryRow(`SELECT COALESCE(kind, '') FROM websites WHERE id=?`, id).Scan(&kind); err != nil || kind != "recloud" {
+		var exists int
+		if err := s.db.QueryRow(`SELECT id FROM websites WHERE id=?`, id).Scan(&exists); err != nil {
 			continue
 		}
 		_, _ = s.db.Exec(`INSERT INTO automation_job_sites (job_id, website_id) VALUES (?,?)`, jobID, id)

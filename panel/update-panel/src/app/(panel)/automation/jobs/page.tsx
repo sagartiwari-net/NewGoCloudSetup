@@ -212,7 +212,7 @@ export default function AutomationJobsPage() {
         open={open}
         onOpenChange={setOpen}
         title={editing ? "Edit job" : "New job"}
-        description="The tool URL is the upstream already saved on that website."
+        description="Pick the website and the account that should receive the cookie. Own tools do not need a recloud upstream URL."
       >
         {open && options ? (
           <JobForm
@@ -283,7 +283,11 @@ function JobForm({
   const jobKind = form.watch("job_kind")
   const showAccount = jobKind !== "session" && Boolean(website) && website?.kind !== "recloud"
   const toolOnly = provider === "ahrefs" || provider === "zikaanalytics" || provider === "erank"
-  const wakeSites = options.websites.filter((item) => item.kind === "recloud" && String(item.id) !== websiteId)
+  const wakeSites = options.websites.filter((item) => {
+    if (String(item.id) === websiteId) return false
+    if (provider === "ahrefs") return Boolean(website) && item.tool_id === website.tool_id
+    return item.kind === "recloud"
+  })
   const selectedWakes = form.watch("wake_website_ids")
 
   return (
@@ -415,7 +419,7 @@ function JobForm({
             <FieldLabel>Also run when these log out</FieldLabel>
             <FieldDescription>
               {provider === "ahrefs"
-                ? "Tick every other Ahrefs website that should get this same cookie. Each run writes it there too."
+                ? "Tick the other websites of this same Ahrefs tool. Each run writes this cookie onto their first account."
                 : "Leave this empty while this is the only job for the provider. Every matching recloud tool will wake it. Choose sites when one provider has more than one job."}
             </FieldDescription>
             <div className="flex max-h-48 flex-col gap-2 overflow-auto rounded-md border p-3">

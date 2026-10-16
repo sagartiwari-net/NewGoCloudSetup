@@ -326,6 +326,7 @@ type automationJobRow struct {
 
 type automationSite struct {
 	ID       int
+	ToolID   int
 	Name     string
 	Domain   string
 	Kind     string
@@ -412,7 +413,7 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	if job.Kind != "session" {
 		var siteOK bool
 		site, siteOK = s.loadAutomationSite(job.TargetWebsiteID)
-		if !siteOK || strings.TrimSpace(site.Upstream) == "" {
+		if !siteOK || (site.Kind == "recloud" && strings.TrimSpace(site.Upstream) == "") {
 			s.failAutomation(job, errAutomationUpstream, nil)
 			return
 		}
@@ -483,6 +484,9 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		s.finishAutomation(job, "ok", "stored homepage cookie")
 		return
 	}
+	if strings.TrimSpace(site.Upstream) == "" {
+		site.Upstream = "https://" + strings.TrimSpace(recipe.PortalHost())
+	}
 	log.Printf("[automation] job %d capture %s", job.ID, automation.Where(site.Upstream))
 	tool, err := recipe.Capture(ctx, portal, site.Upstream)
 	if err != nil {
@@ -507,7 +511,7 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	message := "wrote cookie to " + strings.TrimSpace(site.Name)
 	s.writeAutomationLog(job, "info", message, append(secrets, raw))
 	if job.Provider == "ahrefs" {
-		if extra := s.writeAhrefsCopies(job, site.ID, raw, recipe.PortalHost()); extra != "" {
+		if extra := s.writeAhrefsCopies(job, site, raw, recipe.PortalHost()); extra != "" {
 			message = message + "; " + extra
 		}
 	}
@@ -529,17 +533,28 @@ func automationAccountBody(recipe automation.Recipe, cookies []cookieJSON) (stri
 	return cookiesToJSON(cookies)
 }
 
-func (s *server) writeAhrefsCopies(job automationJobRow, targetID int, raw, portal string) string {
+func (s *server) writeAhrefsCopies(job automationJobRow, target automationSite, raw, portal string) string {
 	names := []string{}
 	for _, id := range s.automationWakeIDs(job.ID) {
-		if id == targetID {
+		if id == target.ID {
 			continue
 		}
 		site, ok := s.loadAutomationSite(id)
-		if !ok || !automationHostMatches(upstreamHost(site.Upstream), portal) {
+		if !ok {
 			continue
 		}
-		accountID, err := s.writeAutomationAccountCookie(site, 0, raw)
+		sameTool := target.ToolID > 0 && site.ToolID == target.ToolID
+		if !sameTool && !automationHostMatches(upstreamHost(site.Upstream), portal) {
+			continue
+		}
+		accountID := 0
+		if site.Kind != "recloud" {
+			accountID = s.firstAutomationAccount(site.ID)
+			if accountID <= 0 {
+				continue
+			}
+		}
+		accountID, err := s.writeAutomationAccountCookie(site, accountID, raw)
 		if err != nil {
 			continue
 		}
@@ -753,9 +768,17 @@ func (s *server) loadAutomationJob(id int) (automationJobRow, bool) {
 
 func (s *server) loadAutomationSite(id int) (automationSite, bool) {
 	var site automationSite
-	err := s.db.QueryRow(`SELECT id, name, domain, COALESCE(kind, ''), COALESCE(upstream_url, '') FROM websites WHERE id=?`, id).
-		Scan(&site.ID, &site.Name, &site.Domain, &site.Kind, &site.Upstream)
+	err := s.db.QueryRow(`SELECT id, tool_id, name, domain, COALESCE(kind, ''), COALESCE(upstream_url, '') FROM websites WHERE id=?`, id).
+		Scan(&site.ID, &site.ToolID, &site.Name, &site.Domain, &site.Kind, &site.Upstream)
 	return site, err == nil
+}
+
+func (s *server) firstAutomationAccount(websiteID int) int {
+	var id int
+	if err := s.db.QueryRow(`SELECT id FROM accounts WHERE website_id=? ORDER BY id ASC LIMIT 1`, websiteID).Scan(&id); err != nil {
+		return 0
+	}
+	return id
 }
 
 func (s *server) readAutomationCookies(credentialID int) []cookieJSON {
@@ -1443,13 +1466,14 @@ func (s *server) automationOptions(w http.ResponseWriter, r *http.Request) {
 		jobs = append(jobs, map[string]any{"id": id, "name": name})
 	}
 	jobRows.Close()
-	siteRows, err := s.db.Query(`SELECT id, name, domain, COALESCE(kind, '') FROM websites ORDER BY name`)
+	siteRows, err := s.db.Query(`SELECT id, tool_id, name, domain, COALESCE(kind, '') FROM websites ORDER BY name`)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	type siteAccounts struct {
 		ID       int
+		ToolID   int
 		Name     string
 		Domain   string
 		Kind     string
@@ -1459,7 +1483,7 @@ func (s *server) automationOptions(w http.ResponseWriter, r *http.Request) {
 	var siteOrder []int
 	for siteRows.Next() {
 		item := &siteAccounts{Accounts: []any{}}
-		if siteRows.Scan(&item.ID, &item.Name, &item.Domain, &item.Kind) != nil {
+		if siteRows.Scan(&item.ID, &item.ToolID, &item.Name, &item.Domain, &item.Kind) != nil {
 			continue
 		}
 		sites[item.ID] = item
@@ -1486,7 +1510,7 @@ func (s *server) automationOptions(w http.ResponseWriter, r *http.Request) {
 	for _, id := range siteOrder {
 		site := sites[id]
 		websites = append(websites, map[string]any{
-			"id": site.ID, "name": site.Name, "domain": site.Domain, "kind": site.Kind, "accounts": site.Accounts,
+			"id": site.ID, "tool_id": site.ToolID, "name": site.Name, "domain": site.Domain, "kind": site.Kind, "accounts": site.Accounts,
 		})
 	}
 	if credentials == nil {

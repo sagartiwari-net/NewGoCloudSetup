@@ -911,3 +911,92 @@ func TestAmzHomepageCookieLandsOnDiamond(t *testing.T) {
 		t.Fatalf("diamond cookie %s", cookie)
 	}
 }
+
+func TestOwnToolJobDoesNotNeedUpstream(t *testing.T) {
+	s, _ := openAutomationTestDB(t)
+	recipe := &scriptedRecipe{liveValue: "live-session-value", portalValue: "portal-session-value", toolValue: "tool-session-value"}
+	useAutomationRecipe(t, recipe)
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	if err := s.replaceAutomationStorage(cred, `[{"name":"session","value":"live-session-value","domain":"markhorseotool.com","path":"/"}]`); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES ('ZikAnalytics', 'own', '[]')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolID, _ := res.LastInsertId()
+	res, err = s.db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, kind, upstream_url)
+		VALUES (?, 'Zik', 'zik.example', 'secret', 30, '{}', 1, '', '')`, toolID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	websiteID, _ := res.LastInsertId()
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err = s.db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
+		VALUES (?, 'main', '', '', '', 'active', 1, '', '', '', ?, '')`, websiteID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountID, _ := res.LastInsertId()
+	jobID := insertAutomationJob(t, s, "Zik", cred, int(websiteID), int(accountID))
+	s.runAutomationJob(context.Background(), jobID)
+	var reason, cookie string
+	if err := s.db.QueryRow(`SELECT last_reason FROM automation_jobs WHERE id=?`, jobID).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(reason, "upstream") {
+		t.Fatalf("own tool required an upstream: %s", reason)
+	}
+	if err := s.db.QueryRow(`SELECT cookie FROM accounts WHERE id=?`, accountID).Scan(&cookie); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cookie, "tool-session-value") {
+		t.Fatalf("cookie %s reason %s", cookie, reason)
+	}
+}
+
+func TestAhrefsCopyWritesTheOtherOwnWebsite(t *testing.T) {
+	s, _ := openAutomationTestDB(t)
+	res, err := s.db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES ('Ahrefs', 'own', '[]')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolID, _ := res.LastInsertId()
+	insert := func(name, domain string) (int, int) {
+		t.Helper()
+		res, err := s.db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, kind, upstream_url)
+			VALUES (?, ?, ?, 'secret', 30, '{}', 1, '', '')`, toolID, name, domain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		websiteID, _ := res.LastInsertId()
+		now := time.Now().UTC().Format(time.RFC3339)
+		res, err = s.db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
+			VALUES (?, 'main', 'old', '', '', 'active', 1, '', '', '', ?, '')`, websiteID, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		accountID, _ := res.LastInsertId()
+		return int(websiteID), int(accountID)
+	}
+	firstSite, _ := insert("Ahrefs one", "refs.example")
+	secondSite, secondAccount := insert("Ahrefs two", "refs2.example")
+	cred := insertAutomationCredential(t, s, "unused")
+	jobID := insertAutomationJob(t, s, "Ahrefs", cred, firstSite, 0)
+	s.saveAutomationWakeSites(jobID, firstSite, []int{secondSite})
+	target, ok := s.loadAutomationSite(firstSite)
+	if !ok {
+		t.Fatal("target missing")
+	}
+	message := s.writeAhrefsCopies(automationJobRow{ID: jobID}, target, `[{"name":"BSSESSID","value":"fresh"}]`, "ahrefs.com")
+	if !strings.Contains(message, "Ahrefs two") {
+		t.Fatalf("message %q", message)
+	}
+	var cookie string
+	if err := s.db.QueryRow(`SELECT cookie FROM accounts WHERE id=?`, secondAccount).Scan(&cookie); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cookie, "BSSESSID") {
+		t.Fatalf("copied cookie %s", cookie)
+	}
+}
