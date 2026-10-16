@@ -38,6 +38,8 @@ func TestLoginAndKeepa(t *testing.T) {
 				return
 			}
 			http.SetCookie(w, &http.Cookie{Name: "PHPSESSID", Value: "portal-session", Path: "/", HttpOnly: true})
+			http.SetCookie(w, &http.Cookie{Name: "amember_nr", Value: "nr-token", Path: "/"})
+			http.SetCookie(w, &http.Cookie{Name: "amember_user", Value: "user-token", Path: "/"})
 			http.Redirect(w, r, "/member", http.StatusFound)
 			return
 		}
@@ -87,7 +89,7 @@ func TestLoginAndKeepa(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasCookie(cookies, "PHPSESSID", "portal-session") {
+	if !hasCookie(cookies, "PHPSESSID", "portal-session") || !hasCookie(cookies, "amember_nr", "nr-token") || !hasCookie(cookies, "amember_user", "user-token") {
 		t.Fatalf("portal cookies %#v", cookies)
 	}
 	ok, _, err := Recipe{}.Check(context.Background(), cookies)

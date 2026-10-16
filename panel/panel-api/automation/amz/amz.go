@@ -139,13 +139,14 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	}
 }
 
-// HomepageCookies is the member login cookie, widened so Helium10 Diamond can send it.
+// HomepageCookies is the member login, widened so Helium10 Diamond can send it.
+// aMember sets amember_nr and amember_user next to PHPSESSID. PHPSESSID alone stays on the login page.
 func HomepageCookies(portal []automation.Cookie) []automation.Cookie {
 	out := make([]automation.Cookie, 0, len(portal))
 	seen := map[string]struct{}{}
 	for _, cookie := range portal {
 		name := strings.TrimSpace(cookie.Name)
-		if name == "" || cookie.Value == "" || strings.Contains(strings.ToLower(name), "amember") {
+		if name == "" || cookie.Value == "" {
 			continue
 		}
 		key := name + "|" + cookie.Value
