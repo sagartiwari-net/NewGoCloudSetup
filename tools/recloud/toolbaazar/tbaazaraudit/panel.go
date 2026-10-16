@@ -637,7 +637,7 @@ func renderLoggedOutPage(w http.ResponseWriter, cfg Config) {
 }
 
 func loggedOutRefreshScript() string {
-	return `<script>(function(){var k="oneclickgo-relogin",n=0;try{n=Number(sessionStorage.getItem(k)||"0")}catch(e){}if(n>=8)return;try{sessionStorage.setItem(k,String(n+1))}catch(e){}setTimeout(function(){location.reload()},n===0?3000:4000)})();</script>`
+	return `<script>(function(){var k="oneclickgo-relogin-2",t="oneclickgo-relogin-at",n=0,start=0;try{start=Number(sessionStorage.getItem(t)||"0");if(!start||Date.now()-start>180000){start=Date.now();n=0}else{n=Number(sessionStorage.getItem(k)||"0")}}catch(e){}if(n>=40)return;try{sessionStorage.setItem(t,String(start));sessionStorage.setItem(k,String(n+1))}catch(e){}setTimeout(function(){location.reload()},n===0?3000:4000)})();</script>`
 }
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {

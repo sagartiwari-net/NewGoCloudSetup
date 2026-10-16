@@ -691,19 +691,11 @@ func TestAutomationLogoutTrigger(t *testing.T) {
 	}
 	_, _ = s.db.Exec(`UPDATE automation_jobs SET running=0, last_trigger_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339), jobA)
 	s.startQueuedAutomation()
-	if err := s.db.QueryRow(`SELECT queued_cause, running FROM automation_jobs WHERE id=?`, jobB).Scan(&queued, new(int)); err != nil {
-		t.Fatal(err)
-	}
-	if queued != "trigger" {
-		t.Fatal("the waiting job started before the 5 minute gap")
-	}
-	_, _ = s.db.Exec(`UPDATE automation_jobs SET last_trigger_at=? WHERE id=?`, time.Now().Add(-6*time.Minute).UTC().Format(time.RFC3339), jobA)
-	s.startQueuedAutomation()
 	if err := s.db.QueryRow(`SELECT queued_cause, last_trigger_at FROM automation_jobs WHERE id=?`, jobB).Scan(&queued, &triggerAt); err != nil {
 		t.Fatal(err)
 	}
 	if queued != "" || strings.TrimSpace(triggerAt) == "" {
-		t.Fatalf("waiting job did not start, queued=%q trigger=%q", queued, triggerAt)
+		t.Fatalf("the other tool did not refresh, queued=%q trigger=%q", queued, triggerAt)
 	}
 	var leaked int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM automation_logs WHERE message LIKE '%' || ? || '%'`, automationFakeCookie).Scan(&leaked); err != nil {

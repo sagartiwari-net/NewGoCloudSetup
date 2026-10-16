@@ -156,9 +156,7 @@ func (s *server) enqueueAutomationTrigger(jobID, websiteID int) string {
 		return "missing"
 	}
 	now := time.Now().UTC()
-	var latest string
-	_ = s.db.QueryRow(`SELECT COALESCE(MAX(last_trigger_at), '') FROM automation_jobs WHERE credential_id=?`, job.CredentialID).Scan(&latest)
-	if automationTriggerCooling(latest, now) || automationTriggerCooling(lastTrigger, now) {
+	if automationTriggerCooling(lastTrigger, now) {
 		s.writeAutomationLog(job, "info", "logout trigger skipped, last automatic run was under 5 minutes", nil)
 		return "cooldown"
 	}
@@ -220,7 +218,7 @@ func (s *server) startQueuedAutomation() {
 		}
 		if item.cause == "trigger" {
 			var latest string
-			_ = s.db.QueryRow(`SELECT COALESCE(MAX(last_trigger_at), '') FROM automation_jobs WHERE credential_id=?`, item.cred).Scan(&latest)
+			_ = s.db.QueryRow(`SELECT COALESCE(last_trigger_at, '') FROM automation_jobs WHERE id=?`, item.id).Scan(&latest)
 			if automationTriggerCooling(latest, now) {
 				continue
 			}
