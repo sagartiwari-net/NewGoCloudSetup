@@ -186,9 +186,14 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(deviceSWSource))
 }
 
+func scraperNavHide() string {
+	return `<style data-tm-hide-nav>li.dropdown:has(a[href="/change-password.php"]){display:none!important}div.container-fluid:has(> .navbar-header):has(#bs-example-navbar-collapse-1){display:none!important}li:has(> a[href="/affiliate.php"]){display:none!important}</style>` +
+		`<script data-tm-hide-nav>(function(){function hide(){document.querySelectorAll("li.dropdown").forEach(function(el){if(el.querySelector('a[href="/change-password.php"]'))el.style.setProperty("display","none","important")});document.querySelectorAll("div.container-fluid").forEach(function(el){if(el.querySelector(":scope > .navbar-header")&&el.querySelector("#bs-example-navbar-collapse-1"))el.style.setProperty("display","none","important")});document.querySelectorAll("li").forEach(function(el){if(el.querySelector(":scope > a[href='/affiliate.php']"))el.style.setProperty("display","none","important")})}hide();try{new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true})}catch(e){}})();</script>`
+}
+
 func injectDeviceHTML(body []byte, username string) []byte {
 	_ = username
-	script := []byte(devicePageScript())
+	script := []byte(devicePageScript() + scraperNavHide())
 	if bytes.Contains(body, []byte("data-tm-device")) {
 		return body
 	}

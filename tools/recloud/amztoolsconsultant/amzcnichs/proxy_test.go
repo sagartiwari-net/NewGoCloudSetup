@@ -142,6 +142,26 @@ func TestLoginPageRetriesThenOpensHome(t *testing.T) {
 	}
 }
 
+func TestOnlyThreeNavItemsAreHidden(t *testing.T) {
+	in := []byte(`<html><head></head><body><li class="dropdown"><a href="/getting-started.php">Tutorials</a></li><a href="/scraper/">Open</a><div class="container-fluid"><p>Results</p></div></body></html>`)
+	out := string(injectDeviceHTML(in, "sagar"))
+	for _, sel := range []string{
+		`li.dropdown:has(a[href="/change-password.php"]){display:none!important}`,
+		`div.container-fluid:has(> .navbar-header):has(#bs-example-navbar-collapse-1){display:none!important}`,
+		`li:has(> a[href="/affiliate.php"]){display:none!important}`,
+	} {
+		if !strings.Contains(out, sel) {
+			t.Fatalf("missing hide %s", sel)
+		}
+	}
+	if strings.Contains(out, `.dropdown{display:none`) || strings.Contains(out, `li{display:none`) || strings.Contains(out, `.container-fluid{display:none`) {
+		t.Fatal("nav hide is broader than the three pasted items")
+	}
+	if !strings.Contains(out, `href="/getting-started.php"`) || !strings.Contains(out, `>Results</p>`) {
+		t.Fatal("tutorials or page content was removed")
+	}
+}
+
 func TestScraperPageIsNotRestyled(t *testing.T) {
 	in := []byte(`<html><head></head><body><a href="/scraper/">Open</a><span class="user"><img class="user__avatar" src="/a.png"><div class="user__dropdown">Menu</div></span></body></html>`)
 	out := string(injectDeviceHTML(in, "sagar"))
