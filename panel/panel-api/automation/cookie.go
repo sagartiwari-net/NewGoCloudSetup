@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -8,6 +9,19 @@ import (
 	"strings"
 	"time"
 )
+
+type userAgentKey struct{}
+
+// WithUserAgent carries the browser string that created a saved cookie.
+func WithUserAgent(ctx context.Context, userAgent string) context.Context {
+	return context.WithValue(ctx, userAgentKey{}, strings.TrimSpace(userAgent))
+}
+
+// UserAgent is the browser string stored with the cookie. Empty means it was not set.
+func UserAgent(ctx context.Context) string {
+	value, _ := ctx.Value(userAgentKey{}).(string)
+	return strings.TrimSpace(value)
+}
 
 // Cookie is the Chrome-export shape the recloud proxies already accept.
 type Cookie struct {

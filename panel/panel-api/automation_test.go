@@ -988,15 +988,15 @@ func TestAhrefsCopyWritesTheOtherOwnWebsite(t *testing.T) {
 	if !ok {
 		t.Fatal("target missing")
 	}
-	message := s.writeAhrefsCopies(automationJobRow{ID: jobID}, target, `[{"name":"BSSESSID","value":"fresh"}]`, "ahrefs.com")
+	message := s.writeAhrefsCopies(automationJobRow{ID: jobID}, target, `[{"name":"BSSESSID","value":"fresh"}]`, "Mozilla/5.0 AhrefsTest", "ahrefs.com")
 	if !strings.Contains(message, "Ahrefs two") {
 		t.Fatalf("message %q", message)
 	}
-	var cookie string
-	if err := s.db.QueryRow(`SELECT cookie FROM accounts WHERE id=?`, secondAccount).Scan(&cookie); err != nil {
+	var cookie, agent string
+	if err := s.db.QueryRow(`SELECT cookie, COALESCE(user_agent, '') FROM accounts WHERE id=?`, secondAccount).Scan(&cookie, &agent); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(cookie, "BSSESSID") {
-		t.Fatalf("copied cookie %s", cookie)
+	if !strings.Contains(cookie, "BSSESSID") || agent != "Mozilla/5.0 AhrefsTest" {
+		t.Fatalf("copied cookie %s agent %s", cookie, agent)
 	}
 }

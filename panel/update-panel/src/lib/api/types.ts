@@ -88,7 +88,9 @@ export type AutomationStorageRow = {
 
 export type AutomationStorageDetail = {
   credential_id: number
+  provider: string
   cookie: string
+  user_agent: string
   updated_at: string
 }
 

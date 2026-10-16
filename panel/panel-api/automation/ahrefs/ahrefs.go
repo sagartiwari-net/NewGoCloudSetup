@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-
 var (
 	dashboardURL = "https://app.ahrefs.com/dashboard"
 	refreshURL   = "https://app.ahrefs.com/v4/loginCheckCompletion"
@@ -31,6 +29,9 @@ func (Recipe) PortalHost() string { return "ahrefs.com" }
 func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []automation.Cookie, error) {
 	if !hasName(cookies, "BSSESSID") {
 		return false, nil, nil
+	}
+	if automation.UserAgent(ctx) == "" {
+		return false, nil, automation.ErrUserAgent
 	}
 	updated, err := refresh(ctx, cookies)
 	if errors.Is(err, errLoginRedirect) {
@@ -77,7 +78,7 @@ func refresh(ctx context.Context, cookies []automation.Cookie) ([]automation.Coo
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", automation.UserAgent(ctx))
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "https://app.ahrefs.com")
@@ -107,7 +108,7 @@ func get(ctx context.Context, client *http.Client, rawURL string) (*http.Respons
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", automation.UserAgent(ctx))
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Referer", dashboardURL)
 	resp, err := client.Do(req)

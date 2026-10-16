@@ -10,7 +10,12 @@ import (
 )
 
 func TestRefreshKeepsBSSESSID(t *testing.T) {
+	const savedAgent = "Mozilla/5.0 Chrome/120 AhrefsTest"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("User-Agent") != savedAgent {
+			http.Error(w, "wrong agent", http.StatusForbidden)
+			return
+		}
 		if _, err := r.Cookie("BSSESSID"); err != nil {
 			http.Redirect(w, r, "/user/login", http.StatusFound)
 			return
@@ -27,7 +32,8 @@ func TestRefreshKeepsBSSESSID(t *testing.T) {
 	})
 
 	parsed, _ := url.Parse(srv.URL)
-	ok, updated, err := Recipe{}.Check(context.Background(), []automation.Cookie{{
+	ctx := automation.WithUserAgent(context.Background(), savedAgent)
+	ok, updated, err := Recipe{}.Check(ctx, []automation.Cookie{{
 		Name: "BSSESSID", Value: "saved-session", Domain: parsed.Hostname(), HostOnly: true, Path: "/",
 	}})
 	if err != nil || !ok {
@@ -50,5 +56,11 @@ func TestDeadCookieAsksForStorage(t *testing.T) {
 	_, err = Recipe{}.Login(context.Background(), "acc2", "")
 	if err == nil || err.Error() == "" {
 		t.Fatal("login should ask for a stored cookie")
+	}
+	_, _, err = Recipe{}.Check(context.Background(), []automation.Cookie{{
+		Name: "BSSESSID", Value: "saved", Domain: ".ahrefs.com", Path: "/",
+	}})
+	if err == nil || err.Error() == "" {
+		t.Fatal("cookie without its user agent should fail")
 	}
 }
