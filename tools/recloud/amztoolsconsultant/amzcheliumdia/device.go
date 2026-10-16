@@ -189,6 +189,7 @@ func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 func injectDeviceHTML(body []byte, username string) []byte {
 	_ = username
 	body = injectResetButtonHide(body)
+	body = injectExtensionDownload(body)
 	if bytes.Contains(body, []byte("data-tm-device")) {
 		return body
 	}
@@ -214,6 +215,24 @@ func injectResetButtonHide(body []byte) []byte {
 	snippet := `<style data-tm-hide-reset>#ht05-storage-reset-button{display:none!important}</style>` +
 		`<script data-tm-hide-reset>(function(){var id="ht05-storage-reset-button";function hide(){var el=document.getElementById(id);if(el)el.style.setProperty("display","none","important")}hide();try{new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true})}catch(e){}})();</script>`
 	return injectIntoHTMLHead(body, snippet)
+}
+
+func injectExtensionDownload(body []byte) []byte {
+	if bytes.Contains(body, []byte(`data-tm-ext-download`)) {
+		return body
+	}
+	style := `<style data-tm-ext-download>#tm-ext-download{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:inline-flex;align-items:center;padding:10px 14px;border-radius:999px;background:#0f172a;color:#fff;font:600 13px/1 system-ui,sans-serif;text-decoration:none;box-shadow:0 8px 24px rgba(15,23,42,.28)}#tm-ext-download:hover{background:#1e293b}</style>`
+	link := `<a id="tm-ext-download" data-tm-ext-download href="/ext-install">Download extension</a>`
+	body = injectIntoHTMLHead(body, style)
+	lower := bytes.ToLower(body)
+	if i := bytes.Index(lower, []byte("</body>")); i >= 0 {
+		out := make([]byte, 0, len(body)+len(link))
+		out = append(out, body[:i]...)
+		out = append(out, link...)
+		out = append(out, body[i:]...)
+		return out
+	}
+	return append(body, link...)
 }
 
 func deviceBootScript(home string) string {

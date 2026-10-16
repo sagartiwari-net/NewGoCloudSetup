@@ -110,6 +110,9 @@ func TestOnlyLayoutNotificationIsHidden(t *testing.T) {
 	if !strings.Contains(out, `<style data-tm-hide-reset>#ht05-storage-reset-button{display:none!important}</style>`) {
 		t.Fatal("reset button was not hidden")
 	}
+	if !strings.Contains(out, `id="tm-ext-download"`) || !strings.Contains(out, `href="/ext-install"`) {
+		t.Fatal("extension download button missing")
+	}
 	if strings.Contains(out, `data-tm-hide-notice`) || strings.Contains(out, `data-tm-viewer-name`) {
 		t.Fatal("unrelated hide or viewer script was injected")
 	}
