@@ -29,7 +29,7 @@ var (
 	baseURL           = "https://members.amztoolsconsultant.com"
 	loginURL          = "https://members.amztoolsconsultant.com/login"
 	memberURL         = "https://members.amztoolsconsultant.com/member"
-	keepaPageURL      = "https://members.amztoolsconsultant.com/page/b7m84YAgLseP+Keepa+New+Access"
+	keepaPageURL      = "https://members.amztoolsconsultant.com/page/kp01"
 	keepaLaunchURL    = "https://members.amztoolsconsultant.com/cloud/kp01"
 	keepaWorkspaceURL = "https://app01.browseanywhere.com/amztoolsconsultant-kp01/"
 	diamondHomeURL    = "https://ht01.amztoolsconsultant.com/black-box/products"
@@ -237,18 +237,26 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 	if denied(page) {
 		return nil, automation.At(automation.ErrDenied, landed)
 	}
-	// Only /cloud/kp01 is the launch. session-watch/revoke-copied sends the browser to the login page.
-	// A form whose signature was minted for another host is not rewritten onto the tool host.
+	// /page/kp01 is the Keepa launch. Open it with the member cookie, then the tool host.
+	// /cloud/kp01 signs a form for app01, which does not host this site. Use it only when this page links there.
+	log.Printf("[automation] amz keepa page %s", automation.Where(landed))
+	if next := upstreamBrowseURL(page, landed, upstream); next != "" && !samePage(next, landed) {
+		log.Printf("[automation] amz keepa follow %s", automation.Where(next))
+		nextPage, nextLanded, nextErr := get(ctx, client, next, landed)
+		if nextErr == nil {
+			page, landed = nextPage, nextLanded
+		}
+	}
 	if action, values, ok := pickKeepaForm(page, landed, upstream); ok && formHostMatches(action, upstream) {
 		log.Printf("[automation] amz keepa form %s", automation.Where(action))
 		page, landed, err = submitKeepaForm(ctx, client, action, landed, values, upstream)
 		if err != nil {
 			return nil, err
 		}
-	} else {
+	} else if upstream == nil || !strings.EqualFold(hostOf(landed), upstream.Hostname()) {
 		launch := keepaLaunch(page, landed)
 		if launch == "" {
-			launch = keepaLaunchURL
+			return nil, automation.At(automation.ErrToolClosed, landed)
 		}
 		log.Printf("[automation] amz keepa open %s", automation.Where(launch))
 		page, landed, err = get(ctx, client, launch, keepaPageURL)
@@ -258,7 +266,7 @@ func captureKeepa(ctx context.Context, portal []automation.Cookie, upstream *url
 		if showsLogin(page, landed) {
 			return nil, automation.At(automation.ErrLoginPage, landed)
 		}
-		if next := upstreamBrowseURL(page, upstream); next != "" && !samePage(next, landed) {
+		if next := upstreamBrowseURL(page, landed, upstream); next != "" && !samePage(next, landed) {
 			log.Printf("[automation] amz keepa follow %s", automation.Where(next))
 			nextPage, nextLanded, nextErr := get(ctx, client, next, landed)
 			if nextErr == nil {
@@ -381,23 +389,33 @@ func pickKeepaForm(page, pageURL string, upstream *url.URL) (string, url.Values,
 	return action, values, true
 }
 
-func upstreamBrowseURL(page string, upstream *url.URL) string {
-	if upstream == nil || upstream.Hostname() == "" {
+func upstreamBrowseURL(page, base string, upstream *url.URL) string {
+	if upstream == nil || upstream.Host == "" {
 		return ""
 	}
+	parsedBase, _ := url.Parse(base)
 	best := ""
-	for _, raw := range rawURLRE.FindAllString(page, -1) {
-		parsed, err := url.Parse(raw)
+	consider := func(raw string) {
+		href := resolve(parsedBase, html.UnescapeString(strings.TrimSpace(raw)))
+		parsed, err := url.Parse(href)
 		if err != nil || !strings.EqualFold(parsed.Host, upstream.Host) {
-			continue
+			return
 		}
 		path := strings.ToLower(parsed.EscapedPath())
+		if strings.Contains(path, "session-watch") || strings.Contains(path, "revoke-copied") {
+			return
+		}
 		if strings.Contains(path, "kp01") || strings.Contains(path, "auth/login") {
-			return raw
+			best = href
 		}
-		if best == "" {
-			best = raw
+	}
+	for _, match := range hrefRE.FindAllStringSubmatch(page, -1) {
+		if len(match) > 1 {
+			consider(match[1])
 		}
+	}
+	for _, raw := range rawURLRE.FindAllString(page, -1) {
+		consider(raw)
 	}
 	return best
 }

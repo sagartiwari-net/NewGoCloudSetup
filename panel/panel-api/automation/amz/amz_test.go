@@ -242,6 +242,51 @@ func TestKeepaRetriesFormOnToolHost(t *testing.T) {
 	}
 }
 
+func TestKeepaPageOpensToolBeforeCloud(t *testing.T) {
+	var cloudHit bool
+	tool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, &http.Cookie{Name: "auth_session", Value: "app03-session", Path: "/amztoolsconsultant-kp01", HttpOnly: true})
+		_, _ = w.Write([]byte(`keepa ready`))
+	}))
+	defer tool.Close()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/page/kp01", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Cookie"), "PHPSESSID=portal-session") {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(`<a href="/cloud/kp01">old</a><a href="` + tool.URL + `/amztoolsconsultant-kp01/">Open Keepa</a>`))
+	})
+	mux.HandleFunc("/cloud/kp01", func(w http.ResponseWriter, r *http.Request) {
+		cloudHit = true
+		_, _ = w.Write([]byte(`cloud`))
+	})
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<input name="amember_login"><input name="amember_pass">`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	previous := []string{baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL}
+	baseURL = server.URL
+	loginURL = server.URL + "/login"
+	memberURL = server.URL + "/member"
+	keepaPageURL = server.URL + "/page/kp01"
+	keepaLaunchURL = server.URL + "/cloud/kp01"
+	t.Cleanup(func() {
+		baseURL, loginURL, memberURL, keepaPageURL, keepaLaunchURL = previous[0], previous[1], previous[2], previous[3], previous[4]
+	})
+	got, err := Recipe{}.Capture(context.Background(), []automation.Cookie{{Name: "PHPSESSID", Value: "portal-session", Domain: ".amztoolsconsultant.com", Path: "/"}}, tool.URL+"/kp01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cloudHit {
+		t.Fatal("opened /cloud/kp01 instead of the tool host")
+	}
+	if !hasCookie(got, "auth_session", "app03-session") {
+		t.Fatalf("keepa cookies %#v", got)
+	}
+}
+
 func TestSignedKeepaFormStaysOnItsHost(t *testing.T) {
 	var toolHit bool
 	tool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
