@@ -11,12 +11,16 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"panel-api/automation"
+	"panel-api/automation/ahrefs"
 	"panel-api/automation/amz"
 	"panel-api/automation/azad"
+	"panel-api/automation/erank"
 	"panel-api/automation/markhor"
 	"panel-api/automation/toolbaazar"
+	"panel-api/automation/zik"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,10 +57,16 @@ var (
 		"azad":               azad.Recipe{},
 		"toolbaazar":         toolbaazar.Recipe{},
 		"amztoolsconsultant": amz.Recipe{},
+		"ahrefs":             ahrefs.Recipe{},
+		"zikaanalytics":      zik.Recipe{},
+		"erank":              erank.Recipe{},
 	}
 	automationProviderNames = map[string]string{
 		"markhor": "Markhor", "azad": "Azad", "toolbaazar": "Toolbaazar",
 		"amztoolsconsultant": "Amz Tools Consultant",
+		"ahrefs":             "Ahrefs",
+		"zikaanalytics":      "ZikAnalytics",
+		"erank":              "eRank",
 	}
 	automationCredLocks sync.Map
 	automationKeyWarn   sync.Once
@@ -275,6 +285,8 @@ func automationPublicReason(err error) string {
 		return errAutomationUpstream.Error()
 	case errors.Is(err, errAutomationHomepage):
 		return errAutomationHomepage.Error()
+	case errors.Is(err, automation.ErrStoredCookie):
+		return automation.ErrStoredCookie.Error()
 	default:
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline") || strings.Contains(msg, "timed out") {
@@ -412,13 +424,24 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		s.failAutomation(job, errAutomationLoginPage, nil)
 		return
 	}
-	password, err := decryptAutomation(passwordEnc)
-	if err != nil || strings.TrimSpace(password) == "" {
+	password := ""
+	if strings.TrimSpace(passwordEnc) != "" {
+		password, err = decryptAutomation(passwordEnc)
+		if err != nil {
+			log.Printf("[automation] job %d credential could not be decrypted", job.ID)
+			s.failAutomation(job, errAutomationDecrypt, nil)
+			return
+		}
+	}
+	if strings.TrimSpace(password) == "" && job.Provider != "ahrefs" {
 		log.Printf("[automation] job %d credential could not be decrypted", job.ID)
 		s.failAutomation(job, errAutomationDecrypt, nil)
 		return
 	}
-	secrets := []string{password}
+	secrets := []string{}
+	if password != "" {
+		secrets = append(secrets, password)
+	}
 	recipe, ok := recipeFor(job.Provider)
 	if !ok {
 		s.failAutomation(job, errAutomationLoginPage, secrets)
@@ -470,7 +493,7 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		s.failAutomation(job, errAutomationLoginPage, secrets)
 		return
 	}
-	raw, err := cookiesToJSON(tool)
+	raw, err := automationAccountBody(recipe, tool)
 	if err != nil || strings.TrimSpace(raw) == "" {
 		s.failAutomation(job, errAutomationLoginPage, append(secrets, cookieValues(tool)...))
 		return
@@ -483,12 +506,58 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	s.shareCookieFrom(accountID)
 	message := "wrote cookie to " + strings.TrimSpace(site.Name)
 	s.writeAutomationLog(job, "info", message, append(secrets, raw))
+	if job.Provider == "ahrefs" {
+		if extra := s.writeAhrefsCopies(job, site.ID, raw, recipe.PortalHost()); extra != "" {
+			message = message + "; " + extra
+		}
+	}
 	if wakeWebsiteID > 0 && wakeWebsiteID != site.ID {
 		if wakeMessage := s.captureAutomationWake(ctx, recipe, job, portal, wakeWebsiteID, secrets); wakeMessage != "" {
 			message = message + "; " + wakeMessage
 		}
 	}
 	s.finishAutomation(job, "ok", message)
+}
+
+func automationAccountBody(recipe automation.Recipe, cookies []cookieJSON) (string, error) {
+	type documenter interface {
+		Document(cookies []automation.Cookie) (string, error)
+	}
+	if doc, ok := recipe.(documenter); ok {
+		return doc.Document(cookies)
+	}
+	return cookiesToJSON(cookies)
+}
+
+func (s *server) writeAhrefsCopies(job automationJobRow, targetID int, raw, portal string) string {
+	names := []string{}
+	for _, id := range s.automationWakeIDs(job.ID) {
+		if id == targetID {
+			continue
+		}
+		site, ok := s.loadAutomationSite(id)
+		if !ok || !automationHostMatches(upstreamHost(site.Upstream), portal) {
+			continue
+		}
+		accountID, err := s.writeAutomationAccountCookie(site, 0, raw)
+		if err != nil {
+			continue
+		}
+		s.shareCookieFrom(accountID)
+		names = append(names, strings.TrimSpace(site.Name))
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "wrote cookie to " + strings.Join(names, ", ")
+}
+
+func upstreamHost(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
 }
 
 func (s *server) loginForAutomationJob(ctx context.Context, recipe automation.Recipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {
@@ -880,14 +949,19 @@ func (s *server) saveAutomationCredential(w http.ResponseWriter, r *http.Request
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if body.ID == 0 {
+		enc := ""
 		if strings.TrimSpace(body.Password) == "" {
-			writeErr(w, 400, "Enter a password")
-			return
-		}
-		enc, err := encryptAutomation(body.Password)
-		if err != nil {
-			writeErr(w, 500, "Could not save the password")
-			return
+			if body.Provider != "ahrefs" {
+				writeErr(w, 400, "Enter a password")
+				return
+			}
+		} else {
+			var err error
+			enc, err = encryptAutomation(body.Password)
+			if err != nil {
+				writeErr(w, 500, "Could not save the password")
+				return
+			}
 		}
 		if _, err := s.db.Exec(`INSERT INTO automation_credentials (name, provider, username, password_enc, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
 			body.Name, body.Provider, body.Username, enc, now, now); err != nil {
@@ -1164,6 +1238,10 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 	body.JobKind = strings.TrimSpace(body.JobKind)
 	if body.JobKind != "session" {
 		body.JobKind = "tool"
+	}
+	if body.JobKind == "session" && (body.Provider == "ahrefs" || body.Provider == "zikaanalytics" || body.Provider == "erank") {
+		writeErr(w, 400, "This provider only updates a tool")
+		return
 	}
 	var site automationSite
 	if body.JobKind == "session" {

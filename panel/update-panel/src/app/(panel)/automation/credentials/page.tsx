@@ -37,7 +37,7 @@ function credentialSchema(creating: boolean) {
       password: z.string(),
     })
     .superRefine((value, ctx) => {
-      if (creating && value.password.trim() === "") {
+      if (creating && value.provider !== "ahrefs" && value.password.trim() === "") {
         ctx.addIssue({ code: "custom", path: ["password"], message: "Enter a password" })
       }
     })
@@ -221,6 +221,7 @@ function CredentialForm({
     },
   })
   const errors = form.formState.errors
+  const provider = form.watch("provider")
 
   return (
     <form
@@ -266,7 +267,11 @@ function CredentialForm({
         <Field data-invalid={Boolean(errors.password) || undefined}>
           <FieldLabel htmlFor="credential-password">Password</FieldLabel>
           <Input id="credential-password" type="password" autoComplete="new-password" {...form.register("password")} />
-          {credential ? <FieldDescription>Leave blank to keep the current password.</FieldDescription> : null}
+          {provider === "ahrefs" ? (
+            <FieldDescription>Leave this blank. Paste the saved Ahrefs cookie on the Storage page.</FieldDescription>
+          ) : credential ? (
+            <FieldDescription>Leave blank to keep the current password.</FieldDescription>
+          ) : null}
           <FieldError errors={[errors.password]} />
         </Field>
       </FieldGroup>

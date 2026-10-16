@@ -282,6 +282,7 @@ function JobForm({
   const credentials = options.credentials.filter((item) => item.provider === provider)
   const jobKind = form.watch("job_kind")
   const showAccount = jobKind !== "session" && Boolean(website) && website?.kind !== "recloud"
+  const toolOnly = provider === "ahrefs" || provider === "zikaanalytics" || provider === "erank"
   const wakeSites = options.websites.filter((item) => item.kind === "recloud" && String(item.id) !== websiteId)
   const selectedWakes = form.watch("wake_website_ids")
 
@@ -322,6 +323,9 @@ function JobForm({
             value={provider}
             onValueChange={(value) => {
               form.setValue("provider", value, { shouldValidate: true })
+              if (value === "ahrefs" || value === "zikaanalytics" || value === "erank") {
+                form.setValue("job_kind", "tool", { shouldValidate: true })
+              }
               const still = options.credentials.find(
                 (item) => String(item.id) === form.getValues("credential_id") && item.provider === value,
               )
@@ -350,14 +354,20 @@ function JobForm({
           <ChoiceSelect
             id="job-kind"
             value={jobKind}
-            onValueChange={(value) => form.setValue("job_kind", value === "session" ? "session" : "tool", { shouldValidate: true })}
-            items={[
-              { label: "Update one tool", value: "tool" },
-              { label: "Store the homepage cookie", value: "session" },
-            ]}
+            onValueChange={(value) => form.setValue("job_kind", !toolOnly && value === "session" ? "session" : "tool", { shouldValidate: true })}
+            items={
+              toolOnly
+                ? [{ label: "Update one tool", value: "tool" }]
+                : [
+                    { label: "Update one tool", value: "tool" },
+                    { label: "Store the homepage cookie", value: "session" },
+                  ]
+            }
           />
           <FieldDescription>
-            Homepage only keeps the portal login. A tool job uses that cookie and writes one tool.
+            {provider === "ahrefs"
+              ? "Refreshes the cookie saved in Storage and writes it to the target and the Ahrefs sites you tick below."
+              : "Homepage only keeps the portal login. A tool job uses that cookie and writes one tool."}
           </FieldDescription>
         </Field>
         {jobKind === "session" ? null : (
@@ -404,7 +414,9 @@ function JobForm({
           <Field>
             <FieldLabel>Also run when these log out</FieldLabel>
             <FieldDescription>
-              Leave this empty while this is the only job for the provider. Every matching recloud tool will wake it. Choose sites when one provider has more than one job.
+              {provider === "ahrefs"
+                ? "Tick every other Ahrefs website that should get this same cookie. Each run writes it there too."
+                : "Leave this empty while this is the only job for the provider. Every matching recloud tool will wake it. Choose sites when one provider has more than one job."}
             </FieldDescription>
             <div className="flex max-h-48 flex-col gap-2 overflow-auto rounded-md border p-3">
               {wakeSites.map((item) => {
