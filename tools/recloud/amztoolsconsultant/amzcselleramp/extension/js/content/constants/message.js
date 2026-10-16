@@ -1,0 +1,1 @@
+const message={confirmAutoAnalyzeDisabling:"Would you like to turn off SAS Auto Analyze when you open an Amazon product page?",confirmAutoAnalyzeEnabling:"Would you like to turn on SAS Auto Analyze when you open an Amazon product page?",turnOnButtonText:"Turn on",turnOffButtonText:"Turn off"};export{message};

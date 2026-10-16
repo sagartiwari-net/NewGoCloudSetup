@@ -752,6 +752,13 @@
       "subdomain": "amzcheliumplat",
       "port": 6302,
       "fqdn": "amzcheliumplat.gt4rents.com"
+    },
+    {
+      "tool": "amzcselleramp",
+      "folder": "recloud/amztoolsconsultant/amzcselleramp",
+      "subdomain": "amzcselleramp",
+      "port": 6303,
+      "fqdn": "amzcselleramp.gt4rents.com"
     }
   ]
 }

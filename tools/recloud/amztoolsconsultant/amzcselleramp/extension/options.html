@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="css/options/options.css" />
+  </head>
+  <body>
+    <form id="optionsForm">
+      <div class="group-container">
+        <div class="group-title">On Amazon Sites</div>
+        <div class="group-content">
+          <div class="switch-container">
+            <label class="switch">
+              <input
+                class="isAutoAnalyzer"
+                type="checkbox"
+                name="isAutoAnalyzer"
+              />
+              <span class="slider"></span>
+            </label>
+            <div class="switch-name">Auto analyze on product pages</div>
+          </div>
+          <div class="switch-container">
+            <label class="switch">
+              <input
+                class="isShortcutVisible"
+                type="checkbox"
+                name="isShortcutVisible"
+              />
+              <span class="slider"></span>
+            </label>
+            <div class="switch-name">SAS shortcut on search pages</div>
+          </div>
+        </div>
+      </div>
+      <!-- 
+        Commented out the isCSPDisabled switcher (Set it to false in the code).
+        Previously, we set it to true to remove the Content Security Policy (CSP)
+        header from sites in order to make the extension work. However, we've
+        changed our approach: we now display an iframe that loads our extension,
+        and within it, we proxy the URL to another iframe. With this method, we no
+        longer face CSP-related issues, and there's no need to remove headers
+        anymore.
+      -->
+      <!-- <div class="group-container">
+        <div class="group-title">Other</div>
+        <div class="group-content">
+          <div class="switch-container">
+            <label class="switch">
+              <input
+                class="isCSPDisabled"
+                type="checkbox"
+                name="isCSPDisabled"
+              />
+              <span class="slider"></span>
+            </label>
+            <div class="switch-name">
+              Allow extension to run on other sites by disabling content
+              security policy
+            </div>
+          </div>
+          <span class="warning-message">
+            Please reload your browser to apply the new settings.
+          </span>
+        </div>
+      </div> -->
+    </form>
+    <footer>
+      <a
+        href="https://selleramp.com/privacy-center/privacy-policy/"
+        target="_blank"
+        >Privacy Policy</a
+      >
+      <div>Version: <span class="extension-version"></span></div>
+    </footer>
+    <script type="text/javascript" src="js/options.js"></script>
+  </body>
+</html>

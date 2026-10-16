@@ -1,0 +1,1 @@
+const declarativeRulesEventTargetTypes={SESSION_ID_HEADER_UPDATED:"session_id_header_updated"},declarativeRulesEventTarget=new EventTarget;export{declarativeRulesEventTargetTypes,declarativeRulesEventTarget};

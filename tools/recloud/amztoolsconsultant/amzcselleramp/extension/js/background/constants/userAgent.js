@@ -1,0 +1,1 @@
+"use strict";const userAgent={value:""},sassUserAgent={value:""},sassUserAgentRequestIdMap={};export{userAgent,sassUserAgent,sassUserAgentRequestIdMap};
