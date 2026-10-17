@@ -1245,13 +1245,23 @@ func rewriteBytes(body []byte, pairs [][2]string) []byte {
 func rewriteHostLock(body []byte) []byte {
 	body = bytes.ReplaceAll(body, []byte(`return"writehuman.ai"`), []byte(`return location.hostname`))
 	body = bytes.ReplaceAll(body, []byte(`return "writehuman.ai"`), []byte(`return location.hostname`))
+	// Root layout joins ['write','human']+'.ai' and location.replace's there before React.
+	body = bytes.ReplaceAll(body,
+		[]byte(`location.replace(o+location.pathname+location.search)`),
+		[]byte(`void 0`),
+	)
+	// React copy of the same check. Returning null skips the "Go to writehuman.ai" wall.
+	body = bytes.ReplaceAll(body,
+		[]byte(`function h({hosts:e,mode:h,exemptMcpPaths:p=!1}){`),
+		[]byte(`function h({hosts:e,mode:h,exemptMcpPaths:p=!1}){return null;`),
+	)
 	return body
 }
 
 // bustChunkURLs changes the script URL once so a browser that cached the
 // unpatched bundle (immutable, 1 year) loads the host-lock fix.
 func bustChunkURLs(body []byte) []byte {
-	return bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=1&dpl="))
+	return bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=2&dpl="))
 }
 
 func rewriteProxyHeader(name, value, publicBase string) string {
@@ -1359,6 +1369,47 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
 
 	return fmt.Sprintf(`<script data-tm-gz="1">
 (function(){
+  var REAL_ORIGIN = location.origin;
+  function keepHere(u) {
+    if (typeof u !== 'string') return u;
+    try {
+      var x = new URL(u, REAL_ORIGIN);
+      var h = (x.hostname || '').replace(/\.$/, '').toLowerCase();
+      if (h === 'writehuman.ai' || h === 'www.writehuman.ai') return REAL_ORIGIN + x.pathname + x.search + x.hash;
+    } catch (e) {}
+    return u;
+  }
+  function wrapNav(name) {
+    try {
+      var desc = Object.getOwnPropertyDescriptor(Location.prototype, name);
+      var orig = desc && typeof desc.value === 'function' ? desc.value : Location.prototype[name];
+      if (typeof orig !== 'function') return;
+      Object.defineProperty(Location.prototype, name, {
+        configurable: true, writable: true,
+        value: function(u) { return orig.call(this, keepHere(u)); }
+      });
+    } catch (e) {}
+  }
+  wrapNav('replace');
+  wrapNav('assign');
+  try {
+    var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+    if (hrefDesc && hrefDesc.get && hrefDesc.set) {
+      var hrefSet = hrefDesc.set;
+      Object.defineProperty(Location.prototype, 'href', {
+        configurable: true, enumerable: hrefDesc.enumerable,
+        get: hrefDesc.get,
+        set: function(v) { return hrefSet.call(this, keepHere(v)); }
+      });
+    }
+  } catch (e) {}
+  document.addEventListener('click', function(ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    var local = keepHere(href);
+    if (local !== href) { ev.preventDefault(); ev.stopImmediatePropagation(); location.href = local; }
+  }, true);
   var TM_USER = %s;
   var PLAN = %s;
   // Restore session
@@ -1420,31 +1471,6 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     var h = HOME || '/';
     if ((location.pathname || '/') !== h) history.replaceState(null, '', h);
   }
-  function keepHere(u) {
-    if (typeof u !== 'string') return u;
-    try {
-      var x = new URL(u, location.origin);
-      var h = (x.hostname || '').toLowerCase();
-      if (h === 'writehuman.ai' || h === 'www.writehuman.ai') {
-        return location.origin + x.pathname + x.search + x.hash;
-      }
-    } catch (e) {}
-    return u;
-  }
-  try {
-    var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-    if (hrefDesc && hrefDesc.get && hrefDesc.set) {
-      Object.defineProperty(Location.prototype, 'href', {
-        configurable: true,
-        enumerable: hrefDesc.enumerable,
-        get: hrefDesc.get,
-        set: function(v) {
-          if (typeof v === 'string') v = keepHere(v);
-          return hrefDesc.set.call(this, v);
-        }
-      });
-    }
-  } catch (e) {}
   try {
     var _push = history.pushState.bind(history);
     history.pushState = function(s, t, u) {
@@ -1458,10 +1484,6 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       if (isBlocked(u)) return _rep(s, t, HOME || '/');
       return _rep(s, t, u);
     };
-    var _assign = location.assign.bind(location);
-    location.assign = function(u) { u = keepHere(u); if (isBlocked(u)) return stayHome(); return _assign(u); };
-    var _replace = location.replace.bind(location);
-    location.replace = function(u) { u = keepHere(u); if (isBlocked(u)) return stayHome(); return _replace(u); };
     var _open = window.open;
     window.open = function(u, name, specs) {
       if (typeof u === 'string') u = keepHere(u);
@@ -1471,9 +1493,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
       if (!a) return;
       var href = a.getAttribute('href') || '';
-      if (isBlocked(href)) { ev.preventDefault(); stayHome(); return; }
-      var local = keepHere(href);
-      if (local !== href) { ev.preventDefault(); location.assign(local); }
+      if (isBlocked(href)) { ev.preventDefault(); stayHome(); }
     }, true);
     if (isBlocked(location.pathname)) stayHome();
   } catch (e) {}

@@ -12,6 +12,11 @@ func TestHostLockStaysOnProxy(t *testing.T) {
 	if strings.Contains(out, `return"writehuman.ai"`) || !strings.Contains(out, "return location.hostname") {
 		t.Fatalf("host lock not rewritten: %s", out)
 	}
+	page := []byte(`<script>(function(){var d=['write','human'].join('')+'.ai';location.replace(o+location.pathname+location.search);})()</script>`)
+	page = rewriteHostLock(page)
+	if strings.Contains(string(page), "location.replace(o+location.pathname+location.search)") {
+		t.Fatal("bootstrap redirect still present")
+	}
 	loc := rewriteOfficialLocation("https://writehuman.ai/pricing?x=1", "https://writehuman.gt4rents.com")
 	if loc != "https://writehuman.gt4rents.com/pricing?x=1" {
 		t.Fatalf("location = %s", loc)
