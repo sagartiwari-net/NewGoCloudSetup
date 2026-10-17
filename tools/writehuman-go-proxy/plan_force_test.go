@@ -6,6 +6,25 @@ import (
 	"testing"
 )
 
+func TestSupabaseCookieIsBase64URL(t *testing.T) {
+	packed := encodeSupabaseCookieValue(`{"access_token":"a+b/c","refresh_token":"r"}`)
+	if !strings.HasPrefix(packed, "base64-") || strings.ContainsAny(packed, "+/=") {
+		t.Fatalf("cookie encoding = %s", packed)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(packed, "base64-"))
+	if err != nil || !strings.Contains(string(raw), "a+b/c") {
+		t.Fatalf("decode %q err=%v", raw, err)
+	}
+	chunks := chunkSupabaseCookie("sb-writehuman-auth-token", strings.Repeat("a", 4000))
+	if len(chunks) < 2 || chunks[0][0] != "sb-writehuman-auth-token.0" {
+		t.Fatalf("chunks = %#v", chunks)
+	}
+	body := relaxWriteHumanSession("/api/auth/heartbeat", []byte(`{"data":{"sessionDead":true,"status":"session_limit"}}`))
+	if strings.Contains(string(body), "session_limit") || strings.Contains(string(body), "true") {
+		t.Fatalf("session still blocked: %s", body)
+	}
+}
+
 func TestHostLockStaysOnProxy(t *testing.T) {
 	in := []byte(`function s(){return"writehuman.ai"}`)
 	out := string(rewriteHostLock(in))

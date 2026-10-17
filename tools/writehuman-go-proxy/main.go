@@ -294,7 +294,52 @@ func decodeSupabaseCookieValue(val string) string {
 }
 
 func encodeSupabaseCookieValue(sessionJSON string) string {
-	return "base64-" + base64.StdEncoding.EncodeToString([]byte(sessionJSON))
+	// supabase-ssr 0.8 defaults to base64url and rejects standard base64 (+ /).
+	return "base64-" + base64.RawURLEncoding.EncodeToString([]byte(sessionJSON))
+}
+
+// chunkSupabaseCookie matches supabase-ssr: one cookie when the value's
+// encoded length is within 3180, otherwise name.0, name.1, ...
+func chunkSupabaseCookie(name, value string) [][2]string {
+	const maxChunk = 3180
+	if len(value) <= maxChunk {
+		return [][2]string{{name, value}}
+	}
+	var out [][2]string
+	for i, n := 0, 0; i < len(value); n++ {
+		end := i + maxChunk
+		if end > len(value) {
+			end = len(value)
+		}
+		out = append(out, [2]string{fmt.Sprintf("%s.%d", name, n), value[i:end]})
+		i = end
+	}
+	return out
+}
+
+func writeSupabaseBrowserCookies(w http.ResponseWriter, name, sessionJSON string) {
+	name = strings.TrimSpace(name)
+	sessionJSON = strings.TrimSpace(sessionJSON)
+	if name == "" || sessionJSON == "" || !strings.HasPrefix(name, "sb-") || !strings.HasSuffix(name, "-auth-token") {
+		return
+	}
+	chunks := chunkSupabaseCookie(name, encodeSupabaseCookieValue(sessionJSON))
+	if len(chunks) > 1 {
+		http.SetCookie(w, &http.Cookie{Name: name, Value: "deleted", Path: "/", MaxAge: -1})
+	} else {
+		for i := 0; i < 6; i++ {
+			http.SetCookie(w, &http.Cookie{Name: fmt.Sprintf("%s.%d", name, i), Value: "deleted", Path: "/", MaxAge: -1})
+		}
+	}
+	for _, ch := range chunks {
+		http.SetCookie(w, &http.Cookie{
+			Name:     ch[0],
+			Value:    ch[1],
+			Path:     "/",
+			MaxAge:   7 * 24 * 3600,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
 }
 
 func refreshChromeCookieArray(raw, newAT, newRT string, out map[string]interface{}) (string, error) {
@@ -1150,16 +1195,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if token != "" {
 			http.SetCookie(w, &http.Cookie{Name: "accessToken4", Value: token, Path: "/", MaxAge: 7 * 24 * 3600})
 		}
+		var sessionJSON string
 		for name, value := range ls {
-			if strings.HasPrefix(name, "sb-") && strings.HasSuffix(name, "-auth-token") && value != "" {
-				http.SetCookie(w, &http.Cookie{
-					Name:     name,
-					Value:    encodeSupabaseCookieValue(value),
-					Path:     "/",
-					MaxAge:   7 * 24 * 3600,
-					SameSite: http.SameSiteLaxMode,
-				})
+			if !strings.HasPrefix(name, "sb-") || !strings.HasSuffix(name, "-auth-token") || value == "" {
+				continue
 			}
+			writeSupabaseBrowserCookies(w, name, value)
+			if sessionJSON == "" {
+				sessionJSON = value
+			}
+		}
+		if sessionJSON != "" {
+			writeSupabaseBrowserCookies(w, supabaseStorageKey(c.PublicHost), sessionJSON)
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
@@ -1169,6 +1216,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		body = rewriteHostLock(body)
 		if strings.Contains(ct, "application/json") || strings.Contains(ct, "+json") {
 			body = forceGPTZeroPremiumPlan(path, body)
+			body = relaxWriteHumanSession(path, body)
 		}
 	}
 
@@ -1242,6 +1290,41 @@ func rewriteBytes(body []byte, pairs [][2]string) []byte {
 // rewriteHostLock makes WriteHuman's official-host check accept the proxy host.
 // The bundle does `function s(){return"writehuman.ai"}` and treats every other
 // host as an unauthorized copy, with a link that leaves for the official site.
+// relaxWriteHumanSession keeps a valid saved cookie signed in when WriteHuman
+// reports the browser is not one of the three "current" sessions.
+func relaxWriteHumanSession(path string, body []byte) []byte {
+	if !strings.Contains(path, "/api/auth/heartbeat") && !strings.Contains(path, "/api/auth/session") {
+		return body
+	}
+	var v map[string]interface{}
+	if json.Unmarshal(body, &v) != nil {
+		return body
+	}
+	data, _ := v["data"].(map[string]interface{})
+	if data == nil {
+		return body
+	}
+	changed := false
+	for _, key := range []string{"sessionDead", "suspended", "kicked"} {
+		if data[key] == true {
+			data[key] = false
+			changed = true
+		}
+	}
+	if status, _ := data["status"].(string); status == "session_limit" {
+		data["status"] = "ok"
+		changed = true
+	}
+	if !changed {
+		return body
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
 func rewriteHostLock(body []byte) []byte {
 	body = bytes.ReplaceAll(body, []byte(`return"writehuman.ai"`), []byte(`return location.hostname`))
 	body = bytes.ReplaceAll(body, []byte(`return "writehuman.ai"`), []byte(`return location.hostname`))
@@ -1428,9 +1511,32 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     }
     if (authVal) {
       var derived = 'sb-' + String(location.hostname || '127').split('.')[0] + '-auth-token';
-      localStorage.setItem(derived, typeof authVal === 'string' ? authVal : JSON.stringify(authVal));
-      localStorage.setItem('sb-127-auth-token', typeof authVal === 'string' ? authVal : JSON.stringify(authVal));
-      localStorage.setItem('sb-localhost-auth-token', typeof authVal === 'string' ? authVal : JSON.stringify(authVal));
+      var authJSON = typeof authVal === 'string' ? authVal : JSON.stringify(authVal);
+      localStorage.setItem(derived, authJSON);
+      localStorage.setItem('sb-127-auth-token', authJSON);
+      localStorage.setItem('sb-localhost-auth-token', authJSON);
+      // supabase-ssr reads this cookie, not localStorage. The name is the
+      // first label of the page host after the project URL is rewritten.
+      try {
+        var bytes = unescape(encodeURIComponent(authJSON));
+        var packed = 'base64-' + btoa(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+        function putSB(n, v, age) { document.cookie = n + '=' + v + '; path=/; max-age=' + age + '; samesite=lax'; }
+        function writeSB(name) {
+          var max = 3180;
+          if (packed.length <= max) {
+            for (var i = 0; i < 6; i++) putSB(name + '.' + i, '', 0);
+            putSB(name, packed, 604800);
+            return;
+          }
+          putSB(name, '', 0);
+          var n = 0;
+          for (var i = 0; i < packed.length; i += max) { putSB(name + '.' + n, packed.slice(i, i + max), 604800); n++; }
+        }
+        writeSB(derived);
+        for (var ck in storageData) {
+          if (ck.indexOf('sb-') === 0 && ck.indexOf('-auth-token') === ck.length - 11 && ck !== derived) writeSB(ck);
+        }
+      } catch (eCookie) {}
     }
     localStorage.setItem('plan', PLAN);
     document.cookie = 'plan=' + encodeURIComponent(PLAN) + '; path=/; max-age=604800; samesite=lax';
