@@ -1747,10 +1747,27 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       return _open.call(window, u, name, specs);
     };
     document.addEventListener('click', function(ev) {
+      if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button) return;
       var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
       if (!a) return;
+      var target = a.getAttribute('target') || '';
+      if (target && target !== '_self') return;
       var href = a.getAttribute('href') || '';
-      if (isBlocked(href)) { ev.preventDefault(); stayHome(); }
+      if (!href || href.charAt(0) === '#') return;
+      if (isBlocked(href)) { ev.preventDefault(); ev.stopImmediatePropagation(); stayHome(); return; }
+      // Next's client router preventDefault's these and then drops the navigation
+      // (Tools menu: AI Detector, Image Detector, Word Counter, Extension).
+      // A full load of the same path stays on this host.
+      var dest = '';
+      try {
+        var x = new URL(keepHere(href), REAL_ORIGIN);
+        if (x.origin !== REAL_ORIGIN) return;
+        dest = x.pathname + x.search + x.hash;
+      } catch (e) { return; }
+      if (!dest || dest === location.pathname + location.search + location.hash) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      location.assign(dest);
     }, true);
     if (isBlocked(location.pathname)) stayHome();
   } catch (e) {}

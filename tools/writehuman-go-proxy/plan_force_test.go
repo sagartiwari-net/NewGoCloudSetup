@@ -137,6 +137,7 @@ func TestBuildInjectUpsellDismissAndLayoutGuards(t *testing.T) {
 		"gzUnhideLayout",
 		"Premium (Annual)",
 		"trialSubscriptionUsed",
+		"location.assign(dest)",
 	}
 	for _, n := range need {
 		if !strings.Contains(s, n) {
