@@ -1,0 +1,12 @@
+{
+  "port": "6400",
+  "public_host": "127.0.0.1:6400",
+  "public_scheme": "http",
+  "target_url": "https://semnew1.accesstool.in",
+  "home_path": "/analytics/overview/?searchType=domain",
+  "tool_name": "SEO Shop Semrush 1",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}

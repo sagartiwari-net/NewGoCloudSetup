@@ -787,6 +787,13 @@
       "subdomain": "amzcenv",
       "port": 6307,
       "fqdn": "amzcenv.gt4rents.com"
+    },
+    {
+      "tool": "shsm1",
+      "folder": "recloud/seoshop/shsm1",
+      "subdomain": "shsm1",
+      "port": 6400,
+      "fqdn": "shsm1.gt4rents.com"
     }
   ]
 }
