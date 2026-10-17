@@ -1611,8 +1611,38 @@ func rewriteHostLock(body []byte) []byte {
 
 // bustChunkURLs changes the script URL once so a browser that cached the
 // unpatched bundle (immutable, 1 year) loads the host-lock fix.
+// Next.js also splits that query across two flight <script> tags. The
+// browser joins those tags back into ?dpl=, then loads the page module a
+// second time, and the page stays dehydrated so Tools hover never runs.
 func bustChunkURLs(body []byte) []byte {
-	return bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=2&dpl="))
+	body = bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=2&dpl="))
+	return bustSplitChunkQuery(body)
+}
+
+func bustSplitChunkQuery(body []byte) []byte {
+	seam := []byte(`"])</script><script>self.__next_f.push([1,"`)
+	const token = "?dpl="
+	const want = "?whhost=2&dpl="
+	var out []byte
+	rest := body
+	for {
+		i := bytes.Index(rest, seam)
+		if i < 0 {
+			return append(out, rest...)
+		}
+		left := rest[:i]
+		right := rest[i+len(seam):]
+		for n := 1; n < len(token); n++ {
+			if bytes.HasSuffix(left, []byte(token[:n])) && bytes.HasPrefix(right, []byte(token[n:])) {
+				left = append(append([]byte{}, left[:len(left)-n]...), want...)
+				right = right[len(token)-n:]
+				break
+			}
+		}
+		out = append(out, left...)
+		out = append(out, seam...)
+		rest = right
+	}
 }
 
 func rewriteProxyHeader(name, value, publicBase string) string {

@@ -82,6 +82,21 @@ func TestHostLockStaysOnProxy(t *testing.T) {
 	}
 }
 
+func TestBustChunkQuerySurvivesFlightSplit(t *testing.T) {
+	in := []byte(`<script src="/_next/static/chunks/page.js?dpl=dpl_abc"></script><script>self.__next_f.push([1,"/_next/static/chunks/b1262d9a671fb619.js?d"])</script><script>self.__next_f.push([1,"pl=dpl_abc\",\"/_next/static/chunks/other.js?dpl=dpl_abc"])</script>`)
+	out := string(bustChunkURLs(in))
+	if strings.Contains(out, "?dpl=") {
+		t.Fatalf("unbusted query left:\n%s", out)
+	}
+	joined := strings.ReplaceAll(out, `"])</script><script>self.__next_f.push([1,"`, "")
+	if !strings.Contains(joined, "b1262d9a671fb619.js?whhost=2&dpl=dpl_abc") {
+		t.Fatalf("split chunk query not joined:\n%s", out)
+	}
+	if strings.Count(out, "page.js?whhost=2&dpl=dpl_abc") != 1 || strings.Count(out, "other.js?whhost=2&dpl=dpl_abc") != 1 {
+		t.Fatalf("contiguous urls changed: %s", out)
+	}
+}
+
 func TestChromeCookieArrayRestoresSupabaseSession(t *testing.T) {
 	sess := `{"access_token":"header.payload.sig","refresh_token":"rtok","token_type":"bearer"}`
 	raw := `[{"name":"sb-hicfsbrfkzsxbwayibfm-auth-token","value":"base64-` + base64.StdEncoding.EncodeToString([]byte(sess)) + `"},{"name":"_ga","value":"1"}]`
