@@ -1,0 +1,12 @@
+{
+  "port": "6401",
+  "public_host": "127.0.0.1:6401",
+  "public_scheme": "http",
+  "target_url": "https://semnew.accesstool.in",
+  "home_path": "/analytics/overview/",
+  "tool_name": "SEO Shop Semrush 2",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30
+}

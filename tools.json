@@ -794,6 +794,13 @@
       "subdomain": "shsm1",
       "port": 6400,
       "fqdn": "shsm1.gt4rents.com"
+    },
+    {
+      "tool": "shsm2",
+      "folder": "recloud/seoshop/shsm2",
+      "subdomain": "shsm2",
+      "port": 6401,
+      "fqdn": "shsm2.gt4rents.com"
     }
   ]
 }
