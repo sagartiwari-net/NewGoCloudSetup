@@ -619,6 +619,143 @@ func ensureFreshSessionRaw(raw string, accountID int, proxyStr string) (string, 
 	return string(updated), nil
 }
 
+func shouldLogWriteHumanNet(path string) bool {
+	if isGPTZeroCDNPath(path) {
+		return false
+	}
+	lower := strings.ToLower(path)
+	switch {
+	case strings.HasSuffix(lower, ".js"), strings.HasSuffix(lower, ".css"),
+		strings.HasSuffix(lower, ".png"), strings.HasSuffix(lower, ".jpg"),
+		strings.HasSuffix(lower, ".jpeg"), strings.HasSuffix(lower, ".gif"),
+		strings.HasSuffix(lower, ".webp"), strings.HasSuffix(lower, ".svg"),
+		strings.HasSuffix(lower, ".ico"), strings.HasSuffix(lower, ".woff"),
+		strings.HasSuffix(lower, ".woff2"), strings.HasSuffix(lower, ".ttf"),
+		strings.HasSuffix(lower, ".map"), strings.HasSuffix(lower, ".mp4"),
+		strings.HasSuffix(lower, ".mp3"), strings.HasSuffix(lower, ".webm"):
+		return false
+	default:
+		return true
+	}
+}
+
+func summarizeNetBody(body []byte) string {
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 {
+		return "-"
+	}
+	if body[0] != '{' && body[0] != '[' {
+		return fmt.Sprintf("bytes=%d", len(body))
+	}
+	var v any
+	if json.Unmarshal(body, &v) != nil {
+		return fmt.Sprintf("bytes=%d", len(body))
+	}
+	var b strings.Builder
+	writeNetValue(&b, v, 0)
+	out := b.String()
+	if out == "" {
+		return fmt.Sprintf("bytes=%d", len(body))
+	}
+	return truncate(out, 500)
+}
+
+func writeNetValue(b *strings.Builder, v any, depth int) {
+	if depth > 3 {
+		return
+	}
+	switch t := v.(type) {
+	case map[string]any:
+		n := 0
+		for k, child := range t {
+			if netKeyHidden(k) {
+				continue
+			}
+			if n > 0 {
+				b.WriteByte(' ')
+			}
+			n++
+			if n > 24 {
+				b.WriteString("…")
+				return
+			}
+			b.WriteString(k)
+			b.WriteByte('=')
+			if s, ok := child.(string); ok && netTextKey(k) {
+				b.WriteString(fmt.Sprintf("chars=%d words=%d", len(s), len(strings.Fields(s))))
+				continue
+			}
+			writeNetValue(b, child, depth+1)
+		}
+	case []any:
+		b.WriteString(fmt.Sprintf("list:%d", len(t)))
+		if len(t) > 0 && depth < 2 {
+			b.WriteByte('[')
+			writeNetValue(b, t[0], depth+1)
+			b.WriteByte(']')
+		}
+	case string:
+		if netStringHidden(t) {
+			b.WriteString("redacted")
+			return
+		}
+		if len(t) > 48 {
+			b.WriteString(fmt.Sprintf("chars=%d words=%d", len(t), len(strings.Fields(t))))
+			return
+		}
+		b.WriteString(t)
+	case float64:
+		if t == float64(int64(t)) {
+			b.WriteString(fmt.Sprintf("%d", int64(t)))
+			return
+		}
+		b.WriteString(fmt.Sprintf("%g", t))
+	case bool:
+		if t {
+			b.WriteString("true")
+		} else {
+			b.WriteString("false")
+		}
+	case nil:
+		b.WriteString("null")
+	default:
+		b.WriteString(fmt.Sprintf("%v", t))
+	}
+}
+
+func netTextKey(key string) bool {
+	k := strings.ToLower(key)
+	switch {
+	case strings.Contains(k, "text"), strings.Contains(k, "content"),
+		strings.Contains(k, "prompt"), strings.Contains(k, "output"),
+		strings.Contains(k, "input"), k == "result", k == "message":
+		return true
+	default:
+		return false
+	}
+}
+
+func netKeyHidden(key string) bool {
+	k := strings.ToLower(key)
+	switch {
+	case strings.Contains(k, "token"), strings.Contains(k, "cookie"),
+		strings.Contains(k, "secret"), strings.Contains(k, "password"),
+		strings.Contains(k, "email"), strings.Contains(k, "authorization"),
+		k == "apikey", k == "refresh_token", k == "access_token":
+		return true
+	default:
+		return false
+	}
+}
+
+func netStringHidden(s string) bool {
+	if strings.Contains(s, "@") {
+		return true
+	}
+	parts := strings.Split(s, ".")
+	return len(parts) == 3 && len(s) > 40
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -1051,10 +1188,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Word-credit gate: 1 word = 1 credit per billable scan/AI POST.
 	billAmount := 0
 	reqBody := r.Body
+	var reqPeek []byte
+	if shouldLogWriteHumanNet(path) && r.Body != nil &&
+		(r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch) {
+		peek, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		reqPeek = peek
+		reqBody = io.NopCloser(bytes.NewReader(peek))
+	}
 	if usesPanelAccountMode(c) && !c.BypassAuth && panelUser != "" &&
 		isBillableGPTZeroPath(r.Method, path) {
-		bodyBytes, _ := io.ReadAll(io.LimitReader(r.Body, 8<<20))
-		_ = r.Body.Close()
+		bodyBytes, _ := io.ReadAll(io.LimitReader(reqBody, 8<<20))
+		_ = reqBody.Close()
 		reqBody = io.NopCloser(bytes.NewReader(bodyBytes))
 		billAmount = creditAmountFromBody(bodyBytes)
 		if !panelCreditsAllowAmount(panelUser, billAmount) {
@@ -1122,6 +1267,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "read error", 502)
 		return
+	}
+	// Temporary. Remove after WriteHuman limits are wired from these lines.
+	if shouldLogWriteHumanNet(path) {
+		log.Printf("[WH-NET] %s %s%s -> %d bytes=%d req=%s resp=%s",
+			r.Method, hostOnly, path, resp.StatusCode, len(body),
+			summarizeNetBody(reqPeek), summarizeNetBody(body))
 	}
 	// Usage discovery: log billable-looking API traffic (scan/AI/write) so we can wire limits.
 	if isAPI || strings.HasPrefix(path, "/v2/") || strings.HasPrefix(path, "/v3/") || strings.HasPrefix(path, "/api-proxy/") {
