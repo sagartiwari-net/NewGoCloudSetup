@@ -34,14 +34,11 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 		return false, nil, automation.ErrUserAgent
 	}
 	updated, err := refresh(ctx, cookies)
-	if errors.Is(err, errLoginRedirect) {
-		return false, nil, nil
-	}
-	if err != nil {
+	if err != nil || !hasName(updated, "BSSESSID") {
+		if err == nil || errors.Is(err, errLoginRedirect) {
+			return false, nil, automation.ErrCookieRejected
+		}
 		return false, nil, err
-	}
-	if !hasName(updated, "BSSESSID") {
-		return false, nil, nil
 	}
 	return true, updated, nil
 }
@@ -56,8 +53,8 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, _ string)
 	}
 	updated, err := refresh(ctx, portal)
 	if err != nil || !hasName(updated, "BSSESSID") {
-		if err == nil {
-			err = automation.ErrStoredCookie
+		if err == nil || errors.Is(err, errLoginRedirect) {
+			err = automation.ErrCookieRejected
 		}
 		return nil, err
 	}

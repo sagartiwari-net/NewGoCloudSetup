@@ -105,6 +105,21 @@ func ParseStoredCookies(raw string) []Cookie {
 	if raw == "" {
 		return nil
 	}
+	if cookies := cookiesFromJSON(raw); len(cookies) > 0 {
+		return cookies
+	}
+	if start := strings.Index(raw, "["); start >= 0 {
+		if end := strings.LastIndex(raw, "]"); end > start {
+			if cookies := cookiesFromJSON(raw[start : end+1]); len(cookies) > 0 {
+				return cookies
+			}
+		}
+	}
+	return headerCookies(raw)
+}
+
+func cookiesFromJSON(raw string) []Cookie {
+	raw = strings.TrimSpace(raw)
 	if strings.HasPrefix(raw, "[") {
 		var cookies []Cookie
 		if json.Unmarshal([]byte(raw), &cookies) == nil {
@@ -119,7 +134,7 @@ func ParseStoredCookies(raw string) []Cookie {
 			return dropEmptyCookies(wrapped.Cookies)
 		}
 	}
-	return headerCookies(raw)
+	return nil
 }
 
 func dropEmptyCookies(cookies []Cookie) []Cookie {

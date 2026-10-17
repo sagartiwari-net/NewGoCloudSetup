@@ -289,6 +289,8 @@ func automationPublicReason(err error) string {
 		return errAutomationHomepage.Error()
 	case errors.Is(err, automation.ErrStoredCookie):
 		return automation.ErrStoredCookie.Error()
+	case errors.Is(err, automation.ErrCookieRejected):
+		return automation.ErrCookieRejected.Error()
 	case errors.Is(err, automation.ErrUserAgent):
 		return automation.ErrUserAgent.Error()
 	default:
@@ -453,8 +455,8 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		return
 	}
 	userAgent := ""
+	accountID := job.TargetAccountID
 	if job.Provider == "ahrefs" && job.Kind != "session" {
-		accountID := job.TargetAccountID
 		if accountID <= 0 {
 			accountID = s.firstAutomationAccount(site.ID)
 		}
@@ -466,6 +468,11 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	}
 	ctx = automation.WithUserAgent(ctx, userAgent)
 	stored := s.readAutomationCookies(job.CredentialID)
+	if job.Provider == "ahrefs" && !cookieNamed(stored, "BSSESSID") {
+		if fromAccount := s.readAccountCookies(accountID); cookieNamed(fromAccount, "BSSESSID") {
+			stored = fromAccount
+		}
+	}
 	secrets = append(secrets, cookieValues(stored)...)
 	log.Printf("[automation] job %d stored cookies %d [%s]", job.ID, len(stored), automation.Names(stored))
 	portal := stored
@@ -519,7 +526,7 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 		s.failAutomation(job, errAutomationLoginPage, append(secrets, cookieValues(tool)...))
 		return
 	}
-	accountID, err := s.writeAutomationAccountCookie(site, job.TargetAccountID, raw)
+	accountID, err = s.writeAutomationAccountCookie(site, accountID, raw)
 	if err != nil {
 		s.failAutomation(job, errAutomationLoginPage, append(secrets, raw))
 		return
@@ -809,6 +816,26 @@ func (s *server) readAccountUserAgent(accountID int) string {
 		return ""
 	}
 	return strings.TrimSpace(ua)
+}
+
+func cookieNamed(cookies []cookieJSON, name string) bool {
+	for _, cookie := range cookies {
+		if strings.EqualFold(cookie.Name, name) && strings.TrimSpace(cookie.Value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *server) readAccountCookies(accountID int) []cookieJSON {
+	if accountID <= 0 {
+		return nil
+	}
+	var raw string
+	if err := s.db.QueryRow(`SELECT COALESCE(cookie, '') FROM accounts WHERE id=?`, accountID).Scan(&raw); err != nil {
+		return nil
+	}
+	return parseStoredCookies(raw)
 }
 
 func (s *server) readAutomationCookies(credentialID int) []cookieJSON {

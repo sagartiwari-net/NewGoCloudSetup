@@ -25,3 +25,11 @@ func TestUserAgentStaysBesideTheCookies(t *testing.T) {
 		t.Fatal("wrapped cookies missing")
 	}
 }
+
+func TestCookieArrayStillParsesAfterAUserAgentLine(t *testing.T) {
+	raw := "useragent: Mozilla/5.0 Chrome/154\n[{\"name\":\"BSSESSID\",\"value\":\"sess\",\"domain\":\".ahrefs.com\",\"path\":\"/\"}]"
+	cookies := ParseStoredCookies(raw)
+	if len(cookies) != 1 || cookies[0].Name != "BSSESSID" || cookies[0].Value != "sess" {
+		t.Fatalf("cookies %#v", cookies)
+	}
+}

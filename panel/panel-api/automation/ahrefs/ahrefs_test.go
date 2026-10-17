@@ -48,6 +48,26 @@ func TestRefreshKeepsBSSESSID(t *testing.T) {
 	}
 }
 
+func TestRejectedCookieDoesNotLookLikeAMissingPaste(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/user/login", http.StatusFound)
+	}))
+	defer srv.Close()
+	dashboardURL = srv.URL + "/dashboard"
+	refreshURL = srv.URL + "/v4/loginCheckCompletion"
+	t.Cleanup(func() {
+		dashboardURL = "https://app.ahrefs.com/dashboard"
+		refreshURL = "https://app.ahrefs.com/v4/loginCheckCompletion"
+	})
+	ctx := automation.WithUserAgent(context.Background(), "Mozilla/5.0 Chrome/154")
+	ok, _, err := Recipe{}.Check(ctx, []automation.Cookie{{
+		Name: "BSSESSID", Value: "saved", Domain: ".ahrefs.com", Path: "/",
+	}})
+	if ok || err == nil || err.Error() != automation.ErrCookieRejected.Error() {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+}
+
 func TestDeadCookieAsksForStorage(t *testing.T) {
 	ok, _, err := Recipe{}.Check(context.Background(), nil)
 	if err != nil || ok {

@@ -1002,4 +1002,8 @@ func TestAhrefsCopyWritesTheOtherOwnWebsite(t *testing.T) {
 	if got := s.readAccountUserAgent(secondAccount); got != "Mozilla/5.0 AhrefsTest" {
 		t.Fatalf("mapped user agent %q", got)
 	}
+	accountCookies := s.readAccountCookies(secondAccount)
+	if !cookieNamed(accountCookies, "BSSESSID") {
+		t.Fatal("mapped account cookie was not readable")
+	}
 }
