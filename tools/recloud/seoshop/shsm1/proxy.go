@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -355,14 +357,26 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			continue
 		}
 		ct := resp.Header.Get("Content-Type")
+		statusCode := resp.StatusCode
+		respHeader := resp.Header.Clone()
 		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
 			payload = rewriteText(payload, targetBase.Host, origin)
 		}
 		if isDocumentNavigation(r) && bodyIsDashboardGate(payload) {
-			token := sessionTokenFromRequest(r)
-			_, _ = noteLogout(cfg, r, acc, token, "logout")
+			noteCookieExpired(cfg, r, acc, sessionTokenFromRequest(r))
 			renderLoggedOutPage(w, cfg)
 			return
+		}
+		if isDocumentNavigation(r) && !isLoginPath(r.URL.Path) && targetBase.Host == base.Host && semrushServerDown(payload) {
+			if next, trial, trialHeader, ok := firstWorkingSemrushAccount(r.Context(), cfg, base, requestURI, acc.ID); ok {
+				log.Printf("[LB] semrush server %s is up, leaving %s", next.Name, acc.Name)
+				assignSessionAccount(cfg, sessionTokenFromRequest(r), next)
+				acc = next
+				payload = rewriteText(trial, base.Host, origin)
+				ct = "text/html"
+				statusCode = http.StatusOK
+				respHeader = trialHeader
+			}
 		}
 		if attempts > 1 && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload) {
 			if attempt < attempts {
@@ -392,12 +406,12 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			}
 		}
 		h := w.Header()
-		copyResponseHeaders(h, resp.Header, base.Host, origin)
+		copyResponseHeaders(h, respHeader, base.Host, origin)
 		h.Set("Cache-Control", "no-store")
 		h.Set("Pragma", "no-cache")
 		h.Del("Content-Encoding")
 		h.Del("Content-Length")
-		w.WriteHeader(resp.StatusCode)
+		w.WriteHeader(statusCode)
 		if r.Method != http.MethodHead {
 			_, _ = w.Write(payload)
 		}
@@ -405,6 +419,49 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	}
 	log.Printf("[UP] %s %s: %v", r.Method, r.URL.Path, lastErr)
 	http.Error(w, "Upstream unavailable", http.StatusBadGateway)
+}
+
+func firstWorkingSemrushAccount(ctx context.Context, cfg Config, base *url.URL, requestURI string, except int) (ToolAccount, []byte, http.Header, bool) {
+	for _, other := range storedSemrushAccounts(cfg, except) {
+		status, hdr, body, err := probeSemrushAccount(ctx, base, requestURI, other)
+		if err != nil || bodyIsDashboardGate(body) || semrushServerDown(body) || status >= 400 {
+			continue
+		}
+		if hdr == nil {
+			hdr = make(http.Header)
+		}
+		return other, body, hdr, true
+	}
+	return ToolAccount{}, nil, nil, false
+}
+
+func probeSemrushAccount(ctx context.Context, base *url.URL, requestURI string, acc ToolAccount) (int, http.Header, []byte, error) {
+	gate := upstreamSessionCookie(acc.Cookie)
+	if gate == "" || base == nil {
+		return 0, nil, nil, fmt.Errorf("no gate cookie")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL(base, requestURI), nil)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	req.Host = base.Host
+	req.Header.Set("Host", base.Host)
+	req.Header.Set("Origin", base.Scheme+"://"+base.Host)
+	req.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
+	req.Header.Set("Cookie", gate)
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	resp, err := upstreamClient.Do(req)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := readUpstreamBody(resp)
+	if err != nil {
+		return resp.StatusCode, nil, nil, err
+	}
+	return resp.StatusCode, resp.Header.Clone(), body, nil
 }
 
 func copyRequestHeaders(dst *http.Request, src *http.Request) {

@@ -102,7 +102,7 @@ func TestSearchRequestsArePatchedBeforeAppScripts(t *testing.T) {
 }
 
 func TestUpstreamRequestDropsProxyHeaders(t *testing.T) {
-	src := httptest.NewRequest(http.MethodGet, "https://shsm2.gt4rents.com/analytics/overview/", nil)
+	src := httptest.NewRequest(http.MethodGet, "https://shsm2.gt4rents.com/analytics/overview/?searchType=domain", nil)
 	src.Header.Set("X-Forwarded-Host", "shsm2.gt4rents.com")
 	src.Header.Set("X-Forwarded-For", "203.0.113.8")
 	src.Header.Set("X-Real-IP", "203.0.113.8")
@@ -156,7 +156,7 @@ func TestLoginPageRetriesThenOpensHome(t *testing.T) {
 
 	cfg := Config{
 		TargetURL:    upstream.URL,
-		HomePath:     "/analytics/overview/",
+		HomePath:     "/analytics/overview/?searchType=domain",
 		PublicHost:   "shsm2.gt4rents.com",
 		PublicScheme: "http",
 		ToolName:     "SEO Shop Semrush 2",
@@ -203,5 +203,74 @@ func TestLogoutPath(t *testing.T) {
 	}
 	if !bodyIsDashboardGate([]byte(`<h1>Access Denied</h1><p>Please access Semrush through the Dashboard.</p>`)) {
 		t.Fatal("dashboard gate should show the logout message")
+	}
+	if semrushServerDown([]byte(`Please access Semrush through the Dashboard.`)) {
+		t.Fatal("expired gate cookie must not switch servers")
+	}
+	if !semrushServerDown([]byte(`<p>Your session expired. Sign in again.</p>`)) {
+		t.Fatal("a live gate with a dead semrush server should switch")
+	}
+}
+
+func TestDeadSemrushServerTriesTheNextGate(t *testing.T) {
+	old := storedSemrushAccounts
+	t.Cleanup(func() { storedSemrushAccounts = old })
+	var cookies []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookies = append(cookies, r.Header.Get("Cookie"))
+		w.Header().Set("Content-Type", "text/html")
+		if strings.Contains(r.Header.Get("Cookie"), "sr_gate=live") {
+			_, _ = w.Write([]byte(`<html><body>Domain Overview ready</body></html>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<html><body>Your session expired.</body></html>`))
+	}))
+	defer upstream.Close()
+	storedSemrushAccounts = func(Config, int) []ToolAccount {
+		return []ToolAccount{{ID: 3, Name: "Server 3", Cookie: "sr_gate=live"}}
+	}
+	cfg := Config{TargetURL: upstream.URL, PublicHost: "shsm2.gt4rents.com", PublicScheme: "http", HomePath: "/analytics/overview/"}
+	req := httptest.NewRequest(http.MethodGet, "http://shsm2.gt4rents.com/analytics/overview/", nil)
+	req.Host = "shsm2.gt4rents.com"
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{ID: 1, Name: "Server 1", Cookie: "sr_gate=dead"})
+	if !strings.Contains(rr.Body.String(), "Domain Overview ready") {
+		t.Fatalf("did not open the next server: %s", rr.Body.String())
+	}
+	if len(cookies) < 2 || !strings.Contains(cookies[1], "sr_gate=live") || strings.Contains(cookies[1], "sr_gate=dead") {
+		t.Fatalf("next gate was not tried alone: %v", cookies)
+	}
+}
+
+func TestExpiredGateDoesNotTryAnotherServer(t *testing.T) {
+	old := storedSemrushAccounts
+	t.Cleanup(func() { storedSemrushAccounts = old })
+	var hits int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<h1>Access Denied</h1><p>Please access Semrush through the Dashboard.</p>`))
+	}))
+	defer upstream.Close()
+	storedSemrushAccounts = func(Config, int) []ToolAccount {
+		t.Fatal("expired gate cookie tried another server")
+		return nil
+	}
+	cfg := Config{TargetURL: upstream.URL, PublicHost: "shsm2.gt4rents.com", PublicScheme: "http"}
+	req := httptest.NewRequest(http.MethodGet, "http://shsm2.gt4rents.com/analytics/overview/", nil)
+	req.Host = "shsm2.gt4rents.com"
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{ID: 1, Name: "Server 1", Cookie: "sr_gate=expired"})
+	if hits != 1 {
+		t.Fatalf("upstream hits=%d", hits)
+	}
+	if !strings.Contains(rr.Body.String(), "Signing you in") {
+		t.Fatalf("logout message missing: %s", rr.Body.String())
 	}
 }

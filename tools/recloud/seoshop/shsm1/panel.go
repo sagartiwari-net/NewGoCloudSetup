@@ -378,6 +378,54 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	return acc, nil
 }
 
+var storedSemrushAccounts = listStoredSemrushAccounts
+
+func listStoredSemrushAccounts(cfg Config, except int) []ToolAccount {
+	if strings.TrimSpace(cfg.PanelDB) == "" {
+		return nil
+	}
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return nil
+	}
+	rows, err := db.Query(panelAccountSelect+`
+		WHERE w.domain = ? AND a.status = 'active' AND TRIM(a.cookie) <> '' AND a.id <> ?
+		`+panelAccountOrder, cfg.PublicHost, except)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []ToolAccount
+	for rows.Next() {
+		var acc ToolAccount
+		var showLimit int
+		if err := rows.Scan(&acc.ID, &acc.Name, &acc.Cookie, &showLimit); err != nil {
+			return out
+		}
+		acc.ShowLimit = showLimit == 1
+		acc.Cookie = parseCookieFromDB(acc.Cookie)
+		if upstreamSessionCookie(acc.Cookie) == "" {
+			continue
+		}
+		out = append(out, acc)
+	}
+	return out
+}
+
+func assignSessionAccount(cfg Config, sessionToken string, acc ToolAccount) {
+	if strings.TrimSpace(cfg.PanelDB) == "" || sessionToken == "" || acc.ID == 0 {
+		return
+	}
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+	log.Printf("[LB] semrush server switch -> %s id=%d", acc.Name, acc.ID)
+}
+
 func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 	var acc ToolAccount
 	var showLimit int

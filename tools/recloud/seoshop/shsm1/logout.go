@@ -36,6 +36,46 @@ func bodyIsDashboardGate(body []byte) bool {
 	return strings.Contains(strings.ToLower(string(body)), "access semrush through the dashboard")
 }
 
+func semrushServerDown(body []byte) bool {
+	if bodyIsDashboardGate(body) {
+		return false
+	}
+	text := strings.ToLower(string(body))
+	return strings.Contains(text, "session expired") ||
+		strings.Contains(text, "access again from dashboard") ||
+		strings.Contains(text, "this section is restricted")
+}
+
+func noteCookieExpired(cfg Config, r *http.Request, acc ToolAccount, sessionToken string) {
+	if strings.TrimSpace(cfg.PanelDB) == "" || acc.ID == 0 {
+		return
+	}
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var websiteID int
+	var username, loginIP string
+	if sessionToken != "" {
+		_ = db.QueryRow(`SELECT website_id, username, COALESCE(client_ip, '') FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID, &username, &loginIP)
+	}
+	if websiteID == 0 {
+		_ = db.QueryRow(`SELECT id FROM websites WHERE domain=?`, cfg.PublicHost).Scan(&websiteID)
+	}
+	if websiteID > 0 {
+		_, _ = db.Exec(`INSERT INTO automation_signals (website_id, created_at, state) VALUES (?,?,'pending')`, websiteID, now)
+	}
+	ip := ""
+	if r != nil {
+		ip = realClientIP(r)
+	}
+	_, _ = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
+		websiteID, username, acc.Name, "", "session_expired", ip, now)
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+	log.Printf("[LB] gate cookie expired account=%s user=%s", acc.Name, username)
+}
+
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {
 	if strings.TrimSpace(cfg.PanelDB) == "" {
 		return false, ""
