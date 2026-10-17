@@ -1,0 +1,5 @@
+writehuman-proxy
+cdn-cache/
+cookie.txt
+config.local.json
+*.log

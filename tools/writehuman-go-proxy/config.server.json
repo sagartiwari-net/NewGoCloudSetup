@@ -1,0 +1,28 @@
+{
+  "port": "5321",
+  "target_url": "https://writehuman.ai",
+  "public_host": "writehuman.gt4rents.com",
+  "public_scheme": "http",
+  "cookie_file": "cookie.txt",
+  "tool_name": "WriteHuman",
+  "home_path": "/",
+  "blocked_paths": [
+    "/signup",
+    "/pricing",
+    "/affiliates",
+    "/account",
+    "/settings",
+    "/billing"
+  ],
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "bypass_auth": false,
+  "session_duration_minutes": 120,
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "extra_domains": [
+    "https://hicfsbrfkzsxbwayibfm.supabase.co",
+    "https://jdcvoktccshfzbydibaa.supabase.co",
+    "https://api.writehuman.ai"
+  ],
+  "supabase_url": "https://hicfsbrfkzsxbwayibfm.supabase.co",
+  "supabase_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpY2ZzYnJma3pzeGJ3YXlpYmZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMzE4MDgsImV4cCI6MjA4ODYwNzgwOH0.8vN4qjWB6aBGHuz7ixzoLRrMgKO3Lnc-Vmm2SjbW9n0"
+}

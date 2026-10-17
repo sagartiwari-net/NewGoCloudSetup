@@ -108,6 +108,7 @@ var localTools = []seedTool{
 	{"ubersuggest", "Ubersuggest", "5281", "seo", creditsExports},
 	{"ahrefs", "Ahrefs", "5291", "seo", creditsExports},
 	{"quillbot", "QuillBot", "5311", "ai", credits},
+	{"writehuman", "WriteHuman", "5321", "ai", credits},
 }
 
 // Existing panel databases are not re-seeded. Insert QuillBot once so the
@@ -141,6 +142,39 @@ func ensureQuillbot(db *sql.DB) {
 	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
 		websiteID, "QuillBot 1", "", "active", "Paste the Firebase session JSON into this cookie.")
 	log.Printf("added QuillBot website %d at quillbot.gt4rents.com", websiteID)
+}
+
+// Existing panel databases are not re-seeded. Insert WriteHuman once so the
+// Access tool list can open writehuman.gt4rents.com.
+func ensureWriteHuman(db *sql.DB) {
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('writehuman.gt4rents.com', '127.0.0.1:5321')`).Scan(&n)
+	if n > 0 {
+		return
+	}
+	limits, _ := json.Marshal(credits)
+	var toolID int64
+	err := db.QueryRow(`SELECT id FROM tools WHERE name=?`, "WriteHuman").Scan(&toolID)
+	if err != nil {
+		res, insErr := db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES (?,?,?)`, "WriteHuman", "ai", string(limits))
+		if insErr != nil {
+			log.Printf("writehuman tool: %v", insErr)
+			return
+		}
+		toolID, _ = res.LastInsertId()
+	}
+	defaults, _ := json.Marshal(map[string]int{"credits": 100})
+	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
+		VALUES (?,?,?,?,120,?,1)`, toolID, "WriteHuman", "writehuman.gt4rents.com", "secret_writehuman", string(defaults))
+	if err != nil {
+		log.Printf("writehuman website: %v", err)
+		return
+	}
+	websiteID, _ := res.LastInsertId()
+	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "WriteHuman", `["writehuman"]`)
+	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
+		websiteID, "WriteHuman 1", "", "active", "Paste the Chrome cookie array into this cookie.")
+	log.Printf("added WriteHuman website %d at writehuman.gt4rents.com", websiteID)
 }
 
 func ensureResellers(db *sql.DB) {

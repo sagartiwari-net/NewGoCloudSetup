@@ -579,6 +579,13 @@
       "fqdn": "quillbot.gt4rents.com"
     },
     {
+      "tool": "writehuman",
+      "folder": "writehuman-go-proxy",
+      "subdomain": "writehuman",
+      "port": 5321,
+      "fqdn": "writehuman.gt4rents.com"
+    },
+    {
       "tool": "azsm2",
       "folder": "recloud/azad/azsm2",
       "subdomain": "azsm2",
