@@ -31,9 +31,13 @@ var (
 			return http.ErrUseLastResponse
 		},
 	}
-	markhorHost = regexp.MustCompile(`(?i)(?:[a-z0-9-]+\.)?accesstool\.in`)
-	semrushHost = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*semrush\.com`)
+	markhorHost    = regexp.MustCompile(`(?i)(?:[a-z0-9-]+\.)?accesstool\.in`)
+	semrushHost    = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*semrush\.com`)
+	semrushRelHost = regexp.MustCompile(`(?i)//(?:[a-z0-9-]+\.)*semrush\.com`)
+	semrushHopURL  = regexp.MustCompile(`(?i)https?://[^/\s"']+/semrush-host/([a-z0-9,-]+)`)
 )
+
+const semrushHopPrefix = "/semrush-host/"
 
 func publicOrigin(r *http.Request, cfg Config) string {
 	scheme := strings.TrimSpace(cfg.PublicScheme)
@@ -63,16 +67,55 @@ func rewriteText(body []byte, upstreamHost, origin string) []byte {
 		cookieDomain = cookieDomain[:i]
 	}
 	s := string(body)
-	s = strings.ReplaceAll(s, "https://"+upstreamHost, origin)
-	s = strings.ReplaceAll(s, "http://"+upstreamHost, origin)
-	s = strings.ReplaceAll(s, "//"+upstreamHost, "//"+hostOnly)
+	if !strings.HasSuffix(strings.ToLower(upstreamHost), ".semrush.com") {
+		s = strings.ReplaceAll(s, "https://"+upstreamHost, origin)
+		s = strings.ReplaceAll(s, "http://"+upstreamHost, origin)
+		s = strings.ReplaceAll(s, "//"+upstreamHost, "//"+hostOnly)
+	}
 	s = strings.ReplaceAll(s, "https://localhost", origin)
 	s = strings.ReplaceAll(s, "http://localhost", origin)
 	s = markhorHost.ReplaceAllString(s, hostOnly)
-	s = semrushHost.ReplaceAllString(s, origin)
+	s = semrushHost.ReplaceAllStringFunc(s, func(match string) string {
+		return semrushHop(origin, match)
+	})
+	s = semrushRelHost.ReplaceAllStringFunc(s, func(match string) string {
+		return semrushHop("//"+hostOnly, match)
+	})
 	s = strings.ReplaceAll(s, ".semrush.com", "."+cookieDomain)
 	s = strings.ReplaceAll(s, "semnew1."+cookieDomain, cookieDomain)
 	return []byte(s)
+}
+
+func semrushHop(origin, match string) string {
+	raw := match
+	if strings.HasPrefix(raw, "//") {
+		raw = "https:" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" || !strings.HasSuffix(strings.ToLower(u.Hostname()), ".semrush.com") {
+		return origin
+	}
+	return strings.TrimRight(origin, "/") + semrushHopPrefix + strings.ReplaceAll(u.Hostname(), ".", ",")
+}
+
+func semrushHopTarget(path string) (host, rest string, ok bool) {
+	if !strings.HasPrefix(path, semrushHopPrefix) {
+		return "", "", false
+	}
+	tail := strings.TrimPrefix(path, semrushHopPrefix)
+	enc, pathRest := tail, "/"
+	if i := strings.Index(tail, "/"); i >= 0 {
+		enc = tail[:i]
+		pathRest = tail[i:]
+	}
+	host = strings.ReplaceAll(enc, ",", ".")
+	if enc == "" || strings.Contains(host, "..") || !strings.HasSuffix(strings.ToLower(host), ".semrush.com") {
+		return "", "", false
+	}
+	if pathRest == "" {
+		pathRest = "/"
+	}
+	return host, pathRest, true
 }
 
 func rewriteOutbound(body []byte, upstreamOrigin, public string) []byte {
@@ -87,9 +130,28 @@ func rewriteOutbound(body []byte, upstreamOrigin, public string) []byte {
 	if i := strings.Index(upHost, "://"); i >= 0 {
 		upHost = upHost[i+3:]
 	}
-	s := strings.ReplaceAll(string(body), public, upstreamOrigin)
+	s := restoreSemrushHops(string(body))
+	s = strings.ReplaceAll(s, public, upstreamOrigin)
 	s = strings.ReplaceAll(s, host, upHost)
 	return []byte(s)
+}
+
+func restoreSemrushHops(s string) string {
+	return semrushHopURL.ReplaceAllStringFunc(s, func(match string) string {
+		sub := semrushHopURL.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		host := strings.ReplaceAll(sub[1], ",", ".")
+		if !strings.HasSuffix(strings.ToLower(host), ".semrush.com") {
+			return match
+		}
+		scheme := "https"
+		if strings.HasPrefix(strings.ToLower(match), "http://") {
+			scheme = "http"
+		}
+		return scheme + "://" + host
+	})
 }
 
 func rewriteLocation(loc, upstreamHost, origin string) string {
@@ -240,21 +302,36 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		if bodyBytes != nil {
 			body = bytes.NewReader(bodyBytes)
 		}
-		upReq, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL(base, requestURI), body)
+		targetBase := base
+		targetURI := requestURI
+		if rel, err := url.Parse(requestURI); err == nil {
+			if host, rest, ok := semrushHopTarget(rel.Path); ok {
+				targetBase = &url.URL{Scheme: "https", Host: host}
+				targetURI = rest
+				if rel.RawQuery != "" {
+					targetURI += "?" + rel.RawQuery
+				}
+			}
+		}
+		upReq, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL(targetBase, targetURI), body)
 		if err != nil {
 			http.Error(w, "Bad gateway", http.StatusBadGateway)
 			return
 		}
 		copyRequestHeaders(upReq, r)
-		upReq.Host = base.Host
-		upReq.Header.Set("Host", base.Host)
-		upReq.Header.Set("Origin", base.Scheme+"://"+base.Host)
-		if ref := r.Referer(); ref != "" {
+		upReq.Host = targetBase.Host
+		upReq.Header.Set("Host", targetBase.Host)
+		upReq.Header.Set("Origin", targetBase.Scheme+"://"+targetBase.Host)
+		if targetBase.Host != base.Host {
+			upReq.Header.Set("Referer", targetBase.Scheme+"://"+targetBase.Host+"/")
+		} else if ref := r.Referer(); ref != "" {
 			upReq.Header.Set("Referer", string(rewriteOutbound([]byte(ref), base.Scheme+"://"+base.Host, origin)))
 		} else {
 			upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
 		}
-		if cookie := cookiesForUpstream(acc.Cookie, r.Header.Get("Cookie")); cookie != "" {
+		if targetBase.Host != base.Host {
+			upReq.Header.Del("Cookie")
+		} else if cookie := cookiesForUpstream(acc.Cookie, r.Header.Get("Cookie")); cookie != "" {
 			upReq.Header.Set("Cookie", cookie)
 		} else {
 			upReq.Header.Del("Cookie")
@@ -279,7 +356,13 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		}
 		ct := resp.Header.Get("Content-Type")
 		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
-			payload = rewriteText(payload, base.Host, origin)
+			payload = rewriteText(payload, targetBase.Host, origin)
+		}
+		if isDocumentNavigation(r) && bodyIsDashboardGate(payload) {
+			token := sessionTokenFromRequest(r)
+			_, _ = noteLogout(cfg, r, acc, token, "logout")
+			renderLoggedOutPage(w, cfg)
+			return
 		}
 		if attempts > 1 && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload) {
 			if attempt < attempts {

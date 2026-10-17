@@ -18,8 +18,30 @@ func TestRewriteKeepsBrowserOnPublicHost(t *testing.T) {
 	if !strings.Contains(out, "https://shsm1.gt4rents.com/analytics/overview/") {
 		t.Fatal("public origin was not applied")
 	}
+	if !strings.Contains(out, "https://shsm1.gt4rents.com/semrush-host/de,semrush,com/app.js") {
+		t.Fatalf("semrush asset was not kept on its host: %s", out)
+	}
 	if !strings.Contains(out, ".shsm1.gt4rents.com") {
 		t.Fatal("cookie domain was not rewritten")
+	}
+}
+
+func TestSemrushManifestStaysOnStaticHost(t *testing.T) {
+	in := []byte(`{"remote":"https://static.semrush.com/header/mf-manifest.json","rel":"//static.semrush.com/header/remote.js"}`)
+	out := string(rewriteText(in, "semnew1.accesstool.in", "https://shsm1.gt4rents.com"))
+	if !strings.Contains(out, "https://shsm1.gt4rents.com/semrush-host/static,semrush,com/header/mf-manifest.json") {
+		t.Fatalf("manifest url %s", out)
+	}
+	if !strings.Contains(out, "//shsm1.gt4rents.com/semrush-host/static,semrush,com/header/remote.js") {
+		t.Fatalf("relative manifest url %s", out)
+	}
+	host, rest, ok := semrushHopTarget("/semrush-host/static,semrush,com/header/mf-manifest.json")
+	if !ok || host != "static.semrush.com" || rest != "/header/mf-manifest.json" {
+		t.Fatalf("hop target %s %s %v", host, rest, ok)
+	}
+	back := string(rewriteOutbound([]byte(out), "https://semnew1.accesstool.in", "https://shsm1.gt4rents.com"))
+	if !strings.Contains(back, "https://static.semrush.com/header/mf-manifest.json") {
+		t.Fatalf("outbound restore %s", back)
 	}
 }
 
@@ -178,5 +200,8 @@ func TestLogoutPath(t *testing.T) {
 	}
 	if !bodyLooksLoggedOut([]byte(`<h1>Access Denied</h1><p>This section is restricted.</p>`)) {
 		t.Fatal("restricted page should count as logged out")
+	}
+	if !bodyIsDashboardGate([]byte(`<h1>Access Denied</h1><p>Please access Semrush through the Dashboard.</p>`)) {
+		t.Fatal("dashboard gate should show the logout message")
 	}
 }

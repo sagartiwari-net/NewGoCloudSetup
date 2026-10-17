@@ -28,7 +28,12 @@ func bodyLooksLoggedOut(body []byte) bool {
 	text := strings.ToLower(string(body))
 	return strings.Contains(text, "session expired") ||
 		strings.Contains(text, "access again from dashboard") ||
+		strings.Contains(text, "access semrush through the dashboard") ||
 		strings.Contains(text, "this section is restricted")
+}
+
+func bodyIsDashboardGate(body []byte) bool {
+	return strings.Contains(strings.ToLower(string(body)), "access semrush through the dashboard")
 }
 
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {
