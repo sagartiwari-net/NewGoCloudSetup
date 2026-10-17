@@ -1,15 +1,18 @@
 [Unit]
 Description=gt4rents panel UI Next.js (port 3000)
-After=network.target gt4-panel-api.service
+After=network-online.target gt4-panel-api.service
+Wants=gt4-panel-api.service
 
 [Service]
 Type=simple
 WorkingDirectory=/www/wwwroot/gt4rents.com/_repo/panel/update-panel
 Environment=PORT=3000
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/npm run start
-Restart=on-failure
+Environment=NODE_OPTIONS=--max-http-header-size=524288
+ExecStart=/www/wwwroot/gt4rents.com/_repo/deploy/run-panel-ui.sh
+Restart=always
 RestartSec=3
+StartLimitIntervalSec=0
 
 [Install]
 WantedBy=multi-user.target

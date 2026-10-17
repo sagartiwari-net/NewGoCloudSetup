@@ -15,6 +15,10 @@ if [[ ! -d "${SRC}/node_modules" ]]; then
   exit 1
 fi
 
+if systemctl is-enabled --quiet gt4-panel-ui.service 2>/dev/null; then
+  systemctl restart gt4-panel-ui.service
+  echo "OK: systemd gt4-panel-ui → 127.0.0.1:${PORT} (log ${LOG})"
+else
 if [[ -f "${PIDF}" ]] && kill -0 "$(cat "${PIDF}")" 2>/dev/null; then
   echo "Stopping old panel-ui pid $(cat "${PIDF}")"
   kill "$(cat "${PIDF}")" || true
@@ -60,6 +64,7 @@ rm -rf "${SRC}/.next/cache/fetch-cache"
 nohup env PORT="${PORT}" NODE_OPTIONS="--max-http-header-size=524288" npm run start >>"${LOG}" 2>&1 &
 echo $! >"${PIDF}"
 echo "OK: panel-ui pid $(cat "${PIDF}") → 127.0.0.1:${PORT} (log ${LOG})"
+fi
 
 ready=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do

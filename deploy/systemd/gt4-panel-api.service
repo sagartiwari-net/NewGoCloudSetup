@@ -1,14 +1,21 @@
 [Unit]
 Description=gt4rents panel-api (127.0.0.1:18090)
-After=network.target
+After=network-online.target mysql.service mysqld.service mariadb.service
+Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/www/wwwroot/gt4rents.com/panel
 Environment=PANEL_API_ADDR=127.0.0.1:18090
-ExecStart=/www/wwwroot/gt4rents.com/panel/panel-api
-Restart=on-failure
+Environment=GT4RENTS_MYSQL_HOST=127.0.0.1
+Environment=GT4RENTS_MYSQL_PORT=3306
+Environment=GT4RENTS_MYSQL_USER=gt4rents
+Environment=GT4RENTS_MYSQL_DB=gt4rents
+EnvironmentFile=-/www/wwwroot/gt4rents.com/_secrets/mysql.env
+ExecStart=/www/wwwroot/gt4rents.com/_repo/deploy/run-panel-api.sh
+Restart=always
 RestartSec=3
+StartLimitIntervalSec=0
 
 [Install]
 WantedBy=multi-user.target

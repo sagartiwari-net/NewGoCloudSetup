@@ -18,6 +18,15 @@ if [[ ! -f "${PANEL}/data/panel.db" ]]; then
   echo "WARN: ${PANEL}/data/panel.db missing — scp migrate-bundle/panel.db from Mac"
 fi
 
+if systemctl is-enabled --quiet gt4-panel-api.service 2>/dev/null; then
+  systemctl restart gt4-panel-api.service
+  sleep 1
+  echo "OK: systemd gt4-panel-api → ${ADDR} (log ${LOG})"
+  grep -m1 '\[DB\] panel API using MySQL' "${LOG}" || true
+  echo "NOTE: never kill unrelated listeners on :8090 or other ports"
+  exit 0
+fi
+
 # Refuse to start if OUR chosen port is already taken by someone else
 if ss -lptn 2>/dev/null | grep -q ":${PORT} "; then
   # allow restart if it is our previous pid
