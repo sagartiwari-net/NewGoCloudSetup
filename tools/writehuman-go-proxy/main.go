@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -257,20 +258,104 @@ func parseSession(raw string) (cookieHeader string, ls map[string]string) {
 	return cookieHeader, ls
 }
 
+// supabaseAuthCookieName accepts the whole cookie and supabase-ssr chunks
+// (sb-…-auth-token.0, .1). A Chrome export of a real session is usually chunked.
+func supabaseAuthCookieName(name string) (base string, chunk int, ok bool) {
+	if !strings.HasPrefix(name, "sb-") || !strings.Contains(name, "-auth-token") {
+		return "", 0, false
+	}
+	if strings.HasSuffix(name, "-auth-token") {
+		return name, -1, true
+	}
+	dot := strings.LastIndex(name, ".")
+	if dot < 0 {
+		return "", 0, false
+	}
+	base = name[:dot]
+	if !strings.HasSuffix(base, "-auth-token") {
+		return "", 0, false
+	}
+	n, err := strconv.Atoi(name[dot+1:])
+	if err != nil || n < 0 || n > 20 {
+		return "", 0, false
+	}
+	return base, n, true
+}
+
+func sessionHasAccessToken(sessionJSON string) bool {
+	var sess map[string]interface{}
+	if json.Unmarshal([]byte(sessionJSON), &sess) != nil {
+		return false
+	}
+	token, _ := sess["access_token"].(string)
+	return token != ""
+}
+
+func decodeSupabaseCookieText(val string) string {
+	val = strings.TrimSpace(val)
+	if decoded := decodeSupabaseCookieValue(val); sessionHasAccessToken(decoded) {
+		return decoded
+	}
+	if unesc, err := url.QueryUnescape(val); err == nil && unesc != val {
+		if decoded := decodeSupabaseCookieValue(unesc); sessionHasAccessToken(decoded) {
+			return decoded
+		}
+	}
+	return decodeSupabaseCookieValue(val)
+}
+
 func localStorageFromChromeCookies(raw string) map[string]string {
 	var list []map[string]interface{}
 	if json.Unmarshal([]byte(raw), &list) != nil {
 		return nil
 	}
-	ls := map[string]string{}
+	type group struct {
+		whole string
+		parts map[int]string
+		max   int
+	}
+	groups := map[string]*group{}
 	for _, c := range list {
 		name, _ := c["name"].(string)
 		val, _ := c["value"].(string)
-		if name == "" || val == "" {
+		base, idx, ok := supabaseAuthCookieName(name)
+		if !ok || val == "" {
 			continue
 		}
-		if strings.HasPrefix(name, "sb-") && strings.HasSuffix(name, "-auth-token") {
-			ls[name] = decodeSupabaseCookieValue(val)
+		g := groups[base]
+		if g == nil {
+			g = &group{parts: map[int]string{}}
+			groups[base] = g
+		}
+		if idx < 0 {
+			g.whole = val
+			continue
+		}
+		g.parts[idx] = val
+		if idx > g.max {
+			g.max = idx
+		}
+	}
+	ls := map[string]string{}
+	for base, g := range groups {
+		val := g.whole
+		if len(g.parts) > 0 && !sessionHasAccessToken(decodeSupabaseCookieText(val)) {
+			var b strings.Builder
+			complete := true
+			for i := 0; i <= g.max; i++ {
+				part, ok := g.parts[i]
+				if !ok {
+					complete = false
+					break
+				}
+				b.WriteString(part)
+			}
+			if complete && b.Len() > 0 {
+				val = b.String()
+			}
+		}
+		if decoded := decodeSupabaseCookieText(val); decoded != "" {
+			ls[base] = decoded
 		}
 	}
 	if len(ls) == 0 {
@@ -347,37 +432,60 @@ func refreshChromeCookieArray(raw, newAT, newRT string, out map[string]interface
 	if err := json.Unmarshal([]byte(raw), &list); err != nil {
 		return "", err
 	}
-	found := false
+	var kept []map[string]interface{}
+	var sample map[string]interface{}
+	var baseName string
+	var sess map[string]interface{}
 	for _, c := range list {
 		name, _ := c["name"].(string)
-		if !strings.HasPrefix(name, "sb-") || !strings.HasSuffix(name, "-auth-token") {
+		base, _, ok := supabaseAuthCookieName(name)
+		if !ok {
+			kept = append(kept, c)
 			continue
 		}
-		val, _ := c["value"].(string)
-		var sess map[string]interface{}
-		_ = json.Unmarshal([]byte(decodeSupabaseCookieValue(val)), &sess)
-		if sess == nil {
-			sess = map[string]interface{}{}
+		if sample == nil {
+			sample = c
+			baseName = base
+			val, _ := c["value"].(string)
+			_ = json.Unmarshal([]byte(decodeSupabaseCookieText(val)), &sess)
 		}
-		sess["access_token"] = newAT
-		sess["refresh_token"] = newRT
-		sess["token_type"] = "bearer"
-		if v, ok := out["expires_at"]; ok {
-			sess["expires_at"] = v
-		}
-		if v, ok := out["expires_in"]; ok {
-			sess["expires_in"] = v
-		}
-		if v, ok := out["user"]; ok {
-			sess["user"] = v
-		}
-		b, _ := json.Marshal(sess)
-		c["value"] = encodeSupabaseCookieValue(string(b))
-		found = true
 	}
-	if !found {
+	if sample == nil || baseName == "" {
 		return "", fmt.Errorf("auth cookie missing")
 	}
+	if sess == nil {
+		joined := localStorageFromChromeCookies(raw)
+		if joined != nil {
+			_ = json.Unmarshal([]byte(joined[baseName]), &sess)
+		}
+	}
+	if sess == nil {
+		sess = map[string]interface{}{}
+	}
+	sess["access_token"] = newAT
+	sess["refresh_token"] = newRT
+	sess["token_type"] = "bearer"
+	if v, ok := out["expires_at"]; ok {
+		sess["expires_at"] = v
+	}
+	if v, ok := out["expires_in"]; ok {
+		sess["expires_in"] = v
+	}
+	if v, ok := out["user"]; ok {
+		sess["user"] = v
+	}
+	b, _ := json.Marshal(sess)
+	encoded := encodeSupabaseCookieValue(string(b))
+	for _, ch := range chunkSupabaseCookie(baseName, encoded) {
+		next := map[string]interface{}{}
+		for k, v := range sample {
+			next[k] = v
+		}
+		next["name"] = ch[0]
+		next["value"] = ch[1]
+		kept = append(kept, next)
+	}
+	list = kept
 	b, err := json.Marshal(list)
 	if err != nil {
 		return "", err
@@ -478,12 +586,15 @@ func ensureFreshSessionRaw(raw string, accountID int, proxyStr string) (string, 
 	if raw == "" {
 		return "", fmt.Errorf("empty session cookie")
 	}
-	if isDeadRefresh(accountID) {
-		return raw, fmt.Errorf("refresh_token_already_used (cached)")
-	}
 	_, ls := parseSession(raw)
 	token := accessTokenFromLS(ls)
 	rt := refreshTokenFromLS(ls)
+	if isDeadRefresh(accountID, rt) {
+		if token != "" && jwtExpUnix(token) > time.Now().Unix()+60 {
+			return raw, nil
+		}
+		return raw, fmt.Errorf("refresh_token_already_used (cached)")
+	}
 	if rt == "" {
 		return raw, fmt.Errorf("no refresh_token in session")
 	}
@@ -513,7 +624,7 @@ func ensureFreshSessionRaw(raw string, accountID int, proxyStr string) (string, 
 		bodyStr := string(respBody)
 		if resp.StatusCode == 400 || strings.Contains(strings.ToLower(bodyStr), "refresh_token_already_used") ||
 			strings.Contains(strings.ToLower(bodyStr), "invalid refresh token") {
-			markDeadRefresh(accountID)
+			markDeadRefresh(accountID, rt)
 		}
 		return raw, fmt.Errorf("supabase refresh HTTP %d: %s", resp.StatusCode, truncate(bodyStr, 180))
 	}
@@ -1081,9 +1192,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			renderProxyProblem(w, r)
 			return
 		} else if usesPanelAccountMode(c) && !c.BypassAuth && accID > 0 && gptzeroAuthRefreshFailed(err) {
-			log.Printf("[AUTH] session refresh failed account=%s(%d): %v", accountName, accID, err)
-			if tryGPTZeroAccountSwap(w, r, c, panelUser, accID, accountName, "supabase_refresh:"+err.Error()) {
-				return
+			_, lsCheck := parseSession(raw)
+			at := accessTokenFromLS(lsCheck)
+			if at != "" && jwtExpUnix(at) > time.Now().Unix()+60 {
+				log.Printf("[AUTH] refresh failed but access token still valid account=%s(%d)", accountName, accID)
+			} else {
+				log.Printf("[AUTH] session refresh failed account=%s(%d): %v", accountName, accID, err)
+				if tryGPTZeroAccountSwap(w, r, c, panelUser, accID, accountName, "supabase_refresh:"+err.Error()) {
+					return
+				}
 			}
 		}
 	}

@@ -42,6 +42,25 @@ func TestSupabaseCookieIsBase64URL(t *testing.T) {
 	}
 }
 
+func TestChunkedChromeCookieRestoresSession(t *testing.T) {
+	sess := `{"access_token":"header.payload.sig","refresh_token":"rtok","token_type":"bearer"}`
+	packed := encodeSupabaseCookieValue(sess)
+	mid := len(packed) / 2
+	raw := `[{"name":"sb-hicfsbrfkzsxbwayibfm-auth-token.0","value":"` + packed[:mid] + `"},{"name":"sb-hicfsbrfkzsxbwayibfm-auth-token.1","value":"` + packed[mid:] + `"}]`
+	_, ls := parseSession(raw)
+	if accessTokenFromLS(ls) != "header.payload.sig" || refreshTokenFromLS(ls) != "rtok" {
+		t.Fatalf("chunked cookie not restored: %#v", ls)
+	}
+	markDeadRefresh(9, "old-rt")
+	if isDeadRefresh(9, "rtok") {
+		t.Fatal("a newly pasted refresh token must be tried")
+	}
+	if !isDeadRefresh(9, "old-rt") {
+		t.Fatal("the failed refresh token should stay blocked")
+	}
+	clearDeadRefresh(9)
+}
+
 func TestHostLockStaysOnProxy(t *testing.T) {
 	in := []byte(`function s(){return"writehuman.ai"}`)
 	out := string(rewriteHostLock(in))

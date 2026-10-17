@@ -22,6 +22,7 @@ var (
 
 	deadRefreshMu    sync.Mutex
 	deadRefreshUntil = map[int]time.Time{}
+	deadRefreshToken = map[int]string{}
 )
 
 func gptzeroMarkTried(sessionToken string, id int) {
@@ -64,23 +65,28 @@ func gptzeroAllowSwap(sessionToken string) bool {
 	return true
 }
 
-func markDeadRefresh(accountID int) {
-	if accountID <= 0 {
+func markDeadRefresh(accountID int, refreshToken string) {
+	if accountID <= 0 || refreshToken == "" {
 		return
 	}
 	deadRefreshMu.Lock()
 	deadRefreshUntil[accountID] = time.Now().Add(15 * time.Minute)
+	deadRefreshToken[accountID] = refreshToken
 	deadRefreshMu.Unlock()
 }
 
-func isDeadRefresh(accountID int) bool {
-	if accountID <= 0 {
+func isDeadRefresh(accountID int, refreshToken string) bool {
+	if accountID <= 0 || refreshToken == "" {
 		return false
 	}
 	deadRefreshMu.Lock()
 	defer deadRefreshMu.Unlock()
 	until, ok := deadRefreshUntil[accountID]
-	return ok && time.Now().Before(until)
+	if !ok || !time.Now().Before(until) {
+		return false
+	}
+	// A freshly pasted cookie has a different refresh token and must be tried.
+	return deadRefreshToken[accountID] == refreshToken
 }
 
 func clearDeadRefresh(accountID int) {
@@ -89,6 +95,7 @@ func clearDeadRefresh(accountID int) {
 	}
 	deadRefreshMu.Lock()
 	delete(deadRefreshUntil, accountID)
+	delete(deadRefreshToken, accountID)
 	deadRefreshMu.Unlock()
 }
 
@@ -288,7 +295,6 @@ func tryGPTZeroAccountSwap(w http.ResponseWriter, r *http.Request, cfg Config, p
 	if token == "" || currentID <= 0 {
 		return false
 	}
-	markDeadRefresh(currentID)
 
 	if !gptzeroAllowSwap(token) {
 		outcome := gptzeroGetOutcome(token)
