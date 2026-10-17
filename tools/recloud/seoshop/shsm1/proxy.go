@@ -328,7 +328,9 @@ func copyRequestHeaders(dst *http.Request, src *http.Request) {
 	for key, values := range src.Header {
 		lk := strings.ToLower(key)
 		switch lk {
-		case "cookie", "host", "content-length", "accept-encoding", "connection", "upgrade", "proxy-connection", "x-device-fp", "x-device-proof":
+		case "cookie", "host", "content-length", "accept-encoding", "connection", "upgrade", "proxy-connection", "x-device-fp", "x-device-proof",
+			"cf-connecting-ip", "cf-ray", "cf-ipcountry", "cf-visitor", "cf-worker", "cdn-loop", "true-client-ip",
+			"x-forwarded-host", "x-forwarded-server", "x-forwarded-for", "x-real-ip", "forwarded":
 			continue
 		}
 		for _, v := range values {

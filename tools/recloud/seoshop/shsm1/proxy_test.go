@@ -52,6 +52,29 @@ func TestUpstreamCookieKeepsOnlyGate(t *testing.T) {
 	}
 }
 
+func TestUpstreamRequestDropsProxyHeaders(t *testing.T) {
+	src := httptest.NewRequest(http.MethodGet, "https://shsm1.gt4rents.com/analytics/overview/?searchType=domain", nil)
+	src.Header.Set("X-Forwarded-Host", "shsm1.gt4rents.com")
+	src.Header.Set("X-Forwarded-For", "203.0.113.8")
+	src.Header.Set("X-Real-IP", "203.0.113.8")
+	src.Header.Set("Forwarded", "host=shsm1.gt4rents.com")
+	src.Header.Set("CF-Connecting-IP", "203.0.113.8")
+	src.Header.Set("User-Agent", "Mozilla/5.0")
+	dst, err := http.NewRequest(http.MethodGet, "https://semnew1.accesstool.in/analytics/overview/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyRequestHeaders(dst, src)
+	for _, h := range []string{"X-Forwarded-Host", "X-Forwarded-For", "X-Real-IP", "Forwarded", "CF-Connecting-IP"} {
+		if dst.Header.Get(h) != "" {
+			t.Fatalf("forwarded %s to upstream", h)
+		}
+	}
+	if dst.Header.Get("User-Agent") != "Mozilla/5.0" {
+		t.Fatal("browser header was dropped")
+	}
+}
+
 func TestSetCookieDropsUpstreamSession(t *testing.T) {
 	if _, ok := rewriteSetCookie("sr_gate=secret; Path=/; Secure", "semnew1.accesstool.in", "https://shsm1.gt4rents.com"); ok {
 		t.Fatal("upstream session cookie must not reach the browser")
