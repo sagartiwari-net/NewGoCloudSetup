@@ -162,6 +162,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `videotoblog` (:5041) — **HTTPS OK** (2026-10-11): `videotoblog.ai`, home `/articles`. Login is the saved Firebase session.
 - [x] `wordtune` (:4631) — **HTTPS OK** (2026-10-05): app.wordtune.com, device reveal, chrome hide + panel username, panel.db cookie reload, logout→switch/`logged_out` + Analytics Logouts
 - [x] `writecream` (:5051) — **HTTPS OK** (2026-10-11): `app.writecream.com`, home `/dashboard`. Hide only the header account menu (avatar, name, Lifetime Subscription, and Logout).
+- [x] `writehuman` (:5321) — official proxy for `https://writehuman.ai` (2026-10-17). Same security shell as the other official tools: panel access link, device fingerprint, and the light cards (direct open shows Access Denied; panel Open shows Authenticating). Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images, with a 1-year immutable browser header. HTML and API responses stay `no-store`. Login is the Chrome cookie array, including the Supabase auth cookie. The panel website row is created when the panel API binary that contains `ensureWriteHuman` starts, so a new tool also needs `./deploy/build-panel.sh` and a panel API restart before it appears in Product Mapping.
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible, panel.db cookies + overview
 
 ### Not started

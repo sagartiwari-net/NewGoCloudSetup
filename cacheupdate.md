@@ -68,6 +68,7 @@ Not started and “still an issue” tools were left alone.
 | `videotoblog` | `videotoblog-go-proxy` | Static header raised to 1 year. |
 | `wordtune` | `wordtune-go-proxy` | Static header raised to 1 year. |
 | `writecream` | `writecream-go-proxy` | Static header raised to 1 year. |
+| `writehuman` | `writehuman-go-proxy` | New official tool. Hashed JS, CSS, fonts, and images use disk `cdn-cache/` (72h) and `Cache-Control: public, max-age=31536000, immutable`. HTML and API stay `no-store`. |
 | `wrank` | `woorank-go-proxy` | Static header raised to 1 year. |
 
 ## Not done
