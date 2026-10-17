@@ -86,9 +86,6 @@ func refresh(ctx context.Context, cookies []automation.Cookie) ([]automation.Coo
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return nil, errLoginRedirect
-	}
 	if _, err := get(ctx, client, dashboardURL); err != nil {
 		return nil, err
 	}
@@ -118,7 +115,8 @@ func get(ctx context.Context, client *http.Client, rawURL string) (*http.Respons
 }
 
 func stopLogin(req *http.Request, via []*http.Request) error {
-	if strings.Contains(strings.ToLower(req.URL.Path), "/user/login") || strings.Contains(strings.ToLower(req.URL.Path), "/login") {
+	path := strings.ToLower(req.URL.Path)
+	if strings.Contains(path, "/user/login") || path == "/login" || strings.HasSuffix(path, "/login") {
 		return errLoginRedirect
 	}
 	if len(via) >= 5 {

@@ -48,6 +48,37 @@ func TestRefreshKeepsBSSESSID(t *testing.T) {
 	}
 }
 
+func TestCompletionRedirectIsNotALoginPage(t *testing.T) {
+	const savedAgent = "Mozilla/5.0 Chrome/154 AhrefsTest"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dashboard" && r.Header.Get("User-Agent") == savedAgent {
+			http.Redirect(w, r, "/v4/loginCheckCompletion", http.StatusFound)
+			return
+		}
+		if _, err := r.Cookie("BSSESSID"); err != nil {
+			http.Redirect(w, r, "/user/login", http.StatusFound)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "BSSESSID", Value: "fresh-second", Path: "/"})
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	dashboardURL = srv.URL + "/dashboard"
+	refreshURL = srv.URL + "/v4/loginCheckCompletion"
+	t.Cleanup(func() {
+		dashboardURL = "https://app.ahrefs.com/dashboard"
+		refreshURL = "https://app.ahrefs.com/v4/loginCheckCompletion"
+	})
+	parsed, _ := url.Parse(srv.URL)
+	ctx := automation.WithUserAgent(context.Background(), savedAgent)
+	ok, updated, err := Recipe{}.Check(ctx, []automation.Cookie{{
+		Name: "BSSESSID", Value: "second-session", Domain: parsed.Hostname(), HostOnly: true, Path: "/",
+	}})
+	if err != nil || !ok || !hasName(updated, "BSSESSID") {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+}
+
 func TestRejectedCookieDoesNotLookLikeAMissingPaste(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/user/login", http.StatusFound)
