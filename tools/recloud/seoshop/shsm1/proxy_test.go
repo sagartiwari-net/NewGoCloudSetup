@@ -74,10 +74,21 @@ func TestUpstreamCookieKeepsOnlyGate(t *testing.T) {
 	}
 }
 
+func TestThreeGatesStayInOneCookie(t *testing.T) {
+	raw := `[{"name":"sr_gate","value":"gate-one"},{"name":"snav_last_sidebar_tk","value":"toolkit_seo"},{"name":"sr_gate","value":"gate-two"},{"name":"sr_gate","value":"gate-three"}]`
+	got := parseCookieFromDB(raw)
+	if got != "snav_last_sidebar_tk=toolkit_seo; sr_gate=gate-one; sr_gate=gate-two; sr_gate=gate-three" {
+		t.Fatalf("stored cookie %s", got)
+	}
+	if upstreamSessionCookie(got) != "sr_gate=gate-one" {
+		t.Fatalf("sent cookie %s", upstreamSessionCookie(got))
+	}
+}
+
 func TestUpstreamCookieKeepsBrowserSession(t *testing.T) {
 	raw := `[{"name":"snav_last_sidebar_tk","value":"from-panel"},{"name":"ref_code","value":"__default__"},{"name":"refer_source","value":"\"\""},{"name":"sr_gate","value":"gate-token"}]`
 	browser := "ct_session=panel-session; SSO-JWT=jwt-value; snav_last_sidebar_tk=from-browser; sr_gate=browser-gate"
-	got := cookiesForUpstream(parseCookieFromDB(raw), browser)
+	got := cookiesForUpstream(parseCookieFromDB(raw), browser, "")
 	if !strings.HasPrefix(got, "sr_gate=gate-token") {
 		t.Fatalf("gate cookie %s", got)
 	}
@@ -209,6 +220,34 @@ func TestLogoutPath(t *testing.T) {
 	}
 	if !semrushServerDown([]byte(`<p>Your session expired. Sign in again.</p>`)) {
 		t.Fatal("a live gate with a dead semrush server should switch")
+	}
+}
+
+func TestOneCookieTriesTheNextGate(t *testing.T) {
+	var cookies []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookies = append(cookies, r.Header.Get("Cookie"))
+		w.Header().Set("Content-Type", "text/html")
+		if strings.Contains(r.Header.Get("Cookie"), "sr_gate=live") {
+			_, _ = w.Write([]byte(`<html><body>Domain Overview ready</body></html>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<html><body>Your session expired.</body></html>`))
+	}))
+	defer upstream.Close()
+	cfg := Config{TargetURL: upstream.URL, PublicHost: "shsm1.gt4rents.com", PublicScheme: "http", HomePath: "/analytics/overview/"}
+	req := httptest.NewRequest(http.MethodGet, "http://shsm1.gt4rents.com/analytics/overview/", nil)
+	req.Host = "shsm1.gt4rents.com"
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{ID: 1, Name: "SEO Shop", Cookie: "sr_gate=dead; sr_gate=live"})
+	if !strings.Contains(rr.Body.String(), "Domain Overview ready") {
+		t.Fatalf("next gate in the same cookie was not used: %s", rr.Body.String())
+	}
+	if len(cookies) < 2 || cookies[0] != "sr_gate=dead" || cookies[1] != "sr_gate=live" {
+		t.Fatalf("gates were not tried one at a time: %v", cookies)
 	}
 }
 

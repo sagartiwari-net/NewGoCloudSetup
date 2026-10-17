@@ -496,12 +496,21 @@ func cookieEntriesToHeader(cookies []browserCookieEntry) string {
 		value string
 		score int
 	}
+	var gates []string
+	seenGate := map[string]bool{}
 	best := map[string]scored{}
 	var order []string
 	for _, c := range cookies {
 		name := strings.TrimSpace(c.Name)
 		value := strings.TrimSpace(c.Value)
 		if name == "" || value == "" {
+			continue
+		}
+		if strings.EqualFold(name, "sr_gate") {
+			if !seenGate[value] {
+				seenGate[value] = true
+				gates = append(gates, value)
+			}
 			continue
 		}
 		score := 1
@@ -516,9 +525,12 @@ func cookieEntriesToHeader(cookies []browserCookieEntry) string {
 			best[name] = scored{value: value, score: score}
 		}
 	}
-	parts := make([]string, 0, len(order))
+	parts := make([]string, 0, len(order)+len(gates))
 	for _, name := range order {
 		parts = append(parts, name+"="+best[name].value)
+	}
+	for _, value := range gates {
+		parts = append(parts, "sr_gate="+value)
 	}
 	return strings.Join(parts, "; ")
 }
