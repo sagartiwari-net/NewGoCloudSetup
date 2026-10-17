@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -334,7 +333,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		}
 		if targetBase.Host != base.Host {
 			upReq.Header.Del("Cookie")
-		} else if cookie := cookiesForUpstream(acc.Cookie, r.Header.Get("Cookie"), sessionTokenFromRequest(r)); cookie != "" {
+		} else if cookie := cookiesForUpstream(acc.Cookie, r.Header.Get("Cookie")); cookie != "" {
 			upReq.Header.Set("Cookie", cookie)
 		} else {
 			upReq.Header.Del("Cookie")
@@ -369,16 +368,9 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			return
 		}
 		if isDocumentNavigation(r) && !isLoginPath(r.URL.Path) && targetBase.Host == base.Host && semrushServerDown(payload) {
-			token := sessionTokenFromRequest(r)
-			if next, trial, trialHeader, ok := firstWorkingSemrushAccount(r.Context(), cfg, base, requestURI, acc, token); ok {
+			if next, trial, trialHeader, ok := firstWorkingSemrushAccount(r.Context(), cfg, base, requestURI, acc.ID); ok {
 				log.Printf("[LB] semrush server %s is up, leaving %s", next.Name, acc.Name)
-				if next.ID == acc.ID {
-					if values := gateValues(next.Cookie); len(values) == 1 && token != "" {
-						pinnedGate.Store(token, values[0])
-					}
-				} else {
-					assignSessionAccount(cfg, token, next)
-				}
+				assignSessionAccount(cfg, sessionTokenFromRequest(r), next)
 				acc = next
 				payload = rewriteText(trial, base.Host, origin)
 				ct = "text/html"
@@ -429,10 +421,8 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	http.Error(w, "Upstream unavailable", http.StatusBadGateway)
 }
 
-func firstWorkingSemrushAccount(ctx context.Context, cfg Config, base *url.URL, requestURI string, current ToolAccount, token string) (ToolAccount, []byte, http.Header, bool) {
-	candidates := sameAccountGates(current, token)
-	candidates = append(candidates, storedSemrushAccounts(cfg, current.ID)...)
-	for _, other := range candidates {
+func firstWorkingSemrushAccount(ctx context.Context, cfg Config, base *url.URL, requestURI string, except int) (ToolAccount, []byte, http.Header, bool) {
+	for _, other := range storedSemrushAccounts(cfg, except) {
 		status, hdr, body, err := probeSemrushAccount(ctx, base, requestURI, other)
 		if err != nil || bodyIsDashboardGate(body) || semrushServerDown(body) || status >= 400 {
 			continue
@@ -443,27 +433,6 @@ func firstWorkingSemrushAccount(ctx context.Context, cfg Config, base *url.URL, 
 		return other, body, hdr, true
 	}
 	return ToolAccount{}, nil, nil, false
-}
-
-func sameAccountGates(acc ToolAccount, token string) []ToolAccount {
-	values := gateValues(acc.Cookie)
-	current := ""
-	if token != "" {
-		if raw, ok := pinnedGate.Load(token); ok {
-			current = raw.(string)
-		}
-	}
-	if current == "" && len(values) > 0 {
-		current = values[0]
-	}
-	var out []ToolAccount
-	for i, value := range values {
-		if value == current {
-			continue
-		}
-		out = append(out, ToolAccount{ID: acc.ID, Name: fmt.Sprintf("gate %d", i+1), Cookie: "sr_gate=" + value})
-	}
-	return out
 }
 
 func probeSemrushAccount(ctx context.Context, base *url.URL, requestURI string, acc ToolAccount) (int, http.Header, []byte, error) {
@@ -540,12 +509,10 @@ func copyResponseHeaders(dst, src http.Header, upstreamHost, origin string) {
 	}
 }
 
-var pinnedGate sync.Map
-
-func cookiesForUpstream(panelHeader, browserHeader, sessionToken string) string {
+func cookiesForUpstream(panelHeader, browserHeader string) string {
 	var parts []string
 	seen := map[string]bool{}
-	if gate := activeGateCookie(sessionToken, panelHeader); gate != "" {
+	if gate := upstreamSessionCookie(panelHeader); gate != "" {
 		parts = append(parts, gate)
 		seen["sr_gate"] = true
 	}
@@ -570,49 +537,19 @@ func cookiesForUpstream(panelHeader, browserHeader, sessionToken string) string 
 	return strings.Join(parts, "; ")
 }
 
-func activeGateCookie(token, header string) string {
-	values := gateValues(header)
-	if len(values) == 0 {
-		return ""
-	}
-	if token != "" {
-		if raw, ok := pinnedGate.Load(token); ok {
-			want := raw.(string)
-			for _, value := range values {
-				if value == want {
-					return "sr_gate=" + value
-				}
-			}
-		}
-	}
-	return "sr_gate=" + values[0]
-}
-
-func gateValues(header string) []string {
-	var out []string
-	seen := map[string]bool{}
+func upstreamSessionCookie(header string) string {
+	var kept []string
 	for _, part := range strings.Split(header, ";") {
 		part = strings.TrimSpace(part)
 		name, value, ok := strings.Cut(part, "=")
-		if !ok || !strings.EqualFold(strings.TrimSpace(name), "sr_gate") {
+		if !ok || strings.TrimSpace(value) == "" {
 			continue
 		}
-		value = strings.TrimSpace(value)
-		if value == "" || seen[value] {
-			continue
+		if strings.EqualFold(strings.TrimSpace(name), "sr_gate") {
+			kept = append(kept, strings.TrimSpace(name)+"="+value)
 		}
-		seen[value] = true
-		out = append(out, value)
 	}
-	return out
-}
-
-func upstreamSessionCookie(header string) string {
-	values := gateValues(header)
-	if len(values) == 0 {
-		return ""
-	}
-	return "sr_gate=" + values[0]
+	return strings.Join(kept, "; ")
 }
 
 func rewriteSetCookie(raw, upstreamHost, origin string) (string, bool) {
