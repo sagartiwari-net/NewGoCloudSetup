@@ -254,8 +254,8 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		} else {
 			upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
 		}
-		if acc.Cookie != "" {
-			upReq.Header.Set("Cookie", acc.Cookie)
+		if gate := upstreamSessionCookie(acc.Cookie); gate != "" {
+			upReq.Header.Set("Cookie", gate)
 		} else {
 			upReq.Header.Del("Cookie")
 		}
@@ -362,6 +362,21 @@ func copyResponseHeaders(dst, src http.Header, upstreamHost, origin string) {
 	}
 }
 
+func upstreamSessionCookie(header string) string {
+	var kept []string
+	for _, part := range strings.Split(header, ";") {
+		part = strings.TrimSpace(part)
+		name, value, ok := strings.Cut(part, "=")
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(name), "sr_gate") {
+			kept = append(kept, strings.TrimSpace(name)+"="+value)
+		}
+	}
+	return strings.Join(kept, "; ")
+}
+
 func rewriteSetCookie(raw, upstreamHost, origin string) (string, bool) {
 	parts := strings.Split(raw, ";")
 	if len(parts) == 0 {
@@ -369,7 +384,7 @@ func rewriteSetCookie(raw, upstreamHost, origin string) (string, bool) {
 	}
 	name := strings.TrimSpace(strings.SplitN(parts[0], "=", 2)[0])
 	switch strings.ToLower(name) {
-	case "proxy_token", "ct_session":
+	case "proxy_token", "sr_gate", "ct_session":
 		return "", false
 	}
 	host := origin

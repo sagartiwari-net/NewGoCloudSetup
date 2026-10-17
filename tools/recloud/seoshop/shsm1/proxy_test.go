@@ -44,8 +44,16 @@ func TestCookieJSONBecomesHeader(t *testing.T) {
 	}
 }
 
+func TestUpstreamCookieKeepsOnlyGate(t *testing.T) {
+	raw := `[{"name":"snav_last_sidebar_tk","value":"toolkit_seo"},{"name":"ref_code","value":"__default__"},{"name":"refer_source","value":"\"\""},{"name":"sr_gate","value":"gate-token"}]`
+	got := upstreamSessionCookie(parseCookieFromDB(raw))
+	if got != "sr_gate=gate-token" {
+		t.Fatalf("upstream cookie %s", got)
+	}
+}
+
 func TestSetCookieDropsUpstreamSession(t *testing.T) {
-	if _, ok := rewriteSetCookie("proxy_token=secret; Path=/; Secure", "semnew1.accesstool.in", "https://shsm1.gt4rents.com"); ok {
+	if _, ok := rewriteSetCookie("sr_gate=secret; Path=/; Secure", "semnew1.accesstool.in", "https://shsm1.gt4rents.com"); ok {
 		t.Fatal("upstream session cookie must not reach the browser")
 	}
 	got, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "semnew1.accesstool.in", "https://shsm1.gt4rents.com")
