@@ -22,6 +22,12 @@ PY
 )
 EOF
 
+if systemctl is-enabled --quiet "gt4-${SUB}.service" 2>/dev/null; then
+  systemctl restart "gt4-${SUB}.service"
+  echo "OK: systemd gt4-${SUB} → 127.0.0.1:${PORT}"
+  exit 0
+fi
+
 OUTDIR="${BASE}/${SUB}"
 BIN="${OUTDIR}/app"
 LOG="${OUTDIR}/app.log"
