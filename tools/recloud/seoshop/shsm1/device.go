@@ -263,6 +263,9 @@ function tmReveal() {
     }).finally(tmDeny);
     return;
   }
+  var fpNow = "";
+  try { fpNow = sessionStorage.getItem("tm_device_fp") || localStorage.getItem("tm_device_fp") || ""; } catch (e) {}
+  if (fpNow) tmPatchRequests(fpNow, proof);
   tmReveal();
   tmFingerprint().then(function (fp) {
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
@@ -353,13 +356,19 @@ function tmPatchRequests(fp, proof) {
       var url = typeof input === "string" ? input : (input && input.url) || "";
       var same = false;
       try { same = new URL(url, location.href).origin === location.origin; } catch (e) {}
+      if (same && typeof input !== "string" && input && input.headers && !init) {
+        try {
+          input.headers.set("X-Device-Fp", fp);
+          input.headers.set("X-Device-Proof", proof);
+        } catch (e) {}
+        return origFetch.call(this, input);
+      }
       if (same) {
         init = init || {};
-        var headers = new Headers(init.headers || (typeof input !== "string" && input && input.headers) || undefined);
+        var headers = new Headers(init.headers || undefined);
         if (!headers.get("X-Device-Fp")) headers.set("X-Device-Fp", fp);
         if (!headers.get("X-Device-Proof")) headers.set("X-Device-Proof", proof);
         init.headers = headers;
-        if (typeof input !== "string") return origFetch.call(this, new Request(input, init));
       }
       return origFetch.call(this, input, init);
     };

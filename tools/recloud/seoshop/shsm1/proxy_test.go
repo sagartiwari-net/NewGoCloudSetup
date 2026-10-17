@@ -52,6 +52,33 @@ func TestUpstreamCookieKeepsOnlyGate(t *testing.T) {
 	}
 }
 
+func TestUpstreamCookieKeepsBrowserSession(t *testing.T) {
+	raw := `[{"name":"snav_last_sidebar_tk","value":"from-panel"},{"name":"ref_code","value":"__default__"},{"name":"refer_source","value":"\"\""},{"name":"sr_gate","value":"gate-token"}]`
+	browser := "ct_session=panel-session; SSO-JWT=jwt-value; snav_last_sidebar_tk=from-browser; sr_gate=browser-gate"
+	got := cookiesForUpstream(parseCookieFromDB(raw), browser)
+	if !strings.HasPrefix(got, "sr_gate=gate-token") {
+		t.Fatalf("gate cookie %s", got)
+	}
+	if !strings.Contains(got, "SSO-JWT=jwt-value") || !strings.Contains(got, "snav_last_sidebar_tk=from-browser") {
+		t.Fatalf("browser session was dropped: %s", got)
+	}
+	if strings.Contains(got, "ct_session") || strings.Contains(got, "from-panel") || strings.Contains(got, "ref_code") || strings.Contains(got, "browser-gate") {
+		t.Fatalf("panel junk or panel session leaked: %s", got)
+	}
+}
+
+func TestSearchRequestsArePatchedBeforeAppScripts(t *testing.T) {
+	script := devicePageScript()
+	patch := strings.Index(script, "tmPatchRequests(fpNow, proof)")
+	finger := strings.Index(script, "tmFingerprint().then")
+	if patch < 0 || finger < 0 || patch > finger {
+		t.Fatal("search requests can leave before the device patch")
+	}
+	if strings.Contains(script, "new Request(input, init)") {
+		t.Fatal("fetch patch rebuilds the request")
+	}
+}
+
 func TestUpstreamRequestDropsProxyHeaders(t *testing.T) {
 	src := httptest.NewRequest(http.MethodGet, "https://shsm1.gt4rents.com/analytics/overview/?searchType=domain", nil)
 	src.Header.Set("X-Forwarded-Host", "shsm1.gt4rents.com")

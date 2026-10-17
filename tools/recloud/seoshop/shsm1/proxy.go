@@ -254,8 +254,8 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		} else {
 			upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
 		}
-		if gate := upstreamSessionCookie(acc.Cookie); gate != "" {
-			upReq.Header.Set("Cookie", gate)
+		if cookie := cookiesForUpstream(acc.Cookie, r.Header.Get("Cookie")); cookie != "" {
+			upReq.Header.Set("Cookie", cookie)
 		} else {
 			upReq.Header.Del("Cookie")
 		}
@@ -357,11 +357,44 @@ func copyResponseHeaders(dst, src http.Header, upstreamHost, origin string) {
 				dst.Add("Location", rewriteLocation(v, upstreamHost, origin))
 			}
 			continue
+		case "content-security-policy", "content-security-policy-report-only":
+			for _, v := range values {
+				dst.Add(key, string(rewriteText([]byte(v), upstreamHost, origin)))
+			}
+			continue
 		}
 		for _, v := range values {
 			dst.Add(key, v)
 		}
 	}
+}
+
+func cookiesForUpstream(panelHeader, browserHeader string) string {
+	var parts []string
+	seen := map[string]bool{}
+	if gate := upstreamSessionCookie(panelHeader); gate != "" {
+		parts = append(parts, gate)
+		seen["sr_gate"] = true
+	}
+	for _, part := range strings.Split(browserHeader, ";") {
+		part = strings.TrimSpace(part)
+		name, value, ok := strings.Cut(part, "=")
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		switch strings.ToLower(name) {
+		case "ct_session", "sr_gate", "proxy_token":
+			continue
+		}
+		key := strings.ToLower(name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		parts = append(parts, name+"="+value)
+	}
+	return strings.Join(parts, "; ")
 }
 
 func upstreamSessionCookie(header string) string {
