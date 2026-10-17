@@ -6,6 +6,22 @@ import (
 	"testing"
 )
 
+func TestHostLockStaysOnProxy(t *testing.T) {
+	in := []byte(`function s(){return"writehuman.ai"}`)
+	out := string(rewriteHostLock(in))
+	if strings.Contains(out, `return"writehuman.ai"`) || !strings.Contains(out, "return location.hostname") {
+		t.Fatalf("host lock not rewritten: %s", out)
+	}
+	loc := rewriteOfficialLocation("https://writehuman.ai/pricing?x=1", "https://writehuman.gt4rents.com")
+	if loc != "https://writehuman.gt4rents.com/pricing?x=1" {
+		t.Fatalf("location = %s", loc)
+	}
+	cookie := stripCookieDomain("wh_anon_id=abc; Path=/; Domain=writehuman.ai; Secure")
+	if strings.Contains(strings.ToLower(cookie), "domain=") || !strings.Contains(cookie, "wh_anon_id=abc") {
+		t.Fatalf("cookie = %s", cookie)
+	}
+}
+
 func TestChromeCookieArrayRestoresSupabaseSession(t *testing.T) {
 	sess := `{"access_token":"header.payload.sig","refresh_token":"rtok","token_type":"bearer"}`
 	raw := `[{"name":"sb-hicfsbrfkzsxbwayibfm-auth-token","value":"base64-` + base64.StdEncoding.EncodeToString([]byte(sess)) + `"},{"name":"_ga","value":"1"}]`

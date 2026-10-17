@@ -1135,6 +1135,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if strings.Contains(ct, "text/html") {
 		body = rewriteBytes(body, pairs)
+		body = rewriteHostLock(body)
+		body = bustChunkURLs(body)
 		inject := buildInject(c, ls, plan, token, publicBase, panelUser)
 		if usesPanelAccountMode(c) && !c.BypassAuth {
 			inject += limitWidgetScript(toolDisplayName(c))
@@ -1164,6 +1166,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	} else if strings.Contains(ct, "javascript") || strings.Contains(ct, "application/json") ||
 		strings.Contains(ct, "text/css") || strings.Contains(ct, "text/x-component") {
 		body = rewriteBytes(body, pairs)
+		body = rewriteHostLock(body)
 		if strings.Contains(ct, "application/json") || strings.Contains(ct, "+json") {
 			body = forceGPTZeroPremiumPlan(path, body)
 		}
@@ -1185,7 +1188,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, v := range vv {
-			w.Header().Add(k, v)
+			w.Header().Add(k, rewriteProxyHeader(k, v, publicBase))
 		}
 	}
 	if storedCDN {
@@ -1234,6 +1237,65 @@ func rewriteBytes(body []byte, pairs [][2]string) []byte {
 		body = bytes.ReplaceAll(body, []byte(p[0]), []byte(p[1]))
 	}
 	return body
+}
+
+// rewriteHostLock makes WriteHuman's official-host check accept the proxy host.
+// The bundle does `function s(){return"writehuman.ai"}` and treats every other
+// host as an unauthorized copy, with a link that leaves for the official site.
+func rewriteHostLock(body []byte) []byte {
+	body = bytes.ReplaceAll(body, []byte(`return"writehuman.ai"`), []byte(`return location.hostname`))
+	body = bytes.ReplaceAll(body, []byte(`return "writehuman.ai"`), []byte(`return location.hostname`))
+	return body
+}
+
+// bustChunkURLs changes the script URL once so a browser that cached the
+// unpatched bundle (immutable, 1 year) loads the host-lock fix.
+func bustChunkURLs(body []byte) []byte {
+	return bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=1&dpl="))
+}
+
+func rewriteProxyHeader(name, value, publicBase string) string {
+	switch strings.ToLower(name) {
+	case "location":
+		return rewriteOfficialLocation(value, publicBase)
+	case "set-cookie":
+		return stripCookieDomain(value)
+	default:
+		return value
+	}
+}
+
+func rewriteOfficialLocation(raw, publicBase string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "writehuman.ai" && host != "www.writehuman.ai" {
+		return raw
+	}
+	base, err := url.Parse(publicBase)
+	if err != nil || base.Host == "" {
+		return raw
+	}
+	u.Scheme = base.Scheme
+	u.Host = base.Host
+	return u.String()
+}
+
+func stripCookieDomain(raw string) string {
+	parts := strings.Split(raw, ";")
+	if len(parts) == 0 {
+		return raw
+	}
+	out := []string{parts[0]}
+	for _, part := range parts[1:] {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(part)), "domain=") {
+			continue
+		}
+		out = append(out, part)
+	}
+	return strings.Join(out, ";")
 }
 
 func decompress(enc string, body []byte) []byte {
@@ -1358,20 +1420,60 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     var h = HOME || '/';
     if ((location.pathname || '/') !== h) history.replaceState(null, '', h);
   }
+  function keepHere(u) {
+    if (typeof u !== 'string') return u;
+    try {
+      var x = new URL(u, location.origin);
+      var h = (x.hostname || '').toLowerCase();
+      if (h === 'writehuman.ai' || h === 'www.writehuman.ai') {
+        return location.origin + x.pathname + x.search + x.hash;
+      }
+    } catch (e) {}
+    return u;
+  }
+  try {
+    var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+    if (hrefDesc && hrefDesc.get && hrefDesc.set) {
+      Object.defineProperty(Location.prototype, 'href', {
+        configurable: true,
+        enumerable: hrefDesc.enumerable,
+        get: hrefDesc.get,
+        set: function(v) {
+          if (typeof v === 'string') v = keepHere(v);
+          return hrefDesc.set.call(this, v);
+        }
+      });
+    }
+  } catch (e) {}
   try {
     var _push = history.pushState.bind(history);
-    history.pushState = function(s, t, u) { if (isBlocked(u)) return _push(s, t, HOME || '/'); return _push(s, t, u); };
+    history.pushState = function(s, t, u) {
+      if (typeof u === 'string') u = keepHere(u);
+      if (isBlocked(u)) return _push(s, t, HOME || '/');
+      return _push(s, t, u);
+    };
     var _rep = history.replaceState.bind(history);
-    history.replaceState = function(s, t, u) { if (isBlocked(u)) return _rep(s, t, HOME || '/'); return _rep(s, t, u); };
+    history.replaceState = function(s, t, u) {
+      if (typeof u === 'string') u = keepHere(u);
+      if (isBlocked(u)) return _rep(s, t, HOME || '/');
+      return _rep(s, t, u);
+    };
     var _assign = location.assign.bind(location);
-    location.assign = function(u) { if (isBlocked(u)) return stayHome(); return _assign(u); };
+    location.assign = function(u) { u = keepHere(u); if (isBlocked(u)) return stayHome(); return _assign(u); };
     var _replace = location.replace.bind(location);
-    location.replace = function(u) { if (isBlocked(u)) return stayHome(); return _replace(u); };
+    location.replace = function(u) { u = keepHere(u); if (isBlocked(u)) return stayHome(); return _replace(u); };
+    var _open = window.open;
+    window.open = function(u, name, specs) {
+      if (typeof u === 'string') u = keepHere(u);
+      return _open.call(window, u, name, specs);
+    };
     document.addEventListener('click', function(ev) {
       var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
       if (!a) return;
       var href = a.getAttribute('href') || '';
-      if (isBlocked(href)) { ev.preventDefault(); stayHome(); }
+      if (isBlocked(href)) { ev.preventDefault(); stayHome(); return; }
+      var local = keepHere(href);
+      if (local !== href) { ev.preventDefault(); location.assign(local); }
     }, true);
     if (isBlocked(location.pathname)) stayHome();
   } catch (e) {}
