@@ -72,6 +72,7 @@ export function clearCatalogCache(key?: string) {
 export type Session = {
   username: string
   role: Role
+  accountRole?: Role
   token: string
 }
 
@@ -137,7 +138,8 @@ export function readSession(): Session | null {
     if (!parsed.username || !parsed.token || (parsed.role !== "master" && parsed.role !== "reseller")) {
       return null
     }
-    return parsed
+    const accountRole = parsed.accountRole === "master" || parsed.accountRole === "reseller" ? parsed.accountRole : undefined
+    return { username: parsed.username, role: parsed.role, accountRole, token: parsed.token }
   } catch {
     return null
   }
@@ -199,7 +201,12 @@ export async function login(username: string, password: string): Promise<Operato
   if (!operator.token) {
     throw new Error("Sign in failed")
   }
-  writeSession({ username: operator.username, role: operator.role, token: operator.token })
+  writeSession({
+    username: operator.username,
+    role: operator.role,
+    accountRole: operator.role,
+    token: operator.token,
+  })
   return operator
 }
 

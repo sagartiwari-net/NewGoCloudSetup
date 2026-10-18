@@ -1,9 +1,10 @@
 "use client"
 
-import { createContext, useContext, useMemo, useSyncExternalStore } from "react"
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react"
 
 import {
   clearCatalogCache,
+  currentOperator,
   login,
   logout,
   readSession,
@@ -27,11 +28,17 @@ const SESSION_EVENT = "update-panel-session"
 let cachedRaw = ""
 let cachedSession: Session | null = null
 
+function presentSession(session: Session | null): Session | null {
+  if (!session) return null
+  if (session.accountRole === "master") return session
+  return { ...session, role: "reseller" }
+}
+
 function snapshotSession() {
   const raw = readSessionRaw()
   if (raw !== cachedRaw) {
     cachedRaw = raw
-    cachedSession = readSession()
+    cachedSession = presentSession(readSession())
   }
   return cachedSession
 }
@@ -76,13 +83,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void logout().finally(() => emitSession())
       },
       setRole(role) {
-        if (!session) return
-        writeSession({ ...session, role, token: session.token })
+        if (!session || session.accountRole !== "master") return
+        writeSession({ ...session, role, accountRole: "master", token: session.token })
         emitSession()
       },
     }),
     [ready, session]
   )
+
+  useEffect(() => {
+    const current = readSession()
+    if (!current?.token) return
+    let cancelled = false
+    currentOperator()
+      .then((operator) => {
+        if (cancelled) return
+        const stored = readSession()
+        if (!stored || stored.token !== current.token) return
+        const accountRole = operator.role === "master" ? "master" : "reseller"
+        const role = accountRole === "master" ? stored.role : "reseller"
+        if (stored.username === operator.username && stored.role === role && stored.accountRole === accountRole) return
+        writeSession({ username: operator.username, role, accountRole, token: stored.token })
+        emitSession()
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [session?.token])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

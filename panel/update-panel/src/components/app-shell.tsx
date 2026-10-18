@@ -161,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [signedOut, router])
 
   useEffect(() => {
-    if (session?.role === "reseller" && masterRoutes.includes(pathname)) {
+    if (session?.accountRole && session.role === "reseller" && masterRoutes.includes(pathname)) {
       router.replace("/")
     }
   }, [session, pathname, router])
@@ -180,7 +180,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ShellFrame role={session.role} username={session.username}>
+    <ShellFrame role={session.role} accountRole={session.accountRole} username={session.username}>
       {children}
     </ShellFrame>
   )
@@ -189,10 +189,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function ShellFrame({
   children,
   role,
+  accountRole,
   username,
 }: {
   children: React.ReactNode
   role: Role
+  accountRole?: Role
   username: string
 }) {
   const { signOut, setRole } = useAuth()
@@ -306,25 +308,29 @@ function ShellFrame({
                   </ToggleGroup>
                 </div>
               </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>View as</DropdownMenuLabel>
-                <div className="px-1.5 py-1">
-                  <ToggleGroup
-                    data-mode="choice"
-                    spacing={0}
-                    value={[role]}
-                    onValueChange={(values) => {
-                      const next = values[values.length - 1]
-                      if (next === "master" || next === "reseller") setRole(next as Role)
-                    }}
-                    aria-label="View as role"
-                  >
-                    <ToggleGroupItem value="master">Master</ToggleGroupItem>
-                    <ToggleGroupItem value="reseller">Reseller</ToggleGroupItem>
-                  </ToggleGroup>
-                </div>
-              </DropdownMenuGroup>
+              {accountRole === "master" ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>View as</DropdownMenuLabel>
+                    <div className="px-1.5 py-1">
+                      <ToggleGroup
+                        data-mode="choice"
+                        spacing={0}
+                        value={[role]}
+                        onValueChange={(values) => {
+                          const next = values[values.length - 1]
+                          if (next === "master" || next === "reseller") setRole(next as Role)
+                        }}
+                        aria-label="View as role"
+                      >
+                        <ToggleGroupItem value="master">Master</ToggleGroupItem>
+                        <ToggleGroupItem value="reseller">Reseller</ToggleGroupItem>
+                      </ToggleGroup>
+                    </div>
+                  </DropdownMenuGroup>
+                </>
+              ) : null}
               <DropdownMenuSeparator />
               {role === "master" ? (
                 <DropdownMenuItem render={<Link href="/settings" prefetch={false} />}>
