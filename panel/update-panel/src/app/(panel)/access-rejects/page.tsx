@@ -1,18 +1,23 @@
 "use client"
 
 import { useState } from "react"
+import { toast } from "sonner"
 
 import { useAuth } from "@/components/auth-provider"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataColumn } from "@/components/data-table"
+import { FormOverlay } from "@/components/form-overlay"
 import { PageHeader } from "@/components/page-header"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 import { useResource } from "@/hooks/use-resource"
-import { clearAccessRejects, listAccessRejects } from "@/lib/api/client"
-import type { AccessReject } from "@/lib/api/types"
+import { clearAccessRejects, listAccessRejects, listWebsiteChoices, saveAccessSite } from "@/lib/api/client"
+import type { AccessReject, Website } from "@/lib/api/types"
 import { formatTime } from "@/lib/format"
 import { useListPage } from "@/lib/page-size"
 
@@ -26,7 +31,11 @@ export default function AccessRejectsPage() {
   )
   const [confirmClear, setConfirmClear] = useState(false)
   const [clearing, setClearing] = useState(false)
+  const [allowing, setAllowing] = useState<AccessReject | null>(null)
+  const [issuedKey, setIssuedKey] = useState("")
+  const { data: websites } = useResource(`${session?.role ?? "none"}-websites`, listWebsiteChoices)
   const rows = data?.items ?? []
+  const master = session?.role === "master"
   const columns: DataColumn<AccessReject>[] = [
     { id: "time", header: "Time", cell: (row) => formatTime(row.created_at), sortValue: (row) => row.created_at },
     {
@@ -38,6 +47,16 @@ export default function AccessRejectsPage() {
     { id: "user", header: "Username", cell: (row) => row.username || "—", sortValue: (row) => row.username },
     { id: "ip", header: "IP", cell: (row) => row.client_ip || "—", sortValue: (row) => row.client_ip },
     { id: "message", header: "Reason", cell: (row) => row.message, sortValue: (row) => row.message },
+    {
+      id: "actions",
+      header: "",
+      cell: (row) =>
+        master && row.reason === "not_whitelisted" && row.site_domain ? (
+          <Button variant="outline" size="sm" onClick={() => setAllowing(row)}>
+            Allow
+          </Button>
+        ) : null,
+    },
   ]
 
   return (
@@ -51,6 +70,15 @@ export default function AccessRejectsPage() {
           </Button>
         }
       />
+      {issuedKey ? (
+        <Alert>
+          <AlertTitle>Copy this key now</AlertTitle>
+          <AlertDescription>
+            Put it in gt4acc.php. It is not shown again.
+            <span className="mt-2 block font-mono break-all">{issuedKey}</span>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <Card>
         <CardContent className="flex flex-col gap-4">
           <Field className="max-w-sm">
@@ -98,6 +126,98 @@ export default function AccessRejectsPage() {
           })
         }}
       />
+      <FormOverlay
+        open={allowing != null}
+        onOpenChange={(next) => { if (!next) setAllowing(null) }}
+        title="Allow this website"
+        description="Choose which tools it can open. The key is shown once."
+      >
+        {allowing ? (
+          <AllowSiteForm
+            key={allowing.site_domain}
+            domain={allowing.site_domain}
+            toolSlug={allowing.tool_slug}
+            websites={websites ?? []}
+            onDone={async (key) => {
+              if (key) setIssuedKey(key)
+              setAllowing(null)
+              reload()
+            }}
+          />
+        ) : null}
+      </FormOverlay>
     </>
+  )
+}
+
+function AllowSiteForm({
+  domain,
+  toolSlug,
+  websites,
+  onDone,
+}: {
+  domain: string
+  toolSlug: string
+  websites: Website[]
+  onDone: (key?: string) => Promise<void>
+}) {
+  const preset = websites.filter((website) => website.access_slug && website.access_slug === toolSlug).map((website) => website.id)
+  const [selected, setSelected] = useState(preset)
+  const [saving, setSaving] = useState(false)
+  const [websiteQuery, setWebsiteQuery] = useState("")
+  const shown = websites.filter((website) => {
+    const needle = websiteQuery.trim().toLowerCase()
+    if (!needle) return true
+    return website.name.toLowerCase().includes(needle) || website.domain.toLowerCase().includes(needle) || (website.access_slug ?? "").includes(needle)
+  })
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        setSaving(true)
+        void saveAccessSite({ domain, website_ids: selected, enabled: true })
+          .then((saved) => onDone(saved.key))
+          .catch((error: unknown) => {
+            toast.error(error instanceof Error ? error.message : "Could not allow this website")
+          })
+          .finally(() => setSaving(false))
+      }}
+    >
+      <FieldGroup>
+        <Field>
+          <FieldLabel>Website</FieldLabel>
+          <Input value={domain} readOnly />
+        </Field>
+        <FieldSet>
+          <FieldLegend variant="label">Tools</FieldLegend>
+          <FieldDescription>Only the tools you check can be opened from this website. {selected.length} selected.</FieldDescription>
+          <Input value={websiteQuery} placeholder="Search tools" onChange={(event) => setWebsiteQuery(event.target.value)} />
+          <FieldGroup className="max-h-72 overflow-y-auto">
+            {shown.map((website) => {
+              const checked = selected.includes(website.id)
+              const button = website.access_slug ? website.access_slug : "no button"
+              return (
+                <Field key={website.id} orientation="horizontal">
+                  <Checkbox
+                    id={`allow-tool-${website.id}`}
+                    checked={checked}
+                    onCheckedChange={(next) => {
+                      setSelected((current) => (next ? [...current, website.id] : current.filter((id) => id !== website.id)))
+                    }}
+                  />
+                  <FieldLabel htmlFor={`allow-tool-${website.id}`}>{website.name} · {button}</FieldLabel>
+                </Field>
+              )
+            })}
+            {shown.length === 0 ? <p className="text-sm text-muted-foreground">No tool matches.</p> : null}
+          </FieldGroup>
+        </FieldSet>
+        <Button type="submit" disabled={saving}>
+          {saving ? <Spinner data-icon="inline-start" /> : null}
+          Allow and create key
+        </Button>
+      </FieldGroup>
+    </form>
   )
 }

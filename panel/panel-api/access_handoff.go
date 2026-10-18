@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -31,36 +32,65 @@ const (
 )
 
 func ensureAccessHandoff(db *sql.DB) {
-	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS access_sites (
-		id INTEGER PRIMARY KEY,
-		domain TEXT NOT NULL UNIQUE,
-		key_enc TEXT NOT NULL,
-		enabled INTEGER NOT NULL DEFAULT 1,
-		note TEXT NOT NULL DEFAULT '',
-		created_at TEXT NOT NULL
-	)`)
-	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS access_nonces (
-		nonce TEXT PRIMARY KEY,
-		expires_at TEXT NOT NULL
-	)`)
-	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS access_rejects (
-		id INTEGER PRIMARY KEY,
-		website_id INTEGER NOT NULL DEFAULT 0,
-		username TEXT NOT NULL DEFAULT '',
-		client_ip TEXT NOT NULL DEFAULT '',
-		reason TEXT NOT NULL,
-		message TEXT NOT NULL,
-		site_domain TEXT NOT NULL DEFAULT '',
-		tool_slug TEXT NOT NULL DEFAULT '',
-		created_at TEXT NOT NULL
-	)`)
-	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_access_rejects_created ON access_rejects (created_at)`)
-	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS access_site_tools (
-		site_id INTEGER NOT NULL,
-		website_id INTEGER NOT NULL,
-		PRIMARY KEY (site_id, website_id)
-	)`)
-	_, _ = db.Exec(`ALTER TABLE websites ADD COLUMN access_slug TEXT NOT NULL DEFAULT ''`)
+	// VARCHAR, not TEXT: MySQL refuses a unique key on TEXT, so access_sites never got created.
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS access_sites (
+			id INTEGER PRIMARY KEY,
+			domain VARCHAR(191) NOT NULL UNIQUE,
+			key_enc TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			note TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS access_nonces (
+			nonce VARCHAR(128) PRIMARY KEY,
+			expires_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS access_rejects (
+			id INTEGER PRIMARY KEY,
+			website_id INTEGER NOT NULL DEFAULT 0,
+			username TEXT NOT NULL DEFAULT '',
+			client_ip TEXT NOT NULL DEFAULT '',
+			reason TEXT NOT NULL,
+			message TEXT NOT NULL,
+			site_domain TEXT NOT NULL DEFAULT '',
+			tool_slug TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS access_site_tools (
+			site_id INTEGER NOT NULL,
+			website_id INTEGER NOT NULL,
+			PRIMARY KEY (site_id, website_id)
+		)`,
+		`ALTER TABLE websites ADD COLUMN access_slug TEXT NOT NULL DEFAULT ''`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "already exists") {
+				continue
+			}
+			log.Printf("[DB] access handoff table: %v", err)
+		}
+	}
+	indexSQL := `CREATE INDEX IF NOT EXISTS idx_access_rejects_created ON access_rejects (created_at)`
+	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) != "" {
+		indexSQL = `CREATE INDEX IF NOT EXISTS idx_access_rejects_created ON access_rejects (created_at(32))`
+	}
+	if _, err := db.Exec(indexSQL); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "duplicate") && !strings.Contains(msg, "already exists") {
+			log.Printf("[DB] access handoff table: %v", err)
+		}
+	}
+	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) == "" {
+		return
+	}
+	for _, table := range []string{"access_sites", "access_rejects"} {
+		if _, err := db.Exec(`ALTER TABLE ` + table + ` MODIFY COLUMN id INTEGER NOT NULL AUTO_INCREMENT`); err != nil {
+			log.Printf("[DB] access handoff id: %v", err)
+		}
+	}
 }
 
 func normalizeAccessSlug(raw string) string {
@@ -335,6 +365,9 @@ func (s *server) accessHandoff(w http.ResponseWriter, r *http.Request) {
 	}
 	customerIP := strings.TrimSpace(body.ClientIP)
 	nonce := strings.TrimSpace(body.Nonce)
+	if len(nonce) > 128 {
+		nonce = ""
+	}
 	ids := productIDList(body.ProductIDs)
 	if site == "" || tool == "" || username == "" || nonce == "" || body.Signature == "" {
 		s.finishHandoff(w, 0, site, tool, username, customerIP, "bad_signature", msgDirectAccess)
