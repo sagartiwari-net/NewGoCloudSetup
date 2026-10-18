@@ -620,6 +620,10 @@ export async function deleteUserAgent(id: number): Promise<Ok> {
   return { status: "ok" }
 }
 
+export async function getWebsite(id: number): Promise<Website> {
+  return api<Website>(`/api/websites/${id}`)
+}
+
 export async function listWebsites(query: {
   page: number
   pageSize: number

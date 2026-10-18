@@ -128,12 +128,38 @@ func (s *server) listWebsites(w http.ResponseWriter, r *http.Request) {
 	items := []any{}
 	for rows.Next() {
 		item := scanWebsite(rows)
-		if op.Role != "master" {
-			item["secret_key"] = ""
-		}
+		item["secret_key"] = ""
 		items = append(items, item)
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "pageSize": size})
+}
+
+func (s *server) getWebsite(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok {
+		return
+	}
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	if id == 0 || !s.owns(op, id) {
+		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
+	var toolID, duration, security int
+	var name, domain, secret, limits string
+	err := s.db.QueryRow(`SELECT tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled FROM websites WHERE id=?`, id).
+		Scan(&toolID, &name, &domain, &secret, &duration, &limits, &security)
+	if err != nil {
+		writeErr(w, 404, "Website not found")
+		return
+	}
+	if op.Role != "master" {
+		secret = ""
+	}
+	writeJSON(w, 200, map[string]any{
+		"id": id, "tool_id": toolID, "name": name, "domain": domain, "secret_key": secret,
+		"session_duration": duration, "default_limits": jsonRaw(limits, map[string]int{}),
+		"session_security_enabled": security == 1,
+	})
 }
 
 func scanWebsite(rows *sql.Rows) map[string]any {
@@ -383,6 +409,10 @@ func (s *server) listAccounts(w http.ResponseWriter, r *http.Request) {
 				proxyID.Valid = false
 			}
 		}
+		proxy = ""
+		if r.URL.Path != "/api/automate-tasks" || op.Role != "master" {
+			ingest = ""
+		}
 		var uaOut any
 		var proxyOut any
 		if uaID.Valid {
@@ -456,6 +486,8 @@ func (s *server) getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if op.Role != "master" {
+		item["automation_ingest_key"] = ""
+		item["automation_task_uid"] = ""
 		if id, ok := item["proxy_id"].(int64); ok && !s.ownsCatalog(op, "proxies", int(id)) {
 			item["proxy_id"] = nil
 			item["proxy"] = ""
@@ -513,6 +545,10 @@ func (s *server) saveAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	if op.Role != "master" {
 		if body.ID != 0 {
+			var keptTask, keptIngest string
+			_ = s.db.QueryRow(`SELECT automation_task_uid, automation_ingest_key FROM accounts WHERE id=?`, body.ID).Scan(&keptTask, &keptIngest)
+			body.Task = keptTask
+			body.Ingest = keptIngest
 			var curProxy, curUA sql.NullInt64
 			var curProxyText, curUAText string
 			_ = s.db.QueryRow(`SELECT proxy_id, proxy, user_agent_id, user_agent FROM accounts WHERE id=?`, body.ID).Scan(&curProxy, &curProxyText, &curUA, &curUAText)

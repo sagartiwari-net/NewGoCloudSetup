@@ -125,6 +125,12 @@ export function AccountEditor({
           return
         }
         form.setValue("cookie", full.cookie)
+        form.setValue("proxy", full.proxy || "")
+        form.setValue("proxy_id", full.proxy_id ? String(full.proxy_id) : "")
+        form.setValue("user_agent", full.user_agent || form.getValues("user_agent"))
+        form.setValue("user_agent_id", full.user_agent_id ? String(full.user_agent_id) : "")
+        form.setValue("automation_task_uid", full.automation_task_uid || "")
+        form.setValue("automation_ingest_key", full.automation_ingest_key || "")
         setCookieReady(true)
       })
       .catch(() => {

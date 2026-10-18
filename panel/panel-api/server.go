@@ -72,6 +72,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tools", s.saveTool)
 	mux.HandleFunc("GET /api/websites/options", s.listWebsiteOptions)
 	mux.HandleFunc("GET /api/websites", s.listWebsites)
+	mux.HandleFunc("GET /api/websites/{id}", s.getWebsite)
 	mux.HandleFunc("POST /api/websites/settings", s.saveWebsiteSettings)
 	mux.HandleFunc("POST /api/websites/session", s.saveWebsiteSessions)
 	mux.HandleFunc("POST /api/websites", s.saveWebsite)
@@ -111,7 +112,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/user-report", s.userReport)
 	mux.HandleFunc("GET /api/user-report/events", s.userReportEvents)
 	mux.HandleFunc("GET /api/ip-report", s.ipReport)
-	mux.HandleFunc("GET /api/automate-tasks", s.listAutomate)
+	mux.HandleFunc("GET /api/automate-tasks", s.masterOnly(s.listAutomate))
 	mux.HandleFunc("GET /api/ingest-logs", s.emptyPage)
 	mux.HandleFunc("GET /api/products", s.listProducts)
 	mux.HandleFunc("POST /api/products/bulk", s.bulkProductIDs)
@@ -277,11 +278,19 @@ func (s *server) masterOnly(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+var panelLogin = newLoginGate()
+
 func (s *server) login(w http.ResponseWriter, r *http.Request) {
+	ip := clientIP(r)
+	if !panelLogin.allow(ip) {
+		writeErr(w, http.StatusTooManyRequests, "Too many sign-in attempts. Wait a few minutes and try again.")
+		return
+	}
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, 400, "Invalid body")
 		return
@@ -291,9 +300,11 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	err := s.db.QueryRow(`SELECT id, username, role, status, password_hash FROM operators WHERE username = ?`, strings.TrimSpace(body.Username)).
 		Scan(&op.ID, &op.Username, &op.Role, &op.Status, &hash)
 	if err != nil || !verifyPassword(hash, body.Password) || op.Status != "active" {
+		panelLogin.fail(ip)
 		writeErr(w, 401, "Invalid username or password")
 		return
 	}
+	panelLogin.success(ip)
 	if !strings.HasPrefix(hash, "$2") {
 		if next := hashPassword(body.Password); next != "" {
 			_, _ = s.db.Exec(`UPDATE operators SET password_hash=? WHERE id=?`, next, op.ID)

@@ -27,6 +27,7 @@ import { useResource } from "@/hooks/use-resource"
 import {
   deleteWebsite,
   listTools,
+  getWebsite,
   listWebsites,
   saveTool,
   saveWebsite,
@@ -474,6 +475,7 @@ function WebsiteForm({
       session_security_enabled: website?.session_security_enabled ?? true,
     },
   })
+  const [secretReady, setSecretReady] = useState(!website)
   const watchedToolId = form.watch("tool_id")
   const selectedTool = tools.find((tool) => String(tool.id) === watchedToolId)
   const [defaults, setDefaults] = useState<Record<string, number>>(website?.default_limits ?? {})
@@ -481,6 +483,23 @@ function WebsiteForm({
   useEffect(() => {
     if (preferredToolId) form.setValue("tool_id", preferredToolId)
   }, [form, preferredToolId])
+
+  useEffect(() => {
+    if (!website) return
+    let cancel = false
+    getWebsite(website.id)
+      .then((full) => {
+        if (cancel) return
+        form.setValue("secret_key", full.secret_key)
+        setSecretReady(true)
+      })
+      .catch(() => {
+        if (!cancel) setSecretReady(false)
+      })
+    return () => {
+      cancel = true
+    }
+  }, [form, website])
 
   useEffect(() => {
     setDefaults((current) => {
@@ -495,6 +514,7 @@ function WebsiteForm({
   const errors = form.formState.errors
 
   async function onSubmit(values: WebsiteValues) {
+    if (website && !secretReady) return
     const ok = await runMutation(
       () =>
         saveWebsite({
@@ -604,7 +624,7 @@ function WebsiteForm({
           />
           <FieldLabel htmlFor="session_security_enabled">Session security</FieldLabel>
         </Field>
-        <Button type="submit" disabled={form.formState.isSubmitting}>
+        <Button type="submit" disabled={form.formState.isSubmitting || !secretReady}>
           {form.formState.isSubmitting ? <Spinner data-icon="inline-start" /> : null}
           Save website
         </Button>

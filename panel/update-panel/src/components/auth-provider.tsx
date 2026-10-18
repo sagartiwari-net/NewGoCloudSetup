@@ -107,10 +107,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         emitSession()
       })
       .catch(() => {
-        const stored = readSession()
-        if (!stored || stored.accountRole !== "master") return
-        writeSession({ ...stored, role: "reseller", accountRole: "reseller", token: "" })
-        emitSession()
+        if (cancelled) return
+        clearCatalogCache()
+        void logout().finally(() => {
+          emitSession()
+          if (window.location.pathname !== "/login") window.location.replace("/login")
+        })
       })
     return () => {
       cancelled = true
