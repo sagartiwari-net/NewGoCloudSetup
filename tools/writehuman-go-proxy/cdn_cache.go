@@ -189,7 +189,9 @@ func cdnCacheKey(r *http.Request) string {
 	if !isGPTZeroCDNPath(path) {
 		return ""
 	}
-	return cdnRequestKey(r)
+	// Rewritten script URLs contain the browser host. Two websites on this
+	// port must not share one cached copy.
+	return panelRequestHost(r, loadConfig().PublicHost) + " " + cdnRequestKey(r)
 }
 
 func cdnFilePath(key string) (bodyPath, metaPath string) {

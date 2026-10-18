@@ -62,6 +62,23 @@ func TestChunkedChromeCookieRestoresSession(t *testing.T) {
 	clearDeadRefresh(9)
 }
 
+func TestRequestPublicBaseKeepsForeignHostOff(t *testing.T) {
+	cfg := Config{PublicHost: "writehuman.gt4rents.com", PublicScheme: "http"}
+	req, err := http.NewRequest(http.MethodGet, "http://writehuman.gt4rents.com/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "writehuman.gt4rents.com"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	if got := requestPublicBase(req, cfg); got != "https://writehuman.gt4rents.com" {
+		t.Fatalf("same host = %s", got)
+	}
+	req.Host = "evil.example"
+	if got := requestPublicBase(req, cfg); got != "https://writehuman.gt4rents.com" {
+		t.Fatalf("foreign host = %s", got)
+	}
+}
+
 func TestHostLockStaysOnProxy(t *testing.T) {
 	in := []byte(`function s(){return"writehuman.ai"}`)
 	out := string(rewriteHostLock(in))

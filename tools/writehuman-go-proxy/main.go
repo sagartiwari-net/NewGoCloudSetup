@@ -1442,10 +1442,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ct := resp.Header.Get("Content-Type")
-	publicBase := c.PublicScheme + "://" + c.PublicHost
-	if strings.EqualFold(c.PublicScheme, "https") ||
-		strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil {
-		publicBase = "https://" + c.PublicHost
+	publicBase := requestPublicBase(r, c)
+	publicHost := c.PublicHost
+	if u, err := url.Parse(publicBase); err == nil && u.Host != "" {
+		publicHost = u.Host
 	}
 	pairs := domainPairs(c, publicBase)
 
@@ -1477,7 +1477,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if sessionJSON != "" {
-			writeSupabaseBrowserCookies(w, supabaseStorageKey(c.PublicHost), sessionJSON)
+			writeSupabaseBrowserCookies(w, supabaseStorageKey(publicHost), sessionJSON)
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
@@ -1734,7 +1734,11 @@ func injectHead(body []byte, inject string) []byte {
 }
 
 func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelUsername string) string {
-	lsJSON := string(lsJSONForBrowser(ls, plan, c.PublicHost))
+	host := c.PublicHost
+	if u, err := url.Parse(publicBase); err == nil && u.Host != "" {
+		host = u.Host
+	}
+	lsJSON := string(lsJSONForBrowser(ls, plan, host))
 	lsJSON = strings.ReplaceAll(lsJSON, "</", "<\\/")
 
 	var extra strings.Builder

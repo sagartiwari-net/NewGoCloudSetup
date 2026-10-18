@@ -48,3 +48,32 @@ func panelRequestHost(r *http.Request, publicHost string) string {
 	}
 	return host
 }
+
+// requestPublicBase is the browser origin for this hit. A second panel website
+// on the same port keeps its own domain. Anything that is not this tool stays
+// on the configured public host.
+func requestPublicBase(r *http.Request, c Config) string {
+	host := panelHostOnly(c.PublicHost)
+	scheme := strings.ToLower(strings.TrimSpace(c.PublicScheme))
+	if scheme != "http" && scheme != "https" {
+		scheme = "http"
+	}
+	if r != nil {
+		candidate := panelRequestHost(r, c.PublicHost)
+		if candidate == host || panelHostAllowed(c.PublicHost, candidate) {
+			host = candidate
+		}
+		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+			proto = strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
+			if proto == "http" || proto == "https" {
+				scheme = proto
+			}
+		} else if r.TLS != nil {
+			scheme = "https"
+		}
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return scheme + "://" + host
+}
