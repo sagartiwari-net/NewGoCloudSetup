@@ -3336,8 +3336,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamURLStr += "?" + upstreamURL.RawQuery
 	}
 	var bodyReader io.Reader = r.Body
+	var reqPeek []byte
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		bodyReader = nil
+	} else if r.Body != nil && !pictoryStaticPath(path) && !pictoryNoiseHost(upstreamURL.Host) {
+		const peekLimit = 4 << 20
+		peek, _ := io.ReadAll(io.LimitReader(r.Body, peekLimit+1))
+		if len(peek) > peekLimit {
+			bodyReader = io.MultiReader(bytes.NewReader(peek), r.Body)
+		} else {
+			_ = r.Body.Close()
+			reqPeek = peek
+			bodyReader = io.NopCloser(bytes.NewReader(peek))
+		}
 	}
 	upstreamReq, err := http.NewRequestWithContext(
 		context.WithValue(r.Context(), proxyContextKey, activeAcc.Proxy),
@@ -3585,6 +3596,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 8. Streaming / SSE passthrough (Canva /_stream hydration) ────────────────
 	if isSSEResponse(contentType) || isStreamingPath(path) || isStreamingContentType(contentType) {
+		logPictoryUse(r.Method, upstreamURL.Host, upstreamURL.Path, upstreamResp.StatusCode, currentUser, reqPeek, nil)
 		if contentType != "" {
 			w.Header().Set("Content-Type", contentType)
 		}
@@ -3697,6 +3709,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
 			logUpstream(bodyBytes)
+			if strings.Contains(contentType, "application/json") {
+				logPictoryUse(r.Method, upstreamURL.Host, upstreamURL.Path, upstreamResp.StatusCode, currentUser, reqPeek, bodyBytes)
+			}
 			pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 			bodyBytes = rewriteBody(bodyBytes, pairs)
 			bodyBytes = applyTextReplacements(bodyBytes, cfg)
