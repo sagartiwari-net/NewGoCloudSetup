@@ -282,7 +282,7 @@ func ensureResellers(db *sql.DB) {
 		tools []string
 	}
 	groups := []spec{
-		{"ToolWaly", []string{"ToolWaly 1", "ToolWaly 2", "ToolWaly 3"}, []string{"Semrush", "Envato", "ChatGPT"}},
+		{"ToolWaly", []string{"ToolWaly 1", "ToolWaly 2", "ToolWaly 3"}, nil},
 		{"SemrushToolz", []string{"SemrushToolz"}, []string{"Semrush", "ChatGPT", "Envato", "Ubersuggest", "Helium 10"}},
 		{"SeoGroupBuy", []string{"SeoGroupBuy 1", "SeoGroupBuy 2"}, []string{"Semrush"}},
 		{"AmzPremiumToolz", []string{"AmzPremiumToolz"}, []string{"Helium 10", "ChatGPT", "Claude AI"}},
@@ -331,6 +331,70 @@ func ensureResellers(db *sql.DB) {
 		}
 		if group.name == "SeoGroupBuy" && semrushID > 0 {
 			attachRoute(db, semrushID, destIDs)
+		}
+	}
+}
+
+// ToolWaly uses the same tool ports as gt4rents, on its own domains.
+// Cookies, limits, logs, and Telegram stay on these website rows.
+func ensureToolWalySites(db *sql.DB) {
+	type site struct {
+		tool   string
+		name   string
+		domain string
+		owner  string
+	}
+	sites := []site{
+		{"Ahrefs", "ToolWaly Ahrefs", "ahrefs.toolwaly.com", "refs.gt4rents.com"},
+		{"Semrush", "ToolWaly Semrush", "semrush.toolwaly.com", "smrs.gt4rents.com"},
+		{"Canva", "ToolWaly Canva", "canva.toolwaly.com", "cnva.gt4rents.com"},
+		{"Grammarly", "ToolWaly Grammarly", "grammarly.toolwaly.com", "grammarly.gt4rents.com"},
+	}
+	var opID int64
+	if db.QueryRow(`SELECT id FROM operators WHERE username=?`, "ToolWaly").Scan(&opID) != nil || opID <= 0 {
+		log.Printf("ToolWaly reseller is missing; websites were not assigned")
+		return
+	}
+	var destIDs []int
+	rows, err := db.Query(`SELECT id FROM telegram_destinations WHERE reseller_id=? AND enabled=1`, opID)
+	if err == nil {
+		for rows.Next() {
+			var id int
+			if rows.Scan(&id) == nil {
+				destIDs = append(destIDs, id)
+			}
+		}
+		rows.Close()
+	}
+	for _, site := range sites {
+		var toolID int64
+		if db.QueryRow(`SELECT id FROM tools WHERE name=?`, site.tool).Scan(&toolID) != nil || toolID <= 0 {
+			log.Printf("ToolWaly %s: tool row missing", site.tool)
+			continue
+		}
+		var websiteID int64
+		err := db.QueryRow(`SELECT id FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.domain).Scan(&websiteID)
+		if err != nil {
+			limits := "{}"
+			_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}') FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.owner).Scan(&limits)
+			if strings.TrimSpace(limits) == "" {
+				limits = "{}"
+			}
+			res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
+				VALUES (?,?,?,?,120,?,1)`, toolID, site.name, site.domain, "secret_"+strings.ReplaceAll(site.domain, ".", "_"), limits)
+			if insErr != nil {
+				log.Printf("ToolWaly website %s: %v", site.domain, insErr)
+				continue
+			}
+			websiteID, _ = res.LastInsertId()
+			_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, site.name, `["toolwaly"]`)
+			_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
+				websiteID, site.name+" 1", "", "active", "Paste this website's own cookie. It is not shared with gt4rents.")
+			log.Printf("added %s website %d at %s", site.name, websiteID, site.domain)
+		}
+		_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
+		if len(destIDs) > 0 {
+			attachRoute(db, int(websiteID), destIDs)
 		}
 	}
 }

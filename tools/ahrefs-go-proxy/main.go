@@ -3743,7 +3743,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Printf("[DB] Failed logging export rows for '%s' under website_id %d: %v", currentUser, currentWebsiteID, err)
 			} else {
-				log.Printf("[LIMITS] Logged %d export rows for '%s' on %s (%d/%d used this week) under website_id %d", currentUser, rowCount, logPath, totalExportedRows+rowCount, exportLimit, currentWebsiteID)
+				log.Printf("[LIMITS] Logged %d export rows for '%s' on %s (%d/%d used this week) under website_id %d", rowCount, currentUser, logPath, totalExportedRows+rowCount, exportLimit, currentWebsiteID)
 			}
 		}
 	}
@@ -3793,13 +3793,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Prefer the browser's actual scheme (X-Forwarded-Proto / TLS). Hardcoding
 	// public_scheme=https while the site is still HTTP rewrites CSS/JS to
 	// https://refs... which fails to load → unstyled Ahrefs shell.
-	publicHost := cfg.PublicHost
+	publicHost := ahrefsPublicHost(r, cfg)
 	if publicHost == "" {
 		publicHost = r.Host
-	}
-	if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
-		publicHost = strings.Split(xfh, ",")[0]
-		publicHost = strings.TrimSpace(publicHost)
 	}
 	scheme := "http"
 	if r.TLS != nil {

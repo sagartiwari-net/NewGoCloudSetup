@@ -2851,13 +2851,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			publicScheme = "https"
 		}
 	}
-	publicHost := cfg.PublicHost
+	publicHost := tenantPublicHost(r, cfg)
 	if publicHost == "" {
-		// Fallback: use Host header
 		publicHost = r.Host
-		if fwdHost := r.Header.Get("X-Forwarded-Host"); fwdHost != "" {
-			publicHost = fwdHost
-		}
 	}
 	publicBase := fmt.Sprintf("%s://%s", publicScheme, publicHost)
 	targetBase := cfg.TargetURL

@@ -474,17 +474,14 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := loadConfig()
-	reqHost := strings.TrimSpace(r.Host)
-	if i := strings.LastIndex(reqHost, ":"); i > 0 && strings.Count(reqHost, ":") == 1 {
-		reqHost = reqHost[:i]
-	}
+	reqHost := panelRequestHost(r, cfg.PublicHost)
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, minutes int
 	err = db.QueryRow(`SELECT username, COALESCE(product_id, ''), COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens WHERE token=? AND expires_at>?
 		AND website_id IN (
-			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)), '127.0.0.1:5141')
+			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
 		)`,
-		token, time.Now().UTC().Format(time.RFC3339), cfg.PublicHost, reqHost).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
+		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost)).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
 	if err == nil {
 		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
 	}
@@ -514,7 +511,7 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 	if clientIP != "" && (seen == "" || seen == "127.0.0.1" || seen == "::1") {
 		seen = clientIP
 	}
-	acc, ok := semrushPanelAccount(cfg.PublicHost, "")
+	acc, ok := semrushPanelAccount(reqHost, "")
 	accountID := 0
 	if ok {
 		accountID = acc.ID

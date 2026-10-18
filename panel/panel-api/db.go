@@ -94,6 +94,7 @@ func openDB(path string) *sql.DB {
 	ensureWriteHumanLimits(db)
 	ensurePictory(db)
 	ensureResellers(db)
+	ensureToolWalySites(db)
 	ensureAccessAlertSettings(db)
 	return db
 }
@@ -137,6 +138,7 @@ func openMySQL() *sql.DB {
 	ensureWriteHumanLimits(db)
 	ensurePictory(db)
 	ensureResellers(db)
+	ensureToolWalySites(db)
 	ensureAccessAlertSettings(db)
 	return db
 }
