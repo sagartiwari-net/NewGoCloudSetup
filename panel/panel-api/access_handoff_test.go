@@ -285,6 +285,23 @@ func TestT4ToolzAhrefs(t *testing.T) {
 	}
 }
 
+func TestVeo3Website(t *testing.T) {
+	t.Setenv("GT4RENTS_MYSQL_PASSWORD", "")
+	db := openDB(filepath.Join(t.TempDir(), "panel.db"))
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`DELETE FROM websites WHERE domain=?`, "127.0.0.1:5341"); err != nil {
+		t.Fatal(err)
+	}
+	ensureVeo3(db)
+	var slug, cookie string
+	if err := db.QueryRow(`SELECT w.access_slug, COALESCE(a.cookie, '') FROM websites w LEFT JOIN accounts a ON a.website_id=w.id WHERE w.domain=?`, "veo3.gt4rents.com").Scan(&slug, &cookie); err != nil {
+		t.Fatal(err)
+	}
+	if slug != "veo3" || cookie != "" {
+		t.Fatalf("slug %s cookie len %d", slug, len(cookie))
+	}
+}
+
 func callAs(t *testing.T, handler http.Handler, token, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, bytes.NewReader([]byte(body)))

@@ -593,6 +593,13 @@
       "fqdn": "pictory.gt4rents.com"
     },
     {
+      "tool": "veo3",
+      "folder": "veo3-go-proxy",
+      "subdomain": "veo3",
+      "port": 5341,
+      "fqdn": "veo3.gt4rents.com"
+    },
+    {
       "tool": "azsm2",
       "folder": "recloud/azad/azsm2",
       "subdomain": "azsm2",

@@ -115,6 +115,7 @@ var localTools = []seedTool{
 	{"quillbot", "QuillBot", "5311", "ai", credits},
 	{"writehuman", "WriteHuman", "5321", "ai", writeHumanLimits},
 	{"pictory", "Pictory", "5331", "video", nil},
+	{"veo3", "Veo3 AI", "5341", "video", nil},
 }
 
 // Existing panel databases are not re-seeded. Insert QuillBot once so the
@@ -212,6 +213,37 @@ func ensurePictory(db *sql.DB) {
 	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
 		websiteID, "Pictory 1", "", "active", "Paste a localStorage JSON object, or a referer export that contains storage.localStorage. A Chrome cookie array also works.")
 	log.Printf("added Pictory website %d at pictory.gt4rents.com", websiteID)
+}
+
+// Existing panel databases are not re-seeded. Insert Veo3 AI once so the
+// Access tool list can open veo3.gt4rents.com.
+func ensureVeo3(db *sql.DB) {
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('veo3.gt4rents.com', '127.0.0.1:5341')`).Scan(&n)
+	if n > 0 {
+		return
+	}
+	var toolID int64
+	err := db.QueryRow(`SELECT id FROM tools WHERE name=?`, "Veo3 AI").Scan(&toolID)
+	if err != nil {
+		res, insErr := db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES (?,?,?)`, "Veo3 AI", "video", "[]")
+		if insErr != nil {
+			log.Printf("veo3 tool: %v", insErr)
+			return
+		}
+		toolID, _ = res.LastInsertId()
+	}
+	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
+		VALUES (?,?,?,?,120,?,1,?)`, toolID, "Veo3 AI", "veo3.gt4rents.com", "secret_veo3", "{}", "veo3")
+	if err != nil {
+		log.Printf("veo3 website: %v", err)
+		return
+	}
+	websiteID, _ := res.LastInsertId()
+	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "Veo3 AI", `["veo3"]`)
+	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
+		websiteID, "Veo3 AI 1", "", "active", "Paste the Chrome cookie JSON array into this cookie.")
+	log.Printf("added Veo3 AI website %d at veo3.gt4rents.com", websiteID)
 }
 
 func defaultSeedLimit(key string) int {
