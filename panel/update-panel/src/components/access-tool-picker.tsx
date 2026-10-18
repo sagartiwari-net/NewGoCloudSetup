@@ -24,12 +24,16 @@ export function AccessToolPicker({
     listResellers({ page: 1, pageSize: 200, query: "", status: "all" }),
   )
   const [resellerId, setResellerId] = useState("all")
+  const [picked, setPicked] = useState("all")
   const [websiteQuery, setWebsiteQuery] = useState("")
   const resellers = data?.items ?? []
   const reseller = resellers.find((item) => String(item.id) === resellerId)
+  const chosen = new Set(selected)
   const needle = websiteQuery.trim().toLowerCase()
   const shown = websites.filter((website) => {
     if (reseller && !reseller.website_ids.includes(website.id)) return false
+    if (picked === "allowed" && !chosen.has(website.id)) return false
+    if (picked === "not" && chosen.has(website.id)) return false
     if (!needle) return true
     return (
       website.name.toLowerCase().includes(needle) ||
@@ -48,10 +52,23 @@ export function AccessToolPicker({
     <FieldSet>
       <FieldLegend variant="label">Tools</FieldLegend>
       <FieldDescription>
-        {selected.length} selected. Select shown adds this filter and keeps websites you already checked.
+        {selected.length} selected. Allowed is already checked. Not allowed is the rest. Select shown adds this list and keeps the others.
       </FieldDescription>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="min-w-0 sm:w-56">
+      <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 gap-2">
+        <div className="min-w-0">
+          <ChoiceSelect
+            id="access-picked"
+            value={picked}
+            onValueChange={setPicked}
+            items={[
+              { label: "All", value: "all" },
+              { label: "Allowed", value: "allowed" },
+              { label: "Not allowed", value: "not" },
+            ]}
+          />
+        </div>
+        <div className="min-w-0">
           <ChoiceSelect
             id="access-reseller"
             value={resellerId}
@@ -63,15 +80,18 @@ export function AccessToolPicker({
             ]}
           />
         </div>
-        <Input
-          value={websiteQuery}
-          placeholder="Search tools"
-          className="min-w-0 flex-1"
-          onChange={(event) => setWebsiteQuery(event.target.value)}
-        />
-        <Button type="button" variant="outline" onClick={selectShown} disabled={shown.length === 0}>
-          Select shown
-        </Button>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            value={websiteQuery}
+            placeholder="Search tools"
+            className="min-w-0 flex-1"
+            onChange={(event) => setWebsiteQuery(event.target.value)}
+          />
+          <Button type="button" variant="outline" onClick={selectShown} disabled={shown.length === 0}>
+            Select shown
+          </Button>
+        </div>
       </div>
       <FieldGroup className="max-h-72 overflow-y-auto">
         {shown.map((website) => {
