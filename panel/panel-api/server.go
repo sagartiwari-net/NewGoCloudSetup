@@ -76,6 +76,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/websites/settings", s.saveWebsiteSettings)
 	mux.HandleFunc("POST /api/websites/session", s.saveWebsiteSessions)
 	mux.HandleFunc("POST /api/websites", s.saveWebsite)
+	mux.HandleFunc("POST /api/websites/button-names", s.masterOnly(s.fillButtonNames))
 	mux.HandleFunc("DELETE /api/websites", s.deleteWebsite)
 	mux.HandleFunc("GET /api/recloud", s.masterOnly(s.listRecloud))
 	mux.HandleFunc("GET /api/recloud/{id}", s.masterOnly(s.getRecloud))

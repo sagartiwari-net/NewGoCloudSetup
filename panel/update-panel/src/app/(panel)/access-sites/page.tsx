@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useForm } from "react-hook-form"
+import { toast } from "sonner"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { PlusIcon } from "lucide-react"
@@ -21,7 +22,7 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { useResource } from "@/hooks/use-resource"
-import { deleteAccessSite, listAccessSites, listWebsiteChoices, saveAccessSite } from "@/lib/api/client"
+import { deleteAccessSite, fillButtonNames, listAccessSites, listWebsiteChoices, saveAccessSite } from "@/lib/api/client"
 import type { AccessSite, Website } from "@/lib/api/types"
 import { formatTime } from "@/lib/format"
 
@@ -36,7 +37,7 @@ type FormValues = z.infer<typeof schema>
 export default function AccessSitesPage() {
   const { session } = useAuth()
   const { data, loading, reload } = useResource(session?.role ?? "none", listAccessSites)
-  const { data: websites } = useResource(`${session?.role ?? "none"}-websites`, listWebsiteChoices)
+  const { data: websites, reload: reloadWebsites } = useResource(`${session?.role ?? "none"}-websites`, listWebsiteChoices)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<AccessSite | null>(null)
   const [issuedKey, setIssuedKey] = useState("")
@@ -157,6 +158,7 @@ export default function AccessSitesPage() {
         site={viewing}
         websites={websites ?? []}
         onOpenChange={(next) => { if (!next) setViewing(null) }}
+        onFilled={() => reloadWebsites()}
       />
       <ConfirmDialog
         open={pendingKey != null}
@@ -197,18 +199,27 @@ export default function AccessSitesPage() {
   )
 }
 
+function buttonCode(name: string, slug: string) {
+  const safe = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+  return `<a href="/gt4acc.php?tool=${slug}" target="_blank">Access ${safe}</a>`
+}
+
 function SiteToolsDialog({
   site,
   websites,
   onOpenChange,
+  onFilled,
 }: {
   site: AccessSite | null
   websites: Website[]
   onOpenChange: (open: boolean) => void
+  onFilled: () => void
 }) {
   const [filter, setFilter] = useState("allowed")
   const [query, setQuery] = useState("")
+  const [filling, setFilling] = useState(false)
   const allowed = new Set(site?.website_ids ?? [])
+  const missingIds = websites.filter((website) => allowed.has(website.id) && !(website.access_slug ?? "").trim()).map((website) => website.id)
   const needle = query.trim().toLowerCase()
   const rows = websites
     .map((website) => ({
@@ -227,7 +238,7 @@ function SiteToolsDialog({
 
   return (
     <Dialog open={site != null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{site?.domain ?? "Tools"}</DialogTitle>
           <DialogDescription>Allowed tools open from this website. The rest stay closed.</DialogDescription>
@@ -244,6 +255,27 @@ function SiteToolsDialog({
             ]}
           />
           <Input value={query} placeholder="Search tools" onChange={(event) => setQuery(event.target.value)} />
+          {missingIds.length > 0 ? (
+            <Button
+              variant="outline"
+              disabled={filling}
+              onClick={() => {
+                setFilling(true)
+                void fillButtonNames(missingIds)
+                  .then((result) => {
+                    toast.success(result.filled === 0 ? "Button names were already set" : `Button names added on ${result.filled} tools`)
+                    onFilled()
+                  })
+                  .catch((error: unknown) => {
+                    toast.error(error instanceof Error ? error.message : "Could not add button names")
+                  })
+                  .finally(() => setFilling(false))
+              }}
+            >
+              {filling ? <Spinner data-icon="inline-start" /> : null}
+              Fill {missingIds.length} empty names
+            </Button>
+          ) : null}
           <div className="max-h-80 overflow-y-auto">
             {rows.length === 0 ? (
               <p className="text-sm text-muted-foreground">No tool matches.</p>
@@ -252,7 +284,23 @@ function SiteToolsDialog({
                 {rows.map((row) => (
                   <li key={row.id} className="flex items-center justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate">{row.slug ? `${row.name} · ${row.slug}` : row.name}</span>
-                    <span className="shrink-0 text-muted-foreground">{row.allowed ? "Allowed" : "Not allowed"}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {row.slug ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(buttonCode(row.name, row.slug)).then(
+                              () => toast.success("Copied"),
+                              () => toast.error("Could not copy"),
+                            )
+                          }}
+                        >
+                          Copy code
+                        </Button>
+                      ) : null}
+                      <span className="text-muted-foreground">{row.allowed ? "Allowed" : "Not allowed"}</span>
+                    </span>
                   </li>
                 ))}
               </ul>

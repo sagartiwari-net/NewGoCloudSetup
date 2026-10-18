@@ -107,6 +107,89 @@ func normalizeAccessSlug(raw string) string {
 	return b.String()
 }
 
+func slugFromDomain(domain string) string {
+	host := normalizeSiteDomain(domain)
+	if i := strings.IndexByte(host, '.'); i > 0 {
+		host = host[:i]
+	}
+	slug := normalizeAccessSlug(host)
+	if slug == "" {
+		return "tool"
+	}
+	return slug
+}
+
+func (s *server) fillButtonNames(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []int `json:"website_ids"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	ids := body.IDs
+	if len(ids) > 500 {
+		ids = ids[:500]
+	}
+	query := `SELECT id, name, domain, COALESCE(access_slug, '') FROM websites`
+	args := []any{}
+	if len(ids) > 0 {
+		marks := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if id <= 0 {
+				continue
+			}
+			marks = append(marks, "?")
+			args = append(args, id)
+		}
+		if len(marks) == 0 {
+			writeJSON(w, 200, map[string]any{"items": []any{}, "filled": 0})
+			return
+		}
+		query += ` WHERE id IN (` + strings.Join(marks, ",") + `)`
+	}
+	rows, err := s.db.Query(query+` ORDER BY name`, args...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	type siteRow struct {
+		id           int
+		name, domain string
+		slug         string
+	}
+	pending := []siteRow{}
+	for rows.Next() {
+		var row siteRow
+		if rows.Scan(&row.id, &row.name, &row.domain, &row.slug) != nil {
+			continue
+		}
+		pending = append(pending, row)
+	}
+	rows.Close()
+	filled := 0
+	items := []any{}
+	for _, row := range pending {
+		slug := strings.TrimSpace(row.slug)
+		if slug == "" {
+			base := slugFromDomain(row.domain)
+			slug = base
+			for n := 2; n < 100 && !accessSlugFree(s.db, slug, row.id); n++ {
+				slug = base + "-" + strconv.Itoa(n)
+			}
+			if !accessSlugFree(s.db, slug, row.id) {
+				continue
+			}
+			if _, err := s.db.Exec(`UPDATE websites SET access_slug=? WHERE id=? AND TRIM(COALESCE(access_slug, ''))=''`, slug, row.id); err != nil {
+				continue
+			}
+			filled++
+		}
+		items = append(items, map[string]any{"id": row.id, "name": row.name, "access_slug": slug})
+	}
+	writeJSON(w, 200, map[string]any{"items": items, "filled": filled})
+}
+
 func accessSlugFree(db *sql.DB, slug string, exceptID int) bool {
 	var id int
 	err := db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=? AND id<>?`, slug, exceptID).Scan(&id)

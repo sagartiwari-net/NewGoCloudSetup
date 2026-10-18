@@ -808,6 +808,11 @@ export async function listAccessSites(): Promise<AccessSite[]> {
   return page.items ?? []
 }
 
+export async function fillButtonNames(websiteIds: number[]): Promise<{ filled: number }> {
+  clearCatalogCache("websites")
+  return api("/api/websites/button-names", { method: "POST", body: JSON.stringify({ website_ids: websiteIds }) })
+}
+
 export async function saveAccessSite(input: { id?: number; domain?: string; note?: string; enabled?: boolean; website_ids?: number[]; rotate_key?: boolean }): Promise<AccessSite & { status?: string }> {
   return api("/api/access-sites", { method: "POST", body: JSON.stringify(input) })
 }

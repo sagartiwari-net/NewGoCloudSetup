@@ -203,6 +203,64 @@ func handoffBody(key, site, tool, username string, ids []string, ip string) []by
 	return raw
 }
 
+func TestFillButtonNames(t *testing.T) {
+	t.Setenv("GT4RENTS_MYSQL_PASSWORD", "")
+	db := openDB(filepath.Join(t.TempDir(), "panel.db"))
+	t.Cleanup(func() { _ = db.Close() })
+	expires := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	if _, err := db.Exec(`INSERT INTO admin_sessions (token, operator_id, expires_at) VALUES ('slug-master', 1, ?)`, expires); err != nil {
+		t.Fatal(err)
+	}
+	var ids []int
+	rows, err := db.Query(`SELECT id FROM websites ORDER BY id LIMIT 3`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id int
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	if len(ids) < 3 {
+		t.Fatal("need three websites")
+	}
+	if _, err := db.Exec(`UPDATE websites SET domain='refs.gt4rents.com', access_slug='' WHERE id=?`, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE websites SET domain='refs.example.com', access_slug='keep' WHERE id=?`, ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE websites SET domain='refs.other.com', access_slug='' WHERE id=?`, ids[2]); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{db: db}
+	mux := http.NewServeMux()
+	s.routes(mux)
+	rec := callAs(t, mux, "slug-master", http.MethodPost, "/api/websites/button-names", fmt.Sprintf(`{"website_ids":[%d,%d,%d]}`, ids[0], ids[1], ids[2]))
+	if rec.Code != 200 {
+		t.Fatalf("fill %d %s", rec.Code, rec.Body.String())
+	}
+	var kept, first, second string
+	if err := db.QueryRow(`SELECT access_slug FROM websites WHERE id=?`, ids[1]).Scan(&kept); err != nil {
+		t.Fatal(err)
+	}
+	if kept != "keep" {
+		t.Fatalf("existing name changed to %s", kept)
+	}
+	if err := db.QueryRow(`SELECT access_slug FROM websites WHERE id=?`, ids[0]).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT access_slug FROM websites WHERE id=?`, ids[2]).Scan(&second); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{first: true, second: true}
+	if !got["refs"] || !got["refs-2"] {
+		t.Fatalf("names %s %s", first, second)
+	}
+}
+
 func callAs(t *testing.T, handler http.Handler, token, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, bytes.NewReader([]byte(body)))
