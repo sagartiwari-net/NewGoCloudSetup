@@ -7,6 +7,7 @@ import { z } from "zod"
 import { PlusIcon } from "lucide-react"
 
 import { AccessToolPicker } from "@/components/access-tool-picker"
+import { ChoiceSelect } from "@/components/choice-select"
 import { useAuth } from "@/components/auth-provider"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataColumn } from "@/components/data-table"
@@ -15,6 +16,7 @@ import { PageHeader } from "@/components/page-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
@@ -39,6 +41,7 @@ export default function AccessSitesPage() {
   const [editing, setEditing] = useState<AccessSite | null>(null)
   const [issuedKey, setIssuedKey] = useState("")
   const [pendingDelete, setPendingDelete] = useState<AccessSite | null>(null)
+  const [viewing, setViewing] = useState<AccessSite | null>(null)
   const [deleting, setDeleting] = useState(false)
 
   const rows = data ?? []
@@ -48,10 +51,14 @@ export default function AccessSitesPage() {
       id: "tools",
       header: "Tools",
       cell: (row) => {
-        const names = (row.tools ?? []).map((tool) => tool.access_slug || tool.name).filter(Boolean)
-        return names.length ? names.join(", ") : "None"
+        const count = row.website_ids?.length ?? row.tools?.length ?? 0
+        return (
+          <Button variant="outline" size="sm" onClick={() => setViewing(row)}>
+            {count === 0 ? "None" : `${count} tools`}
+          </Button>
+        )
       },
-      sortValue: (row) => (row.tools ?? []).map((tool) => tool.name).join(", "),
+      sortValue: (row) => row.website_ids?.length ?? row.tools?.length ?? 0,
     },
     { id: "note", header: "Note", cell: (row) => row.note || "—", sortValue: (row) => row.note },
     { id: "enabled", header: "Status", cell: (row) => (row.enabled ? "Allowed" : "Off"), sortValue: (row) => (row.enabled ? "1" : "0") },
@@ -140,6 +147,12 @@ export default function AccessSitesPage() {
           />
         ) : null}
       </FormOverlay>
+      <SiteToolsDialog
+        key={viewing?.id ?? "closed"}
+        site={viewing}
+        websites={websites ?? []}
+        onOpenChange={(next) => { if (!next) setViewing(null) }}
+      />
       <ConfirmDialog
         open={pendingDelete != null}
         onOpenChange={(next) => { if (!next) setPendingDelete(null) }}
@@ -158,6 +171,73 @@ export default function AccessSitesPage() {
         }}
       />
     </>
+  )
+}
+
+function SiteToolsDialog({
+  site,
+  websites,
+  onOpenChange,
+}: {
+  site: AccessSite | null
+  websites: Website[]
+  onOpenChange: (open: boolean) => void
+}) {
+  const [filter, setFilter] = useState("allowed")
+  const [query, setQuery] = useState("")
+  const allowed = new Set(site?.website_ids ?? [])
+  const needle = query.trim().toLowerCase()
+  const rows = websites
+    .map((website) => ({
+      id: website.id,
+      name: website.name,
+      slug: website.access_slug ?? "",
+      allowed: allowed.has(website.id),
+    }))
+    .filter((row) => {
+      if (filter === "allowed" && !row.allowed) return false
+      if (filter === "not" && row.allowed) return false
+      if (!needle) return true
+      return row.name.toLowerCase().includes(needle) || row.slug.toLowerCase().includes(needle)
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  return (
+    <Dialog open={site != null} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{site?.domain ?? "Tools"}</DialogTitle>
+          <DialogDescription>Allowed tools open from this website. The rest stay closed.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <ChoiceSelect
+            id="site-tool-filter"
+            value={filter}
+            onValueChange={setFilter}
+            items={[
+              { label: "Allowed", value: "allowed" },
+              { label: "Not allowed", value: "not" },
+              { label: "All", value: "all" },
+            ]}
+          />
+          <Input value={query} placeholder="Search tools" onChange={(event) => setQuery(event.target.value)} />
+          <div className="max-h-80 overflow-y-auto">
+            {rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No tool matches.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {rows.map((row) => (
+                  <li key={row.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate">{row.slug ? `${row.name} · ${row.slug}` : row.name}</span>
+                    <span className="shrink-0 text-muted-foreground">{row.allowed ? "Allowed" : "Not allowed"}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
