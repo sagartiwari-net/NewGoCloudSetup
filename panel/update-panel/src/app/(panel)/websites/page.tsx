@@ -54,6 +54,11 @@ const toolSchema = z.object({
   category: z.string().trim().min(1, "Enter a category"),
 })
 
+function buttonCode(name: string, slug: string) {
+  const safe = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+  return `<a href="/gt4acc.php?tool=${slug}" target="_blank">Access ${safe}</a>`
+}
+
 function limitKey(label: string) {
   const key = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
   return key || "limit"
@@ -122,6 +127,33 @@ export default function WebsitesPage() {
     { id: "name", header: "Name", cell: (row) => row.name, sortValue: (row) => row.name },
     { id: "domain", header: "Domain", cell: (row) => row.domain, sortValue: (row) => row.domain },
     { id: "slug", header: "Button", cell: (row) => row.access_slug || "—", sortValue: (row) => row.access_slug ?? "" },
+    {
+      id: "code",
+      header: "Code",
+      cell: (row) => {
+        const slug = (row.access_slug ?? "").trim()
+        if (!slug) return "—"
+        const code = buttonCode(row.name, slug)
+        return (
+          <div className="flex max-w-sm items-center gap-2">
+            <code className="min-w-0 flex-1 truncate text-xs" title={code}>{code}</code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void navigator.clipboard.writeText(code).then(
+                  () => toast.success("Copied"),
+                  () => toast.error("Could not copy"),
+                )
+              }}
+            >
+              Copy
+            </Button>
+          </div>
+        )
+      },
+      sortValue: (row) => row.access_slug ?? "",
+    },
     { id: "session", header: "Session minutes", cell: (row) => row.session_duration, sortValue: (row) => row.session_duration },
     { id: "tool", header: "Tool", cell: (row) => toolName(row.tool_id), sortValue: (row) => toolName(row.tool_id) },
     {

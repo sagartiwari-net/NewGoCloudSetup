@@ -52,6 +52,7 @@ const MOBILE_FULL_WIDTH = new Set([
   "url",
   "meters",
   "logs",
+  "code",
 ])
 
 function mobileFieldClass(columnId: string) {
