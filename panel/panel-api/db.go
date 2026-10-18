@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	_ "github.com/go-sql-driver/mysql"
 	_ "modernc.org/sqlite"
 )
@@ -151,8 +153,23 @@ func ensureCatalogOwners(db *sql.DB) {
 }
 
 func hashPassword(password string) string {
+	sum, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return ""
+	}
+	return string(sum)
+}
+
+func hashPasswordSHA(password string) string {
 	sum := sha256.Sum256([]byte(password))
 	return hex.EncodeToString(sum[:])
+}
+
+func verifyPassword(stored, password string) bool {
+	if strings.HasPrefix(stored, "$2") {
+		return bcrypt.CompareHashAndPassword([]byte(stored), []byte(password)) == nil
+	}
+	return stored != "" && stored == hashPasswordSHA(password)
 }
 
 func ensureAccessAlertSettings(db *sql.DB) {

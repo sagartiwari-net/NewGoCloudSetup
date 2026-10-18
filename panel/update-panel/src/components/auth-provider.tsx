@@ -93,24 +93,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const current = readSession()
-    if (!current?.token) return
+    if (!current?.username) return
     let cancelled = false
     currentOperator()
       .then((operator) => {
         if (cancelled) return
         const stored = readSession()
-        if (!stored || stored.token !== current.token) return
+        if (!stored || stored.username !== current.username) return
         const accountRole = operator.role === "master" ? "master" : "reseller"
         const role = accountRole === "master" ? stored.role : "reseller"
-        if (stored.username === operator.username && stored.role === role && stored.accountRole === accountRole) return
-        writeSession({ username: operator.username, role, accountRole, token: stored.token })
+        if (stored.username === operator.username && stored.role === role && stored.accountRole === accountRole && !stored.token) return
+        writeSession({ username: operator.username, role, accountRole, token: "" })
         emitSession()
       })
-      .catch(() => undefined)
+      .catch(() => {
+        const stored = readSession()
+        if (!stored || stored.accountRole !== "master") return
+        writeSession({ ...stored, role: "reseller", accountRole: "reseller", token: "" })
+        emitSession()
+      })
     return () => {
       cancelled = true
     }
-  }, [session?.token])
+  }, [session?.username])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

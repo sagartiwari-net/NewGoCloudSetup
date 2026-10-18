@@ -41,7 +41,7 @@ export function ChoiceSelect({
   }, [])
 
   return (
-    <div ref={rootRef} className="w-full">
+    <div ref={rootRef} className="w-full min-w-0 max-w-full">
     <Combobox
       items={items}
       value={selected}
@@ -55,10 +55,12 @@ export function ChoiceSelect({
       <ComboboxTrigger
         id={id}
         aria-invalid={invalid || undefined}
-        className="w-full"
-        render={<Button variant="outline" className="w-full justify-between font-normal" />}
+        className="w-full min-w-0 max-w-full"
+        render={<Button variant="outline" className="w-full min-w-0 max-w-full shrink justify-between overflow-hidden font-normal" />}
       >
-        <ComboboxValue placeholder={placeholder} />
+        <span className="min-w-0 flex-1 truncate text-left">
+          <ComboboxValue placeholder={placeholder} />
+        </span>
       </ComboboxTrigger>
       <ComboboxContent container={container} className="max-h-80">
         <ComboboxInput placeholder="Search" showTrigger={false} />

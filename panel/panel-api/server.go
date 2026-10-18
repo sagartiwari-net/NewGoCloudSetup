@@ -76,9 +76,9 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/websites/session", s.saveWebsiteSessions)
 	mux.HandleFunc("POST /api/websites", s.saveWebsite)
 	mux.HandleFunc("DELETE /api/websites", s.deleteWebsite)
-	mux.HandleFunc("GET /api/recloud", s.listRecloud)
-	mux.HandleFunc("GET /api/recloud/{id}", s.getRecloud)
-	mux.HandleFunc("POST /api/recloud", s.saveRecloud)
+	mux.HandleFunc("GET /api/recloud", s.masterOnly(s.listRecloud))
+	mux.HandleFunc("GET /api/recloud/{id}", s.masterOnly(s.getRecloud))
+	mux.HandleFunc("POST /api/recloud", s.masterOnly(s.saveRecloud))
 	mux.HandleFunc("GET /api/cookie-links", s.listCookieLinks)
 	mux.HandleFunc("GET /api/cookie-links/sources", s.cookieLinkSources)
 	mux.HandleFunc("POST /api/cookie-links", s.saveCookieLink)
@@ -234,11 +234,33 @@ func (s *server) auth(w http.ResponseWriter, r *http.Request) (operator, bool) {
 	err := s.db.QueryRow(`SELECT o.id, o.username, o.role, o.status, s.expires_at
 		FROM admin_sessions s JOIN operators o ON o.id = s.operator_id WHERE s.token = ?`, token).
 		Scan(&op.ID, &op.Username, &op.Role, &op.Status, &expires)
-	if err != nil || op.Status != "active" {
+	if err != nil || op.Status != "active" || sessionExpired(expires) {
+		if err == nil {
+			_, _ = s.db.Exec(`DELETE FROM admin_sessions WHERE token = ?`, token)
+		}
 		writeErr(w, http.StatusUnauthorized, "Sign in required")
 		return operator{}, false
 	}
 	return op, true
+}
+
+func sessionExpired(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05", "2006-01-02T15:04:05"} {
+		exp, err := time.Parse(layout, raw)
+		if err == nil {
+			return !exp.After(time.Now())
+		}
+	}
+	return true
+}
+
+func sessionCookie(r *http.Request, token string, maxAge int) *http.Cookie {
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	return &http.Cookie{
+		Name: "panel_session", Value: token, Path: "/", HttpOnly: true,
+		SameSite: http.SameSiteLaxMode, Secure: secure, MaxAge: maxAge,
+	}
 }
 
 func (s *server) masterOnly(next http.HandlerFunc) http.HandlerFunc {
@@ -268,19 +290,22 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	var hash string
 	err := s.db.QueryRow(`SELECT id, username, role, status, password_hash FROM operators WHERE username = ?`, strings.TrimSpace(body.Username)).
 		Scan(&op.ID, &op.Username, &op.Role, &op.Status, &hash)
-	if err != nil || hash != hashPassword(body.Password) || op.Status != "active" {
+	if err != nil || !verifyPassword(hash, body.Password) || op.Status != "active" {
 		writeErr(w, 401, "Invalid username or password")
 		return
+	}
+	if !strings.HasPrefix(hash, "$2") {
+		if next := hashPassword(body.Password); next != "" {
+			_, _ = s.db.Exec(`UPDATE operators SET password_hash=? WHERE id=?`, next, op.ID)
+		}
 	}
 	buf := make([]byte, 32)
 	_, _ = rand.Read(buf)
 	token := hex.EncodeToString(buf)
 	expires := time.Now().Add(7 * 24 * time.Hour).UTC().Format(time.RFC3339)
 	_, _ = s.db.Exec(`INSERT INTO admin_sessions (token, operator_id, expires_at) VALUES (?,?,?)`, token, op.ID, expires)
-	http.SetCookie(w, &http.Cookie{Name: "panel_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 7 * 24 * 3600})
-	bodyOut := s.operatorJSON(op)
-	bodyOut["token"] = token
-	writeJSON(w, 200, bodyOut)
+	http.SetCookie(w, sessionCookie(r, token, 7*24*3600))
+	writeJSON(w, 200, s.operatorJSON(op))
 }
 
 func (s *server) operatorJSON(op operator) map[string]any {
@@ -310,10 +335,19 @@ func (s *server) operatorJSON(op operator) map[string]any {
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie("panel_session"); err == nil {
-		_, _ = s.db.Exec(`DELETE FROM admin_sessions WHERE token = ?`, c.Value)
+	seen := map[string]bool{}
+	if c, err := r.Cookie("panel_session"); err == nil && c.Value != "" {
+		seen[c.Value] = true
 	}
-	http.SetCookie(w, &http.Cookie{Name: "panel_session", Value: "", Path: "/", MaxAge: -1})
+	if header := r.Header.Get("Authorization"); strings.HasPrefix(header, "Bearer ") {
+		if token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")); token != "" {
+			seen[token] = true
+		}
+	}
+	for token := range seen {
+		_, _ = s.db.Exec(`DELETE FROM admin_sessions WHERE token = ?`, token)
+	}
+	http.SetCookie(w, sessionCookie(r, "", -1))
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 

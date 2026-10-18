@@ -68,6 +68,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { Role } from "@/lib/api/types"
 
 const masterRoutes = [
+  "/recloud",
   "/resellers",
   "/automate",
   "/settings",
@@ -95,7 +96,7 @@ const nav: Array<{
       { href: "/access", label: "Access", icon: LogInIcon },
       { href: "/accounts", label: "Mapped Accounts", icon: KeyRoundIcon },
       { href: "/shared-cookies", label: "Shared cookies", icon: Link2Icon, masterOnly: true },
-      { href: "/recloud", label: "Recloud", icon: CloudIcon },
+      { href: "/recloud", label: "Recloud", icon: CloudIcon, masterOnly: true },
       { href: "/limits", label: "Limits", icon: GaugeIcon },
       { href: "/sessions", label: "Active Logins", icon: ActivityIcon },
       { href: "/usage", label: "Quota Logs", icon: ScrollTextIcon },
@@ -159,7 +160,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [signedOut, router])
 
   useEffect(() => {
-    if (session?.accountRole && session.role === "reseller" && masterRoutes.includes(pathname)) {
+    if (session?.role === "reseller" && masterRoutes.includes(pathname)) {
       router.replace("/")
     }
   }, [session, pathname, router])

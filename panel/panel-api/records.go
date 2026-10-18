@@ -792,7 +792,7 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.QueryRow(`SELECT COUNT(*)`+from, args...).Scan(&total)
 	page = clampPage(page, size, total)
 	args = append(args, size, (page-1)*size)
-	rows, err := s.db.Query(`SELECT s.id, s.website_id, w.name, s.session_token, s.username, s.client_ip, s.expires_at, s.created_at, s.assigned_account_id, COALESCE(a.name,'Auto')`+from+` ORDER BY s.id DESC LIMIT ? OFFSET ?`, args...)
+	rows, err := s.db.Query(`SELECT s.id, s.website_id, w.name, s.username, s.client_ip, s.expires_at, s.created_at, s.assigned_account_id, COALESCE(a.name,'Auto')`+from+` ORDER BY s.id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -801,13 +801,13 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 	items := []any{}
 	for rows.Next() {
 		var id, websiteID, accountID int
-		var website, token, username, ip, expires, created, account string
-		_ = rows.Scan(&id, &websiteID, &website, &token, &username, &ip, &expires, &created, &accountID, &account)
+		var website, username, ip, expires, created, account string
+		_ = rows.Scan(&id, &websiteID, &website, &username, &ip, &expires, &created, &accountID, &account)
 		if accountID == 0 {
 			account = "Auto"
 		}
 		items = append(items, map[string]any{
-			"id": id, "website_id": websiteID, "website_name": website, "session_token": token,
+			"id": id, "website_id": websiteID, "website_name": website, "session_token": "",
 			"username": username, "client_ip": ip, "expires_at": expires, "created_at": created,
 			"assigned_account_id": accountID, "assigned_account_name": account,
 		})

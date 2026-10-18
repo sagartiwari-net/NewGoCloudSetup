@@ -135,11 +135,11 @@ export function readSession(): Session | null {
   if (!raw) return null
   try {
     const parsed = JSON.parse(raw) as Session
-    if (!parsed.username || !parsed.token || (parsed.role !== "master" && parsed.role !== "reseller")) {
+    if (!parsed.username || (parsed.role !== "master" && parsed.role !== "reseller")) {
       return null
     }
     const accountRole = parsed.accountRole === "master" || parsed.accountRole === "reseller" ? parsed.accountRole : undefined
-    return { username: parsed.username, role: parsed.role, accountRole, token: parsed.token }
+    return { username: parsed.username, role: parsed.role, accountRole, token: parsed.token || "" }
   } catch {
     return null
   }
@@ -198,14 +198,14 @@ export async function login(username: string, password: string): Promise<Operato
     method: "POST",
     body: JSON.stringify({ username: username.trim(), password }),
   })
-  if (!operator.token) {
+  if (!operator.username || (operator.role !== "master" && operator.role !== "reseller")) {
     throw new Error("Sign in failed")
   }
   writeSession({
     username: operator.username,
     role: operator.role,
     accountRole: operator.role,
-    token: operator.token,
+    token: "",
   })
   return operator
 }

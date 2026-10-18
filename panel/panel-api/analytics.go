@@ -290,19 +290,19 @@ func (s *server) userReport(w http.ResponseWriter, r *http.Request) {
 	}
 	var activeSession any
 	var sid, siteID, accountID int
-	var siteName, token, clientIP, expires, created, account string
-	err = s.db.QueryRow(`SELECT s.id, s.website_id, w.name, s.session_token, s.client_ip, s.expires_at, s.created_at, s.assigned_account_id, COALESCE(a.name,'Auto')
+	var siteName, clientIP, expires, created, account string
+	err = s.db.QueryRow(`SELECT s.id, s.website_id, w.name, s.client_ip, s.expires_at, s.created_at, s.assigned_account_id, COALESCE(a.name,'Auto')
 		FROM live_sessions s
 		JOIN websites w ON w.id=s.website_id
 		LEFT JOIN accounts a ON a.id=s.assigned_account_id
 		WHERE `+sessionWhere+` ORDER BY s.id DESC LIMIT 1`, sessionArgs...).
-		Scan(&sid, &siteID, &siteName, &token, &clientIP, &expires, &created, &accountID, &account)
+		Scan(&sid, &siteID, &siteName, &clientIP, &expires, &created, &accountID, &account)
 	if err == nil {
 		if accountID == 0 {
 			account = "Auto"
 		}
 		activeSession = map[string]any{
-			"id": sid, "website_id": siteID, "website_name": siteName, "session_token": token,
+			"id": sid, "website_id": siteID, "website_name": siteName, "session_token": "",
 			"username": username, "client_ip": clientIP, "expires_at": expires, "created_at": created,
 			"assigned_account_id": accountID, "assigned_account_name": account,
 		}
