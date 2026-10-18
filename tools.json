@@ -586,6 +586,13 @@
       "fqdn": "writehuman.gt4rents.com"
     },
     {
+      "tool": "pictory",
+      "folder": "pictory-go-proxy",
+      "subdomain": "pictory",
+      "port": 5331,
+      "fqdn": "pictory.gt4rents.com"
+    },
+    {
       "tool": "azsm2",
       "folder": "recloud/azad/azsm2",
       "subdomain": "azsm2",
