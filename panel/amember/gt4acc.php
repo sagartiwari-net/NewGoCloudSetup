@@ -136,9 +136,13 @@ function handoffClientIP(): string {
 
 function handoffFail(string $message): void {
     http_response_code(403);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store');
     $safe = htmlspecialchars($message, ENT_QUOTES, 'UTF-8');
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Access</title></head><body style="font-family:sans-serif;padding:2rem">';
-    echo '<p>' . $safe . '</p>';
-    echo '<p><a href="/member">Back</a></p></body></html>';
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Access Denied</title>';
+    echo '<style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#eef3f8;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center}.ring{width:78px;height:78px;margin:0 auto 22px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);display:grid;place-items:center}.lock{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px}h1{font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin-bottom:12px}.msg{color:#64748b;font-size:15px;line-height:1.55}.back{margin-top:22px;display:inline-flex;align-items:center;padding:8px 16px;border:1px solid #e6ebf2;border-radius:999px;color:#334155;font-size:14px;text-decoration:none;background:#fff}</style>';
+    echo '</head><body><div class="card"><div class="ring"><div class="lock">&#128274;</div></div>';
+    echo '<h1>Access Denied</h1><p class="msg">' . $safe . '</p>';
+    echo '<a class="back" href="/member">Back</a></div></body></html>';
     exit;
 }
