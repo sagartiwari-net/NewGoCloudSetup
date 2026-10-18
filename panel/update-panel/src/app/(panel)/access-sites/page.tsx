@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { PlusIcon } from "lucide-react"
 
+import { AccessToolPicker } from "@/components/access-tool-picker"
 import { useAuth } from "@/components/auth-provider"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataColumn } from "@/components/data-table"
@@ -14,8 +15,7 @@ import { PageHeader } from "@/components/page-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { useResource } from "@/hooks/use-resource"
@@ -179,12 +179,6 @@ function SiteForm({
     },
   })
   const [selected, setSelected] = useState(site?.website_ids ?? [])
-  const [websiteQuery, setWebsiteQuery] = useState("")
-  const shown = websites.filter((website) => {
-    const needle = websiteQuery.trim().toLowerCase()
-    if (!needle) return true
-    return website.name.toLowerCase().includes(needle) || website.domain.toLowerCase().includes(needle) || (website.access_slug ?? "").includes(needle)
-  })
 
   function choose(websiteIds: number[]) {
     setSelected(websiteIds)
@@ -215,35 +209,7 @@ function SiteForm({
           <Input id="note" {...form.register("note")} />
           <FieldError errors={[form.formState.errors.note]} />
         </Field>
-        <FieldSet>
-          <FieldLegend variant="label">Tools</FieldLegend>
-          <FieldDescription>This site can open only the tools you check. {selected.length} selected.</FieldDescription>
-          <Input
-            value={websiteQuery}
-            placeholder="Search tools"
-            onChange={(event) => setWebsiteQuery(event.target.value)}
-          />
-          <FieldGroup className="max-h-72 overflow-y-auto">
-            {shown.map((website) => {
-              const checked = selected.includes(website.id)
-              const button = website.access_slug ? website.access_slug : "no button"
-              return (
-                <Field key={website.id} orientation="horizontal">
-                  <Checkbox
-                    id={`tool-${website.id}`}
-                    checked={checked}
-                    onCheckedChange={(next) => {
-                      const current = form.getValues("website_ids")
-                      choose(next ? [...current, website.id] : current.filter((id) => id !== website.id))
-                    }}
-                  />
-                  <FieldLabel htmlFor={`tool-${website.id}`}>{website.name} · {button}</FieldLabel>
-                </Field>
-              )
-            })}
-            {shown.length === 0 ? <p className="text-sm text-muted-foreground">No tool matches.</p> : null}
-          </FieldGroup>
-        </FieldSet>
+        <AccessToolPicker websites={websites} selected={selected} onChange={choose} />
         <Button type="submit" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? <Spinner data-icon="inline-start" /> : null}
           {site ? "Save tools" : "Create key"}

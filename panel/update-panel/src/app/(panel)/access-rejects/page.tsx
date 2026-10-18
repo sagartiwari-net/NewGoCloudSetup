@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 
+import { AccessToolPicker } from "@/components/access-tool-picker"
 import { useAuth } from "@/components/auth-provider"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataColumn } from "@/components/data-table"
@@ -11,8 +12,7 @@ import { PageHeader } from "@/components/page-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { useResource } from "@/hooks/use-resource"
@@ -164,12 +164,6 @@ function AllowSiteForm({
   const preset = websites.filter((website) => website.access_slug && website.access_slug === toolSlug).map((website) => website.id)
   const [selected, setSelected] = useState(preset)
   const [saving, setSaving] = useState(false)
-  const [websiteQuery, setWebsiteQuery] = useState("")
-  const shown = websites.filter((website) => {
-    const needle = websiteQuery.trim().toLowerCase()
-    if (!needle) return true
-    return website.name.toLowerCase().includes(needle) || website.domain.toLowerCase().includes(needle) || (website.access_slug ?? "").includes(needle)
-  })
 
   return (
     <form
@@ -189,30 +183,7 @@ function AllowSiteForm({
           <FieldLabel>Website</FieldLabel>
           <Input value={domain} readOnly />
         </Field>
-        <FieldSet>
-          <FieldLegend variant="label">Tools</FieldLegend>
-          <FieldDescription>Only the tools you check can be opened from this website. {selected.length} selected.</FieldDescription>
-          <Input value={websiteQuery} placeholder="Search tools" onChange={(event) => setWebsiteQuery(event.target.value)} />
-          <FieldGroup className="max-h-72 overflow-y-auto">
-            {shown.map((website) => {
-              const checked = selected.includes(website.id)
-              const button = website.access_slug ? website.access_slug : "no button"
-              return (
-                <Field key={website.id} orientation="horizontal">
-                  <Checkbox
-                    id={`allow-tool-${website.id}`}
-                    checked={checked}
-                    onCheckedChange={(next) => {
-                      setSelected((current) => (next ? [...current, website.id] : current.filter((id) => id !== website.id)))
-                    }}
-                  />
-                  <FieldLabel htmlFor={`allow-tool-${website.id}`}>{website.name} · {button}</FieldLabel>
-                </Field>
-              )
-            })}
-            {shown.length === 0 ? <p className="text-sm text-muted-foreground">No tool matches.</p> : null}
-          </FieldGroup>
-        </FieldSet>
+        <AccessToolPicker websites={websites} selected={selected} onChange={setSelected} />
         <Button type="submit" disabled={saving}>
           {saving ? <Spinner data-icon="inline-start" /> : null}
           Allow and create key
