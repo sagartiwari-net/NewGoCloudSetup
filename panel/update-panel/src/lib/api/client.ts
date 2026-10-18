@@ -109,6 +109,7 @@ export type ToolInput = Omit<Tool, "id"> & { id?: number }
 export type ResellerInput = {
   id?: number
   username: string
+  password?: string
   status: "active" | "suspended"
   website_ids: number[]
 }

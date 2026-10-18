@@ -254,6 +254,7 @@ function ResellerForm({
         saveReseller({
           id: reseller?.id,
           username: values.username,
+          password: values.password,
           status: values.status,
           website_ids: values.website_ids,
         }),

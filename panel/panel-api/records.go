@@ -1372,6 +1372,7 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID       int    `json:"id"`
 		Username string `json:"username"`
+		Password string `json:"password"`
 		Status   string `json:"status"`
 		Sites    []int  `json:"website_ids"`
 	}
@@ -1389,9 +1390,14 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	id := body.ID
+	password := strings.TrimSpace(body.Password)
 	if id == 0 {
+		if len(password) < 8 {
+			writeErr(w, 400, "Use at least 8 characters")
+			return
+		}
 		res, err := tx.Exec(`INSERT INTO operators (username, password_hash, role, status) VALUES (?,?,?,?)`,
-			strings.TrimSpace(body.Username), hashPassword("toolsmandi"), "reseller", body.Status)
+			strings.TrimSpace(body.Username), hashPassword(password), "reseller", body.Status)
 		if err != nil {
 			writeErr(w, 400, "That username is already used")
 			return
@@ -1403,6 +1409,13 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeErr(w, 400, "That username is already used")
 			return
+		}
+		if password != "" {
+			if len(password) < 8 {
+				writeErr(w, 400, "Use at least 8 characters")
+				return
+			}
+			_, _ = tx.Exec(`UPDATE operators SET password_hash=? WHERE id=? AND role='reseller'`, hashPassword(password), id)
 		}
 		_, _ = tx.Exec(`DELETE FROM operator_websites WHERE operator_id=?`, id)
 	}
