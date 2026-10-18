@@ -1237,6 +1237,7 @@ func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := ahrefsCSVRows(body)
+	log.Printf("[LIMITS] chart export user=%s rows=%d", username, rows)
 	hit := ahrefsLimitHit{
 		key: "exports", label: "Exports", action: "Chart export",
 		target: "chart-export", amount: rows, reset: 7,
@@ -2034,6 +2035,9 @@ func patcherScript() string {
 
         var href = a.getAttribute('href') || a.href || '';
         if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+        // Chart export builds a blob URL. Leaving it here turns the click into
+        // location.href = blob:..., which shows the CSV as a page and skips the download.
+        if (href.indexOf('blob:') === 0 || (a.href && String(a.href).indexOf('blob:') === 0)) return;
 
         // Open in new tab normally if target="_blank"
         if (a.target === '_blank') return;
@@ -2294,8 +2298,11 @@ func patcherScript() string {
     if (!window.__tmChartExport) {
         window.__tmChartExport = true;
         document.addEventListener('click', function(ev) {
-            var node = ev.target;
-            var link = node && node.closest ? node.closest('a') : null;
+            var path = ev.composedPath ? ev.composedPath() : [ev.target];
+            var link = null;
+            for (var i = 0; i < path.length; i++) {
+                if (path[i] && path[i].tagName === 'A') { link = path[i]; break; }
+            }
             if (!link || link.getAttribute('data-tm-export') === '1') return;
             var href = link.href || '';
             if (href.indexOf('blob:') !== 0) return;
@@ -2312,6 +2319,21 @@ func patcherScript() string {
                 again.remove();
             });
         }, true);
+        try {
+            var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+            if (hrefDesc && hrefDesc.set && hrefDesc.configurable) {
+                Object.defineProperty(Location.prototype, 'href', {
+                    configurable: true,
+                    enumerable: hrefDesc.enumerable,
+                    get: hrefDesc.get,
+                    set: function(url) {
+                        var self = this;
+                        if (typeof url === 'string' && takeChartExport(url, '', function() { hrefDesc.set.call(self, url); })) return;
+                        hrefDesc.set.call(this, url);
+                    }
+                });
+            }
+        } catch (e) {}
         try {
             var _assign = Location.prototype.assign;
             Location.prototype.assign = function(url) {
