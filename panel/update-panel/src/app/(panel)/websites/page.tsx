@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -56,11 +55,6 @@ const toolSchema = z.object({
   category: z.string().trim().min(1, "Enter a category"),
 })
 
-function buttonCode(name: string, slug: string) {
-  const safe = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
-  return `<a href="/gt4acc.php?tool=${slug}" target="_blank">Access ${safe}</a>`
-}
-
 function limitKey(label: string) {
   const key = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
   return key || "limit"
@@ -90,21 +84,14 @@ export default function WebsitesPage() {
   const [selected, setSelected] = useState<number[]>([])
   const [sessionOpen, setSessionOpen] = useState(false)
   const reseller = session?.role !== "master"
-  const [codes, setCodes] = useState("")
-  const codesLoaded = useRef(false)
+  const namesLoaded = useRef(false)
 
   useEffect(() => {
-    if (reseller || codesLoaded.current) return
-    codesLoaded.current = true
+    if (reseller || namesLoaded.current) return
+    namesLoaded.current = true
     void fillButtonNames([]).then((result) => {
-      const lines = (result.items ?? [])
-        .filter((item) => item.access_slug)
-        .map((item) => buttonCode(item.name, item.access_slug))
-      setCodes(lines.join("\n"))
       if (result.filled > 0) reload()
-    }).catch(() => {
-      setCodes("")
-    })
+    }).catch(() => {})
   }, [reseller, reload])
 
   useEffect(() => {
@@ -221,13 +208,6 @@ export default function WebsitesPage() {
           }}
         />
       </Field>
-      {codes ? (
-        <Field>
-          <FieldLabel htmlFor="website-codes">Button code</FieldLabel>
-          <FieldDescription>One line for each website. Select a line and paste it on the aMember page.</FieldDescription>
-          <Textarea id="website-codes" readOnly value={codes} className="max-h-72 overflow-auto font-mono text-xs" />
-        </Field>
-      ) : null}
       <Card>
         <CardContent>
           <DataTable

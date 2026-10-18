@@ -131,7 +131,7 @@ func (s *server) fillButtonNames(w http.ResponseWriter, r *http.Request) {
 	if len(ids) > 500 {
 		ids = ids[:500]
 	}
-	query := `SELECT id, name, domain, COALESCE(access_slug, '') FROM websites WHERE COALESCE(kind, '') <> 'recloud'`
+	query := `SELECT id, name, domain, COALESCE(access_slug, '') FROM websites`
 	args := []any{}
 	if len(ids) > 0 {
 		marks := make([]string, 0, len(ids))
@@ -146,7 +146,7 @@ func (s *server) fillButtonNames(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"items": []any{}, "filled": 0})
 			return
 		}
-		query += ` AND id IN (` + strings.Join(marks, ",") + `)`
+		query += ` WHERE id IN (` + strings.Join(marks, ",") + `)`
 	}
 	rows, err := s.db.Query(query+` ORDER BY name`, args...)
 	if err != nil {
