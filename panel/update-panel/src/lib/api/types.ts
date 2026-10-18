@@ -32,12 +32,20 @@ export type Website = {
   access_slug?: string
 }
 
+export type AccessSiteTool = {
+  id: number
+  name: string
+  access_slug: string
+}
+
 export type AccessSite = {
   id: number
   domain: string
   enabled: boolean
   note: string
   created_at: string
+  website_ids: number[]
+  tools: AccessSiteTool[]
   key?: string
 }
 

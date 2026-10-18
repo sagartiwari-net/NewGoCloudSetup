@@ -81,7 +81,7 @@ func (s *server) listWebsiteOptions(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("exclude") == "recloud" {
 		where += ` AND COALESCE(w.kind, '') <> 'recloud'`
 	}
-	rows, err := s.db.Query(`SELECT w.id, w.tool_id, w.name, w.domain, w.default_limits_json
+	rows, err := s.db.Query(`SELECT w.id, w.tool_id, w.name, w.domain, w.default_limits_json, COALESCE(w.access_slug, '')
 		FROM websites w WHERE `+where+` ORDER BY w.name`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
@@ -91,13 +91,13 @@ func (s *server) listWebsiteOptions(w http.ResponseWriter, r *http.Request) {
 	items := []any{}
 	for rows.Next() {
 		var id, toolID int
-		var name, domain, limits string
-		if rows.Scan(&id, &toolID, &name, &domain, &limits) != nil {
+		var name, domain, limits, slug string
+		if rows.Scan(&id, &toolID, &name, &domain, &limits, &slug) != nil {
 			continue
 		}
 		items = append(items, map[string]any{
 			"id": id, "tool_id": toolID, "name": name, "domain": domain,
-			"default_limits": jsonRaw(limits, map[string]int{}),
+			"default_limits": jsonRaw(limits, map[string]int{}), "access_slug": slug,
 		})
 	}
 	writeJSON(w, 200, map[string]any{"items": items})

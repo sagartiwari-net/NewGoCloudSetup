@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -51,7 +52,7 @@ func TestAccessHandoff(t *testing.T) {
 	mux := http.NewServeMux()
 	s.routes(mux)
 
-	created := callAs(t, mux, "handoff-master", http.MethodPost, "/api/access-sites", `{"domain":"https://toolsmandi.com/member","note":"main"}`)
+	created := callAs(t, mux, "handoff-master", http.MethodPost, "/api/access-sites", fmt.Sprintf(`{"domain":"https://toolsmandi.com/member","note":"main","website_ids":[%d]}`, websiteID))
 	if created.Code != 200 {
 		t.Fatalf("create site %d %s", created.Code, created.Body.String())
 	}
@@ -85,6 +86,20 @@ func TestAccessHandoff(t *testing.T) {
 	okURL := postHandoffURL(t, mux, site.Key, "toolsmandi.com", "refs", "ada", []string{"3", "12", "32"}, "203.0.113.8")
 	if okURL == "" || !bytes.Contains([]byte(okURL), []byte("https://"+domain+"/access?token=")) {
 		t.Fatalf("open url %q", okURL)
+	}
+	var otherName string
+	if err := db.QueryRow(`SELECT name FROM websites WHERE id=?`, otherID).Scan(&otherName); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE websites SET access_slug='other' WHERE id=?`, otherID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, otherID, "Other", `["12"]`); err != nil {
+		t.Fatal(err)
+	}
+	blockedTool := postHandoff(t, mux, site.Key, "toolsmandi.com", "other", "ada", []string{"12"}, "198.51.100.4")
+	if blockedTool != msgToolNotOnSite+otherName {
+		t.Fatalf("tool not on site %q", blockedTool)
 	}
 	var tokenExpires string
 	if err := db.QueryRow(`SELECT expires_at FROM access_tokens WHERE username='ada'`).Scan(&tokenExpires); err != nil {

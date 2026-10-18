@@ -6,7 +6,8 @@
  * 2. Paste that domain and key below.
  * 3. On a website, set Button name (for example refs).
  * 4. Map the aMember product ids on that website.
- * 5. Button: <a href="/route_tool.php?tool=refs" target="_blank">Open</a>
+ * 5. On Allowed sites, check the tools this domain may open.
+ * 6. Button: <a href="/gt4acc.php?tool=refs" target="_blank">Open</a>
  *
  * The signature is HMAC-SHA256 over these lines, joined with \n:
  * site, tool, username, sorted product ids, customer IP, unix time, nonce.

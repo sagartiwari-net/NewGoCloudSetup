@@ -635,7 +635,7 @@ export async function listWebsites(query: {
 }
 
 function mapWebsiteOptions(
-  page: { items?: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> },
+  page: { items?: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits" | "access_slug">> },
 ): Website[] {
   return (page.items ?? []).map((website) => ({
     ...website,
@@ -656,14 +656,14 @@ export function listWebsiteChoices(): Promise<Website[]> {
 }
 
 function loadWebsiteChoices(): Promise<Website[]> {
-  return api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> }>(
+  return api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits" | "access_slug">> }>(
     "/api/websites/options",
   ).then(mapWebsiteOptions)
 }
 
 export function listAccountWebsites(): Promise<Website[]> {
   return cachedCatalog("account-websites", async () => {
-    const page = await api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits">> }>(
+    const page = await api<{ items: Array<Pick<Website, "id" | "tool_id" | "name" | "domain" | "default_limits" | "access_slug">> }>(
       "/api/websites/options?exclude=recloud",
     )
     return mapWebsiteOptions(page)
@@ -808,7 +808,7 @@ export async function listAccessSites(): Promise<AccessSite[]> {
   return page.items ?? []
 }
 
-export async function saveAccessSite(input: { id?: number; domain?: string; note?: string; enabled?: boolean }): Promise<AccessSite & { status?: string }> {
+export async function saveAccessSite(input: { id?: number; domain?: string; note?: string; enabled?: boolean; website_ids?: number[] }): Promise<AccessSite & { status?: string }> {
   return api("/api/access-sites", { method: "POST", body: JSON.stringify(input) })
 }
 

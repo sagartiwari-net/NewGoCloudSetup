@@ -25,6 +25,7 @@ const (
 	msgDirectAccess      = "Direct access not allowed"
 	msgTooManyAttempts   = "Too many attempts. Wait a minute."
 	msgToolUnavailable   = "This tool is not available"
+	msgToolNotOnSite     = "This website cannot open "
 	msgUsernameSuspended = "This username is suspended"
 	msgIPBlocked         = "This IP is blocked"
 )
@@ -54,6 +55,11 @@ func ensureAccessHandoff(db *sql.DB) {
 		created_at TEXT NOT NULL
 	)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_access_rejects_created ON access_rejects (created_at)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS access_site_tools (
+		site_id INTEGER NOT NULL,
+		website_id INTEGER NOT NULL,
+		PRIMARY KEY (site_id, website_id)
+	)`)
 	_, _ = db.Exec(`ALTER TABLE websites ADD COLUMN access_slug TEXT NOT NULL DEFAULT ''`)
 }
 
@@ -154,27 +160,78 @@ func (s *server) listAccessSites(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	defer rows.Close()
-	items := []any{}
+	type siteRow struct {
+		id, enabled           int
+		domain, note, created string
+	}
+	pending := []siteRow{}
 	for rows.Next() {
-		var id, enabled int
-		var domain, note, created string
-		if rows.Scan(&id, &domain, &enabled, &note, &created) != nil {
+		var row siteRow
+		if rows.Scan(&row.id, &row.domain, &row.enabled, &row.note, &row.created) != nil {
 			continue
 		}
+		pending = append(pending, row)
+	}
+	rows.Close()
+	items := []any{}
+	for _, row := range pending {
+		ids, tools := s.accessSiteTools(row.id)
 		items = append(items, map[string]any{
-			"id": id, "domain": domain, "enabled": enabled == 1, "note": note, "created_at": created,
+			"id": row.id, "domain": row.domain, "enabled": row.enabled == 1, "note": row.note, "created_at": row.created,
+			"website_ids": ids, "tools": tools,
 		})
 	}
 	writeJSON(w, 200, map[string]any{"items": items})
 }
 
+func (s *server) accessSiteTools(siteID int) ([]int, []any) {
+	ids := []int{}
+	tools := []any{}
+	rows, err := s.db.Query(`SELECT t.website_id, COALESCE(w.name, ''), COALESCE(w.access_slug, '')
+		FROM access_site_tools t LEFT JOIN websites w ON w.id=t.website_id
+		WHERE t.site_id=? ORDER BY w.name`, siteID)
+	if err != nil {
+		return ids, tools
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var name, slug string
+		if rows.Scan(&id, &name, &slug) != nil {
+			continue
+		}
+		ids = append(ids, id)
+		tools = append(tools, map[string]any{"id": id, "name": name, "access_slug": slug})
+	}
+	return ids, tools
+}
+
+func (s *server) replaceAccessSiteTools(siteID int, raw []int) {
+	_, _ = s.db.Exec(`DELETE FROM access_site_tools WHERE site_id=?`, siteID)
+	seen := map[int]bool{}
+	for _, id := range raw {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		var exists int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM websites WHERE id=?`, id).Scan(&exists); err != nil || exists == 0 {
+			continue
+		}
+		_, _ = s.db.Exec(`INSERT INTO access_site_tools (site_id, website_id) VALUES (?,?)`, siteID, id)
+		if len(seen) >= 200 {
+			break
+		}
+	}
+}
+
 func (s *server) saveAccessSite(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID      int    `json:"id"`
-		Domain  string `json:"domain"`
-		Note    string `json:"note"`
-		Enabled *bool  `json:"enabled"`
+		ID         int    `json:"id"`
+		Domain     string `json:"domain"`
+		Note       string `json:"note"`
+		Enabled    *bool  `json:"enabled"`
+		WebsiteIDs *[]int `json:"website_ids"`
 	}
 	if err := readBody(r, &body); err != nil {
 		writeErr(w, 400, "Invalid body")
@@ -203,7 +260,16 @@ func (s *server) saveAccessSite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		id, _ := res.LastInsertId()
-		writeJSON(w, 200, map[string]any{"id": id, "domain": domain, "enabled": true, "note": note, "key": key})
+		chosen := []int{}
+		if body.WebsiteIDs != nil {
+			chosen = *body.WebsiteIDs
+		}
+		s.replaceAccessSiteTools(int(id), chosen)
+		ids, tools := s.accessSiteTools(int(id))
+		writeJSON(w, 200, map[string]any{
+			"id": id, "domain": domain, "enabled": true, "note": note, "key": key,
+			"website_ids": ids, "tools": tools,
+		})
 		return
 	}
 	enabled := 1
@@ -224,6 +290,9 @@ func (s *server) saveAccessSite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.WebsiteIDs != nil {
+		s.replaceAccessSiteTools(body.ID, *body.WebsiteIDs)
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
@@ -233,6 +302,7 @@ func (s *server) deleteAccessSite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Site is required")
 		return
 	}
+	_, _ = s.db.Exec(`DELETE FROM access_site_tools WHERE site_id=?`, id)
 	_, _ = s.db.Exec(`DELETE FROM access_sites WHERE id=?`, id)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
@@ -302,6 +372,12 @@ func (s *server) accessHandoff(w http.ResponseWriter, r *http.Request) {
 	err = s.db.QueryRow(`SELECT id, name, domain FROM websites WHERE lower(access_slug)=?`, tool).Scan(&websiteID, &name, &domain)
 	if err != nil || websiteID == 0 || strings.TrimSpace(domain) == "" {
 		s.finishHandoff(w, 0, site, tool, username, customerIP, "tool_not_found", msgToolUnavailable)
+		return
+	}
+	var allowed int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM access_site_tools WHERE site_id=? AND website_id=?`, siteID, websiteID).Scan(&allowed)
+	if allowed == 0 {
+		s.finishHandoff(w, websiteID, site, tool, username, customerIP, "tool_not_allowed", msgToolNotOnSite+name)
 		return
 	}
 	matched := s.matchedProduct(websiteID, ids)
