@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"strconv"
+	"strings"
 )
 
 type limitDef struct {
@@ -22,6 +23,10 @@ type seedTool struct {
 }
 
 var credits = []limitDef{{Key: "credits", Label: "Credits", ResetDays: 1}}
+var writeHumanLimits = []limitDef{
+	{Key: "words", Label: "Words", ResetDays: 1},
+	{Key: "images", Label: "Images", ResetDays: 1},
+}
 var creditsExports = []limitDef{
 	{Key: "credits", Label: "Credits", ResetDays: 1},
 	{Key: "exports", Label: "Exports", ResetDays: 7},
@@ -108,7 +113,7 @@ var localTools = []seedTool{
 	{"ubersuggest", "Ubersuggest", "5281", "seo", creditsExports},
 	{"ahrefs", "Ahrefs", "5291", "seo", creditsExports},
 	{"quillbot", "QuillBot", "5311", "ai", credits},
-	{"writehuman", "WriteHuman", "5321", "ai", credits},
+	{"writehuman", "WriteHuman", "5321", "ai", writeHumanLimits},
 }
 
 // Existing panel databases are not re-seeded. Insert QuillBot once so the
@@ -152,7 +157,7 @@ func ensureWriteHuman(db *sql.DB) {
 	if n > 0 {
 		return
 	}
-	limits, _ := json.Marshal(credits)
+	limits, _ := json.Marshal(writeHumanLimits)
 	var toolID int64
 	err := db.QueryRow(`SELECT id FROM tools WHERE name=?`, "WriteHuman").Scan(&toolID)
 	if err != nil {
@@ -163,7 +168,7 @@ func ensureWriteHuman(db *sql.DB) {
 		}
 		toolID, _ = res.LastInsertId()
 	}
-	defaults, _ := json.Marshal(map[string]int{"credits": 100})
+	defaults, _ := json.Marshal(map[string]int{"words": 10000, "images": 50})
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
 		VALUES (?,?,?,?,120,?,1)`, toolID, "WriteHuman", "writehuman.gt4rents.com", "secret_writehuman", string(defaults))
 	if err != nil {
@@ -175,6 +180,67 @@ func ensureWriteHuman(db *sql.DB) {
 	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
 		websiteID, "WriteHuman 1", "", "active", "Paste the Chrome cookie array into this cookie.")
 	log.Printf("added WriteHuman website %d at writehuman.gt4rents.com", websiteID)
+}
+
+func defaultSeedLimit(key string) int {
+	switch key {
+	case "exports":
+		return 20
+	case "words":
+		return 10000
+	case "images":
+		return 50
+	default:
+		return 100
+	}
+}
+
+// The live WriteHuman row was inserted with a placeholder credits meter.
+// Add the two real meters once, and leave any number already saved in the panel.
+func ensureWriteHumanLimits(db *sql.DB) {
+	rawDefs, _ := json.Marshal(writeHumanLimits)
+	var toolID int
+	var toolRaw string
+	err := db.QueryRow(`SELECT id, COALESCE(limits_json, '') FROM tools WHERE name=?`, "WriteHuman").Scan(&toolID, &toolRaw)
+	if err != nil {
+		return
+	}
+	if !strings.Contains(toolRaw, `"words"`) {
+		_, _ = db.Exec(`UPDATE tools SET limits_json=? WHERE id=?`, string(rawDefs), toolID)
+	}
+	rows, err := db.Query(`SELECT id, COALESCE(default_limits_json, '{}') FROM websites WHERE tool_id=?`, toolID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var raw string
+		if rows.Scan(&id, &raw) != nil {
+			continue
+		}
+		defaults := map[string]int{}
+		_ = json.Unmarshal([]byte(raw), &defaults)
+		changed := false
+		if _, ok := defaults["words"]; !ok {
+			defaults["words"] = 10000
+			delete(defaults, "credits")
+			changed = true
+		}
+		if _, ok := defaults["images"]; !ok {
+			defaults["images"] = 50
+			changed = true
+		}
+		if !changed {
+			continue
+		}
+		encoded, err := json.Marshal(defaults)
+		if err != nil {
+			continue
+		}
+		_, _ = db.Exec(`UPDATE websites SET default_limits_json=? WHERE id=?`, string(encoded), id)
+		log.Printf("WriteHuman website %d default limits set to 10000 words and 50 images", id)
+	}
 }
 
 func ensureResellers(db *sql.DB) {

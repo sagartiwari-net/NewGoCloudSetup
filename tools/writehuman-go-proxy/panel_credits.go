@@ -12,8 +12,12 @@ import (
 )
 
 const (
-	gzMeterKey   = "scans"
-	gzMeterLabel = "Credits"
+	whWordsKey      = "words"
+	whWordsLabel    = "Words"
+	whWordsDefault  = 10000
+	whImagesKey     = "images"
+	whImagesLabel   = "Images"
+	whImagesDefault = 50
 )
 
 type panelCreditState struct {
@@ -88,27 +92,6 @@ func normalizeGPTZeroAPIPath(path string) string {
 	return path
 }
 
-// Billable scan/AI actions — 1 word = 1 credit per call (matches GPTZero UI).
-func isBillableGPTZeroPath(method, path string) bool {
-	if !strings.EqualFold(method, http.MethodPost) {
-		return false
-	}
-	p := normalizeGPTZeroAPIPath(path)
-	switch p {
-	case "/v3/scan",
-		"/v2/async/plagiarism/text",
-		"/v3/async/bibliography-scan/text",
-		"/v3/ai-vocab-scan",
-		"/v3/ai/text/stream",
-		"/v3/instant-writing-feedback":
-		return true
-	}
-	if strings.HasSuffix(p, "/stream_review_documents") {
-		return true
-	}
-	return false
-}
-
 var wordSplitRe = regexp.MustCompile(`\s+`)
 
 func countWords(text string) int {
@@ -136,68 +119,45 @@ func countWords(text string) int {
 	return n
 }
 
-func extractTextFromJSON(v interface{}, depth int) string {
-	if depth > 8 || v == nil {
-		return ""
+func writeHumanBill(method, path string, body []byte) (key, label string, amount int) {
+	if !strings.EqualFold(method, http.MethodPost) {
+		return "", "", 0
 	}
-	switch t := v.(type) {
-	case string:
-		s := strings.TrimSpace(t)
-		if len(s) >= 20 {
-			return s
+	switch normalizeGPTZeroAPIPath(path) {
+	case "/api/humanize", "/api/detect":
+		n := wordsInJSONText(body)
+		if n < 1 {
+			return "", "", 0
 		}
-		return ""
-	case map[string]interface{}:
-		preferred := []string{"document", "text", "content", "input", "prompt", "body", "raw_text", "source_text"}
-		for _, k := range preferred {
-			if raw, ok := t[k]; ok {
-				if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
-					return s
-				}
-			}
-		}
-		best := ""
-		for k, raw := range t {
-			lk := strings.ToLower(k)
-			if strings.Contains(lk, "token") || strings.Contains(lk, "password") || strings.Contains(lk, "cookie") {
-				continue
-			}
-			if s := extractTextFromJSON(raw, depth+1); len(s) > len(best) {
-				best = s
-			}
-		}
-		return best
-	case []interface{}:
-		best := ""
-		for _, item := range t {
-			if s := extractTextFromJSON(item, depth+1); len(s) > len(best) {
-				best = s
-			}
-		}
-		return best
+		return whWordsKey, whWordsLabel, n
+	case "/api/detect-image":
+		return whImagesKey, whImagesLabel, 1
 	default:
-		return ""
+		return "", "", 0
 	}
 }
 
-func creditAmountFromBody(body []byte) int {
+func wordsInJSONText(body []byte) int {
 	if len(body) == 0 {
-		return 1
+		return 0
 	}
-	var v interface{}
-	if json.Unmarshal(body, &v) == nil {
-		if s := extractTextFromJSON(v, 0); s != "" {
-			if n := countWords(s); n > 0 {
-				return n
-			}
-		}
+	var v map[string]interface{}
+	if json.Unmarshal(body, &v) != nil {
+		return 0
 	}
-	// Non-JSON / unparsed — charge at least 1 so free abuse is blocked.
-	return 1
+	raw, _ := v["text"].(string)
+	return countWords(raw)
 }
 
-func panelCreditStateFor(username string) (panelCreditState, error) {
-	state := panelCreditState{resetDays: 1, limit: 10000}
+func panelMeterFallback(key string) int {
+	if key == whImagesKey {
+		return whImagesDefault
+	}
+	return whWordsDefault
+}
+
+func panelMeterState(username, key string) (panelCreditState, error) {
+	state := panelCreditState{resetDays: 1, limit: panelMeterFallback(key)}
 	cfg := loadConfig()
 	db, err := openPanelDB(cfg)
 	if err != nil {
@@ -213,9 +173,7 @@ func panelCreditStateFor(username string) (panelCreditState, error) {
 	}
 	defaults := map[string]int{}
 	_ = json.Unmarshal([]byte(rawDefaults), &defaults)
-	if n, ok := defaults[gzMeterKey]; ok {
-		state.limit = n
-	} else if n, ok := defaults["credits"]; ok {
+	if n, ok := defaults[key]; ok {
 		state.limit = n
 	}
 
@@ -225,7 +183,7 @@ func panelCreditStateFor(username string) (panelCreditState, error) {
 		COALESCE(m.id, 0), COALESCE(m."limit", 0), COALESCE(m.used, 0), COALESCE(m.reset_days, 1), COALESCE(m.is_custom, 0), COALESCE(m.period_start, '')
 		FROM panel_users u
 		LEFT JOIN user_meters m ON m.user_id=u.id AND m.key=?
-		WHERE u.website_id=? AND u.username=?`, gzMeterKey, state.websiteID, username).
+		WHERE u.website_id=? AND u.username=?`, key, state.websiteID, username).
 		Scan(&state.userID, &status, &expire, &meterID, &meterLimit, &meterUsed, &resetDays, &custom, &periodStart)
 	if err != nil {
 		return state, nil
@@ -241,31 +199,29 @@ func panelCreditStateFor(username string) (panelCreditState, error) {
 		customActive = false
 	}
 	state.used = meterUsed
-	if meterID > 0 {
-		state.limit = meterLimit
-	} else if customActive {
+	if meterID > 0 && (custom == 0 || customActive) {
 		state.limit = meterLimit
 	}
 
-	// Align used with current IST period (daily by default).
+	// Align used with the current IST day.
 	start := periodStartIST(state.resetDays, time.Now()).UTC().Format(time.RFC3339)
 	if meterID > 0 && (periodStart == "" || periodStart < start) {
 		var used int
 		_ = db.QueryRow(`SELECT COALESCE(SUM(amount), 0) FROM usage_events WHERE website_id=? AND username=? AND limit_key=? AND timestamp>=?`,
-			state.websiteID, username, gzMeterKey, start).Scan(&used)
+			state.websiteID, username, key, start).Scan(&used)
 		_, _ = db.Exec(`UPDATE user_meters SET used=?, period_start=? WHERE id=?`, used, start, meterID)
 		state.used = used
 	}
 	return state, nil
 }
 
-func panelCreditsAllowAmount(username string, amount int) bool {
+func panelMeterAllow(username, key string, amount int) bool {
 	if amount < 1 {
-		amount = 1
+		return true
 	}
-	state, err := panelCreditStateFor(username)
+	state, err := panelMeterState(username, key)
 	if err != nil {
-		log.Printf("[CREDIT] check failed user=%s: %v", username, err)
+		log.Printf("[CREDIT] check failed user=%s key=%s: %v", username, key, err)
 		return true
 	}
 	if state.blocked || state.limit == 0 {
@@ -277,13 +233,13 @@ func panelCreditsAllowAmount(username string, amount int) bool {
 	return state.used+amount <= state.limit
 }
 
-func panelCreditsChargeAmount(username, path string, amount int) {
+func panelMeterCharge(username, key, label, path string, amount int) {
 	if amount < 1 {
-		amount = 1
+		return
 	}
-	state, err := panelCreditStateFor(username)
+	state, err := panelMeterState(username, key)
 	if err != nil || state.websiteID == 0 {
-		log.Printf("[CREDIT] charge skipped user=%s: %v", username, err)
+		log.Printf("[CREDIT] charge skipped user=%s key=%s: %v", username, key, err)
 		return
 	}
 	db, err := openPanelDB(loadConfig())
@@ -294,7 +250,7 @@ func panelCreditsChargeAmount(username, path string, amount int) {
 	start := periodStartIST(state.resetDays, time.Now()).UTC().Format(time.RFC3339)
 	_, err = db.Exec(`INSERT INTO usage_events (website_id, username, limit_key, limit_label, reset_days, action, target_path, amount, timestamp)
 		VALUES (?,?,?,?,?,?,?,?,?)`,
-		state.websiteID, username, gzMeterKey, gzMeterLabel, state.resetDays, "scan", path, amount, now)
+		state.websiteID, username, key, label, state.resetDays, "use", path, amount, now)
 	if err != nil {
 		log.Printf("[CREDIT] usage insert failed user=%s: %v", username, err)
 		return
@@ -309,20 +265,20 @@ func panelCreditsChargeAmount(username, path string, amount int) {
 		id, _ := res.LastInsertId()
 		state.userID = int(id)
 		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom, period_start) VALUES (?,?,?,?,?,?,0,?)`,
-			state.userID, gzMeterKey, gzMeterLabel, state.resetDays, amount, state.limit, start)
+			state.userID, key, label, state.resetDays, amount, state.limit, start)
 	} else {
 		res, err := db.Exec(`UPDATE user_meters SET used = used + ?, period_start=CASE WHEN period_start='' OR period_start<? THEN ? ELSE period_start END WHERE user_id=? AND "key"=?`,
-			amount, start, start, state.userID, gzMeterKey)
+			amount, start, start, state.userID, key)
 		changed := int64(0)
 		if err == nil && res != nil {
 			changed, _ = res.RowsAffected()
 		}
 		if err != nil || changed == 0 {
 			_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom, period_start) VALUES (?,?,?,?,?,?,0,?)`,
-				state.userID, gzMeterKey, gzMeterLabel, state.resetDays, state.used+amount, state.limit, start)
+				state.userID, key, label, state.resetDays, state.used+amount, state.limit, start)
 		}
 	}
-	log.Printf("[CREDIT] +%d user=%s used~%d/%d path=%s", amount, username, state.used+amount, state.limit, path)
+	log.Printf("[CREDIT] +%d %s user=%s used~%d/%d path=%s", amount, key, username, state.used+amount, state.limit, path)
 }
 
 func panelAssignedShowLimit(r *http.Request, cfg Config, username string) bool {
@@ -363,23 +319,24 @@ func panelAssignedShowLimit(r *http.Request, cfg Config, username string) bool {
 	return show == 1
 }
 
-func rejectCreditLimit(w http.ResponseWriter, r *http.Request, cfg Config) {
-	log.Printf("[CREDIT] blocked path=%s", r.URL.Path)
-	if wantsLightDenied(r, r.URL.Path) {
-		name := toolDisplayName(cfg)
-		writeLightCard(w, http.StatusForbidden, lightCard{
-			Title:   "Daily Limit Reached",
-			Heading: "Daily Limit Reached",
-			Message: "You have used the daily " + gzMeterLabel + " limit for <span class=\"brand\">" + name + "</span>. The limit resets at midnight (12:00 AM IST).",
-			Footer:  "This limit applies to the current access",
-		})
+func rejectWriteHumanLimit(w http.ResponseWriter, r *http.Request, cfg Config, key, label string) {
+	log.Printf("[CREDIT] blocked path=%s key=%s", r.URL.Path, key)
+	name := toolDisplayName(cfg)
+	message := "You have used the daily " + label + " limit for " + name + ". The limit resets at midnight (12:00 AM IST)."
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-TM-Limit", key)
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-TM-Limit", "credit")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusForbidden)
-	fmt.Fprintf(w, `{"error":{"message":"Daily limit reached","code":"limit_reached","label":%q}}`, gzMeterLabel)
+	writeLightCard(w, http.StatusForbidden, lightCard{
+		Title:   "Daily Limit Reached",
+		Heading: "Daily Limit Reached",
+		Message: "You have used the daily " + label + " limit for <span class=\"brand\">" + name + "</span>. The limit resets at midnight (12:00 AM IST).",
+		Footer:  "This limit applies to the current access",
+	})
 }
 
 func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
@@ -396,14 +353,18 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "unauthorized"})
 		return
 	}
-	state, _ := panelCreditStateFor(username)
+	words, _ := panelMeterState(username, whWordsKey)
+	images, _ := panelMeterState(username, whImagesKey)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"username":     username,
-		"credit_limit": state.limit,
-		"credit_used":  state.used,
+		"credit_limit": words.limit,
+		"credit_used":  words.used,
+		"credit_label": whWordsLabel,
+		"image_limit":  images.limit,
+		"image_used":   images.used,
+		"image_label":  whImagesLabel,
 		"tool_name":    toolDisplayName(cfg),
 		"show_limit":   panelAssignedShowLimit(r, cfg, username),
-		"credit_label": gzMeterLabel,
 	})
 }
 
@@ -414,7 +375,8 @@ func limitWidgetScript(toolName string) string {
 	}
 	return fmt.Sprintf(`<script data-tm-credits="1">
 (function() {
-    var CREDIT_LABEL = %q;
+    var WORD_LABEL = %q;
+    var IMAGE_LABEL = %q;
     var TOOL_NAME = %q;
     var open = false;
     var latest = null;
@@ -460,10 +422,11 @@ func limitWidgetScript(toolName string) string {
             + '<button class="tab" id="tm-tab" type="button" aria-label="Credits"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" opacity=".35"><' + '/circle><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><' + '/path><' + '/svg><' + '/button>'
             + '<div class="back" id="tm-back"><' + '/div>'
             + '<aside class="card" id="tm-drawer">'
-            + '<div class="head"><div class="title" id="tm-title">Credits<' + '/div><button class="x" id="tm-close" type="button" aria-label="Close">×<' + '/button><' + '/div>'
+            + '<div class="head"><div class="title" id="tm-title">Limits<' + '/div><button class="x" id="tm-close" type="button" aria-label="Close">×<' + '/button><' + '/div>'
             + '<div class="ringwrap"><svg class="ring" viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="46"><' + '/circle><circle class="fill" id="tm-ring" cx="60" cy="60" r="46"><' + '/circle><' + '/svg>'
-            + '<div class="center"><div class="num" id="tm-left">0<' + '/div><div class="sub" id="tm-sub">left<' + '/div><' + '/div><' + '/div>'
-            + '<div class="meter"><div class="meter-top"><span id="tm-meter-label">Credits<' + '/span><span class="count" id="tm-count">0 / 0<' + '/span><' + '/div><div class="bar"><div class="barfill" id="tm-bar"><' + '/div><' + '/div><' + '/div>'
+            + '<div class="center"><div class="num" id="tm-left">0<' + '/div><div class="sub" id="tm-sub">words left<' + '/div><' + '/div><' + '/div>'
+            + '<div class="meter"><div class="meter-top"><span id="tm-meter-label">Words<' + '/span><span class="count" id="tm-count">0 / 0<' + '/span><' + '/div><div class="bar"><div class="barfill" id="tm-bar"><' + '/div><' + '/div><' + '/div>'
+            + '<div class="meter" style="margin-top:8px"><div class="meter-top"><span id="tm-meter-label-2">Images<' + '/span><span class="count" id="tm-count-2">0 / 0<' + '/span><' + '/div><div class="bar"><div class="barfill" id="tm-bar-2"><' + '/div><' + '/div><' + '/div>'
             + '<' + '/aside>';
         (document.body || document.documentElement).appendChild(el);
         var shadow = root;
@@ -487,8 +450,9 @@ func limitWidgetScript(toolName string) string {
         var el = host();
         if (!el) return;
         var root = el.shadowRoot;
-        root.getElementById('tm-title').textContent = CREDIT_LABEL;
-        root.getElementById('tm-meter-label').textContent = CREDIT_LABEL;
+        root.getElementById('tm-title').textContent = 'Limits';
+        root.getElementById('tm-meter-label').textContent = d.credit_label || WORD_LABEL;
+        root.getElementById('tm-meter-label-2').textContent = d.image_label || IMAGE_LABEL;
         var tab = root.getElementById('tm-tab');
         var ring = root.getElementById('tm-ring');
         var bar = root.getElementById('tm-bar');
@@ -498,8 +462,16 @@ func limitWidgetScript(toolName string) string {
         var left = unlimited ? used : Math.max(0, limit - used);
         var ratio = unlimited ? 1 : (limit === 0 ? 0 : left / limit);
         root.getElementById('tm-left').textContent = unlimited ? '∞' : String(left);
-        root.getElementById('tm-sub').textContent = unlimited ? 'unlimited' : 'left';
+        root.getElementById('tm-sub').textContent = unlimited ? 'unlimited' : 'words left';
         root.getElementById('tm-count').textContent = unlimited ? (String(used) + ' used') : (String(used) + ' / ' + String(limit));
+        var imageUsed = Number(d.image_used) || 0;
+        var imageLimit = Number(d.image_limit);
+        var imageUnlimited = !(imageLimit >= 0);
+        var imageLeft = imageUnlimited ? imageUsed : Math.max(0, imageLimit - imageUsed);
+        var imageRatio = imageUnlimited ? 1 : (imageLimit === 0 ? 0 : imageLeft / imageLimit);
+        root.getElementById('tm-count-2').textContent = imageUnlimited ? (String(imageUsed) + ' used') : (String(imageUsed) + ' / ' + String(imageLimit));
+        var imageBar = root.getElementById('tm-bar-2');
+        imageBar.style.width = Math.round(imageRatio * 100) + '%%';
         ring.style.strokeDasharray = '289';
         ring.style.strokeDashoffset = String(289 * (1 - ratio));
         bar.style.width = Math.round(ratio * 100) + '%%';
@@ -514,43 +486,43 @@ func limitWidgetScript(toolName string) string {
         bar.classList.toggle('low', low);
         bar.classList.toggle('warn', warn);
     }
-    function showLimitCard() {
+    function showLimitCard(which) {
         if (document.getElementById('tm-limit-screen')) return;
+        var label = which === 'images' ? IMAGE_LABEL : WORD_LABEL;
         var el = document.createElement('div');
         el.id = 'tm-limit-screen';
         el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#eef3f8;color:#0f172a;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;';
         el.innerHTML = '<div style="width:min(440px,92vw);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px 36px;text-align:center;">'
             + '<div style="width:78px;height:78px;margin:0 auto 22px;border-radius:50%%;background:#fff;display:grid;place-items:center;font-size:28px;border:1px solid #e6ebf2;">&#128274;<' + '/div>'
             + '<h1 style="font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin:0 0 12px;">Daily Limit Reached<' + '/h1>'
-            + '<p style="color:#64748b;font-size:15px;line-height:1.55;margin:0;">You have used the daily ' + CREDIT_LABEL + ' limit for ' + TOOL_NAME + '. The limit resets at midnight (12:00 AM IST).<' + '/p>'
+            + '<p style="color:#64748b;font-size:15px;line-height:1.55;margin:0;">You have used the daily ' + label + ' limit for ' + TOOL_NAME + '. The limit resets at midnight (12:00 AM IST).<' + '/p>'
             + '<p style="margin:22px 0 0;color:#94a3b8;font-size:13px;">This limit applies to the current access<' + '/p><' + '/div>';
         (document.body || document.documentElement).appendChild(el);
     }
-    function noCreditsLeft() {
+    function meterFor(url) {
+        var u = String(url || '');
+        try { u = new URL(u, location.origin).pathname; } catch (e) {}
+        if (u === '/api/detect-image') return 'images';
+        if (u === '/api/humanize' || u === '/api/detect') return 'words';
+        return '';
+    }
+    function noCreditsLeft(url) {
         if (!latest || !latest.show_limit) return false;
-        var limit = Number(latest.credit_limit);
-        if (!(limit >= 0)) return false;
-        var used = Number(latest.credit_used) || 0;
+        var which = meterFor(url);
+        var limit = which === 'images' ? Number(latest.image_limit) : Number(latest.credit_limit);
+        var used = which === 'images' ? Number(latest.image_used) || 0 : Number(latest.credit_used) || 0;
+        if (!which || !(limit >= 0)) return false;
         return used >= limit;
     }
     function isBillable(url) {
-        var u = String(url || '');
-        try { u = new URL(u, location.origin).pathname; } catch (e) {}
-        u = u.replace(/\/api-proxy/, '').replace(/\/extra-cdn-\d+/, '');
-        if (u === '/v3/scan') return true;
-        if (u.indexOf('/v2/async/plagiarism/text') !== -1) return true;
-        if (u.indexOf('/v3/async/bibliography-scan/text') !== -1) return true;
-        if (u.indexOf('/v3/ai-vocab-scan') !== -1) return true;
-        if (u.indexOf('/v3/ai/text/stream') !== -1) return true;
-        if (u.indexOf('/v3/instant-writing-feedback') !== -1) return true;
-        if (u.indexOf('/stream_review_documents') !== -1) return true;
-        return false;
+        return meterFor(url) !== '';
     }
-    function blockedResponse() {
-        showLimitCard();
-        return new Response(JSON.stringify({error:{message:'Daily limit reached',code:'limit_reached'}}), {
+    function blockedResponse(which) {
+        showLimitCard(which);
+        var label = which === 'images' ? IMAGE_LABEL : WORD_LABEL;
+        return new Response(JSON.stringify({error:'You have used the daily ' + label + ' limit for ' + TOOL_NAME + '. The limit resets at midnight (12:00 AM IST).'}), {
             status: 403,
-            headers: { 'Content-Type': 'application/json', 'X-TM-Limit': 'credit' }
+            headers: { 'Content-Type': 'application/json', 'X-TM-Limit': which || 'words' }
         });
     }
     function updateBadge() {
@@ -575,13 +547,13 @@ func limitWidgetScript(toolName string) string {
         var method = 'GET';
         if (init && init.method) method = String(init.method).toUpperCase();
         else if (input && input.method) method = String(input.method).toUpperCase();
-        if (method === 'POST' && noCreditsLeft() && isBillable(target)) return Promise.resolve(blockedResponse());
+        if (method === 'POST' && noCreditsLeft(target) && isBillable(target)) return Promise.resolve(blockedResponse(meterFor(target)));
         var done = orig.apply(this, arguments);
         if (method === 'POST' && isBillable(target)) {
             return done.then(function(res) {
                 if (res && res.headers && res.headers.get('X-TM-Limit')) {
-                    showLimitCard();
-                    return new Response(JSON.stringify({error:'limit_reached'}), { status: 403, headers: { 'Content-Type': 'application/json' } });
+                    showLimitCard(res.headers.get('X-TM-Limit'));
+                    return res;
                 }
                 if (res && res.ok) setTimeout(updateBadge, 400);
                 return res;
@@ -590,5 +562,5 @@ func limitWidgetScript(toolName string) string {
         return done;
     };
 })();
-</script>`, gzMeterLabel, name)
+</script>`, whWordsLabel, whImagesLabel, name)
 }

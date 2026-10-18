@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -79,6 +80,31 @@ func TestHostLockStaysOnProxy(t *testing.T) {
 	cookie := stripCookieDomain("wh_anon_id=abc; Path=/; Domain=writehuman.ai; Secure")
 	if strings.Contains(strings.ToLower(cookie), "domain=") || !strings.Contains(cookie, "wh_anon_id=abc") {
 		t.Fatalf("cookie = %s", cookie)
+	}
+}
+
+func TestWriteHumanBillUsesWordsAndImages(t *testing.T) {
+	text := `{"text":"one two three","tone":"standard","enhanced":false,"numberOfVariations":5,"sequenceId":1}`
+	key, label, n := writeHumanBill(http.MethodPost, "/api/humanize", []byte(text))
+	if key != "words" || label != "Words" || n != 3 {
+		t.Fatalf("humanize = %s %s %d", key, label, n)
+	}
+	key, _, n = writeHumanBill(http.MethodPost, "/api/detect", []byte(`{"text":"alpha beta"}`))
+	if key != "words" || n != 2 {
+		t.Fatalf("detect = %s %d", key, n)
+	}
+	key, label, n = writeHumanBill(http.MethodPost, "/api/detect-image", []byte("not-json"))
+	if key != "images" || label != "Images" || n != 1 {
+		t.Fatalf("image = %s %s %d", key, label, n)
+	}
+	if key, _, n = writeHumanBill(http.MethodPost, "/api/humanize/prepare", []byte(text)); key != "" || n != 0 {
+		t.Fatalf("prepare should not bill: %s %d", key, n)
+	}
+	if key, _, n = writeHumanBill(http.MethodGet, "/api/usage", nil); key != "" || n != 0 {
+		t.Fatalf("usage read should not bill: %s %d", key, n)
+	}
+	if key, _, n = writeHumanBill(http.MethodPost, "/api/humanize", []byte(`{"text":"hi"}`)); n != 1 {
+		t.Fatalf("short text words = %d key=%s", n, key)
 	}
 }
 

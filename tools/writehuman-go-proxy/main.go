@@ -1302,27 +1302,25 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Word-credit gate: 1 word = 1 credit per billable scan/AI POST.
-	billAmount := 0
+	// Words cover Humanize and AI Detector. Images are a separate daily meter.
+	billKey, billLabel, billAmount := writeHumanBill(r.Method, path, nil)
 	reqBody := r.Body
 	var reqPeek []byte
-	if shouldLogWriteHumanNet(path) && r.Body != nil &&
+	needBody := shouldLogWriteHumanNet(path) || billKey == whWordsKey
+	if needBody && r.Body != nil &&
 		(r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch) {
-		peek, _ := io.ReadAll(r.Body)
+		peek, _ := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		_ = r.Body.Close()
 		reqPeek = peek
 		reqBody = io.NopCloser(bytes.NewReader(peek))
 	}
-	if usesPanelAccountMode(c) && !c.BypassAuth && panelUser != "" &&
-		isBillableGPTZeroPath(r.Method, path) {
-		bodyBytes, _ := io.ReadAll(io.LimitReader(reqBody, 8<<20))
-		_ = reqBody.Close()
-		reqBody = io.NopCloser(bytes.NewReader(bodyBytes))
-		billAmount = creditAmountFromBody(bodyBytes)
-		if !panelCreditsAllowAmount(panelUser, billAmount) {
-			rejectCreditLimit(w, r, c)
-			return
-		}
+	if billKey == whWordsKey {
+		billKey, billLabel, billAmount = writeHumanBill(r.Method, path, reqPeek)
+	}
+	if usesPanelAccountMode(c) && !c.BypassAuth && panelUser != "" && billKey != "" &&
+		!panelMeterAllow(panelUser, billKey, billAmount) {
+		rejectWriteHumanLimit(w, r, c, billKey, billLabel)
+		return
 	}
 
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstream.String(), reqBody)
@@ -1413,8 +1411,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if billAmount > 0 && panelUser != "" && resp.StatusCode > 0 && resp.StatusCode < 400 {
-		panelCreditsChargeAmount(panelUser, path, billAmount)
+	if billAmount > 0 && billKey != "" && panelUser != "" && resp.StatusCode > 0 && resp.StatusCode < 400 {
+		panelMeterCharge(panelUser, billKey, billLabel, path, billAmount)
 	}
 	body = decompress(resp.Header.Get("Content-Encoding"), body)
 	resp.Header.Del("Content-Encoding")

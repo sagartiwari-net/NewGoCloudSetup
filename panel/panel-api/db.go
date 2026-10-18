@@ -91,6 +91,7 @@ func openDB(path string) *sql.DB {
 	seed(db)
 	ensureQuillbot(db)
 	ensureWriteHuman(db)
+	ensureWriteHumanLimits(db)
 	ensureResellers(db)
 	ensureAccessAlertSettings(db)
 	return db
@@ -132,6 +133,7 @@ func openMySQL() *sql.DB {
 	seed(db)
 	ensureQuillbot(db)
 	ensureWriteHuman(db)
+	ensureWriteHumanLimits(db)
 	ensureResellers(db)
 	ensureAccessAlertSettings(db)
 	return db
@@ -286,11 +288,7 @@ func seed(db *sql.DB) {
 		toolID, _ := res.LastInsertId()
 		defaults := map[string]int{}
 		for _, limit := range tool.limits {
-			if limit.Key == "exports" {
-				defaults[limit.Key] = 20
-			} else {
-				defaults[limit.Key] = 100
-			}
+			defaults[limit.Key] = defaultSeedLimit(limit.Key)
 		}
 		rawDefaults, _ := json.Marshal(defaults)
 		domain := "127.0.0.1:" + tool.port
