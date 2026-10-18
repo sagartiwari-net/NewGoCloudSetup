@@ -262,6 +262,7 @@ func (s *server) saveAccessSite(w http.ResponseWriter, r *http.Request) {
 		Note       string `json:"note"`
 		Enabled    *bool  `json:"enabled"`
 		WebsiteIDs *[]int `json:"website_ids"`
+		Rotate     bool   `json:"rotate_key"`
 	}
 	if err := readBody(r, &body); err != nil {
 		writeErr(w, 400, "Invalid body")
@@ -295,6 +296,7 @@ func (s *server) saveAccessSite(w http.ResponseWriter, r *http.Request) {
 			chosen = *body.WebsiteIDs
 		}
 		s.replaceAccessSiteTools(int(id), chosen)
+		s.clearWhitelistRejects(domain)
 		ids, tools := s.accessSiteTools(int(id))
 		writeJSON(w, 200, map[string]any{
 			"id": id, "domain": domain, "enabled": true, "note": note, "key": key,
@@ -323,7 +325,41 @@ func (s *server) saveAccessSite(w http.ResponseWriter, r *http.Request) {
 	if body.WebsiteIDs != nil {
 		s.replaceAccessSiteTools(body.ID, *body.WebsiteIDs)
 	}
+	if domain == "" {
+		domain = s.accessSiteDomain(body.ID)
+	}
+	if enabled == 1 {
+		s.clearWhitelistRejects(domain)
+	}
+	if body.Rotate {
+		key := newSiteKey()
+		enc, err := encryptAutomation(key)
+		if err != nil {
+			writeErr(w, 500, "Could not store the site key")
+			return
+		}
+		if _, err := s.db.Exec(`UPDATE access_sites SET key_enc=? WHERE id=?`, enc, body.ID); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"status": "ok", "key": key})
+		return
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) accessSiteDomain(id int) string {
+	var domain string
+	_ = s.db.QueryRow(`SELECT domain FROM access_sites WHERE id=?`, id).Scan(&domain)
+	return domain
+}
+
+func (s *server) clearWhitelistRejects(domain string) {
+	domain = normalizeSiteDomain(domain)
+	if domain == "" {
+		return
+	}
+	_, _ = s.db.Exec(`DELETE FROM access_rejects WHERE reason='not_whitelisted' AND site_domain=?`, domain)
 }
 
 func (s *server) deleteAccessSite(w http.ResponseWriter, r *http.Request) {

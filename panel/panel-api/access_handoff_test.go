@@ -52,6 +52,9 @@ func TestAccessHandoff(t *testing.T) {
 	mux := http.NewServeMux()
 	s.routes(mux)
 
+	if _, err := db.Exec(`INSERT INTO access_rejects (website_id, username, client_ip, reason, message, site_domain, tool_slug, created_at) VALUES (0,'ada','1.1.1.1','not_whitelisted','You are using from UnAuthorised website','toolsmandi.com','refs',?)`, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
 	created := callAs(t, mux, "handoff-master", http.MethodPost, "/api/access-sites", fmt.Sprintf(`{"domain":"https://toolsmandi.com/member","note":"main","website_ids":[%d]}`, websiteID))
 	if created.Code != 200 {
 		t.Fatalf("create site %d %s", created.Code, created.Body.String())
@@ -61,6 +64,13 @@ func TestAccessHandoff(t *testing.T) {
 	}
 	if err := json.Unmarshal(created.Body.Bytes(), &site); err != nil || site.Key == "" {
 		t.Fatalf("key missing: %s", created.Body.String())
+	}
+	var stale int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM access_rejects WHERE site_domain='toolsmandi.com' AND reason='not_whitelisted'`).Scan(&stale); err != nil {
+		t.Fatal(err)
+	}
+	if stale != 0 {
+		t.Fatal("allowing the site left the old reject")
 	}
 	listed := callAs(t, mux, "handoff-master", http.MethodGet, "/api/access-sites", "")
 	if bytes.Contains(listed.Body.Bytes(), []byte(site.Key)) {

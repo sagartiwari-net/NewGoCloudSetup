@@ -41,6 +41,8 @@ export default function AccessSitesPage() {
   const [editing, setEditing] = useState<AccessSite | null>(null)
   const [issuedKey, setIssuedKey] = useState("")
   const [pendingDelete, setPendingDelete] = useState<AccessSite | null>(null)
+  const [pendingKey, setPendingKey] = useState<AccessSite | null>(null)
+  const [rotating, setRotating] = useState(false)
   const [viewing, setViewing] = useState<AccessSite | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -77,6 +79,9 @@ export default function AccessSitesPage() {
             }}
           >
             Tools
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setPendingKey(row)}>
+            New key
           </Button>
           <Button
             variant="outline"
@@ -152,6 +157,24 @@ export default function AccessSitesPage() {
         site={viewing}
         websites={websites ?? []}
         onOpenChange={(next) => { if (!next) setViewing(null) }}
+      />
+      <ConfirmDialog
+        open={pendingKey != null}
+        onOpenChange={(next) => { if (!next) setPendingKey(null) }}
+        title="Create a new key?"
+        description="The key already in gt4acc.php stops working. Paste the new one into PANEL_SITE_KEY."
+        confirmLabel="Create key"
+        pending={rotating}
+        onConfirm={() => {
+          if (!pendingKey) return
+          setRotating(true)
+          void saveAccessSite({ id: pendingKey.id, rotate_key: true, enabled: pendingKey.enabled, note: pendingKey.note })
+            .then((saved) => {
+              if (saved.key) setIssuedKey(saved.key)
+              setPendingKey(null)
+            })
+            .finally(() => setRotating(false))
+        }}
       />
       <ConfirmDialog
         open={pendingDelete != null}

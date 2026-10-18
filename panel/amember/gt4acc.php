@@ -57,6 +57,10 @@ try {
         handoffFail('This tool is not available');
     }
 
+    if (trim(PANEL_SITE_KEY) === '' || PANEL_SITE_KEY === 'paste-the-key-from-allowed-sites') {
+        handoffFail('Paste the allowed-sites key into gt4acc.php.');
+    }
+
     $username = trim((string) $user->login);
     $site = handoffSite(PANEL_SITE_DOMAIN);
     $productIds = array_values(array_unique(array_map('strval', (array) $user->getActiveProductIds())));
@@ -84,7 +88,7 @@ try {
         'client_ip' => $clientIP,
         'timestamp' => $timestamp,
         'nonce' => $nonce,
-        'signature' => hash_hmac('sha256', $canonical, PANEL_SITE_KEY),
+        'signature' => hash_hmac('sha256', $canonical, trim(PANEL_SITE_KEY)),
     ]);
 
     $context = stream_context_create([
