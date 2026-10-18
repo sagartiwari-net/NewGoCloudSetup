@@ -6,23 +6,35 @@ Server IP wahi hai jo `gt4rents.com` use karta hai: `65.109.16.196`.
 
 ## Naye dost ko kaise dena hai
 
-1. Panel mein reseller banao. Username yaad rakhna. Role Reseller. Status active.
-2. Uske Telegram chats Panel → Telegram destinations mein usi reseller ke naam par add karo. Chat id group ki ho, bot us group mein ho.
-3. Neeche wale domain pattern se uske hosts choose karo. Example: `ahrefs.dost.com`.
-4. `deploy/nginx-host-port.map.conf` mein har host ko us tool ke **existing** port par map karo. Naya port mat banana.
-5. `deploy/nginx-wildcard.server.conf` ke `server_name` mein wahi hosts add karo. Live aaPanel wale 80 aur 443 server block mein bhi add karo. Naya site mat banao.
-6. Panel API mein us dost ke liye `ensure...Sites` jaisa seed add karo, jo:
-   - tool ka same `tool_id` use kare
-   - naya `websites.domain` insert kare
-   - limits owner website se copy kare, taaki baad mein sirf uski website par number change ho
-   - khali account banaye, cookie baad mein paste ho
-   - `operator_websites` mein sirf us reseller ko link kare
-   - us reseller ke telegram destinations ko us website ki route par lagaye
-7. Cloudflare par us domain ke A records server IP par, orange cloud.
-8. Server par `git pull`, nginx map copy, `nginx -t && nginx -s reload`, phir `./deploy/build-panel.sh && ./deploy/start-panel-api.sh`.
-9. Jin tools ke proxy code mein host change hua ho, unhe `./deploy/build-one.sh <sub> && ./deploy/start-tool.sh <sub>` se rebuild karo.
-10. Panel mein us website ka product id asli aMember id se badlo, aur account cookie paste karo.
-11. Reseller login se check karo: sirf uski websites dikhein, dusre dost ya gt4rents ke cookies aur logs nahi.
+Code, map file, aur `gt4rents.com` ka nginx mat chhedo. Har tool ka process pehle se chal raha hota hai. Naya dost = DNS + aaPanel ki alag site + panel ki alag website.
+
+1. Panel mein reseller banao. Username yaad rakhna. Role Reseller. Status active. Telegram chat usi reseller par add karo.
+2. Cloudflare par A record, DNS only, content `65.109.16.196`. Name wahi rakho jo URL mein chahiye, jaise `refs`.
+3. aaPanel → Website → Add site. Domain sirf woh ek host, jaise `refs.dost.com`. PHP **Static**. FTP aur database mat banao.
+4. Us site ki Nginx config mein `location /` ko neeche wale reverse proxy se badlo. Port us tool ka purana port hai. Naya process mat chalao.
+5. Us site par SSL → Let's Encrypt. DNS only isiliye sahi hai, certificate isi site ka banega.
+6. Panel → Websites → Add. Tool wahi choose karo, domain bilkul us host ke barabar. Reseller ko sirf ye website assign karo. Cookie isi account mein paste karo. Product id asli aMember id lagao. Telegram route isi website par us reseller ke chat se jodo.
+7. Reseller login se check karo: sirf uski websites, uska cookie, uske logs.
+
+Example, Ahrefs hamesha port `5291`:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:5291;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    client_max_body_size 100m;
+    proxy_read_timeout 3600s;
+}
+```
+
+`connection_upgrade` wahi map hai jo `gt4rents.com` wali config ke http block mein pehle se hai. Semrush ke liye port `5141`, Canva `4501`, Grammarly `4911`. Koi aur tool ho to `tools.json` ka port use karo.
 
 Jo cheez share hoti hai: binary, port, process, static cache.
 
@@ -49,28 +61,25 @@ Agar ToolWaly reseller par gt4rents wali Semrush, Envato, ya ChatGPT website bhi
 
 ## Cloudflare (toolwaly.com)
 
-Ye char A records `65.109.16.196` par hain: `refs`, `smrs`, `cnva`, `grammarly`.
+Ye char A records `65.109.16.196` par hain, DNS only: `refs`, `smrs`, `cnva`, `grammarly`. Grey cloud rehne do. SSL aaPanel ki alag site par Let's Encrypt se lagega.
 
-Abhi Proxy status **DNS only** hai. Origin certificate sirf `*.gt4rents.com` ka hai, isliye grey cloud par `https://` certificate warning dikhayega. Har record ke cloud icon ko **Proxied** (orange) karo. SSL/TLS mode **Full** rakho. Flexible mat use karna.
+## aaPanel
 
-## aaPanel / nginx
+`gt4rents.com` ki config mat badalna. Char alag sites banao.
 
-Naya website create mat karna. Jo site `*.gt4rents.com` ko tool port par bhejti hai, usi ke `server_name` mein ye char hosts add karne hain. Port 80 aur port 443 dono blocks mein.
+| Add site domain | Reverse proxy |
+|-----------------|---------------|
+| `refs.toolwaly.com` | `http://127.0.0.1:5291` |
+| `smrs.toolwaly.com` | `http://127.0.0.1:5141` |
+| `cnva.toolwaly.com` | `http://127.0.0.1:4501` |
+| `grammarly.toolwaly.com` | `http://127.0.0.1:4911` |
 
-```nginx
-server_name *.gt4rents.com gt4rents.com refs.toolwaly.com smrs.toolwaly.com cnva.toolwaly.com grammarly.toolwaly.com;
-```
+Har site: PHP Static, phir upar wala `location /` block, phir SSL → Let's Encrypt.
 
-Phir map update:
+Panel rows ke liye ek baar:
 
 ```bash
 cd /www/wwwroot/gt4rents.com/_repo && git pull
-cp deploy/nginx-host-port.map.conf /www/server/panel/vhost/nginx/gt4rents-host-port.map.conf
-nginx -t && nginx -s reload
-./deploy/build-one.sh refs && ./deploy/start-tool.sh refs
-./deploy/build-one.sh smrs && ./deploy/start-tool.sh smrs
-./deploy/build-one.sh cnva && ./deploy/start-tool.sh cnva
-./deploy/build-one.sh grammarly && ./deploy/start-tool.sh grammarly
 ./deploy/build-panel.sh && ./deploy/start-panel-api.sh
 ```
 
