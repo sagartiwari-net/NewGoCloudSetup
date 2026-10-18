@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { PlusIcon } from "lucide-react"
+import { toast } from "sonner"
 
 import { useAuth } from "@/components/auth-provider"
 import { ChoiceSelect } from "@/components/choice-select"
@@ -14,6 +15,7 @@ import { FormOverlay } from "@/components/form-overlay"
 import { PageHeader } from "@/components/page-header"
 import { SecretTextarea } from "@/components/secret-field"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -28,6 +30,8 @@ import {
   listWebsites,
   saveTool,
   saveWebsite,
+  saveWebsiteSessions,
+  saveWebsiteSettings,
 } from "@/lib/api/client"
 import type { Tool, Website } from "@/lib/api/types"
 import { formatLimit, formatReset, limitHint } from "@/lib/format"
@@ -74,14 +78,48 @@ export default function WebsitesPage() {
   const [pendingDelete, setPendingDelete] = useState<Website | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [pickedTool, setPickedTool] = useState("")
+  const [selected, setSelected] = useState<number[]>([])
+  const [sessionOpen, setSessionOpen] = useState(false)
+  const reseller = session?.role !== "master"
+
+  useEffect(() => {
+    setSelected([])
+  }, [query])
 
   const rows = data?.websites.items ?? []
+  const pageIds = rows.map((row) => row.id)
+  const allChecked = pageIds.length > 0 && pageIds.every((id) => selected.includes(id))
 
   const toolName = (toolId: number) => data?.tools.find((tool) => tool.id === toolId)?.name ?? "—"
 
   const columns: DataColumn<Website>[] = [
+    {
+      id: "select",
+      header: "Select",
+      headerCell: () => (
+        <Checkbox
+          aria-label="Select websites on this page"
+          checked={allChecked}
+          onCheckedChange={(next) => {
+            setSelected((current) => next
+              ? [...new Set([...current, ...pageIds])]
+              : current.filter((id) => !pageIds.includes(id)))
+          }}
+        />
+      ),
+      cell: (row) => (
+        <Checkbox
+          aria-label={`Select ${row.domain}`}
+          checked={selected.includes(row.id)}
+          onCheckedChange={(next) => {
+            setSelected((current) => next ? [...current, row.id] : current.filter((id) => id !== row.id))
+          }}
+        />
+      ),
+    },
     { id: "name", header: "Name", cell: (row) => row.name, sortValue: (row) => row.name },
     { id: "domain", header: "Domain", cell: (row) => row.domain, sortValue: (row) => row.domain },
+    { id: "session", header: "Session minutes", cell: (row) => row.session_duration, sortValue: (row) => row.session_duration },
     { id: "tool", header: "Tool", cell: (row) => toolName(row.tool_id), sortValue: (row) => toolName(row.tool_id) },
     {
       id: "security",
@@ -114,9 +152,11 @@ export default function WebsitesPage() {
           <Button variant="outline" size="sm" onClick={() => { setEditing(row); setOpen(true) }}>
             Edit
           </Button>
-          <Button variant="destructive" size="sm" onClick={() => setPendingDelete(row)}>
-            Delete
-          </Button>
+          {reseller ? null : (
+            <Button variant="destructive" size="sm" onClick={() => setPendingDelete(row)}>
+              Delete
+            </Button>
+          )}
         </div>
       ),
     },
@@ -126,12 +166,21 @@ export default function WebsitesPage() {
     <>
       <PageHeader
         title="Website Domains"
-        description="Each website is one public tool domain. Handshake secrets stay masked in this form until revealed."
+        description={reseller
+          ? "Your websites only. Change how long a session stays open, and the default limits already set on the tool."
+          : "Each website is one public tool domain. Handshake secrets stay masked in this form until revealed."}
         action={
-          <Button onClick={() => { setEditing(null); setOpen(true) }}>
-            <PlusIcon data-icon="inline-start" />
-            New website
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={selected.length === 0} onClick={() => setSessionOpen(true)}>
+              Set session on {selected.length === 0 ? "selected" : selected.length}
+            </Button>
+            {reseller ? null : (
+              <Button onClick={() => { setEditing(null); setOpen(true) }}>
+                <PlusIcon data-icon="inline-start" />
+                New website
+              </Button>
+            )}
+          </div>
         }
       />
       <Field className="max-w-sm">
@@ -161,17 +210,30 @@ export default function WebsitesPage() {
               onPageChange: setPage,
             }}
             emptyTitle={query ? "No matches" : "No websites"}
-            emptyDescription="Add a domain before mapping accounts onto it."
+            emptyDescription={reseller ? "No websites are assigned to this account." : "Add a domain before mapping accounts onto it."}
           />
         </CardContent>
       </Card>
       <FormOverlay
         open={open}
         onOpenChange={setOpen}
-        title={editing ? "Edit website" : "New website"}
-        description="The handshake secret is masked until you reveal it."
+        title={reseller ? "Session and limits" : editing ? "Edit website" : "New website"}
+        description={reseller
+          ? "Name, domain, and handshake stay as the master set them."
+          : "The handshake secret is masked until you reveal it."}
       >
-        {open ? (
+        {open && reseller && editing ? (
+          <SiteSettingsForm
+            key={editing.id}
+            website={editing}
+            tools={data?.tools ?? []}
+            onDone={async () => {
+              setOpen(false)
+              reload()
+            }}
+          />
+        ) : null}
+        {open && !reseller ? (
           <WebsiteForm
             key={editing?.id ?? "new"}
             website={editing}
@@ -188,6 +250,24 @@ export default function WebsitesPage() {
             onDone={async () => {
               setOpen(false)
               setPickedTool("")
+              reload()
+            }}
+          />
+        ) : null}
+      </FormOverlay>
+      <FormOverlay
+        open={sessionOpen}
+        onOpenChange={setSessionOpen}
+        title="Set session time"
+        description={`Applies one session length to the ${selected.length} selected websites.`}
+      >
+        {sessionOpen ? (
+          <SessionBulkForm
+            key={selected.join(",")}
+            websiteIds={selected}
+            onDone={async () => {
+              setSessionOpen(false)
+              setSelected([])
               reload()
             }}
           />
@@ -234,6 +314,137 @@ export default function WebsitesPage() {
         }}
       />
     </>
+  )
+}
+
+function SiteSettingsForm({
+  website,
+  tools,
+  onDone,
+}: {
+  website: Website
+  tools: Tool[]
+  onDone: () => Promise<void>
+}) {
+  const tool = tools.find((item) => item.id === website.tool_id)
+  const limits = Array.isArray(tool?.limits) ? tool.limits : []
+  const [minutes, setMinutes] = useState(String(website.session_duration || 30))
+  const [defaults, setDefaults] = useState<Record<string, number>>(() => {
+    const next: Record<string, number> = {}
+    for (const definition of limits) next[definition.key] = website.default_limits[definition.key] ?? -1
+    return next
+  })
+  const [error, setError] = useState("")
+  const [pending, setPending] = useState(false)
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault()
+    const sessionDuration = Number(minutes)
+    if (!Number.isInteger(sessionDuration) || sessionDuration < 1) {
+      setError("Use at least 1 minute")
+      return
+    }
+    setPending(true)
+    setError("")
+    const ok = await runMutation(
+      () => saveWebsiteSettings({ id: website.id, session_duration: sessionDuration, default_limits: defaults }),
+      "Website updated",
+    )
+    setPending(false)
+    if (ok) await onDone()
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <FieldGroup>
+        <Field>
+          <FieldLabel>Domain</FieldLabel>
+          <Input value={website.domain} readOnly />
+        </Field>
+        <Field data-invalid={Boolean(error) || undefined}>
+          <FieldLabel htmlFor="reseller-session">Session duration minutes</FieldLabel>
+          <Input id="reseller-session" type="number" min={1} value={minutes} onChange={(event) => setMinutes(event.target.value)} />
+          {error ? <FieldError>{error}</FieldError> : null}
+        </Field>
+        {limits.length === 0 ? (
+          <Field>
+            <FieldLabel>Default limits</FieldLabel>
+            <FieldDescription>This tool has no limits.</FieldDescription>
+          </Field>
+        ) : limits.map((definition) => (
+          <Field key={definition.key}>
+            <FieldLabel htmlFor={`reseller-limit-${definition.key}`}>
+              {definition.label} · {formatReset(definition.reset_days)}
+            </FieldLabel>
+            <Input
+              id={`reseller-limit-${definition.key}`}
+              type="number"
+              min={-1}
+              value={defaults[definition.key] ?? -1}
+              onChange={(event) => setDefaults((current) => ({ ...current, [definition.key]: Number(event.target.value) }))}
+            />
+            <FieldDescription>{limitHint(defaults[definition.key] ?? -1)}</FieldDescription>
+          </Field>
+        ))}
+        <Button type="submit" disabled={pending}>
+          {pending ? <Spinner data-icon="inline-start" /> : null}
+          Save
+        </Button>
+      </FieldGroup>
+    </form>
+  )
+}
+
+function SessionBulkForm({
+  websiteIds,
+  onDone,
+}: {
+  websiteIds: number[]
+  onDone: () => Promise<void>
+}) {
+  const [minutes, setMinutes] = useState("120")
+  const [error, setError] = useState("")
+  const [pending, setPending] = useState(false)
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault()
+    const sessionDuration = Number(minutes)
+    if (!Number.isInteger(sessionDuration) || sessionDuration < 1) {
+      setError("Use at least 1 minute")
+      return
+    }
+    if (websiteIds.length === 0) {
+      setError("Select at least one website")
+      return
+    }
+    setPending(true)
+    setError("")
+    try {
+      const result = await saveWebsiteSessions({ website_ids: websiteIds, session_duration: sessionDuration })
+      toast.success(`Session time updated on ${result.updated} websites`)
+      await onDone()
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Something went wrong")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <FieldGroup>
+        <Field data-invalid={Boolean(error) || undefined}>
+          <FieldLabel htmlFor="bulk-session">Session duration minutes</FieldLabel>
+          <Input id="bulk-session" type="number" min={1} value={minutes} onChange={(event) => setMinutes(event.target.value)} />
+          <FieldDescription>How long a login stays open on the selected domains.</FieldDescription>
+          {error ? <FieldError>{error}</FieldError> : null}
+        </Field>
+        <Button type="submit" disabled={pending}>
+          {pending ? <Spinner data-icon="inline-start" /> : null}
+          Update {websiteIds.length} websites
+        </Button>
+      </FieldGroup>
+    </form>
   )
 }
 

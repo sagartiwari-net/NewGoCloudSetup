@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -14,6 +14,7 @@ import { DataTable, type DataColumn } from "@/components/data-table"
 import { FormOverlay } from "@/components/form-overlay"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -58,6 +59,7 @@ export default function ProductsPage() {
   const [websiteId, setWebsiteId] = useState("all")
   const [resellerId, setResellerId] = useState("all")
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [selected, setSelected] = useState<number[]>([])
   const { page, setPage, pageSize } = useListPage()
   const { data, loading, reload } = useResource(
     `${session?.role ?? "none"}-${page}-${pageSize}-${query}-${websiteId}-${resellerId}`,
@@ -81,7 +83,13 @@ export default function ProductsPage() {
   const [pendingDelete, setPendingDelete] = useState<ProductMap | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  useEffect(() => {
+    setSelected([])
+  }, [query, websiteId, resellerId])
+
   const rows = data?.products.items ?? []
+  const pageIds = rows.map((row) => row.id)
+  const allChecked = pageIds.length > 0 && pageIds.every((id) => selected.includes(id))
   const selectedReseller = (data?.resellers ?? []).find((reseller) => String(reseller.id) === resellerId)
   const websites = (data?.websites ?? []).filter((website) => {
     if (session?.role !== "master" || resellerId === "all") return true
@@ -89,6 +97,30 @@ export default function ProductsPage() {
   })
 
   const columns: DataColumn<ProductMap>[] = [
+    {
+      id: "select",
+      header: "Select",
+      headerCell: () => (
+        <Checkbox
+          aria-label="Select mappings on this page"
+          checked={allChecked}
+          onCheckedChange={(next) => {
+            setSelected((current) => next
+              ? [...new Set([...current, ...pageIds])]
+              : current.filter((id) => !pageIds.includes(id)))
+          }}
+        />
+      ),
+      cell: (row) => (
+        <Checkbox
+          aria-label={`Select ${row.website_name}`}
+          checked={selected.includes(row.id)}
+          onCheckedChange={(next) => {
+            setSelected((current) => next ? [...current, row.id] : current.filter((id) => id !== row.id))
+          }}
+        />
+      ),
+    },
     { id: "website", header: "Website", cell: (row) => row.website_name, sortValue: (row) => row.website_name },
     {
       id: "id",
@@ -126,8 +158,8 @@ export default function ProductsPage() {
         description="One website and product name can hold several aMember ids."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setBulkOpen(true)}>
-              Update many ids
+            <Button variant="outline" disabled={selected.length === 0} onClick={() => setBulkOpen(true)}>
+              Update {selected.length === 0 ? "selected" : selected.length} ids
             </Button>
             <Button onClick={() => { setEditing(null); setOpen(true) }}>
               <PlusIcon data-icon="inline-start" />
@@ -223,18 +255,16 @@ export default function ProductsPage() {
       <FormOverlay
         open={bulkOpen}
         onOpenChange={setBulkOpen}
-        title="Update many ids"
-        description="Adds or removes every id you paste on each mapping in the current reseller, website, and search filter. This is not limited to the current page."
+        title="Update selected ids"
+        description={`Adds or removes these ids on the ${selected.length} selected mappings. Other rows stay unchanged.`}
       >
         {bulkOpen ? (
           <BulkIdsForm
-            key={`${resellerId}-${websiteId}-${query}`}
-            resellerId={session?.role === "master" && resellerId !== "all" ? Number(resellerId) : 0}
-            websiteId={websiteId === "all" ? 0 : Number(websiteId)}
-            query={query}
-            requireScope={session?.role === "master"}
+            key={selected.join(",")}
+            mappingIds={selected}
             onDone={async () => {
               setBulkOpen(false)
+              setSelected([])
               reload()
             }}
           />
@@ -264,16 +294,10 @@ export default function ProductsPage() {
 }
 
 function BulkIdsForm({
-  resellerId,
-  websiteId,
-  query,
-  requireScope,
+  mappingIds,
   onDone,
 }: {
-  resellerId: number
-  websiteId: number
-  query: string
-  requireScope: boolean
+  mappingIds: number[]
   onDone: () => Promise<void>
 }) {
   const [action, setAction] = useState<"add" | "remove">("add")
@@ -284,8 +308,8 @@ function BulkIdsForm({
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
     const ids = splitProductIDs(text)
-    if (requireScope && resellerId === 0 && websiteId === 0) {
-      setError("Choose a reseller or a website first")
+    if (mappingIds.length === 0) {
+      setError("Select at least one mapping")
       return
     }
     if (ids.length === 0) {
@@ -297,13 +321,11 @@ function BulkIdsForm({
     try {
       const result = await bulkProductIDs({
         action,
-        reseller_id: resellerId,
-        website_id: websiteId,
-        query,
+        mapping_ids: mappingIds,
         product_ids: ids,
       })
       if (result.updated === 0 && result.skipped.length === 0) {
-        toast.error("No mappings in this filter")
+        toast.error("No selected mappings were updated")
         return
       }
       if (result.updated > 0) toast.success(action === "add" ? `Added ids on ${result.updated} mappings` : `Removed ids on ${result.updated} mappings`)

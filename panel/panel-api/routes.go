@@ -127,7 +127,11 @@ func (s *server) listWebsites(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	items := []any{}
 	for rows.Next() {
-		items = append(items, scanWebsite(rows))
+		item := scanWebsite(rows)
+		if op.Role != "master" {
+			item["secret_key"] = ""
+		}
+		items = append(items, item)
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "pageSize": size})
 }
@@ -211,6 +215,102 @@ func (s *server) saveWebsite(w http.ResponseWriter, r *http.Request) {
 	s.syncWebsiteLimits(body.ID, body.DefaultLimits)
 	s.applySessionDuration(body.ID, body.SessionDuration)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) saveWebsiteSettings(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		ID              int            `json:"id"`
+		SessionDuration int            `json:"session_duration"`
+		DefaultLimits   map[string]int `json:"default_limits"`
+	}
+	if err := readBody(r, &body); err != nil || body.ID == 0 {
+		writeErr(w, 400, "Website is required")
+		return
+	}
+	if op.Role != "master" && !s.owns(op, body.ID) {
+		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
+	if body.SessionDuration < 1 {
+		writeErr(w, 400, "Use at least 1 minute")
+		return
+	}
+	var limitsRaw, currentRaw string
+	err := s.db.QueryRow(`SELECT t.limits_json, w.default_limits_json FROM websites w JOIN tools t ON t.id=w.tool_id WHERE w.id=?`, body.ID).Scan(&limitsRaw, &currentRaw)
+	if err != nil {
+		writeErr(w, 404, "Website not found")
+		return
+	}
+	allowed := map[string]bool{}
+	for _, def := range parseLimitDefs([]byte(limitsRaw)) {
+		allowed[def.Key] = true
+	}
+	current := map[string]int{}
+	_ = json.Unmarshal([]byte(currentRaw), &current)
+	if current == nil {
+		current = map[string]int{}
+	}
+	for key, limit := range body.DefaultLimits {
+		if !allowed[key] || limit < -1 {
+			continue
+		}
+		current[key] = limit
+	}
+	raw, _ := json.Marshal(current)
+	if _, err := s.db.Exec(`UPDATE websites SET session_duration=?, default_limits_json=? WHERE id=?`, body.SessionDuration, string(raw), body.ID); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	s.syncWebsiteLimits(body.ID, current)
+	s.applySessionDuration(body.ID, body.SessionDuration)
+	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) saveWebsiteSessions(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		IDs             []int `json:"website_ids"`
+		SessionDuration int   `json:"session_duration"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	if body.SessionDuration < 1 {
+		writeErr(w, 400, "Use at least 1 minute")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeErr(w, 400, "Select at least one website")
+		return
+	}
+	updated := 0
+	for _, id := range body.IDs {
+		if id <= 0 || (op.Role != "master" && !s.owns(op, id)) {
+			continue
+		}
+		var exists int
+		if s.db.QueryRow(`SELECT id FROM websites WHERE id=?`, id).Scan(&exists) != nil {
+			continue
+		}
+		if _, err := s.db.Exec(`UPDATE websites SET session_duration=? WHERE id=?`, body.SessionDuration, id); err != nil {
+			continue
+		}
+		s.applySessionDuration(id, body.SessionDuration)
+		updated++
+	}
+	if updated == 0 {
+		writeErr(w, 400, "No websites were updated")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "ok", "updated": updated})
 }
 
 func (s *server) deleteWebsite(w http.ResponseWriter, r *http.Request) {
@@ -643,10 +743,8 @@ func (s *server) bulkProductIDs(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Action     string   `json:"action"`
-		ResellerID int      `json:"reseller_id"`
-		WebsiteID  int      `json:"website_id"`
+		MappingIDs []int    `json:"mapping_ids"`
 		IDs        []string `json:"product_ids"`
-		Query      string   `json:"query"`
 	}
 	if err := readBody(r, &body); err != nil {
 		writeErr(w, 400, "Invalid body")
@@ -656,8 +754,12 @@ func (s *server) bulkProductIDs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Choose add or remove")
 		return
 	}
-	if op.Role == "master" && body.ResellerID == 0 && body.WebsiteID == 0 {
-		writeErr(w, 400, "Choose a reseller or a website first")
+	if len(body.MappingIDs) == 0 {
+		writeErr(w, 400, "Select at least one mapping")
+		return
+	}
+	if len(body.MappingIDs) > 200 {
+		writeErr(w, 400, "Select at most 200 mappings")
 		return
 	}
 	ids := []string{}
@@ -674,11 +776,13 @@ func (s *server) bulkProductIDs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Enter at least one product id")
 		return
 	}
-	where, args, status, message := s.productFilter(op, body.WebsiteID, body.ResellerID, strings.TrimSpace(body.Query))
-	if status != 0 {
-		writeErr(w, status, message)
-		return
+	where, args := s.scope(op, "p.website_id")
+	marks := make([]string, 0, len(body.MappingIDs))
+	for _, id := range body.MappingIDs {
+		marks = append(marks, "?")
+		args = append(args, id)
 	}
+	where += " AND p.id IN (" + strings.Join(marks, ",") + ")"
 	rows, err := s.db.Query(`SELECT p.id, p.website_id, w.name, w.domain, p.product_ids_json FROM products p JOIN websites w ON w.id=p.website_id WHERE `+where, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())

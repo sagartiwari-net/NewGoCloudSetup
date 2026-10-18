@@ -72,6 +72,8 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tools", s.saveTool)
 	mux.HandleFunc("GET /api/websites/options", s.listWebsiteOptions)
 	mux.HandleFunc("GET /api/websites", s.listWebsites)
+	mux.HandleFunc("POST /api/websites/settings", s.saveWebsiteSettings)
+	mux.HandleFunc("POST /api/websites/session", s.saveWebsiteSessions)
 	mux.HandleFunc("POST /api/websites", s.saveWebsite)
 	mux.HandleFunc("DELETE /api/websites", s.deleteWebsite)
 	mux.HandleFunc("GET /api/recloud", s.listRecloud)
@@ -129,20 +131,20 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/resellers", s.listResellers)
 	mux.HandleFunc("POST /api/resellers", s.saveReseller)
 	mux.HandleFunc("DELETE /api/resellers", s.deleteReseller)
-	mux.HandleFunc("GET /api/telegram/settings", s.telegramSettings)
-	mux.HandleFunc("POST /api/telegram/token", s.saveSetting("bot_token"))
-	mux.HandleFunc("POST /api/telegram/repeat", s.saveRepeat)
-	mux.HandleFunc("GET /api/telegram/templates", s.telegramTemplates)
-	mux.HandleFunc("POST /api/telegram/templates", s.saveTemplates)
-	mux.HandleFunc("GET /api/telegram/destinations", s.listDestinations)
-	mux.HandleFunc("POST /api/telegram/destinations", s.saveDestination)
-	mux.HandleFunc("DELETE /api/telegram/destinations", s.deleteDestination)
-	mux.HandleFunc("GET /api/telegram/routes", s.listRoutes)
-	mux.HandleFunc("POST /api/telegram/routes", s.saveRoute)
-	mux.HandleFunc("GET /api/telegram/inbox", s.listTelegramInbox)
-	mux.HandleFunc("POST /api/telegram/inbox/delete", s.deleteTelegramInbox)
-	mux.HandleFunc("GET /api/telegram/deliveries", s.listDeliveries)
-	mux.HandleFunc("DELETE /api/telegram/deliveries", s.clearDeliveries)
+	mux.HandleFunc("GET /api/telegram/settings", s.masterOnly(s.telegramSettings))
+	mux.HandleFunc("POST /api/telegram/token", s.masterOnly(s.saveSetting("bot_token")))
+	mux.HandleFunc("POST /api/telegram/repeat", s.masterOnly(s.saveRepeat))
+	mux.HandleFunc("GET /api/telegram/templates", s.masterOnly(s.telegramTemplates))
+	mux.HandleFunc("POST /api/telegram/templates", s.masterOnly(s.saveTemplates))
+	mux.HandleFunc("GET /api/telegram/destinations", s.masterOnly(s.listDestinations))
+	mux.HandleFunc("POST /api/telegram/destinations", s.masterOnly(s.saveDestination))
+	mux.HandleFunc("DELETE /api/telegram/destinations", s.masterOnly(s.deleteDestination))
+	mux.HandleFunc("GET /api/telegram/routes", s.masterOnly(s.listRoutes))
+	mux.HandleFunc("POST /api/telegram/routes", s.masterOnly(s.saveRoute))
+	mux.HandleFunc("GET /api/telegram/inbox", s.masterOnly(s.listTelegramInbox))
+	mux.HandleFunc("POST /api/telegram/inbox/delete", s.masterOnly(s.deleteTelegramInbox))
+	mux.HandleFunc("GET /api/telegram/deliveries", s.masterOnly(s.listDeliveries))
+	mux.HandleFunc("DELETE /api/telegram/deliveries", s.masterOnly(s.clearDeliveries))
 	mux.HandleFunc("GET /api/spam-reports", s.listSpamReports)
 	mux.HandleFunc("POST /api/spam-rule", s.saveSpamRule)
 	mux.HandleFunc("GET /api/websites/{id}/next-account", s.nextAccount)
@@ -237,6 +239,20 @@ func (s *server) auth(w http.ResponseWriter, r *http.Request) (operator, bool) {
 		return operator{}, false
 	}
 	return op, true
+}
+
+func (s *server) masterOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		op, ok := s.auth(w, r)
+		if !ok {
+			return
+		}
+		if op.Role != "master" {
+			writeErr(w, 403, "Master only")
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (s *server) login(w http.ResponseWriter, r *http.Request) {

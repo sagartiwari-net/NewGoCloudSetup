@@ -487,9 +487,7 @@ export async function listProducts(query: {
 
 export async function bulkProductIDs(input: {
   action: "add" | "remove"
-  reseller_id: number
-  website_id: number
-  query: string
+  mapping_ids: number[]
   product_ids: string[]
 }): Promise<{ status: string; updated: number; skipped: string[] }> {
   return api("/api/products/bulk", { method: "POST", body: JSON.stringify(input) })
@@ -779,6 +777,24 @@ export async function listAutomationLogs(query: {
 export async function clearAutomationLogs(): Promise<Ok> {
   await api("/api/automation/logs", { method: "DELETE" })
   return { status: "ok" }
+}
+
+export async function saveWebsiteSettings(input: {
+  id: number
+  session_duration: number
+  default_limits: Record<string, number>
+}): Promise<Ok> {
+  clearCatalogCache("websites")
+  await api("/api/websites/settings", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
+}
+
+export async function saveWebsiteSessions(input: {
+  website_ids: number[]
+  session_duration: number
+}): Promise<{ status: string; updated: number }> {
+  clearCatalogCache("websites")
+  return api("/api/websites/session", { method: "POST", body: JSON.stringify(input) })
 }
 
 export async function saveWebsite(input: WebsiteInput): Promise<Ok> {
