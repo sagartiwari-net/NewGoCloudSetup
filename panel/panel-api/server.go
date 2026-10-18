@@ -112,6 +112,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/automate-tasks", s.listAutomate)
 	mux.HandleFunc("GET /api/ingest-logs", s.emptyPage)
 	mux.HandleFunc("GET /api/products", s.listProducts)
+	mux.HandleFunc("POST /api/products/bulk", s.bulkProductIDs)
 	mux.HandleFunc("POST /api/products", s.saveProduct)
 	mux.HandleFunc("DELETE /api/products", s.deleteID("products"))
 	mux.HandleFunc("GET /api/violations", s.listViolations)

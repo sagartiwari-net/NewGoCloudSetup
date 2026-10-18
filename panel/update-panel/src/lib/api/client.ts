@@ -480,8 +480,19 @@ export async function listProducts(query: {
   pageSize: number
   query: string
   websiteId: number
+  resellerId: number
 }): Promise<PageResult<ProductMap>> {
   return api(`/api/products${qs(query)}`)
+}
+
+export async function bulkProductIDs(input: {
+  action: "add" | "remove"
+  reseller_id: number
+  website_id: number
+  query: string
+  product_ids: string[]
+}): Promise<{ status: string; updated: number; skipped: string[] }> {
+  return api("/api/products/bulk", { method: "POST", body: JSON.stringify(input) })
 }
 
 export async function saveProduct(input: ProductInput): Promise<Ok> {

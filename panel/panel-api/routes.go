@@ -520,21 +520,40 @@ func websiteChoiceLabel(name, domain string) string {
 	return name + " · " + domain
 }
 
+func (s *server) productFilter(op operator, websiteID, resellerID int, q string) (string, []any, int, string) {
+	where, args := s.scope(op, "p.website_id")
+	if resellerID > 0 {
+		if op.Role != "master" && resellerID != op.ID {
+			return "", nil, 403, "You cannot manage this reseller"
+		}
+		where += " AND p.website_id IN (SELECT website_id FROM operator_websites WHERE operator_id=?)"
+		args = append(args, resellerID)
+	}
+	if websiteID > 0 {
+		if op.Role != "master" && !s.owns(op, websiteID) {
+			return "", nil, 403, "You cannot manage this website"
+		}
+		where += " AND p.website_id=?"
+		args = append(args, websiteID)
+	}
+	if q != "" {
+		where += " AND (p.product_name LIKE ? OR p.product_ids_json LIKE ? OR w.name LIKE ? OR w.domain LIKE ?)"
+		like := "%" + q + "%"
+		args = append(args, like, like, like, like)
+	}
+	return where, args, 0, ""
+}
+
 func (s *server) listProducts(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
 	if !ok {
 		return
 	}
 	page, size, q := pageQuery(r)
-	where, args := s.scope(op, "p.website_id")
-	if id := queryInt(r, "websiteId"); id > 0 {
-		where += " AND p.website_id=?"
-		args = append(args, id)
-	}
-	if q != "" {
-		where += " AND (p.product_name LIKE ? OR p.product_ids_json LIKE ? OR w.name LIKE ? OR w.domain LIKE ?)"
-		like := "%" + q + "%"
-		args = append(args, like, like, like, like)
+	where, args, status, message := s.productFilter(op, queryInt(r, "websiteId"), queryInt(r, "resellerId"), q)
+	if status != 0 {
+		writeErr(w, status, message)
+		return
 	}
 	from := ` FROM products p JOIN websites w ON w.id=p.website_id WHERE ` + where
 	var total int
@@ -615,6 +634,139 @@ func (s *server) saveProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (s *server) bulkProductIDs(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Action     string   `json:"action"`
+		ResellerID int      `json:"reseller_id"`
+		WebsiteID  int      `json:"website_id"`
+		IDs        []string `json:"product_ids"`
+		Query      string   `json:"query"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	if body.Action != "add" && body.Action != "remove" {
+		writeErr(w, 400, "Choose add or remove")
+		return
+	}
+	if op.Role == "master" && body.ResellerID == 0 && body.WebsiteID == 0 {
+		writeErr(w, 400, "Choose a reseller or a website first")
+		return
+	}
+	ids := []string{}
+	seen := map[string]bool{}
+	for _, id := range body.IDs {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		writeErr(w, 400, "Enter at least one product id")
+		return
+	}
+	where, args, status, message := s.productFilter(op, body.WebsiteID, body.ResellerID, strings.TrimSpace(body.Query))
+	if status != 0 {
+		writeErr(w, status, message)
+		return
+	}
+	rows, err := s.db.Query(`SELECT p.id, p.website_id, w.name, w.domain, p.product_ids_json FROM products p JOIN websites w ON w.id=p.website_id WHERE `+where, args...)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+	type productRow struct {
+		id, website int
+		label, raw  string
+	}
+	found := []productRow{}
+	for rows.Next() {
+		var item productRow
+		var name, domain string
+		_ = rows.Scan(&item.id, &item.website, &name, &domain, &item.raw)
+		item.label = websiteChoiceLabel(name, domain)
+		found = append(found, item)
+	}
+	updated := 0
+	skipped := []string{}
+	for _, item := range found {
+		current := []string{}
+		_ = json.Unmarshal([]byte(item.raw), &current)
+		next := append([]string{}, current...)
+		if body.Action == "add" {
+			for _, id := range ids {
+				if containsString(next, id) {
+					continue
+				}
+				if taken := s.productIDTaken(item.website, []string{id}, item.id); taken != "" {
+					skipped = append(skipped, item.label+": product id "+id+" is already mapped on this tool")
+					continue
+				}
+				next = append(next, id)
+			}
+		} else {
+			drop := map[string]bool{}
+			for _, id := range ids {
+				drop[id] = true
+			}
+			kept := []string{}
+			for _, id := range current {
+				if !drop[id] {
+					kept = append(kept, id)
+				}
+			}
+			if len(kept) == 0 {
+				skipped = append(skipped, item.label+": a mapping needs at least one product id")
+				continue
+			}
+			next = kept
+		}
+		if sameStrings(current, next) {
+			continue
+		}
+		raw, _ := json.Marshal(next)
+		if _, err := s.db.Exec(`UPDATE products SET product_ids_json=? WHERE id=?`, string(raw), item.id); err != nil {
+			skipped = append(skipped, item.label+": "+err.Error())
+			continue
+		}
+		updated++
+	}
+	if len(skipped) > 12 {
+		extra := len(skipped) - 12
+		skipped = append(skipped[:12], fmt.Sprintf("%d more", extra))
+	}
+	writeJSON(w, 200, map[string]any{"status": "ok", "updated": updated, "skipped": skipped})
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *server) productIDTaken(websiteID int, ids []string, except int) string {

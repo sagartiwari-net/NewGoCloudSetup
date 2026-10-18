@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { PlusIcon, XIcon } from "lucide-react"
+import { toast } from "sonner"
 
 import { useAuth } from "@/components/auth-provider"
 import { ChoiceSelect } from "@/components/choice-select"
@@ -19,7 +20,9 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { useResource } from "@/hooks/use-resource"
-import { deleteProduct, listProducts, listWebsiteChoices, saveProduct } from "@/lib/api/client"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Textarea } from "@/components/ui/textarea"
+import { bulkProductIDs, deleteProduct, listProducts, listResellerChoices, listWebsiteChoices, saveProduct, type Reseller } from "@/lib/api/client"
 import type { ProductMap, Website } from "@/lib/api/types"
 import { runMutation } from "@/lib/mutate"
 import { useListPage } from "@/lib/page-size"
@@ -31,6 +34,18 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>
 
+function splitProductIDs(text: string) {
+  const seen = new Set<string>()
+  const ids: string[] = []
+  for (const part of text.split(/[\s,;]+/)) {
+    const value = part.trim()
+    if (!value || seen.has(value)) continue
+    seen.add(value)
+    ids.push(value)
+  }
+  return ids
+}
+
 function websiteChoiceLabel(website: Website) {
   const domain = website.domain.trim()
   if (!domain || domain.toLowerCase() === website.name.trim().toLowerCase()) return website.name
@@ -41,20 +56,24 @@ export default function ProductsPage() {
   const { session } = useAuth()
   const [query, setQuery] = useState("")
   const [websiteId, setWebsiteId] = useState("all")
+  const [resellerId, setResellerId] = useState("all")
+  const [bulkOpen, setBulkOpen] = useState(false)
   const { page, setPage, pageSize } = useListPage()
   const { data, loading, reload } = useResource(
-    `${session?.role ?? "none"}-${page}-${pageSize}-${query}-${websiteId}`,
+    `${session?.role ?? "none"}-${page}-${pageSize}-${query}-${websiteId}-${resellerId}`,
     async () => {
-      const [products, websites] = await Promise.all([
+      const [products, websites, resellers] = await Promise.all([
         listProducts({
           page,
           pageSize,
           query,
           websiteId: websiteId === "all" ? 0 : Number(websiteId),
+          resellerId: session?.role === "master" && resellerId !== "all" ? Number(resellerId) : 0,
         }),
         listWebsiteChoices(),
+        session?.role === "master" ? listResellerChoices() : Promise.resolve({ items: [] as Reseller[] }),
       ])
-      return { products, websites }
+      return { products, websites, resellers: resellers.items }
     },
   )
   const [open, setOpen] = useState(false)
@@ -63,6 +82,11 @@ export default function ProductsPage() {
   const [deleting, setDeleting] = useState(false)
 
   const rows = data?.products.items ?? []
+  const selectedReseller = (data?.resellers ?? []).find((reseller) => String(reseller.id) === resellerId)
+  const websites = (data?.websites ?? []).filter((website) => {
+    if (session?.role !== "master" || resellerId === "all") return true
+    return selectedReseller?.website_ids.includes(website.id) ?? false
+  })
 
   const columns: DataColumn<ProductMap>[] = [
     { id: "website", header: "Website", cell: (row) => row.website_name, sortValue: (row) => row.website_name },
@@ -101,10 +125,15 @@ export default function ProductsPage() {
         title="Product Mapping"
         description="One website and product name can hold several aMember ids."
         action={
-          <Button onClick={() => { setEditing(null); setOpen(true) }}>
-            <PlusIcon data-icon="inline-start" />
-            New mapping
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setBulkOpen(true)}>
+              Update many ids
+            </Button>
+            <Button onClick={() => { setEditing(null); setOpen(true) }}>
+              <PlusIcon data-icon="inline-start" />
+              New mapping
+            </Button>
+          </div>
         }
       />
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
@@ -131,10 +160,28 @@ export default function ProductsPage() {
             }}
             items={[
               { label: "All websites", value: "all" },
-              ...(data?.websites ?? []).map((website) => ({ label: websiteChoiceLabel(website), value: String(website.id) })),
+              ...websites.map((website) => ({ label: websiteChoiceLabel(website), value: String(website.id) })),
             ]}
           />
         </Field>
+        {session?.role === "master" ? (
+          <Field className="md:w-64">
+            <FieldLabel htmlFor="product-reseller">Reseller</FieldLabel>
+            <ChoiceSelect
+              id="product-reseller"
+              value={resellerId}
+              onValueChange={(value) => {
+                setResellerId(value)
+                setWebsiteId("all")
+                setPage(1)
+              }}
+              items={[
+                { label: "All resellers", value: "all" },
+                ...(data?.resellers ?? []).map((reseller) => ({ label: reseller.username, value: String(reseller.id) })),
+              ]}
+            />
+          </Field>
+        ) : null}
       </div>
       <Card>
         <CardContent>
@@ -149,7 +196,7 @@ export default function ProductsPage() {
               pageSize,
               onPageChange: setPage,
             }}
-            resetKey={`${query}-${websiteId}`}
+            resetKey={`${query}-${websiteId}-${resellerId}`}
             emptyTitle={query ? "No matches" : "No product mappings"}
             emptyDescription="Map a product id so billing can open the right website."
           />
@@ -165,9 +212,29 @@ export default function ProductsPage() {
           <ProductForm
             key={editing?.id ?? "new"}
             product={editing}
-            websites={data?.websites ?? []}
+            websites={websites}
             onDone={async () => {
               setOpen(false)
+              reload()
+            }}
+          />
+        ) : null}
+      </FormOverlay>
+      <FormOverlay
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title="Update many ids"
+        description="Adds or removes every id you paste on each mapping in the current reseller, website, and search filter. This is not limited to the current page."
+      >
+        {bulkOpen ? (
+          <BulkIdsForm
+            key={`${resellerId}-${websiteId}-${query}`}
+            resellerId={session?.role === "master" && resellerId !== "all" ? Number(resellerId) : 0}
+            websiteId={websiteId === "all" ? 0 : Number(websiteId)}
+            query={query}
+            requireScope={session?.role === "master"}
+            onDone={async () => {
+              setBulkOpen(false)
               reload()
             }}
           />
@@ -193,6 +260,101 @@ export default function ProductsPage() {
         }}
       />
     </>
+  )
+}
+
+function BulkIdsForm({
+  resellerId,
+  websiteId,
+  query,
+  requireScope,
+  onDone,
+}: {
+  resellerId: number
+  websiteId: number
+  query: string
+  requireScope: boolean
+  onDone: () => Promise<void>
+}) {
+  const [action, setAction] = useState<"add" | "remove">("add")
+  const [text, setText] = useState("")
+  const [error, setError] = useState("")
+  const [pending, setPending] = useState(false)
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault()
+    const ids = splitProductIDs(text)
+    if (requireScope && resellerId === 0 && websiteId === 0) {
+      setError("Choose a reseller or a website first")
+      return
+    }
+    if (ids.length === 0) {
+      setError("Enter at least one product id")
+      return
+    }
+    setPending(true)
+    setError("")
+    try {
+      const result = await bulkProductIDs({
+        action,
+        reseller_id: resellerId,
+        website_id: websiteId,
+        query,
+        product_ids: ids,
+      })
+      if (result.updated === 0 && result.skipped.length === 0) {
+        toast.error("No mappings in this filter")
+        return
+      }
+      if (result.updated > 0) toast.success(action === "add" ? `Added ids on ${result.updated} mappings` : `Removed ids on ${result.updated} mappings`)
+      if (result.skipped.length > 0) toast.error(result.skipped.join(". "))
+      if (result.updated > 0) await onDone()
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Something went wrong")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <FieldGroup>
+        <Field>
+          <FieldLabel>Action</FieldLabel>
+          <ToggleGroup
+            data-mode="choice"
+            spacing={0}
+            value={[action]}
+            onValueChange={(values) => {
+              const next = values[values.length - 1]
+              if (next === "add" || next === "remove") setAction(next)
+            }}
+            aria-label="Add or remove product ids"
+          >
+            <ToggleGroupItem value="add">Add</ToggleGroupItem>
+            <ToggleGroupItem value="remove">Remove</ToggleGroupItem>
+          </ToggleGroup>
+        </Field>
+        <Field data-invalid={Boolean(error) || undefined}>
+          <FieldLabel htmlFor="bulk-product-ids">Product ids</FieldLabel>
+          <Textarea
+            id="bulk-product-ids"
+            className="font-mono"
+            rows={5}
+            value={text}
+            placeholder={"123\n456, 789"}
+            aria-invalid={Boolean(error) || undefined}
+            onChange={(event) => setText(event.target.value)}
+          />
+          <p className="text-sm text-muted-foreground">Separate ids with a comma, space, or new line. A mapping is never left with zero ids.</p>
+          {error ? <FieldError>{error}</FieldError> : null}
+        </Field>
+        <Button type="submit" disabled={pending}>
+          {pending ? <Spinner data-icon="inline-start" /> : null}
+          {action === "add" ? "Add ids" : "Remove ids"}
+        </Button>
+      </FieldGroup>
+    </form>
   )
 }
 
