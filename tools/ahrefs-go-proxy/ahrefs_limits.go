@@ -284,6 +284,18 @@ func ahrefsLimitMessage(hit ahrefsLimitHit, used, limit, ask int) string {
 	return "Daily credit limit reached."
 }
 
+func withUTF8CSVBom(body []byte) []byte {
+	if len(body) >= 3 && body[0] == 0xEF && body[1] == 0xBB && body[2] == 0xBF {
+		return body
+	}
+	if len(body) >= 2 && ((body[0] == 0xFF && body[1] == 0xFE) || (body[0] == 0xFE && body[1] == 0xFF)) {
+		return body
+	}
+	out := make([]byte, 0, len(body)+3)
+	out = append(out, 0xEF, 0xBB, 0xBF)
+	return append(out, body...)
+}
+
 func ahrefsCSVRows(body []byte) int {
 	if len(body) == 0 {
 		return 0

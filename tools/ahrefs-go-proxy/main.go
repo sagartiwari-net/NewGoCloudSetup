@@ -1209,6 +1209,59 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","redirect_url":%q}`, redirectURL)
 }
 
+func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	cookie, err := r.Cookie("ahrefs_session")
+	if err != nil || cookie.Value == "" {
+		cookie, err = r.Cookie("ct_session")
+	}
+	username := ""
+	if err == nil && cookie != nil {
+		username = ahrefsSessionUser(cookie.Value)
+	}
+	if username == "" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"unauthorized","message":"Open this tool again from your access link."}`))
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, (8<<20)+1))
+	if err != nil || len(body) == 0 || len(body) > 8<<20 {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"bad_export","message":"This export could not be saved. Try again."}`))
+		return
+	}
+	rows := ahrefsCSVRows(body)
+	hit := ahrefsLimitHit{
+		key: "exports", label: "Exports", action: "Chart export",
+		target: "chart-export", amount: rows, reset: 7,
+		family: fmt.Sprintf("chart-export:%d", time.Now().UnixNano()), isExport: true,
+	}
+	view, _, found := ahrefsMeterView(username, hit.key, 1000, hit.reset)
+	if found && view.limit > 0 && rows > 0 && view.used+rows > view.limit {
+		message := ahrefsLimitMessage(hit, view.used, view.limit, rows)
+		log.Printf("[LIMITS] blocked chart export user=%s rows=%d used=%d limit=%d", username, rows, view.used, view.limit)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+		payload, _ := json.Marshal(map[string]string{"error": "weekly_export_limit_reached", "message": message})
+		_, _ = w.Write(payload)
+		return
+	}
+	if rows > 0 {
+		ahrefsSaveUsage(username, hit)
+	}
+	out := withUTF8CSVBom(body)
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="ahrefs-chart.csv"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(out)
+}
+
 func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -2175,7 +2228,111 @@ func patcherScript() string {
 
     // ── 4. window.open override ──────────────────────────────────────────────────
     var _open = window.open;
+    var chartClaimed = {};
+    function chartLooksLikeCSV(blob) {
+        var t = (blob.type || '').toLowerCase();
+        if (t.indexOf('csv') !== -1 || t.indexOf('excel') !== -1 || t.indexOf('spreadsheetml') !== -1) return Promise.resolve(true);
+        if (t.indexOf('image/') === 0 || t.indexOf('video/') === 0 || t.indexOf('audio/') === 0 || t.indexOf('pdf') !== -1 || t.indexOf('javascript') !== -1 || t.indexOf('json') !== -1) return Promise.resolve(false);
+        return blob.slice(0, 800).text().then(function(sample) {
+            var head = sample.replace(/^\uFEFF/, '');
+            if (!head || head.charAt(0) === '{' || head.charAt(0) === '[' || head.charAt(0) === '<') return false;
+            return head.indexOf(',') !== -1 && (head.indexOf('\n') !== -1 || head.indexOf('\r') !== -1);
+        });
+    }
+    function saveChartFile(href, fname) {
+        var a = document.createElement('a');
+        a.href = href;
+        a.download = fname || 'ahrefs-chart.csv';
+        a.setAttribute('data-tm-export', '1');
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function() { try { URL.revokeObjectURL(href); } catch (e) {} }, 4000);
+    }
+    function takeChartExport(url, name, fallback) {
+        if (typeof url !== 'string' || url.indexOf('blob:') !== 0) return false;
+        if (chartClaimed[url]) return true;
+        chartClaimed[url] = true;
+        fetch(url).then(function(r) { return r.blob(); }).then(function(blob) {
+            return chartLooksLikeCSV(blob).then(function(ok) {
+                if (!ok) {
+                    delete chartClaimed[url];
+                    if (fallback) fallback();
+                    return;
+                }
+                return fetch('/api/chart-export', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': blob.type || 'text/csv' },
+                    body: blob
+                }).then(function(res) {
+                    if (res.status === 403) {
+                        return res.json().then(function(data) { limitPopupFrom(data); });
+                    }
+                    if (!res.ok) {
+                        delete chartClaimed[url];
+                        showLimitPopup('Export failed', 'This export could not be saved. Try again.');
+                        return;
+                    }
+                    var cd = res.headers.get('Content-Disposition') || '';
+                    var fname = name || 'ahrefs-chart.csv';
+                    var match = /filename="([^"]+)"/.exec(cd);
+                    if (match && match[1]) fname = match[1];
+                    return res.blob().then(function(file) {
+                        var href = URL.createObjectURL(file);
+                        chartClaimed[href] = true;
+                        saveChartFile(href, fname);
+                    });
+                });
+            });
+        }).catch(function() {
+            delete chartClaimed[url];
+            showLimitPopup('Export failed', 'This export could not be saved. Try again.');
+        });
+        return true;
+    }
+    if (!window.__tmChartExport) {
+        window.__tmChartExport = true;
+        document.addEventListener('click', function(ev) {
+            var node = ev.target;
+            var link = node && node.closest ? node.closest('a') : null;
+            if (!link || link.getAttribute('data-tm-export') === '1') return;
+            var href = link.href || '';
+            if (href.indexOf('blob:') !== 0) return;
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            takeChartExport(href, link.getAttribute('download') || '', function() {
+                var again = document.createElement('a');
+                again.href = href;
+                again.target = '_blank';
+                again.rel = 'noopener';
+                again.setAttribute('data-tm-export', '1');
+                document.body.appendChild(again);
+                again.click();
+                again.remove();
+            });
+        }, true);
+        try {
+            var _assign = Location.prototype.assign;
+            Location.prototype.assign = function(url) {
+                var self = this;
+                if (takeChartExport(url, '', function() { _assign.call(self, url); })) return;
+                return _assign.apply(this, arguments);
+            };
+            var _replaceLoc = Location.prototype.replace;
+            Location.prototype.replace = function(url) {
+                var self = this;
+                if (takeChartExport(url, '', function() { _replaceLoc.call(self, url); })) return;
+                return _replaceLoc.apply(this, arguments);
+            };
+        } catch (e) {}
+    }
     window.open = function(url) {
+        var args = arguments;
+        if (typeof url === 'string' && url.indexOf('blob:') === 0) {
+            takeChartExport(url, '', function() { _open.apply(window, args); });
+            return null;
+        }
         if (typeof url === 'string' && url.includes(T)) {
             url = url.replace('https://'+T, O);
         }
@@ -3915,6 +4072,7 @@ func main() {
 	mux.HandleFunc("/tm-device-sw.js", serveAhrefsDeviceSW)
 	mux.HandleFunc("/api/auth-handshake", authHandshakeHandler)
 	mux.HandleFunc("/api/user-limits", userLimitsAPIHandler)
+	mux.HandleFunc("/api/chart-export", handleAhrefsChartExport)
 	mux.HandleFunc("/api/rotate-session", rotateSessionHandler)
 	mux.HandleFunc("/api/account-switch", handleAhrefsAccountSwitch)
 	mux.HandleFunc("/", proxyHandler)
