@@ -106,6 +106,15 @@ func TestWriteHumanBillUsesWordsAndImages(t *testing.T) {
 	if key, _, n = writeHumanBill(http.MethodPost, "/api/humanize", []byte(`{"text":"hi"}`)); n != 1 {
 		t.Fatalf("short text words = %d key=%s", n, key)
 	}
+	if key, _, n = writeHumanBill(http.MethodPost, "/api/humanize", nil); key != "" || n != 0 {
+		t.Fatalf("humanize before the body is read must not bill: %s %d", key, n)
+	}
+	if !writeHumanWordPath(http.MethodPost, "/api/humanize") || !writeHumanWordPath(http.MethodPost, "/api/detect?x=1") {
+		t.Fatal("humanize and detect are word paths")
+	}
+	if writeHumanWordPath(http.MethodPost, "/api/detect-image") {
+		t.Fatal("image scans are not a word path")
+	}
 }
 
 func TestBustChunkQuerySurvivesFlightSplit(t *testing.T) {

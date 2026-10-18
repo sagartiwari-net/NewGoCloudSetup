@@ -119,12 +119,26 @@ func countWords(text string) int {
 	return n
 }
 
+func writeHumanWordPath(method, path string) bool {
+	if !strings.EqualFold(method, http.MethodPost) {
+		return false
+	}
+	switch normalizeGPTZeroAPIPath(path) {
+	case "/api/humanize", "/api/detect":
+		return true
+	default:
+		return false
+	}
+}
+
 func writeHumanBill(method, path string, body []byte) (key, label string, amount int) {
 	if !strings.EqualFold(method, http.MethodPost) {
 		return "", "", 0
 	}
 	switch normalizeGPTZeroAPIPath(path) {
 	case "/api/humanize", "/api/detect":
+		// The word count is inside the body. An empty body is not a charge yet;
+		// the handler reads the body and calls this again.
 		n := wordsInJSONText(body)
 		if n < 1 {
 			return "", "", 0

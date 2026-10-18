@@ -1302,11 +1302,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Words cover Humanize and AI Detector. Images are a separate daily meter.
-	billKey, billLabel, billAmount := writeHumanBill(r.Method, path, nil)
+	// Words cover Humanize and AI Detector. The count is inside the JSON body,
+	// so that body has to be read before the meter is chosen. Images are one each.
+	wordPath := writeHumanWordPath(r.Method, path)
 	reqBody := r.Body
 	var reqPeek []byte
-	needBody := shouldLogWriteHumanNet(path) || billKey == whWordsKey
+	needBody := shouldLogWriteHumanNet(path) || wordPath
 	if needBody && r.Body != nil &&
 		(r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch) {
 		peek, _ := io.ReadAll(io.LimitReader(r.Body, 8<<20))
@@ -1314,8 +1315,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		reqPeek = peek
 		reqBody = io.NopCloser(bytes.NewReader(peek))
 	}
-	if billKey == whWordsKey {
+	var billKey, billLabel string
+	var billAmount int
+	if wordPath {
 		billKey, billLabel, billAmount = writeHumanBill(r.Method, path, reqPeek)
+	} else {
+		billKey, billLabel, billAmount = writeHumanBill(r.Method, path, nil)
 	}
 	if usesPanelAccountMode(c) && !c.BypassAuth && panelUser != "" && billKey != "" &&
 		!panelMeterAllow(panelUser, billKey, billAmount) {
