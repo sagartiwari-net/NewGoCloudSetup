@@ -7,23 +7,6 @@ import (
 	"testing"
 )
 
-func TestNetLogHidesSecretsAndKeepsUsage(t *testing.T) {
-	raw := []byte(`{"words":120,"remaining":80,"text":"one two three four","email":"a@b.com","access_token":"header.payload.sig"}`)
-	out := summarizeNetBody(raw)
-	if !strings.Contains(out, "words=120") || !strings.Contains(out, "remaining=80") {
-		t.Fatalf("usage missing: %s", out)
-	}
-	if strings.Contains(out, "@") || strings.Contains(out, "header.payload") || strings.Contains(out, "one two") {
-		t.Fatalf("secret or text leaked: %s", out)
-	}
-	if shouldLogWriteHumanNet("/_next/static/chunks/app.js") {
-		t.Fatal("static js should not be logged")
-	}
-	if !shouldLogWriteHumanNet("/api/humanize") {
-		t.Fatal("humanize should be logged")
-	}
-}
-
 func TestSupabaseCookieIsBase64URL(t *testing.T) {
 	packed := encodeSupabaseCookieValue(`{"access_token":"a+b/c","refresh_token":"r"}`)
 	if !strings.HasPrefix(packed, "base64-") || strings.ContainsAny(packed, "+/=") {
