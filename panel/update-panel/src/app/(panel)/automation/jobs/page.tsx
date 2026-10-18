@@ -285,7 +285,7 @@ function JobForm({
   const toolOnly = provider === "ahrefs" || provider === "zikaanalytics" || provider === "erank"
   const wakeSites = options.websites.filter((item) => {
     if (String(item.id) === websiteId) return false
-    if (provider === "ahrefs") return Boolean(website) && item.tool_id === website.tool_id
+    if (provider === "ahrefs") return website != null && item.tool_id === website.tool_id
     return item.kind === "recloud"
   })
   const selectedWakes = form.watch("wake_website_ids")
