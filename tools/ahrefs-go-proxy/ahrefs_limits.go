@@ -7,9 +7,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 type ahrefsLimitHit struct {
@@ -294,6 +296,157 @@ func withUTF8CSVBom(body []byte) []byte {
 	out := make([]byte, 0, len(body)+3)
 	out = append(out, 0xEF, 0xBB, 0xBF)
 	return append(out, body...)
+}
+
+func chartExportName(linkName, title, page string) string {
+	if base := cleanExportBase(strings.TrimSuffix(strings.TrimSuffix(linkName, ".csv"), ".CSV")); base != "" && !exportUUIDName(base) {
+		return base + ".csv"
+	}
+	target, report := exportTargetReport(page)
+	cleaned := cleanExportBase(stripAhrefsBrand(title))
+	if cleaned != "" && !genericExportTitle(cleaned) && (target == "" || strings.Contains(strings.ToLower(cleaned), strings.ToLower(target))) {
+		return cleaned + ".csv"
+	}
+	base := target
+	if target != "" && report != "" {
+		base = target + " - " + report
+	} else if base == "" {
+		base = report
+	}
+	if base == "" {
+		base = cleaned
+	}
+	if base == "" {
+		base = "ahrefs-chart"
+	}
+	return cleanExportBase(base) + ".csv"
+}
+
+func stripAhrefsBrand(title string) string {
+	title = strings.TrimSpace(title)
+	for _, sep := range []string{" | ", " - ", " – ", " — "} {
+		if i := strings.LastIndex(strings.ToLower(title), strings.ToLower(sep+"ahrefs")); i > 0 {
+			title = strings.TrimSpace(title[:i])
+		}
+		lower := strings.ToLower(title)
+		prefix := "ahrefs" + strings.ToLower(sep)
+		if strings.HasPrefix(lower, prefix) {
+			title = strings.TrimSpace(title[len(prefix):])
+		}
+	}
+	return title
+}
+
+func genericExportTitle(title string) bool {
+	switch strings.ToLower(strings.TrimSpace(title)) {
+	case "", "ahrefs", "dashboard", "overview", "site explorer", "keywords explorer", "content explorer", "site audit", "rank tracker":
+		return true
+	default:
+		return false
+	}
+}
+
+func exportUUIDName(name string) bool {
+	n := strings.ReplaceAll(strings.ToLower(name), "-", "")
+	if len(n) < 16 {
+		return false
+	}
+	for _, r := range n {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func exportTargetReport(page string) (target, report string) {
+	u, err := url.Parse(page)
+	if err != nil {
+		return "", ""
+	}
+	q := u.Query()
+	raw := q.Get("target")
+	if raw == "" {
+		raw = q.Get("keyword")
+	}
+	if raw == "" {
+		raw = q.Get("url")
+	}
+	target = cleanExportTarget(raw)
+	skip := map[string]bool{
+		"site-explorer": true, "keywords-explorer": true, "content-explorer": true,
+		"content-helper": true, "competitive-analysis": true, "rank-tracker": true,
+		"web-analytics": true, "brand-radar": true, "site-audit": true,
+		"subdomains": true, "prefix": true, "exact": true, "domain": true, "path": true,
+		"live": true, "both": true, "google": true, "overview": true,
+	}
+	var names []string
+	for _, bit := range strings.Split(u.Path, "/") {
+		bit = strings.ToLower(strings.TrimSpace(bit))
+		if bit == "" || skip[bit] || (len(bit) > 1 && bit[0] == 'v' && isDigits(bit[1:])) || (len(bit) == 2 && bit != "dr") {
+			continue
+		}
+		names = append(names, exportWords(strings.ReplaceAll(bit, "-", " ")))
+	}
+	if len(names) > 0 {
+		report = names[len(names)-1]
+	}
+	return target, report
+}
+
+func cleanExportTarget(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(strings.TrimPrefix(raw, "https://"), "http://")
+	raw = strings.Trim(raw, "/")
+	if i := strings.IndexAny(raw, "/?#"); i >= 0 {
+		raw = raw[:i]
+	}
+	return cleanExportBase(raw)
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func exportWords(s string) string {
+	parts := strings.Fields(s)
+	for i, part := range parts {
+		rs := []rune(part)
+		if len(rs) == 0 {
+			continue
+		}
+		rs[0] = unicode.ToUpper(rs[0])
+		parts[i] = string(rs)
+	}
+	return strings.Join(parts, " ")
+}
+
+func cleanExportBase(s string) string {
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+			return ' '
+		}
+		if r < 32 {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.Join(strings.Fields(s), " ")
+	s = strings.Trim(s, " .-_")
+	if len([]rune(s)) > 80 {
+		s = string([]rune(s)[:80])
+		s = strings.Trim(s, " .-_")
+	}
+	return s
 }
 
 func ahrefsCSVRows(body []byte) int {

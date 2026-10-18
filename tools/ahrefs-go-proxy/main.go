@@ -1209,6 +1209,21 @@ func authHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","redirect_url":%q}`, redirectURL)
 }
 
+func headerExportValue(r *http.Request, key string) string {
+	raw := strings.TrimSpace(r.Header.Get(key))
+	if raw == "" {
+		return ""
+	}
+	decoded, err := url.QueryUnescape(raw)
+	if err != nil {
+		decoded = raw
+	}
+	if len(decoded) > 300 {
+		decoded = decoded[:300]
+	}
+	return decoded
+}
+
 func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodPost {
@@ -1237,10 +1252,12 @@ func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := ahrefsCSVRows(body)
-	log.Printf("[LIMITS] chart export user=%s rows=%d", username, rows)
+	filename := chartExportName(headerExportValue(r, "X-Export-Link"), headerExportValue(r, "X-Export-Title"), headerExportValue(r, "X-Export-Page"))
+	log.Printf("[LIMITS] chart export user=%s rows=%d file=%s", username, rows, filename)
+	shown := strings.TrimSuffix(filename, ".csv")
 	hit := ahrefsLimitHit{
 		key: "exports", label: "Exports", action: "Chart export",
-		target: "chart-export", amount: rows, reset: 7,
+		target: shown, amount: rows, reset: 7,
 		family: fmt.Sprintf("chart-export:%d", time.Now().UnixNano()), isExport: true,
 	}
 	view, _, found := ahrefsMeterView(username, hit.key, 1000, hit.reset)
@@ -1258,7 +1275,7 @@ func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
 	}
 	out := withUTF8CSVBom(body)
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="ahrefs-chart.csv"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
 }
@@ -2264,10 +2281,16 @@ func patcherScript() string {
                     if (fallback) fallback();
                     return;
                 }
+                var exportName = (name && name.indexOf('blob:') !== 0) ? name : 'ahrefs-chart.csv';
                 return fetch('/api/chart-export', {
                     method: 'POST',
                     credentials: 'same-origin',
-                    headers: { 'Content-Type': blob.type || 'text/csv' },
+                    headers: {
+                        'Content-Type': blob.type || 'text/csv',
+                        'X-Export-Link': encodeURIComponent(name || ''),
+                        'X-Export-Title': encodeURIComponent(document.title || ''),
+                        'X-Export-Page': encodeURIComponent((window.location.pathname || '') + (window.location.search || ''))
+                    },
                     body: blob
                 }).then(function(res) {
                     if (res.status === 403) {
@@ -2279,7 +2302,7 @@ func patcherScript() string {
                         return;
                     }
                     var cd = res.headers.get('Content-Disposition') || '';
-                    var fname = name || 'ahrefs-chart.csv';
+                    var fname = exportName || 'ahrefs-chart.csv';
                     var match = /filename="([^"]+)"/.exec(cd);
                     if (match && match[1]) fname = match[1];
                     return res.blob().then(function(file) {

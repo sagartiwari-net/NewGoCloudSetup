@@ -20,3 +20,16 @@ func TestChartExportCSV(t *testing.T) {
 		t.Fatalf("utf-16 should stay as-is")
 	}
 }
+
+func TestChartExportName(t *testing.T) {
+	page := "/site-explorer/backlinks/v2/subdomains/live?target=toolsmandi.com%2F"
+	if got := chartExportName("", "Backlinks: toolsmandi.com | Ahrefs", page); got != "Backlinks toolsmandi.com.csv" {
+		t.Fatalf("title name=%q", got)
+	}
+	if got := chartExportName("", "Site Explorer", page); got != "toolsmandi.com - Backlinks.csv" {
+		t.Fatalf("url name=%q", got)
+	}
+	if got := chartExportName("625c9436-f5c1-402b-bd71-abcdefabcdef", "Site Explorer", "/keywords-explorer/google/us/ideas?keyword=seo+tools"); got != "seo tools - Ideas.csv" {
+		t.Fatalf("keyword name=%q", got)
+	}
+}
