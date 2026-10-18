@@ -310,10 +310,7 @@ func (s *server) me(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
-	if !ok || op.Role != "master" {
-		if ok {
-			writeErr(w, 403, "Master only")
-		}
+	if !ok {
 		return
 	}
 	var body struct {
