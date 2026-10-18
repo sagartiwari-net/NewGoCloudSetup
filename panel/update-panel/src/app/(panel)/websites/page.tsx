@@ -43,6 +43,7 @@ const websiteSchema = z.object({
   tool_id: z.string().min(1, "Choose a tool"),
   name: z.string().trim().min(1, "Enter a name"),
   domain: z.string().trim().min(1, "Enter a domain"),
+  access_slug: z.string().trim().regex(/^[a-z0-9-]*$/, "Use lowercase letters, numbers, and dashes"),
   secret_key: z.string().trim().min(1, "Enter a handshake secret"),
   session_duration: z.number().int().min(1, "Use at least 1 minute"),
   session_security_enabled: z.boolean(),
@@ -120,6 +121,7 @@ export default function WebsitesPage() {
     },
     { id: "name", header: "Name", cell: (row) => row.name, sortValue: (row) => row.name },
     { id: "domain", header: "Domain", cell: (row) => row.domain, sortValue: (row) => row.domain },
+    { id: "slug", header: "Button", cell: (row) => row.access_slug || "—", sortValue: (row) => row.access_slug ?? "" },
     { id: "session", header: "Session minutes", cell: (row) => row.session_duration, sortValue: (row) => row.session_duration },
     { id: "tool", header: "Tool", cell: (row) => toolName(row.tool_id), sortValue: (row) => toolName(row.tool_id) },
     {
@@ -470,6 +472,7 @@ function WebsiteForm({
       tool_id: preferredToolId || (website ? String(website.tool_id) : tools[0] ? String(tools[0].id) : ""),
       name: website?.name ?? "",
       domain: website?.domain ?? "",
+      access_slug: website?.access_slug ?? "",
       secret_key: website?.secret_key ?? "",
       session_duration: website?.session_duration ?? 30,
       session_security_enabled: website?.session_security_enabled ?? true,
@@ -522,6 +525,7 @@ function WebsiteForm({
           tool_id: Number(values.tool_id),
           name: values.name,
           domain: values.domain,
+          access_slug: values.access_slug,
           secret_key: values.secret_key,
           session_duration: website ? values.session_duration : 30,
           default_limits: Object.fromEntries(
@@ -573,6 +577,12 @@ function WebsiteForm({
           <FieldLabel htmlFor="domain">Domain</FieldLabel>
           <Input id="domain" aria-invalid={Boolean(errors.domain) || undefined} {...form.register("domain")} />
           <FieldError errors={[errors.domain]} />
+        </Field>
+        <Field data-invalid={Boolean(errors.access_slug) || undefined}>
+          <FieldLabel htmlFor="access_slug">Button name</FieldLabel>
+          <Input id="access_slug" placeholder="refs" aria-invalid={Boolean(errors.access_slug) || undefined} {...form.register("access_slug")} />
+          <FieldDescription>The aMember button uses this name, for example ?tool=refs.</FieldDescription>
+          <FieldError errors={[errors.access_slug]} />
         </Field>
         <Field data-invalid={Boolean(errors.secret_key) || undefined}>
           <FieldLabel htmlFor="secret_key">Handshake secret</FieldLabel>

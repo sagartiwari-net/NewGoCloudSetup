@@ -45,6 +45,8 @@ import type {
   UserReportSecurityRow,
   Violation,
   Website,
+  AccessSite,
+  AccessReject,
 } from "@/lib/api/types"
 
 const catalogCache = new Map<string, Promise<unknown>>()
@@ -799,6 +801,29 @@ export async function saveWebsiteSessions(input: {
 }): Promise<{ status: string; updated: number }> {
   clearCatalogCache("websites")
   return api("/api/websites/session", { method: "POST", body: JSON.stringify(input) })
+}
+
+export async function listAccessSites(): Promise<AccessSite[]> {
+  const page = await api<{ items?: AccessSite[] }>("/api/access-sites")
+  return page.items ?? []
+}
+
+export async function saveAccessSite(input: { id?: number; domain?: string; note?: string; enabled?: boolean }): Promise<AccessSite & { status?: string }> {
+  return api("/api/access-sites", { method: "POST", body: JSON.stringify(input) })
+}
+
+export async function deleteAccessSite(id: number): Promise<Ok> {
+  await api(`/api/access-sites${qs({ id })}`, { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function listAccessRejects(query: { page: number; pageSize: number; query: string }): Promise<PageResult<AccessReject>> {
+  return api(`/api/access-rejects${qs(query)}`)
+}
+
+export async function clearAccessRejects(): Promise<Ok> {
+  await api("/api/access-rejects", { method: "DELETE" })
+  return { status: "ok" }
 }
 
 export async function saveWebsite(input: WebsiteInput): Promise<Ok> {

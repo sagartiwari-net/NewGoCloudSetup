@@ -64,7 +64,7 @@ func (s *server) openAccess(w http.ResponseWriter, r *http.Request) {
 	_, _ = rand.Read(buf)
 	token := hex.EncodeToString(buf)
 	now := time.Now().UTC()
-	expires := now.Add(2 * time.Minute).Format(time.RFC3339)
+	expires := now.Add(accessTokenTTL).Format(time.RFC3339)
 	for attempt := 0; attempt < 5; attempt++ {
 		_, err = s.db.Exec(`INSERT INTO access_tokens (token, website_id, username, product_id, client_ip, expires_at, created_at) VALUES (?,?,?,?,?,?,?)`,
 			token, body.WebsiteID, body.Username, body.ProductID, ip, expires, now.Format(time.RFC3339))
@@ -202,17 +202,17 @@ func classifyIPDetailed(ip string) (kind, org, location string, extra map[string
 		location = info.Country
 	}
 	extra = map[string]any{
-		"country":     info.Country,
-		"region":      info.RegionName,
-		"city":        info.City,
-		"isp":         info.ISP,
-		"org":         info.Org,
-		"as":          info.AS,
-		"asname":      info.ASName,
-		"proxy":       info.Proxy,
-		"hosting":     info.Hosting,
-		"mobile":      info.Mobile,
-		"type_label":  ipTypeLabel(kind),
+		"country":    info.Country,
+		"region":     info.RegionName,
+		"city":       info.City,
+		"isp":        info.ISP,
+		"org":        info.Org,
+		"as":         info.AS,
+		"asname":     info.ASName,
+		"proxy":      info.Proxy,
+		"hosting":    info.Hosting,
+		"mobile":     info.Mobile,
+		"type_label": ipTypeLabel(kind),
 	}
 	return kind, org, location, extra
 }

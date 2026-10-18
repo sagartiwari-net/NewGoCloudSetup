@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS websites (
   default_limits_json TEXT NOT NULL DEFAULT '{}',
   session_security_enabled INTEGER NOT NULL DEFAULT 1,
   kind TEXT NOT NULL DEFAULT '',
-  upstream_url TEXT NOT NULL DEFAULT ''
+  upstream_url TEXT NOT NULL DEFAULT '',
+  access_slug TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS proxies (

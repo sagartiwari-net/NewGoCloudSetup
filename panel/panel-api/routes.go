@@ -118,7 +118,7 @@ func (s *server) listWebsites(w http.ResponseWriter, r *http.Request) {
 	var total int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM websites w WHERE `+where, args...).Scan(&total)
 	args = append(args, size, (page-1)*size)
-	rows, err := s.db.Query(`SELECT w.id, w.tool_id, w.name, w.domain, w.secret_key, w.session_duration, w.default_limits_json, w.session_security_enabled
+	rows, err := s.db.Query(`SELECT w.id, w.tool_id, w.name, w.domain, w.secret_key, w.session_duration, w.default_limits_json, w.session_security_enabled, COALESCE(w.access_slug, '')
 		FROM websites w WHERE `+where+` ORDER BY w.name LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
@@ -146,8 +146,9 @@ func (s *server) getWebsite(w http.ResponseWriter, r *http.Request) {
 	}
 	var toolID, duration, security int
 	var name, domain, secret, limits string
-	err := s.db.QueryRow(`SELECT tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled FROM websites WHERE id=?`, id).
-		Scan(&toolID, &name, &domain, &secret, &duration, &limits, &security)
+	var slug string
+	err := s.db.QueryRow(`SELECT tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, COALESCE(access_slug, '') FROM websites WHERE id=?`, id).
+		Scan(&toolID, &name, &domain, &secret, &duration, &limits, &security, &slug)
 	if err != nil {
 		writeErr(w, 404, "Website not found")
 		return
@@ -158,18 +159,18 @@ func (s *server) getWebsite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"id": id, "tool_id": toolID, "name": name, "domain": domain, "secret_key": secret,
 		"session_duration": duration, "default_limits": jsonRaw(limits, map[string]int{}),
-		"session_security_enabled": security == 1,
+		"session_security_enabled": security == 1, "access_slug": slug,
 	})
 }
 
 func scanWebsite(rows *sql.Rows) map[string]any {
 	var id, toolID, duration, security int
-	var name, domain, secret, limits string
-	_ = rows.Scan(&id, &toolID, &name, &domain, &secret, &duration, &limits, &security)
+	var name, domain, secret, limits, slug string
+	_ = rows.Scan(&id, &toolID, &name, &domain, &secret, &duration, &limits, &security, &slug)
 	return map[string]any{
 		"id": id, "tool_id": toolID, "name": name, "domain": domain, "secret_key": secret,
 		"session_duration": duration, "default_limits": jsonRaw(limits, map[string]int{}),
-		"session_security_enabled": security == 1,
+		"session_security_enabled": security == 1, "access_slug": slug,
 	}
 }
 
@@ -211,6 +212,7 @@ func (s *server) saveWebsite(w http.ResponseWriter, r *http.Request) {
 		Name                   string         `json:"name"`
 		Domain                 string         `json:"domain"`
 		SecretKey              string         `json:"secret_key"`
+		AccessSlug             string         `json:"access_slug"`
 		SessionDuration        int            `json:"session_duration"`
 		DefaultLimits          map[string]int `json:"default_limits"`
 		SessionSecurityEnabled bool           `json:"session_security_enabled"`
@@ -224,10 +226,15 @@ func (s *server) saveWebsite(w http.ResponseWriter, r *http.Request) {
 	if body.SessionSecurityEnabled {
 		sec = 1
 	}
+	slug := normalizeAccessSlug(body.AccessSlug)
+	if slug != "" && !accessSlugFree(s.db, slug, body.ID) {
+		writeErr(w, 400, "This button name is already used")
+		return
+	}
 	if body.ID == 0 {
 		body.SessionDuration = 30
-		res, err := s.db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled) VALUES (?,?,?,?,?,?,?)`,
-			body.ToolID, body.Name, body.Domain, body.SecretKey, body.SessionDuration, string(raw), sec)
+		res, err := s.db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug) VALUES (?,?,?,?,?,?,?,?)`,
+			body.ToolID, body.Name, body.Domain, body.SecretKey, body.SessionDuration, string(raw), sec, slug)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -235,8 +242,8 @@ func (s *server) saveWebsite(w http.ResponseWriter, r *http.Request) {
 		id, _ := res.LastInsertId()
 		body.ID = int(id)
 	} else {
-		_, _ = s.db.Exec(`UPDATE websites SET tool_id=?, name=?, domain=?, secret_key=?, session_duration=?, default_limits_json=?, session_security_enabled=? WHERE id=?`,
-			body.ToolID, body.Name, body.Domain, body.SecretKey, body.SessionDuration, string(raw), sec, body.ID)
+		_, _ = s.db.Exec(`UPDATE websites SET tool_id=?, name=?, domain=?, secret_key=?, session_duration=?, default_limits_json=?, session_security_enabled=?, access_slug=? WHERE id=?`,
+			body.ToolID, body.Name, body.Domain, body.SecretKey, body.SessionDuration, string(raw), sec, slug, body.ID)
 	}
 	s.syncWebsiteLimits(body.ID, body.DefaultLimits)
 	s.applySessionDuration(body.ID, body.SessionDuration)

@@ -29,6 +29,29 @@ export type Website = {
   session_duration: number
   default_limits: Record<string, number>
   session_security_enabled: boolean
+  access_slug?: string
+}
+
+export type AccessSite = {
+  id: number
+  domain: string
+  enabled: boolean
+  note: string
+  created_at: string
+  key?: string
+}
+
+export type AccessReject = {
+  id: number
+  website_id: number
+  website_name: string
+  username: string
+  client_ip: string
+  reason: string
+  message: string
+  site_domain: string
+  tool_slug: string
+  created_at: string
 }
 
 export type RecloudTool = {

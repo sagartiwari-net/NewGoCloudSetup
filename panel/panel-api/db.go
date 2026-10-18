@@ -59,6 +59,7 @@ func openDB(path string) *sql.DB {
 	_, _ = db.Exec(`ALTER TABLE user_meters ADD COLUMN period_start TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE panel_users ADD COLUMN limit_visibility TEXT NOT NULL DEFAULT ''`)
 	ensureCatalogOwners(db)
+	ensureAccessHandoff(db)
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS extension_events (
 		id INTEGER PRIMARY KEY,
 		website_id INTEGER NOT NULL,
@@ -136,6 +137,7 @@ func openMySQL() *sql.DB {
 	}
 	log.Printf("[DB] panel API using MySQL %s/%s", host, name)
 	ensureCatalogOwners(db)
+	ensureAccessHandoff(db)
 	seed(db)
 	ensureQuillbot(db)
 	ensureWriteHuman(db)
