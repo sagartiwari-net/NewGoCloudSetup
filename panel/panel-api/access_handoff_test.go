@@ -261,6 +261,30 @@ func TestFillButtonNames(t *testing.T) {
 	}
 }
 
+func TestT4ToolzAhrefs(t *testing.T) {
+	t.Setenv("GT4RENTS_MYSQL_PASSWORD", "")
+	db := openDB(filepath.Join(t.TempDir(), "panel.db"))
+	t.Cleanup(func() { _ = db.Close() })
+	var id int
+	var slug string
+	if err := db.QueryRow(`SELECT id, access_slug FROM websites WHERE domain=?`, "ah2.t4toolz.com").Scan(&id, &slug); err != nil {
+		t.Fatal(err)
+	}
+	if slug != "t4refs" || id <= 0 {
+		t.Fatalf("website %d slug %s", id, slug)
+	}
+	if _, err := db.Exec(`UPDATE websites SET access_slug='ah2' WHERE id=?`, id); err != nil {
+		t.Fatal(err)
+	}
+	ensureT4ToolzAhrefs(db)
+	if err := db.QueryRow(`SELECT access_slug FROM websites WHERE id=?`, id).Scan(&slug); err != nil {
+		t.Fatal(err)
+	}
+	if slug != "t4refs" {
+		t.Fatalf("slug stayed %s", slug)
+	}
+}
+
 func callAs(t *testing.T, handler http.Handler, token, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, bytes.NewReader([]byte(body)))

@@ -399,6 +399,61 @@ func ensureToolWalySites(db *sql.DB) {
 	}
 }
 
+// T4 Toolz Ahrefs shares the Ahrefs process. Its own website keeps a separate cookie and the button name t4refs.
+func ensureT4ToolzAhrefs(db *sql.DB) {
+	const domain = "ah2.t4toolz.com"
+	const slug = "t4refs"
+	const name = "T4 Toolz Ahrefs"
+	var toolID int64
+	if db.QueryRow(`SELECT id FROM tools WHERE name=?`, "Ahrefs").Scan(&toolID) != nil || toolID <= 0 {
+		log.Printf("T4 Toolz Ahrefs: tool row missing")
+		return
+	}
+	limits := "{}"
+	sessionMinutes := 30
+	_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}'), COALESCE(session_duration, 30) FROM websites WHERE lower(trim(domain))=?`, "refs.gt4rents.com").Scan(&limits, &sessionMinutes)
+	if strings.TrimSpace(limits) == "" {
+		limits = "{}"
+	}
+	if sessionMinutes < 1 {
+		sessionMinutes = 30
+	}
+	var websiteID int64
+	var currentSlug string
+	err := db.QueryRow(`SELECT id, COALESCE(access_slug, '') FROM websites WHERE lower(trim(domain))=lower(trim(?))`, domain).Scan(&websiteID, &currentSlug)
+	if err != nil {
+		var taken int
+		if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=?`, slug).Scan(&taken) == nil {
+			log.Printf("T4 Toolz Ahrefs: button name %s is already used by website %d", slug, taken)
+			return
+		}
+		res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
+			VALUES (?,?,?,?,?,?,1,?)`, toolID, name, domain, "secret_ah2_t4toolz_com", sessionMinutes, limits, slug)
+		if insErr != nil {
+			log.Printf("T4 Toolz Ahrefs website: %v", insErr)
+			return
+		}
+		websiteID, _ = res.LastInsertId()
+		_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, name, `["t4toolz"]`)
+		_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
+			websiteID, name+" 1", "", "active", "Paste this website's own cookie. It is not shared with gt4rents.")
+		log.Printf("added %s website %d at %s", name, websiteID, domain)
+		return
+	}
+	if strings.TrimSpace(currentSlug) == slug {
+		return
+	}
+	if strings.TrimSpace(currentSlug) != "" && strings.TrimSpace(currentSlug) != "ah2" {
+		return
+	}
+	var taken int
+	if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=? AND id<>?`, slug, websiteID).Scan(&taken) == nil {
+		log.Printf("T4 Toolz Ahrefs: button name %s is already used by website %d", slug, taken)
+		return
+	}
+	_, _ = db.Exec(`UPDATE websites SET access_slug=? WHERE id=?`, slug, websiteID)
+}
+
 func attachRoute(db *sql.DB, websiteID int, destIDs []int) {
 	var routeID int64
 	err := db.QueryRow(`SELECT id FROM telegram_routes WHERE website_id=?`, websiteID).Scan(&routeID)

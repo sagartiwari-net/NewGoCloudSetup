@@ -99,6 +99,7 @@ func openDB(path string) *sql.DB {
 	ensurePictory(db)
 	ensureResellers(db)
 	ensureToolWalySites(db)
+	ensureT4ToolzAhrefs(db)
 	ensureAccessAlertSettings(db)
 	return db
 }
@@ -145,6 +146,7 @@ func openMySQL() *sql.DB {
 	ensurePictory(db)
 	ensureResellers(db)
 	ensureToolWalySites(db)
+	ensureT4ToolzAhrefs(db)
 	ensureAccessAlertSettings(db)
 	return db
 }
