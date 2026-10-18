@@ -1901,6 +1901,12 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       return _open.call(window, u, name, specs);
     };
     document.addEventListener('click', function(ev) {
+      var signOut = ev.target && ev.target.closest ? ev.target.closest('button') : null;
+      if (signOut && (signOut.textContent || '').replace(/\s+/g, ' ').trim() === 'Sign Out') {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        return;
+      }
       if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button) return;
       var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
       if (!a) return;
@@ -1909,6 +1915,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       var href = a.getAttribute('href') || '';
       if (!href || href.charAt(0) === '#') return;
       if (isBlocked(href)) { ev.preventDefault(); ev.stopImmediatePropagation(); stayHome(); return; }
+      if (whNavHidden(href)) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
       // Next's client router preventDefault's these and then drops the navigation
       // (Tools menu: AI Detector, Image Detector, Word Counter, Extension).
       // A full load of the same path stays on this host.
@@ -2087,6 +2094,9 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       '#account-settings-link,',
       'li:has(>#account-settings-link),',
       '[data-testid="profile-menu-logout-button"],',
+      'a[href="/myaccount"],a[href="/history"],a[href="/api"],a[href="/mcp"],',
+      'a[href="/blog"],a[href="/affiliates"],a[href="/pricing"],a[href="/about"],a[href="/developers"],',
+      '[role="menu"][aria-label="Account"],[role="menu"][aria-label="API"],',
       'button.amplitude-survey-feedback,',
       '.amplitude-survey-feedback,',
       '[data-testid="upgrade-plan-modal"],',
@@ -2363,7 +2373,26 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       .catch(function() {});
   }
 
-  function scrubAll() { scrubChrome(); scrubUsername(); paintNativeCredits(TM_LIMITS); dismissFeatureToast(); }
+  function whNavHidden(href) {
+    var p = pathOf(href);
+    return p === '/myaccount' || p === '/history' || p === '/api' || p === '/mcp' ||
+      p === '/blog' || p === '/affiliates' || p === '/pricing' || p === '/about' || p === '/developers';
+  }
+  function hideWriteHumanNav() {
+    try {
+      document.querySelectorAll('a[href]').forEach(function(a) {
+        if (!whNavHidden(a.getAttribute('href'))) return;
+        a.style.setProperty('display', 'none', 'important');
+        a.setAttribute('data-tm-wh-hide', '1');
+      });
+      document.querySelectorAll('button').forEach(function(b) {
+        if ((b.textContent || '').replace(/\s+/g, ' ').trim() !== 'Sign Out') return;
+        b.style.setProperty('display', 'none', 'important');
+        b.setAttribute('data-tm-wh-hide', '1');
+      });
+    } catch (e) {}
+  }
+  function scrubAll() { scrubChrome(); hideWriteHumanNav(); scrubUsername(); paintNativeCredits(TM_LIMITS); dismissFeatureToast(); }
   var __tmScrubTimer = null;
   function scheduleScrub() {
     if (__tmScrubTimer) return;

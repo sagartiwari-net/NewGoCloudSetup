@@ -224,6 +224,10 @@ func TestBuildInjectUpsellDismissAndLayoutGuards(t *testing.T) {
 		"Premium (Annual)",
 		"trialSubscriptionUsed",
 		"location.assign(dest)",
+		"whNavHidden",
+		`a[href="/myaccount"]`,
+		`[role="menu"][aria-label="Account"]`,
+		`[role="menu"][aria-label="API"]`,
 	}
 	for _, n := range need {
 		if !strings.Contains(s, n) {
