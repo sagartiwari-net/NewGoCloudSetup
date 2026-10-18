@@ -1288,7 +1288,7 @@ func ahrefsLimitVisible(username, sessionToken string) bool {
 
 func safeAhrefsSwitchNext(raw string) string {
 	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || strings.Contains(raw, "\\") || len(raw) > 2000 {
-		return "/dashboard"
+		return "/site-explorer"
 	}
 	return raw
 }
@@ -1393,7 +1393,7 @@ func renderAccessDeniedPage(w http.ResponseWriter) {
 
 func renderAccountSwitchPage(w http.ResponseWriter, accountName, reloadPath string) {
 	if reloadPath == "" {
-		reloadPath = "/dashboard"
+		reloadPath = "/site-explorer"
 	}
 	jsURL := strings.ReplaceAll(strconv.Quote(reloadPath), "<", `\u003c`)
 	message := "Account logged out. Switching to another account..."
@@ -2867,10 +2867,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
-		if back := ahrefsStayOnTool(r); back != "" {
-			http.Redirect(w, r, back, http.StatusFound)
-			return
+		back := ahrefsStayOnTool(r)
+		if back == "" {
+			back = "/site-explorer"
 		}
+		http.Redirect(w, r, back, http.StatusFound)
+		return
 	}
 
 	// B. Secure all endpoints except assets/cdn which Ahrefs needs statically
@@ -3524,7 +3526,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			loc = strings.TrimPrefix(loc, root)
 		}
 		if loc == "" {
-			loc = "/dashboard"
+			loc = "/site-explorer"
 		}
 		if loc == r.URL.Path || loc == r.URL.RequestURI() {
 			userName := currentUser
