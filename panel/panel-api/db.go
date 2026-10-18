@@ -56,6 +56,7 @@ func openDB(path string) *sql.DB {
 	_, _ = db.Exec(`ALTER TABLE access_tokens ADD COLUMN client_ip TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE user_meters ADD COLUMN period_start TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE panel_users ADD COLUMN limit_visibility TEXT NOT NULL DEFAULT ''`)
+	ensureCatalogOwners(db)
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS extension_events (
 		id INTEGER PRIMARY KEY,
 		website_id INTEGER NOT NULL,
@@ -132,6 +133,7 @@ func openMySQL() *sql.DB {
 		log.Fatalf("[DB] MySQL ping failed: %v", err)
 	}
 	log.Printf("[DB] panel API using MySQL %s/%s", host, name)
+	ensureCatalogOwners(db)
 	seed(db)
 	ensureQuillbot(db)
 	ensureWriteHuman(db)
@@ -141,6 +143,11 @@ func openMySQL() *sql.DB {
 	ensureToolWalySites(db)
 	ensureAccessAlertSettings(db)
 	return db
+}
+
+func ensureCatalogOwners(db *sql.DB) {
+	_, _ = db.Exec(`ALTER TABLE proxies ADD COLUMN operator_id INTEGER NOT NULL DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE user_agents ADD COLUMN operator_id INTEGER NOT NULL DEFAULT 0`)
 }
 
 func hashPassword(password string) string {

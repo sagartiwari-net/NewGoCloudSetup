@@ -68,8 +68,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { Role } from "@/lib/api/types"
 
 const masterRoutes = [
-  "/proxies",
-  "/user-agents",
   "/resellers",
   "/automate",
   "/settings",
@@ -121,8 +119,8 @@ const nav: Array<{
   {
     label: "Catalog",
     items: [
-      { href: "/proxies", label: "Proxy Manager", icon: ServerIcon, masterOnly: true },
-      { href: "/user-agents", label: "User Agents", icon: BotIcon, masterOnly: true },
+      { href: "/proxies", label: "Proxy Manager", icon: ServerIcon },
+      { href: "/user-agents", label: "User Agents", icon: BotIcon },
       { href: "/websites", label: "Website Domains", icon: GlobeIcon },
       { href: "/resellers", label: "Resellers", icon: StoreIcon, masterOnly: true },
     ],

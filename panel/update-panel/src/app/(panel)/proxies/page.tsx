@@ -119,7 +119,7 @@ export default function ProxiesPage() {
     <>
       <PageHeader
         title="Proxy Manager"
-        description="Shared endpoints that mapped accounts can use."
+        description="Your proxies. A reseller only sees the proxies they added."
         action={
           <Button onClick={() => { setEditing(null); setOpen(true) }}>
             <PlusIcon data-icon="inline-start" />

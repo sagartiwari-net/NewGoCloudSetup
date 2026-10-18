@@ -79,7 +79,7 @@ export default function LoginPage() {
         <CardHeader>
           <CardTitle>ToolsMandi</CardTitle>
           <CardDescription>
-            Sign in with master / toolsmandi.
+            Sign in with your panel username.
           </CardDescription>
         </CardHeader>
         <CardContent>

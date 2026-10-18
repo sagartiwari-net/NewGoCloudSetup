@@ -614,6 +614,13 @@ func (s *server) saveUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 403, "You cannot manage this website")
 		return
 	}
+	if body.ID != 0 {
+		currentWebsite, found := s.websiteOf("panel_users", body.ID)
+		if !found || !s.owns(op, currentWebsite) {
+			writeErr(w, 403, "You cannot manage this website")
+			return
+		}
+	}
 	defaults := map[string]int{}
 	var raw string
 	_ = s.db.QueryRow(`SELECT default_limits_json FROM websites WHERE id=?`, body.Website).Scan(&raw)
@@ -691,21 +698,68 @@ func (s *server) owns(op operator, websiteID int) bool {
 	return n > 0
 }
 
+func (s *server) websiteOf(table string, id int) (int, bool) {
+	var query string
+	switch table {
+	case "accounts":
+		query = `SELECT website_id FROM accounts WHERE id=?`
+	case "products":
+		query = `SELECT website_id FROM products WHERE id=?`
+	case "live_sessions":
+		query = `SELECT website_id FROM live_sessions WHERE id=?`
+	case "panel_users":
+		query = `SELECT website_id FROM panel_users WHERE id=?`
+	default:
+		return 0, false
+	}
+	var websiteID int
+	if s.db.QueryRow(query, id).Scan(&websiteID) != nil {
+		return 0, false
+	}
+	return websiteID, true
+}
+
+func (s *server) ownsCatalog(op operator, table string, id int) bool {
+	if id == 0 || op.Role == "master" {
+		return true
+	}
+	if table != "proxies" && table != "user_agents" {
+		return false
+	}
+	var owner int
+	if s.db.QueryRow(`SELECT operator_id FROM `+table+` WHERE id=?`, id).Scan(&owner) != nil {
+		return false
+	}
+	return owner == op.ID
+}
+
 func (s *server) deleteUser(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	id, _ := strconv.Atoi(r.URL.Query().Get("id"))
+	websiteID, found := s.websiteOf("panel_users", id)
+	if !found || !s.owns(op, websiteID) {
+		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
 	_, _ = s.db.Exec(`DELETE FROM user_meters WHERE user_id=?`, id)
 	_, _ = s.db.Exec(`DELETE FROM panel_users WHERE id=?`, id)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
 func (s *server) resetUser(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	id, _ := strconv.Atoi(r.PathValue("id"))
+	websiteID, found := s.websiteOf("panel_users", id)
+	if !found || !s.owns(op, websiteID) {
+		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
 	_, _ = s.db.Exec(`UPDATE user_meters SET used=0 WHERE user_id=?`, id)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
@@ -762,7 +816,8 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) assignSession(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -772,6 +827,18 @@ func (s *server) assignSession(w http.ResponseWriter, r *http.Request) {
 	if err := readBody(r, &body); err != nil {
 		writeErr(w, 400, "Invalid body")
 		return
+	}
+	sessionWebsite, found := s.websiteOf("live_sessions", body.SessionID)
+	if !found || !s.owns(op, sessionWebsite) {
+		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
+	if body.AccountID != 0 {
+		accountWebsite, accountFound := s.websiteOf("accounts", body.AccountID)
+		if !accountFound || accountWebsite != sessionWebsite || !s.owns(op, accountWebsite) {
+			writeErr(w, 403, "You cannot manage this website")
+			return
+		}
 	}
 	if body.AccountID == 0 {
 		_, _ = s.db.Exec(`UPDATE live_sessions SET assigned_account_id=0 WHERE id=?`, body.SessionID)
@@ -786,7 +853,8 @@ func (s *server) endSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) openSession(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -799,6 +867,10 @@ func (s *server) openSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := readBody(r, &body); err != nil || body.WebsiteID == 0 || strings.TrimSpace(body.Username) == "" {
 		writeErr(w, 400, "Invalid body")
+		return
+	}
+	if !s.owns(op, body.WebsiteID) {
+		writeErr(w, 403, "You cannot manage this website")
 		return
 	}
 	_, _ = s.db.Exec(`DELETE FROM live_sessions WHERE username=? AND website_id=?`, strings.TrimSpace(body.Username), body.WebsiteID)
@@ -820,7 +892,8 @@ func (s *server) openSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) checkSession(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -838,6 +911,10 @@ func (s *server) checkSession(w http.ResponseWriter, r *http.Request) {
 		Scan(&token, &fingerprint, &username, &ip, &websiteID)
 	if err != nil {
 		writeJSON(w, 200, map[string]any{"kept": false})
+		return
+	}
+	if !s.owns(op, websiteID) {
+		writeErr(w, 403, "You cannot manage this website")
 		return
 	}
 	if fingerprint != "" && fingerprint != body.Fingerprint {
@@ -1859,10 +1936,15 @@ func (s *server) listSpamReports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) useAccount(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	websiteID, _ := strconv.Atoi(r.PathValue("id"))
+	if !s.owns(op, websiteID) {
+		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
 	var body struct {
 		Username  string `json:"username"`
 		Reason    string `json:"reason"`
@@ -1992,7 +2074,8 @@ func (s *server) listHostReports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) hostReport(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -2006,6 +2089,10 @@ func (s *server) hostReport(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := readBody(r, &body); err != nil {
 		writeErr(w, 400, "Invalid body")
+		return
+	}
+	if body.Website == 0 || !s.owns(op, body.Website) {
+		writeErr(w, 403, "You cannot manage this website")
 		return
 	}
 	if body.IP == "" {
@@ -2027,10 +2114,15 @@ func (s *server) hostReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) accessCheck(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	website, _ := strconv.Atoi(r.URL.Query().Get("website_id"))
+	if website == 0 || !s.owns(op, website) {
+		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
 	ip := r.URL.Query().Get("ip")
 	var n int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM blocked_ips WHERE client_ip=? AND (website_id=? OR website_id=0)`, ip, website).Scan(&n)

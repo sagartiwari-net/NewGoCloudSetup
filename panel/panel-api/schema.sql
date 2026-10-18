@@ -44,14 +44,16 @@ CREATE TABLE IF NOT EXISTS proxies (
   proxy_type TEXT NOT NULL,
   endpoint TEXT NOT NULL,
   status TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  operator_id INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS user_agents (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   user_agent TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  operator_id INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS accounts (

@@ -74,7 +74,7 @@ export default function UserAgentsPage() {
     <>
       <PageHeader
         title="User Agents"
-        description="Saved browser strings. Accounts that pick one follow later edits."
+        description="Your user agents. A reseller only sees the ones they added."
         action={
           <Button onClick={() => { setEditing(null); setOpen(true) }}>
             <PlusIcon data-icon="inline-start" />

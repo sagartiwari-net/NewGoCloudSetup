@@ -373,6 +373,16 @@ func (s *server) listAccounts(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		if op.Role != "master" {
+			if uaID.Valid && !s.ownsCatalog(op, "user_agents", int(uaID.Int64)) {
+				ua = ""
+				uaID.Valid = false
+			}
+			if proxyID.Valid && !s.ownsCatalog(op, "proxies", int(proxyID.Int64)) {
+				proxy = ""
+				proxyID.Valid = false
+			}
+		}
 		var uaOut any
 		var proxyOut any
 		if uaID.Valid {
@@ -445,6 +455,16 @@ func (s *server) getAccount(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 403, "You cannot manage this account")
 		return
 	}
+	if op.Role != "master" {
+		if id, ok := item["proxy_id"].(int64); ok && !s.ownsCatalog(op, "proxies", int(id)) {
+			item["proxy_id"] = nil
+			item["proxy"] = ""
+		}
+		if id, ok := item["user_agent_id"].(int64); ok && !s.ownsCatalog(op, "user_agents", int(id)) {
+			item["user_agent_id"] = nil
+			item["user_agent"] = ""
+		}
+	}
 	writeJSON(w, 200, item)
 }
 
@@ -491,6 +511,31 @@ func (s *server) saveAccount(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if op.Role != "master" {
+		if body.ID != 0 {
+			var curProxy, curUA sql.NullInt64
+			var curProxyText, curUAText string
+			_ = s.db.QueryRow(`SELECT proxy_id, proxy, user_agent_id, user_agent FROM accounts WHERE id=?`, body.ID).Scan(&curProxy, &curProxyText, &curUA, &curUAText)
+			if (body.ProxyID == nil || *body.ProxyID == 0) && curProxy.Valid && !s.ownsCatalog(op, "proxies", int(curProxy.Int64)) {
+				kept := int(curProxy.Int64)
+				body.ProxyID = &kept
+				body.Proxy = curProxyText
+			}
+			if (body.UserAgentID == nil || *body.UserAgentID == 0) && curUA.Valid && !s.ownsCatalog(op, "user_agents", int(curUA.Int64)) {
+				kept := int(curUA.Int64)
+				body.UserAgentID = &kept
+				body.UserAgent = curUAText
+			}
+		}
+		if body.ProxyID != nil && *body.ProxyID != 0 && !s.ownsCatalog(op, "proxies", *body.ProxyID) {
+			writeErr(w, 403, "You cannot use this proxy")
+			return
+		}
+		if body.UserAgentID != nil && *body.UserAgentID != 0 && !s.ownsCatalog(op, "user_agents", *body.UserAgentID) {
+			writeErr(w, 403, "You cannot use this user agent")
+			return
+		}
+	}
 	show := 0
 	if body.ShowLimit {
 		show = 1
@@ -527,7 +572,8 @@ func (s *server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) assignProxy(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -535,14 +581,24 @@ func (s *server) assignProxy(w http.ResponseWriter, r *http.Request) {
 		ProxyID int   `json:"proxy_id"`
 	}
 	_ = readBody(r, &body)
+	if !s.ownsCatalog(op, "proxies", body.ProxyID) {
+		writeErr(w, 403, "You cannot use this proxy")
+		return
+	}
 	for _, id := range body.IDs {
+		websiteID, found := s.websiteOf("accounts", id)
+		if !found || !s.owns(op, websiteID) {
+			writeErr(w, 403, "You cannot manage this website")
+			return
+		}
 		_, _ = s.db.Exec(`UPDATE accounts SET proxy_id=?, proxy='' WHERE id=?`, body.ProxyID, id)
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
 func (s *server) assignUserAgent(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -550,7 +606,16 @@ func (s *server) assignUserAgent(w http.ResponseWriter, r *http.Request) {
 		ID  int   `json:"user_agent_id"`
 	}
 	_ = readBody(r, &body)
+	if !s.ownsCatalog(op, "user_agents", body.ID) {
+		writeErr(w, 403, "You cannot use this user agent")
+		return
+	}
 	for _, id := range body.IDs {
+		websiteID, found := s.websiteOf("accounts", id)
+		if !found || !s.owns(op, websiteID) {
+			writeErr(w, 403, "You cannot manage this website")
+			return
+		}
 		_, _ = s.db.Exec(`UPDATE accounts SET user_agent_id=?, user_agent='' WHERE id=?`, body.ID, id)
 		s.shareCookieFrom(id)
 	}
@@ -558,10 +623,15 @@ func (s *server) assignUserAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) nextAccount(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	websiteID, _ := strconv.Atoi(r.PathValue("id"))
+	if !s.owns(op, websiteID) {
+		writeErr(w, 403, "You cannot manage this website")
+		return
+	}
 	rows, err := s.db.Query(`SELECT id FROM accounts WHERE website_id=? AND status='active' ORDER BY CASE WHEN last_used_at='' THEN 0 ELSE 1 END, last_used_at ASC, id ASC`, websiteID)
 	if err != nil {
 		writeErr(w, 500, err.Error())
@@ -587,11 +657,20 @@ func (s *server) deleteID(table string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		if (table == "proxies" || table == "user_agents") && op.Role != "master" {
-			writeErr(w, 403, "Master only")
-			return
-		}
 		id, _ := strconv.Atoi(r.URL.Query().Get("id"))
+		if table == "proxies" || table == "user_agents" {
+			if !s.ownsCatalog(op, table, id) {
+				writeErr(w, 403, "You cannot manage this item")
+				return
+			}
+		}
+		if table == "accounts" || table == "products" || table == "live_sessions" {
+			websiteID, found := s.websiteOf(table, id)
+			if !found || !s.owns(op, websiteID) {
+				writeErr(w, 403, "You cannot manage this website")
+				return
+			}
+		}
 		if table == "blocked_ips" && op.Role != "master" {
 			var websiteID int
 			err := s.db.QueryRow(`SELECT website_id FROM blocked_ips WHERE id=?`, id).Scan(&websiteID)
@@ -698,6 +777,13 @@ func (s *server) saveProduct(w http.ResponseWriter, r *http.Request) {
 	if op.Role != "master" && !s.owns(op, body.Website) {
 		writeErr(w, 403, "You cannot manage this website")
 		return
+	}
+	if body.ID != 0 {
+		currentWebsite, found := s.websiteOf("products", body.ID)
+		if !found || !s.owns(op, currentWebsite) {
+			writeErr(w, 403, "You cannot manage this website")
+			return
+		}
 	}
 	ids := []string{}
 	seen := map[string]bool{}
@@ -918,11 +1004,16 @@ func (s *server) blockIP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 func (s *server) listProxies(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	page, size, q := pageQuery(r)
 	where, args := "1=1", []any{}
+	if op.Role != "master" {
+		where += " AND operator_id=?"
+		args = append(args, op.ID)
+	}
 	if status := r.URL.Query().Get("status"); status != "" && status != "all" {
 		where += " AND status = ?"
 		args = append(args, status)
@@ -952,10 +1043,7 @@ func (s *server) listProxies(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) saveProxy(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
-	if !ok || op.Role != "master" {
-		if ok {
-			writeErr(w, 403, "Master only")
-		}
+	if !ok {
 		return
 	}
 	var body struct {
@@ -974,8 +1062,15 @@ func (s *server) saveProxy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	ownerID := op.ID
+	if op.Role == "master" {
+		ownerID = 0
+	}
 	if body.ID == 0 {
-		_, _ = s.db.Exec(`INSERT INTO proxies (name, proxy_type, endpoint, status, created_at) VALUES (?,?,?,?,?)`, body.Name, body.Type, endpoint, body.Status, time.Now().UTC().Format(time.RFC3339))
+		_, _ = s.db.Exec(`INSERT INTO proxies (name, proxy_type, endpoint, status, created_at, operator_id) VALUES (?,?,?,?,?,?)`, body.Name, body.Type, endpoint, body.Status, time.Now().UTC().Format(time.RFC3339), ownerID)
+	} else if !s.ownsCatalog(op, "proxies", body.ID) {
+		writeErr(w, 403, "You cannot manage this item")
+		return
 	} else {
 		_, _ = s.db.Exec(`UPDATE proxies SET name=?, proxy_type=?, endpoint=?, status=? WHERE id=?`, body.Name, body.Type, endpoint, body.Status, body.ID)
 	}
@@ -1035,11 +1130,16 @@ func normalizeProxyEndpoint(kind, raw string) (string, error) {
 }
 
 func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.auth(w, r); !ok {
+	op, ok := s.auth(w, r)
+	if !ok {
 		return
 	}
 	page, size, q := pageQuery(r)
 	where, args := "1=1", []any{}
+	if op.Role != "master" {
+		where += " AND operator_id=?"
+		args = append(args, op.ID)
+	}
 	if q != "" {
 		where += " AND (name LIKE ? OR user_agent LIKE ?)"
 		like := "%" + q + "%"
@@ -1066,10 +1166,7 @@ func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) saveAgent(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
-	if !ok || op.Role != "master" {
-		if ok {
-			writeErr(w, 403, "Master only")
-		}
+	if !ok {
 		return
 	}
 	var body struct {
@@ -1081,8 +1178,15 @@ func (s *server) saveAgent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Invalid body")
 		return
 	}
+	ownerID := op.ID
+	if op.Role == "master" {
+		ownerID = 0
+	}
 	if body.ID == 0 {
-		_, _ = s.db.Exec(`INSERT INTO user_agents (name, user_agent, created_at) VALUES (?,?,?)`, body.Name, body.UA, time.Now().UTC().Format(time.RFC3339))
+		_, _ = s.db.Exec(`INSERT INTO user_agents (name, user_agent, created_at, operator_id) VALUES (?,?,?,?)`, body.Name, body.UA, time.Now().UTC().Format(time.RFC3339), ownerID)
+	} else if !s.ownsCatalog(op, "user_agents", body.ID) {
+		writeErr(w, 403, "You cannot manage this item")
+		return
 	} else {
 		_, _ = s.db.Exec(`UPDATE user_agents SET name=?, user_agent=? WHERE id=?`, body.Name, body.UA, body.ID)
 	}
