@@ -345,9 +345,9 @@ func ensureToolWalySites(db *sql.DB) {
 		owner  string
 	}
 	sites := []site{
-		{"Ahrefs", "ToolWaly Ahrefs", "ahrefs.toolwaly.com", "refs.gt4rents.com"},
-		{"Semrush", "ToolWaly Semrush", "semrush.toolwaly.com", "smrs.gt4rents.com"},
-		{"Canva", "ToolWaly Canva", "canva.toolwaly.com", "cnva.gt4rents.com"},
+		{"Ahrefs", "ToolWaly Ahrefs", "refs.toolwaly.com", "refs.gt4rents.com"},
+		{"Semrush", "ToolWaly Semrush", "smrs.toolwaly.com", "smrs.gt4rents.com"},
+		{"Canva", "ToolWaly Canva", "cnva.toolwaly.com", "cnva.gt4rents.com"},
 		{"Grammarly", "ToolWaly Grammarly", "grammarly.toolwaly.com", "grammarly.gt4rents.com"},
 	}
 	var opID int64

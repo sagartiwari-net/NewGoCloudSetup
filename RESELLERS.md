@@ -35,9 +35,9 @@ Domain: `toolwaly.com`
 
 | Tool | URL | Same port | gt4rents site (share nahi) |
 |------|-----|-----------|----------------------------|
-| Ahrefs | `https://ahrefs.toolwaly.com` | 5291 | `refs.gt4rents.com` |
-| Semrush | `https://semrush.toolwaly.com` | 5141 | `smrs.gt4rents.com` |
-| Canva | `https://canva.toolwaly.com` | 4501 | `cnva.gt4rents.com` |
+| Ahrefs | `https://refs.toolwaly.com` | 5291 | `refs.gt4rents.com` |
+| Semrush | `https://smrs.toolwaly.com` | 5141 | `smrs.gt4rents.com` |
+| Canva | `https://cnva.toolwaly.com` | 4501 | `cnva.gt4rents.com` |
 | Grammarly | `https://grammarly.toolwaly.com` | 4911 | `grammarly.gt4rents.com` |
 
 Panel website names: ToolWaly Ahrefs, ToolWaly Semrush, ToolWaly Canva, ToolWaly Grammarly.  
@@ -49,25 +49,16 @@ Agar ToolWaly reseller par gt4rents wali Semrush, Envato, ya ChatGPT website bhi
 
 ## Cloudflare (toolwaly.com)
 
-Domain Cloudflare par add karo. Nameservers registrar par Cloudflare ke karo.
+Ye char A records `65.109.16.196` par hain: `refs`, `smrs`, `cnva`, `grammarly`.
 
-DNS → Add record, chaar A records, sab proxy on (orange cloud):
-
-| Name | Content |
-|------|---------|
-| `ahrefs` | `65.109.16.196` |
-| `semrush` | `65.109.16.196` |
-| `canva` | `65.109.16.196` |
-| `grammarly` | `65.109.16.196` |
-
-SSL/TLS mode **Full**. Flexible mat rakhna. Grey-cloud (DNS only) mat rakhna, warna origin certificate `*.gt4rents.com` ka hai aur browser warning aayegi.
+Abhi Proxy status **DNS only** hai. Origin certificate sirf `*.gt4rents.com` ka hai, isliye grey cloud par `https://` certificate warning dikhayega. Har record ke cloud icon ko **Proxied** (orange) karo. SSL/TLS mode **Full** rakho. Flexible mat use karna.
 
 ## aaPanel / nginx
 
 Naya website create mat karna. Jo site `*.gt4rents.com` ko tool port par bhejti hai, usi ke `server_name` mein ye char hosts add karne hain. Port 80 aur port 443 dono blocks mein.
 
 ```nginx
-server_name *.gt4rents.com gt4rents.com ahrefs.toolwaly.com semrush.toolwaly.com canva.toolwaly.com grammarly.toolwaly.com;
+server_name *.gt4rents.com gt4rents.com refs.toolwaly.com smrs.toolwaly.com cnva.toolwaly.com grammarly.toolwaly.com;
 ```
 
 Phir map update:
@@ -86,9 +77,9 @@ nginx -t && nginx -s reload
 Panel log mein ye lines aani chahiye:
 
 ```text
-added ToolWaly Ahrefs website … at ahrefs.toolwaly.com
-added ToolWaly Semrush website … at semrush.toolwaly.com
-added ToolWaly Canva website … at canva.toolwaly.com
+added ToolWaly Ahrefs website … at refs.toolwaly.com
+added ToolWaly Semrush website … at smrs.toolwaly.com
+added ToolWaly Canva website … at cnva.toolwaly.com
 added ToolWaly Grammarly website … at grammarly.toolwaly.com
 ```
 
