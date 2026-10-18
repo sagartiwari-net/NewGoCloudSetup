@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -20,12 +20,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useResource } from "@/hooks/use-resource"
 import {
   deleteWebsite,
+  fillButtonNames,
   listTools,
   getWebsite,
   listWebsites,
@@ -88,6 +90,22 @@ export default function WebsitesPage() {
   const [selected, setSelected] = useState<number[]>([])
   const [sessionOpen, setSessionOpen] = useState(false)
   const reseller = session?.role !== "master"
+  const [codes, setCodes] = useState("")
+  const codesLoaded = useRef(false)
+
+  useEffect(() => {
+    if (reseller || codesLoaded.current) return
+    codesLoaded.current = true
+    void fillButtonNames([]).then((result) => {
+      const lines = (result.items ?? [])
+        .filter((item) => item.access_slug)
+        .map((item) => buttonCode(item.name, item.access_slug))
+      setCodes(lines.join("\n"))
+      if (result.filled > 0) reload()
+    }).catch(() => {
+      setCodes("")
+    })
+  }, [reseller, reload])
 
   useEffect(() => {
     setSelected([])
@@ -127,33 +145,6 @@ export default function WebsitesPage() {
     { id: "name", header: "Name", cell: (row) => row.name, sortValue: (row) => row.name },
     { id: "domain", header: "Domain", cell: (row) => row.domain, sortValue: (row) => row.domain },
     { id: "slug", header: "Button", cell: (row) => row.access_slug || "—", sortValue: (row) => row.access_slug ?? "" },
-    {
-      id: "code",
-      header: "Code",
-      cell: (row) => {
-        const slug = (row.access_slug ?? "").trim()
-        if (!slug) return "—"
-        const code = buttonCode(row.name, slug)
-        return (
-          <div className="flex max-w-sm items-center gap-2">
-            <code className="min-w-0 flex-1 truncate text-xs" title={code}>{code}</code>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void navigator.clipboard.writeText(code).then(
-                  () => toast.success("Copied"),
-                  () => toast.error("Could not copy"),
-                )
-              }}
-            >
-              Copy
-            </Button>
-          </div>
-        )
-      },
-      sortValue: (row) => row.access_slug ?? "",
-    },
     { id: "session", header: "Session minutes", cell: (row) => row.session_duration, sortValue: (row) => row.session_duration },
     { id: "tool", header: "Tool", cell: (row) => toolName(row.tool_id), sortValue: (row) => toolName(row.tool_id) },
     {
@@ -230,6 +221,13 @@ export default function WebsitesPage() {
           }}
         />
       </Field>
+      {codes ? (
+        <Field>
+          <FieldLabel htmlFor="website-codes">Button code</FieldLabel>
+          <FieldDescription>One line for each website. Select a line and paste it on the aMember page.</FieldDescription>
+          <Textarea id="website-codes" readOnly value={codes} className="max-h-72 overflow-auto font-mono text-xs" />
+        </Field>
+      ) : null}
       <Card>
         <CardContent>
           <DataTable

@@ -808,7 +808,7 @@ export async function listAccessSites(): Promise<AccessSite[]> {
   return page.items ?? []
 }
 
-export async function fillButtonNames(websiteIds: number[]): Promise<{ filled: number }> {
+export async function fillButtonNames(websiteIds: number[]): Promise<{ filled: number; items?: Array<{ id: number; name: string; access_slug: string }> }> {
   clearCatalogCache("websites")
   return api("/api/websites/button-names", { method: "POST", body: JSON.stringify({ website_ids: websiteIds }) })
 }
