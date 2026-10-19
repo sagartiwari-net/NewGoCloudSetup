@@ -159,6 +159,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		renderProxyProblem(w, r)
 		return
 	}
+	reqSnap := snapVeoBody(r)
 	upstream, err := http.NewRequestWithContext(r.Context(), r.Method, target.Scheme+"://"+target.Host+r.URL.RequestURI(), r.Body)
 	if err != nil {
 		renderProxyProblem(w, r)
@@ -206,6 +207,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		renderProxyProblem(w, r)
 		return
 	}
+	logVeoUse(r.Method, r.URL.Path, resp.StatusCode, veoSessionUser(r), reqSnap, body)
 	if body != nil {
 		rewritten := []byte(rewriteText(string(body), publicBase, publicHost))
 		ct := strings.ToLower(resp.Header.Get("Content-Type"))
