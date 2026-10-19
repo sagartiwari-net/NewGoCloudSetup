@@ -130,10 +130,10 @@ func completeCDNFlight(key string) {
 
 func setErankCDNBrowserCache(w http.ResponseWriter, path string) {
 	lower := strings.ToLower(path)
-	if strings.Contains(lower, "/static/") ||
-		strings.HasSuffix(lower, ".woff2") || strings.HasSuffix(lower, ".woff") ||
-		strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".css") {
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// Rewritten JS/CSS used to be cached for a year. CloudFront is still
+	// serving that copy, which points every reseller domain at erank.gt4rents.com.
+	if strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".mjs") || strings.HasSuffix(lower, ".css") {
+		w.Header().Set("Cache-Control", "no-cache")
 	} else {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
