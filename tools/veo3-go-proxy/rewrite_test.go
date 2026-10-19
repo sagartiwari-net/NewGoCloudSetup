@@ -30,6 +30,13 @@ func TestRewriteFlowHost(t *testing.T) {
 	}
 }
 
+func TestRewriteLocationBreaksRootLoop(t *testing.T) {
+	got := rewriteLocation("https://flow.google.com/", "https://veo3.gt4rents.com", "veo3.gt4rents.com")
+	if got != "https://veo3.gt4rents.com/about" {
+		t.Fatalf("got %s", got)
+	}
+}
+
 func TestRestoreProxyURLs(t *testing.T) {
 	got := restoreProxyURLs("https://veo3.gt4rents.com/__/host/labs.google/fx/tools/flow", "veo3.gt4rents.com")
 	if got != "https://labs.google/fx/tools/flow" {

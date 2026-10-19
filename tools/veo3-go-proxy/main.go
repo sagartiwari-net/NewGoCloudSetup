@@ -109,8 +109,8 @@ func reloadConfig() error {
 	if strings.TrimSpace(next.TargetURL) == "" {
 		next.TargetURL = "https://flow.google.com"
 	}
-	if strings.TrimSpace(next.HomePath) == "" || next.HomePath == "/" {
-		next.HomePath = "/__/host/labs.google/fx/tools/flow"
+	if strings.TrimSpace(next.HomePath) == "" || next.HomePath == "/" || strings.HasPrefix(next.HomePath, "/__/host/labs.google/") {
+		next.HomePath = "/about"
 	}
 	if strings.TrimSpace(next.ToolName) == "" {
 		next.ToolName = "Veo3 AI"
@@ -213,7 +213,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	publicBase := publicBaseURL(r, c, publicHost)
 	if loc := resp.Header.Get("Location"); loc != "" {
-		resp.Header.Set("Location", rewriteText(loc, publicBase, publicHost))
+		resp.Header.Set("Location", rewriteLocation(loc, publicBase, publicHost))
 	}
 	stripAuthSetCookies(resp)
 	resp.Header.Del("Content-Security-Policy")
@@ -312,6 +312,22 @@ func restoreProxyURLs(s, publicHost string) string {
 	s = strings.ReplaceAll(s, "https://"+publicHost, "https://flow.google.com")
 	s = strings.ReplaceAll(s, "http://"+publicHost, "https://flow.google.com")
 	return s
+}
+
+func rewriteLocation(loc, publicBase, publicHost string) string {
+	loc = rewriteText(loc, publicBase, publicHost)
+	u, err := url.Parse(loc)
+	if err != nil {
+		return loc
+	}
+	if u.Host != "" && !strings.EqualFold(u.Host, publicHost) {
+		return loc
+	}
+	if u.Path == "" || u.Path == "/" {
+		u.Path = "/about"
+		return u.String()
+	}
+	return loc
 }
 
 func publicBaseURL(r *http.Request, c Config, publicHost string) string {
