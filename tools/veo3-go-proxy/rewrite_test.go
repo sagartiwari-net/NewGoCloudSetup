@@ -24,6 +24,21 @@ func TestRewriteFlowHost(t *testing.T) {
 	if rpc != "https://veo3.gt4rents.com/__/host/ogads-pa.clients6.google.com/$rpc/GetAsyncData" {
 		t.Fatalf("rpc got %s", rpc)
 	}
+	studio := rewriteText("https://labs.google/fx/tools/flow", "https://veo3.gt4rents.com", "veo3.gt4rents.com")
+	if studio != "https://veo3.gt4rents.com/__/host/labs.google/fx/tools/flow" {
+		t.Fatalf("studio got %s", studio)
+	}
+}
+
+func TestRestoreProxyURLs(t *testing.T) {
+	got := restoreProxyURLs("https://veo3.gt4rents.com/__/host/labs.google/fx/tools/flow", "veo3.gt4rents.com")
+	if got != "https://labs.google/fx/tools/flow" {
+		t.Fatalf("got %s", got)
+	}
+	q := restoreProxyURLs("continue="+url.QueryEscape("https://veo3.gt4rents.com/about"), "veo3.gt4rents.com")
+	if !strings.Contains(q, url.QueryEscape("https://flow.google.com/about")) {
+		t.Fatalf("continue got %s", q)
+	}
 }
 
 func TestFlowTarget(t *testing.T) {
@@ -46,7 +61,7 @@ func TestFlowQuietPath(t *testing.T) {
 	if !flowQuietPath("/menu_item.css.map") || !flowQuietPath("/__/host/www.gstatic.com/a.js") {
 		t.Fatal("static files must skip the device gate")
 	}
-	if flowQuietPath("/about") {
+	if flowQuietPath("/about") || flowQuietPath("/__/host/labs.google/fx/tools/flow") {
 		t.Fatal("pages stay on the device gate")
 	}
 }
@@ -77,7 +92,7 @@ func TestGoogleSAPISIDHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "SAPISIDHASH 1_old")
-	rewriteGoogleAuth(req, "SAPISID=test-sid; __Secure-1PAPISID=test-1p")
+	rewriteGoogleAuth(req, "SAPISID=test-sid; __Secure-1PAPISID=test-1p", "https://labs.google")
 	got := req.Header.Get("Authorization")
 	if strings.Contains(got, "test-sid") || strings.Contains(got, "test-1p") || strings.Contains(got, "old") {
 		t.Fatalf("leaked %s", got)

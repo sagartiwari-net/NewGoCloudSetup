@@ -4,7 +4,7 @@
   "public_host": "veo3.gt4rents.com",
   "public_scheme": "http",
   "tool_name": "Veo3 AI",
-  "home_path": "/",
+  "home_path": "/__/host/labs.google/fx/tools/flow",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
 }
