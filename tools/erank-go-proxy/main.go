@@ -1978,17 +1978,37 @@ func pickHTTPClient(cfg Config, path string) *http.Client {
 
 // ── URL REWRITING HELPERS ─────────────────────────────────────────────────────
 
+func requestPublicBase(r *http.Request, cfg Config) string {
+	host := panelHostOnly(cfg.PublicHost)
+	if r != nil {
+		if h := panelRequestHost(r, cfg.PublicHost); h != "" {
+			host = h
+		}
+	}
+	scheme := "https"
+	if r != nil {
+		scheme = requestScheme(r, cfg)
+	} else if strings.TrimSpace(cfg.PublicScheme) != "" {
+		scheme = cfg.PublicScheme
+	}
+	return scheme + "://" + host
+}
+
 // buildDomainReplacements creates a list of old→new domain pairs for HTML rewriting.
-func buildDomainReplacements(cfg Config) [][2]string {
+// publicBase is the host the browser is actually on, so a reseller domain stays
+// same-origin instead of being sent to the canonical tool host.
+func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
-	publicBase := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
+	if strings.TrimSpace(publicBase) == "" {
+		publicBase = fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
+	}
 	var pairs [][2]string
 	if targetParsed != nil {
 		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})
 		pairs = append(pairs, [2]string{"http://" + targetParsed.Host, publicBase})
 	}
-	if cdnParsed != nil && (targetParsed == nil || cdnParsed.Host != targetParsed.Host) {
+	if cdnParsed != nil && cdnParsed.Host != "" && (targetParsed == nil || cdnParsed.Host != targetParsed.Host) {
 		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
 		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
 	}
@@ -2005,6 +2025,12 @@ func buildDomainReplacements(cfg Config) [][2]string {
 		}
 		pairs = append(pairs, [2]string{"https://" + alias, publicBase})
 		pairs = append(pairs, [2]string{"http://" + alias, publicBase})
+	}
+	canonHost := panelHostOnly(cfg.PublicHost)
+	canon := fmt.Sprintf("%s://%s", cfg.PublicScheme, canonHost)
+	if canonHost != "" && canon != publicBase {
+		pairs = append(pairs, [2]string{canon, publicBase})
+		pairs = append(pairs, [2]string{"http://" + canonHost, publicBase})
 	}
 	return pairs
 }
@@ -3276,7 +3302,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		rl.bodyHint = bodyDiagnostic(upstreamResp.StatusCode, peek)
 	}
 
-	rewritePairs := buildDomainReplacements(cfg)
+	rewritePairs := buildDomainReplacements(cfg, requestPublicBase(r, cfg))
 
 	// ── 7. Handle response headers ───────────────────────────────────────────────
 	contentType := upstreamResp.Header.Get("Content-Type")
@@ -3406,6 +3432,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyBytes = regexp.MustCompile(`(?i)</head>`).ReplaceAll(bodyBytes, []byte(lateInject+"</head>"))
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(upstreamResp.StatusCode)
 		w.Write(bodyBytes)
 		if debugEnabled(cfg) {

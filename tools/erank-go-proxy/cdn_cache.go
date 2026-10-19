@@ -95,8 +95,13 @@ func cdnCacheKey(r *http.Request) string {
 	if !isErankCDNPath(path) {
 		return ""
 	}
-	// Path-only key — ignore cache-buster query noise.
-	return path
+	// Host is part of the key so a reseller domain does not reuse JS/CSS
+	// that was rewritten for the canonical tool host.
+	host := panelRequestHost(r, "")
+	if host == "" {
+		host = "default"
+	}
+	return host + " " + path
 }
 
 func cdnFilePath(key string) (bodyPath, metaPath string) {
