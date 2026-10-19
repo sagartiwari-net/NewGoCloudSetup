@@ -626,10 +626,8 @@ func panelCookieForAccount(raw string) string {
 	if trimmed == "" {
 		return ""
 	}
-	// GoAuto exports keep localStorage. Flattening them would drop the login token.
-	if strings.Contains(trimmed, `"localStorage"`) || strings.Contains(trimmed, `"local_storage"`) || strings.Contains(trimmed, `"includedFormats"`) {
-		return trimmed
-	}
+	// Google login lives in the cookies. A Chrome export that also carries
+	// localStorage must still be sent as a Cookie header, not as raw JSON.
 	return panelFlattenCookies(trimmed)
 }
 
@@ -639,12 +637,16 @@ func panelFlattenCookies(raw string) string {
 		entries := panelCookieEntries(trimmed)
 		if len(entries) > 0 {
 			parts := make([]string, 0, len(entries))
-			seen := map[string]bool{}
+			seen := map[string]int{}
 			for _, e := range entries {
-				if e.name == "" || seen[e.name] {
+				if e.name == "" {
 					continue
 				}
-				seen[e.name] = true
+				if i, ok := seen[e.name]; ok {
+					parts[i] = e.name + "=" + e.value
+					continue
+				}
+				seen[e.name] = len(parts)
 				parts = append(parts, e.name+"="+e.value)
 			}
 			if len(parts) > 0 {

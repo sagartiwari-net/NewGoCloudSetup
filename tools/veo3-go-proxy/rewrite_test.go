@@ -100,4 +100,27 @@ func TestGoogleSAPISIDHash(t *testing.T) {
 	if !strings.Contains(got, "SAPISIDHASH ") || !strings.Contains(got, "SAPISID1PHASH ") {
 		t.Fatalf("got %s", got)
 	}
+	if req.Header.Get("X-Goog-AuthUser") != "0" {
+		t.Fatalf("auth user %q", req.Header.Get("X-Goog-AuthUser"))
+	}
+}
+
+func TestGoogleAuthInjectedWithoutBrowserHeader(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "https://flow.google.com/_/AiSandboxAngularFrontend/data/batchexecute", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewriteGoogleAuth(req, "SAPISID=test-sid", "https://flow.google.com")
+	got := req.Header.Get("Authorization")
+	if !strings.HasPrefix(got, "SAPISIDHASH ") || strings.Contains(got, "test-sid") {
+		t.Fatalf("got %s", got)
+	}
+}
+
+func TestPanelCookieFlattensGoogleExport(t *testing.T) {
+	raw := `{"cookies":[{"name":"SAPISID","value":"abc"},{"name":"SID","value":"def"}],"localStorage":{"x":"1"}}`
+	got := panelCookieForAccount(raw)
+	if !strings.Contains(got, "SAPISID=abc") || !strings.Contains(got, "SID=def") || strings.Contains(got, "localStorage") {
+		t.Fatalf("got %s", got)
+	}
 }

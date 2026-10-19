@@ -228,6 +228,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		renderProxyProblem(w, r)
 		return
 	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.Printf("[AUTH] path=%s upstream=%s origin=%s sapisid=%t", r.URL.Path, upHost, pageOrigin, cookieValue(cookie, "SAPISID") != "")
+	}
 	logVeoUse(r.Method, r.URL.Path, resp.StatusCode, veoSessionUser(r), reqSnap, body)
 	if body != nil {
 		rewritten := []byte(rewriteText(string(body), publicBase, publicHost))
@@ -419,8 +422,11 @@ func rewriteGoogleAuth(req *http.Request, cookie, origin string) {
 	if req == nil {
 		return
 	}
-	auth := req.Header.Get("Authorization")
-	if !strings.Contains(auth, "SAPISID") {
+	host := ""
+	if req.URL != nil {
+		host = req.URL.Host
+	}
+	if !googleAuthHost(host) && !strings.Contains(req.Header.Get("Authorization"), "SAPISID") {
 		return
 	}
 	if strings.TrimSpace(origin) == "" {
@@ -439,7 +445,19 @@ func rewriteGoogleAuth(req *http.Request, cookie, origin string) {
 	}
 	if len(parts) > 0 {
 		req.Header.Set("Authorization", strings.Join(parts, " "))
+		if req.Header.Get("X-Goog-AuthUser") == "" {
+			req.Header.Set("X-Goog-AuthUser", "0")
+		}
 	}
+}
+
+func googleAuthHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	switch host {
+	case "flow.google.com", "labs.google", "accounts.google.com", "myaccount.google.com":
+		return true
+	}
+	return strings.HasSuffix(host, ".googleapis.com") || strings.HasSuffix(host, ".clients6.google.com")
 }
 
 func googleSAPISIDHash(ts, sid, origin string) string {
