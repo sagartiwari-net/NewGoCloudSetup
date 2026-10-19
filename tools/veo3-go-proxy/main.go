@@ -165,6 +165,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	copyUpstreamHeaders(upstream, r)
+	// Auth.js trusts forwarded host. Leave the official host so the saved session stays logged in.
+	for _, h := range []string{"X-Forwarded-Host", "X-Forwarded-Proto", "X-Forwarded-For", "X-Real-Ip", "Forwarded", "Via", "Cf-Connecting-Ip", "Cf-Ray", "Cf-Visitor", "Cf-Ipcountry", "True-Client-Ip"} {
+		upstream.Header.Del(h)
+	}
 	publicHost := panelRequestHost(r, c.PublicHost)
 	rewriteUpstreamOrigin(upstream, publicHost, target.Host)
 	ua := strings.TrimSpace(acc.UserAgent)
@@ -321,7 +325,7 @@ func rememberUpstreamCookies(accountID int, cookies []string) {
 	}
 	for _, raw := range cookies {
 		name, value, ok := splitSetCookie(raw)
-		if !ok || name == "" {
+		if !ok || name == "" || authCookie(name) {
 			continue
 		}
 		jar[name] = value
@@ -400,7 +404,15 @@ func rewriteContent(contentType string) bool {
 }
 
 func rewriteText(s, publicBase, publicHost string) string {
+	escapedBase := strings.ReplaceAll(publicBase, "/", `\/`)
+	escapedHost := strings.ReplaceAll("//"+publicHost, "/", `\/`)
 	replacer := strings.NewReplacer(
+		`https:\/\/www.veo3ai.io`, escapedBase,
+		`http:\/\/www.veo3ai.io`, escapedBase,
+		`https:\/\/veo3ai.io`, escapedBase,
+		`http:\/\/veo3ai.io`, escapedBase,
+		`\/\/www.veo3ai.io`, escapedHost,
+		`\/\/veo3ai.io`, escapedHost,
 		"https://www.veo3ai.io", publicBase,
 		"http://www.veo3ai.io", publicBase,
 		"https://veo3ai.io", publicBase,
@@ -429,10 +441,14 @@ func copyResponseHeaders(w http.ResponseWriter, resp *http.Response) {
 
 func veoBlocked(path string) bool {
 	p := strings.ToLower(path)
-	if p == "/pricing" || strings.HasPrefix(p, "/pricing/") {
+	switch p {
+	case "/api/auth/session", "/api/auth/csrf", "/api/auth/providers":
+		return false
+	}
+	if p == "/pricing" || strings.HasPrefix(p, "/pricing/") || p == "/api/auth" {
 		return true
 	}
-	for _, prefix := range []string{"/login", "/sign-in", "/signin", "/signup", "/sign-up", "/register", "/account", "/billing", "/settings", "/api/auth"} {
+	for _, prefix := range []string{"/login", "/sign-in", "/signin", "/signup", "/sign-up", "/register", "/account", "/billing", "/settings", "/api/auth/signin", "/api/auth/signout", "/api/auth/callback", "/api/auth/error"} {
 		if p == prefix || strings.HasPrefix(p, prefix+"/") {
 			return true
 		}

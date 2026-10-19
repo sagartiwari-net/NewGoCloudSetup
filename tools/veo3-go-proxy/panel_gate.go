@@ -365,16 +365,7 @@ func claimPanelAccount(cfg Config, websiteID ...int) (ToolAccount, error) {
 // loadPanelSessionAccount uses the account pinned on the live session.
 // assigned_account_id 0 means auto: claim the least recently used account and pin it.
 func cachedPanelAccount(cfg Config, sessionToken string) (ToolAccount, error) {
-	if raw, ok := panelSess.Load(sessionToken); ok {
-		sess := raw.(*panelGateSession)
-		sess.mu.Lock()
-		if sess.accountOK && sess.account.Cookie != "" {
-			acc := sess.account
-			sess.mu.Unlock()
-			return acc, nil
-		}
-		sess.mu.Unlock()
-	}
+	// Always read the panel cookie again so a fresh paste applies on refresh.
 	acc, err := loadPanelSessionAccount(cfg, sessionToken)
 	if err != nil {
 		return ToolAccount{}, err
