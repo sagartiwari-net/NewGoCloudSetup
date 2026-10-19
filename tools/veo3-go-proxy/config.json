@@ -1,10 +1,10 @@
 {
   "port": "5341",
-  "target_url": "https://www.veo3ai.io",
+  "target_url": "https://flow.google.com",
   "public_host": "127.0.0.1:5341",
   "public_scheme": "http",
   "tool_name": "Veo3 AI",
-  "home_path": "/image-to-video",
+  "home_path": "/",
   "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
   "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
 }

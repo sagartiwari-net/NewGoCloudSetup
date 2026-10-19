@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -103,10 +106,10 @@ func reloadConfig() error {
 		return err
 	}
 	if strings.TrimSpace(next.TargetURL) == "" {
-		next.TargetURL = "https://www.veo3ai.io"
+		next.TargetURL = "https://flow.google.com"
 	}
 	if strings.TrimSpace(next.HomePath) == "" {
-		next.HomePath = "/image-to-video"
+		next.HomePath = "/"
 	}
 	if strings.TrimSpace(next.ToolName) == "" {
 		next.ToolName = "Veo3 AI"
@@ -149,8 +152,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	r = req
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		if r.URL.Path == "/" {
-			http.Redirect(w, r, homePath(c), http.StatusFound)
+		home := homePath(c)
+		if r.URL.Path == "/" && home != "/" {
+			http.Redirect(w, r, home, http.StatusFound)
 			return
 		}
 	}
@@ -184,6 +188,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		upstream.Header.Del("Cookie")
 	}
+	rewriteGoogleAuth(upstream, cookie)
 	upstream.Host = target.Host
 
 	resp, err := chromeClient().Do(upstream)
@@ -327,7 +332,7 @@ func rememberUpstreamCookies(accountID int, cookies []string) {
 	}
 	for _, raw := range cookies {
 		name, value, ok := splitSetCookie(raw)
-		if !ok || name == "" || authCookie(name) {
+		if !ok || name == "" || value == "" || value == "deleted" {
 			continue
 		}
 		jar[name] = value
@@ -351,17 +356,66 @@ func stripAuthSetCookies(resp *http.Response) {
 		if !ok || authCookie(name) {
 			continue
 		}
-		raw = strings.ReplaceAll(raw, "domain=.veo3ai.io", "")
-		raw = strings.ReplaceAll(raw, "domain=veo3ai.io", "")
-		raw = strings.ReplaceAll(raw, "Domain=.veo3ai.io", "")
-		raw = strings.ReplaceAll(raw, "Domain=www.veo3ai.io", "")
+		raw = strings.ReplaceAll(raw, "domain=.google.com", "")
+		raw = strings.ReplaceAll(raw, "domain=google.com", "")
+		raw = strings.ReplaceAll(raw, "Domain=.google.com", "")
+		raw = strings.ReplaceAll(raw, "Domain=flow.google.com", "")
+		raw = strings.ReplaceAll(raw, "domain=.flow.google.com", "")
 		resp.Header.Add("Set-Cookie", raw)
 	}
 }
 
 func authCookie(name string) bool {
-	n := strings.ToLower(name)
-	return strings.Contains(n, "authjs") || strings.Contains(n, "session-token")
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch n {
+	case "sid", "hsid", "ssid", "apisid", "sapisid", "osid", "nid", "sidcc", "aec":
+		return true
+	}
+	if strings.Contains(n, "psid") || strings.Contains(n, "papisid") || strings.Contains(n, "osid") || strings.Contains(n, "authjs") || strings.Contains(n, "session-token") {
+		return true
+	}
+	return false
+}
+
+func rewriteGoogleAuth(req *http.Request, cookie string) {
+	if req == nil {
+		return
+	}
+	auth := req.Header.Get("Authorization")
+	if !strings.Contains(auth, "SAPISID") {
+		return
+	}
+	origin := "https://flow.google.com"
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	var parts []string
+	if sid := cookieValue(cookie, "SAPISID"); sid != "" {
+		parts = append(parts, "SAPISIDHASH "+ts+"_"+googleSAPISIDHash(ts, sid, origin))
+	}
+	if sid := cookieValue(cookie, "__Secure-1PAPISID"); sid != "" {
+		parts = append(parts, "SAPISID1PHASH "+ts+"_"+googleSAPISIDHash(ts, sid, origin))
+	}
+	if sid := cookieValue(cookie, "__Secure-3PAPISID"); sid != "" {
+		parts = append(parts, "SAPISID3PHASH "+ts+"_"+googleSAPISIDHash(ts, sid, origin))
+	}
+	if len(parts) > 0 {
+		req.Header.Set("Authorization", strings.Join(parts, " "))
+	}
+}
+
+func googleSAPISIDHash(ts, sid, origin string) string {
+	sum := sha1.Sum([]byte(ts + " " + sid + " " + origin))
+	return hex.EncodeToString(sum[:])
+}
+
+func cookieValue(cookie, name string) string {
+	prefix := name + "="
+	for _, part := range strings.Split(cookie, ";") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, prefix) {
+			return part[len(prefix):]
+		}
+	}
+	return ""
 }
 
 func readRewriteBody(resp *http.Response) ([]byte, string, error) {
@@ -409,18 +463,12 @@ func rewriteText(s, publicBase, publicHost string) string {
 	escapedBase := strings.ReplaceAll(publicBase, "/", `\/`)
 	escapedHost := strings.ReplaceAll("//"+publicHost, "/", `\/`)
 	replacer := strings.NewReplacer(
-		`https:\/\/www.veo3ai.io`, escapedBase,
-		`http:\/\/www.veo3ai.io`, escapedBase,
-		`https:\/\/veo3ai.io`, escapedBase,
-		`http:\/\/veo3ai.io`, escapedBase,
-		`\/\/www.veo3ai.io`, escapedHost,
-		`\/\/veo3ai.io`, escapedHost,
-		"https://www.veo3ai.io", publicBase,
-		"http://www.veo3ai.io", publicBase,
-		"https://veo3ai.io", publicBase,
-		"http://veo3ai.io", publicBase,
-		"//www.veo3ai.io", "//"+publicHost,
-		"//veo3ai.io", "//"+publicHost,
+		`https:\/\/flow.google.com`, escapedBase,
+		`http:\/\/flow.google.com`, escapedBase,
+		`\/\/flow.google.com`, escapedHost,
+		"https://flow.google.com", publicBase,
+		"http://flow.google.com", publicBase,
+		"//flow.google.com", "//"+publicHost,
 	)
 	return replacer.Replace(s)
 }
