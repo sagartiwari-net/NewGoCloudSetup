@@ -18,7 +18,32 @@ const (
 	cdnCacheDir = "cdn-cache"
 	cdnCacheTTL = 72 * time.Hour
 	cdnCacheMax = 20 << 20 // 20MB
+	// Fresh prefix. /cdn-proxy/ responses were stored by nginx with the
+	// canonical host baked into the JS, so a new URL is the only miss.
+	erankAssetPrefix = "/e-assets"
 )
+
+func erankAssetPrefixes() []string {
+	return []string{erankAssetPrefix + "/", "/cdn-proxy/"}
+}
+
+func hasErankAssetPrefix(path string) bool {
+	for _, prefix := range erankAssetPrefixes() {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func stripErankAssetPrefix(path string) string {
+	for _, prefix := range erankAssetPrefixes() {
+		if strings.HasPrefix(path, prefix) {
+			return "/" + strings.TrimPrefix(path, prefix)
+		}
+	}
+	return path
+}
 
 type cdnMeta struct {
 	ContentType string `json:"content_type"`
@@ -63,7 +88,7 @@ func isErankCDNPath(path string) bool {
 		strings.Contains(lower, "graphql") {
 		return false
 	}
-	if strings.HasPrefix(lower, "/cdn-proxy/") ||
+	if hasErankAssetPrefix(lower) ||
 		strings.HasPrefix(lower, "/extra-cdn-") ||
 		strings.HasPrefix(lower, "/static/") {
 		return erankSafeExt(path) ||
@@ -101,7 +126,7 @@ func cdnCacheKey(r *http.Request) string {
 	if host == "" {
 		host = "default"
 	}
-	return "v2 " + host + " " + path
+	return "v3 " + host + " " + path
 }
 
 func cdnFilePath(key string) (bodyPath, metaPath string) {
@@ -133,7 +158,10 @@ func setErankCDNBrowserCache(w http.ResponseWriter, path string) {
 	// Rewritten JS/CSS used to be cached for a year. CloudFront is still
 	// serving that copy, which points every reseller domain at erank.gt4rents.com.
 	if strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".mjs") || strings.HasSuffix(lower, ".css") {
-		w.Header().Set("Cache-Control", "no-cache")
+		// no-store so the site nginx does not keep another copy of the script.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("CDN-Cache-Control", "no-store")
+		w.Header().Set("Surrogate-Control", "no-store")
 	} else {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}

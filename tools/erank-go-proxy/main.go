@@ -1966,7 +1966,7 @@ func pickHTTPClient(cfg Config, path string) *http.Client {
 			return httpClient
 		}
 		// Static assets, fonts, media: pooled fast client (no per-request TLS handshake).
-		if strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/cdn-proxy/") {
+		if strings.HasPrefix(path, "/static/") || hasErankAssetPrefix(path) {
 			return fastHTTPClient
 		}
 		if strings.HasPrefix(path, "/extra-cdn-") && !strings.HasPrefix(path, "/extra-cdn-0") {
@@ -2023,7 +2023,7 @@ func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
 		pairs = addHostRewrite(pairs, targetParsed.Host, "")
 	}
 	if cdnParsed != nil && cdnParsed.Host != "" && (targetParsed == nil || cdnParsed.Host != targetParsed.Host) {
-		pairs = addHostRewrite(pairs, cdnParsed.Host, "/cdn-proxy")
+		pairs = addHostRewrite(pairs, cdnParsed.Host, erankAssetPrefix)
 	}
 	for i, extra := range cfg.ExtraCDNDomains {
 		extra = strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
@@ -2088,7 +2088,7 @@ func csrfBootstrapScript() string {
 }
 
 func assetsProxyPathScript(cfg Config) string {
-	base := fmt.Sprintf("%s://%s/cdn-proxy/", cfg.PublicScheme, cfg.PublicHost)
+	base := fmt.Sprintf("%s://%s%s/", cfg.PublicScheme, cfg.PublicHost, erankAssetPrefix)
 	return fmt.Sprintf(`<script>try{__webpack_public_path__='%s';}catch(e){}</script>`, base)
 }
 
@@ -2096,6 +2096,10 @@ func rewriteBody(body []byte, pairs [][2]string) []byte {
 	for _, pair := range pairs {
 		body = bytes.ReplaceAll(body, []byte(pair[0]), []byte(pair[1]))
 	}
+	// Anything still on the old asset path is a cached rewrite. Move it
+	// to the prefix nginx has not stored.
+	body = bytes.ReplaceAll(body, []byte("/cdn-proxy/"), []byte(erankAssetPrefix+"/"))
+	body = bytes.ReplaceAll(body, []byte(`\/cdn-proxy\/`), []byte(`\/e-assets\/`))
 	return body
 }
 
@@ -2139,6 +2143,15 @@ func applyResponseCORS(w http.ResponseWriter, r *http.Request, cfg Config) {
 
 func isCORSHeader(name string) bool {
 	return strings.HasPrefix(strings.ToLower(name), "access-control-")
+}
+
+func skipUpstreamCacheHeader(name string) bool {
+	switch name {
+	case "age", "etag", "last-modified", "expires", "pragma", "cache-control", "via", "x-cache", "x-amz-cf-id", "x-amz-cf-pop":
+		return true
+	default:
+		return strings.HasPrefix(name, "x-amz-")
+	}
 }
 
 func isExtraCDNPath(path string) bool {
@@ -2325,7 +2338,7 @@ func patcherScript(cfg Config) string {
 
 	return fmt.Sprintf(`<script>
 (function() {
-    var T = '%s', C = '%s', O = window.location.origin;
+    var T = '%s', C = '%s', P = '%s', O = window.location.origin;
     var HOME = '%s';
     var BLOCKED = [%s];
     var EXTRAS = [%s];
@@ -2351,9 +2364,15 @@ func patcherScript(cfg Config) string {
         u = u.replace('https://www.erank.com', O).replace('http://www.erank.com', O);
         u = u.replace('https://app.erank.com', O).replace('http://app.erank.com', O);
         u = u.replace('https://login.erank.com', O).replace('http://login.erank.com', O);
-        if (C && C !== T) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
+        if (C && C !== T) u = u.split('https://'+C).join(O+'/e-assets').split('http://'+C).join(O+'/e-assets');
         if (u.indexOf('//'+T) === 0) u = O + u.slice(('//'+T).length);
-        if (C && C !== T && u.indexOf('//'+C) === 0) u = O + '/cdn-proxy' + u.slice(('//'+C).length);
+        if (C && C !== T && u.indexOf('//'+C) === 0) u = O + '/e-assets' + u.slice(('//'+C).length);
+        if (P) {
+            u = u.split('https://'+P+'/cdn-proxy').join(O+'/e-assets');
+            u = u.split('http://'+P+'/cdn-proxy').join(O+'/e-assets');
+            u = u.split('https://'+P).join(O);
+            u = u.split('http://'+P).join(O);
+        }
         for (var i = 0; i < EXTRAS.length; i++) {
             var eh = EXTRAS[i].host;
             if (u.indexOf('//'+eh) === 0) u = O + EXTRAS[i].path + u.slice(('//'+eh).length);
@@ -2570,7 +2589,7 @@ func patcherScript(cfg Config) string {
     }
 })();
 </script>`,
-		targetHost, cdnHost, homePath, blockedListJS.String(), extraCDNsJS.String(), localHostFix, triggerChecks.String(),
+		targetHost, cdnHost, proxyHostname, homePath, blockedListJS.String(), extraCDNsJS.String(), localHostFix, triggerChecks.String(),
 		func() string {
 			if len(cfg.WatchdogTriggers) > 0 && !cfg.LocalTestMode {
 				return "true"
@@ -2724,7 +2743,7 @@ func classifyPath(path string) string {
 		return "DATADOME"
 	case strings.HasPrefix(path, "/extra-cdn-"):
 		return "CDN"
-	case strings.HasPrefix(path, "/cdn-proxy/"):
+	case hasErankAssetPrefix(path):
 		return "CDN"
 	case path == "/sw.js":
 		return "SW"
@@ -3154,10 +3173,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Handle CDN proxy routes
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
-	if strings.HasPrefix(path, "/cdn-proxy/") && cdnParsed != nil {
+	if hasErankAssetPrefix(path) && cdnParsed != nil {
 		upstreamURL.Scheme = cdnParsed.Scheme
 		upstreamURL.Host = cdnParsed.Host
-		upstreamURL.Path = "/" + strings.TrimPrefix(path, "/cdn-proxy/")
+		upstreamURL.Path = stripErankAssetPrefix(path)
 	}
 	for i, extra := range cfg.ExtraCDNDomains {
 		prefix := fmt.Sprintf("/extra-cdn-%d/", i)
@@ -3339,6 +3358,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if isCORSHeader(k) {
 			continue
 		}
+		if isErankCDNPath(path) && skipUpstreamCacheHeader(kLower) {
+			continue
+		}
 		for _, v := range vv {
 			w.Header().Add(k, v)
 		}
@@ -3392,7 +3414,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	isHTML := strings.Contains(contentType, "text/html") &&
 		!strings.HasPrefix(path, "/api/") &&
 		!strings.HasPrefix(path, "/extra-cdn-0") &&
-		!strings.HasPrefix(path, "/cdn-proxy/") &&
+		!hasErankAssetPrefix(path) &&
 		!strings.HasPrefix(path, "/cdn-cgi/") &&
 		!strings.HasSuffix(path, ".js") &&
 		!strings.HasSuffix(path, ".css") &&
