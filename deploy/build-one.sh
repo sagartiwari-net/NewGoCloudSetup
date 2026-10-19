@@ -33,6 +33,12 @@ echo "Building ${FOLDER} → ${OUTDIR}/app (port ${PORT}, host ${FQDN})"
 cd "${SRC}"
 go build -o "${OUTDIR}/app" .
 
+# Semrush custom export is read from the process directory at runtime.
+if [[ -f "${SRC}/export-tool.js" ]]; then
+  cp "${SRC}/export-tool.js" "${OUTDIR}/export-tool.js"
+  echo "Copied export-tool.js → ${OUTDIR}/export-tool.js"
+fi
+
 # Chrome extension templates (Helium10 / JungleScout / etc.) must sit next to ./app
 # so /extension.zip can bake a zip at runtime.
 if [[ -d "${SRC}/extension" ]]; then
@@ -87,6 +93,9 @@ if _scheme in ("http", "https"):
     base["public_scheme"] = _scheme
 elif str(base.get("public_scheme") or "").strip().lower() not in ("http", "https"):
     base["public_scheme"] = "http"
+# panel_db non-empty means panel mode (use_database stays false).
+# The path is not opened. Accounts and sessions come from MySQL gt4rents.
+# panel.db is a frozen backup.
 base["panel_db"] = base.get("panel_db") or "${BASE}/panel/data/panel.db"
 if "local_test_mode" in base:
     base["local_test_mode"] = False

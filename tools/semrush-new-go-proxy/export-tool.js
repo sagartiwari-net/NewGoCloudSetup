@@ -458,11 +458,12 @@
     for (let depth = 0; depth < 12 && el; depth++) {
       if (!el.matches) { el = el.parentElement; continue; }
       if (el.matches('button, [role="button"], [role="menuitem"], a, li, [class*="card" i], [class*="tile" i], div[tabindex], [data-testid*="export" i]')) {
-        const text = (el.textContent || '').trim().toLowerCase();
+        const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
         const label = (el.getAttribute('aria-label') || '').toLowerCase();
         const testId = (el.getAttribute('data-testid') || '').toLowerCase();
         if (
-          text === 'export' || text === 'export to pdf' || /^export\b/.test(text) ||
+          text === 'export' || text === 'export to pdf' || text === 'excel' || text === 'csv' ||
+          (text.length <= 48 && (text.endsWith('export to pdf') || /^export\b/.test(text))) ||
           text.includes('download pdf') || label.includes('export') || label.includes('pdf') ||
           testId.includes('export')
         ) {
@@ -2246,9 +2247,20 @@
 
     _hideOfficialModals();
 
-    if (_isPdfBtn(btnEl) || (btnEl.textContent || '').toLowerCase().includes('download pdf')) {
+    const label = (btnEl.innerText || btnEl.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (_isPdfBtn(btnEl) || label.includes('download pdf') || label.endsWith('export to pdf')) {
       window._semrushLastExportIntent = 'pdf';
       _exportPdf();
+      return;
+    }
+    if (label === 'excel' || label === 'csv') {
+      window._semrushLastExportIntent = 'table';
+      _uiFormatPicker(btnEl);
+      window._exportFormat = label === 'excel' ? 'xlsx' : 'csv';
+      const panel = document.getElementById('semrush-export-container');
+      const scopeTitle = document.getElementById('semrush-export-scope-title');
+      if (scopeTitle) scopeTitle.textContent = (window._exportFormat === 'xlsx' ? 'Excel' : 'CSV') + ' — choose scope';
+      if (panel) _showExportPanel(panel, 'scope');
       return;
     }
 

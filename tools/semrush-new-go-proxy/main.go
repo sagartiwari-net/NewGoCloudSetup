@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -278,7 +279,13 @@ func invalidateSessionAccountCache(sessionToken string) {
 	sessionCookieCacheMu.Unlock()
 }
 
+//go:embed export-tool.js
+var embeddedExportToolJS string
+
 func loadExportToolJS() string {
+	if strings.TrimSpace(embeddedExportToolJS) != "" {
+		return embeddedExportToolJS
+	}
 	info, err := os.Stat("export-tool.js")
 	if err != nil {
 		return ""
@@ -295,6 +302,23 @@ func loadExportToolJS() string {
 	exportToolJS = string(data)
 	exportToolJSMtime = info.ModTime()
 	return exportToolJS
+}
+
+func injectSemrushBoot(body, snippet string) string {
+	if strings.Contains(body, "data-semrush-proxy-boot") || strings.TrimSpace(snippet) == "" {
+		return body
+	}
+	lower := strings.ToLower(body)
+	i := strings.Index(lower, "<head")
+	if i < 0 {
+		return body
+	}
+	rel := strings.Index(body[i:], ">")
+	if rel < 0 {
+		return body
+	}
+	at := i + rel + 1
+	return body[:at] + "\n" + snippet + body[at:]
 }
 
 func bodyNeedsSemrushRewrite(body []byte) bool {
@@ -1916,9 +1940,7 @@ func main() {
 						exportScript = "<script>\n" + customExportJS + "\n</script>"
 					}
 
-					if !strings.Contains(bodyStr, "data-semrush-proxy-boot") {
-						bodyStr = strings.Replace(bodyStr, "<head>", "<head>"+"\n"+blockScript+"\n"+exportScript, 1)
-					}
+					bodyStr = injectSemrushBoot(bodyStr, blockScript+"\n"+exportScript)
 					bodyStr = injectSemrushDeviceScript(bodyStr)
 				}
 			}
