@@ -18,15 +18,15 @@ func TestResellerHostStaysOnRequestDomain(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Host = "ernk.amzpremiumsoftware.com"
-	body := rewriteBody([]byte(`<script src="https://members.erank.com/assets/app.js"></script> https://erank.gt4rents.com/assets/font.woff2`), buildDomainReplacements(cfg, requestPublicBase(req, cfg)))
-	if !bytes.Contains(body, []byte("https://ernk.amzpremiumsoftware.com/assets/app.js")) {
-		t.Fatalf("script host: %s", body)
+	raw := []byte(`<script src="https://members.erank.com/assets/app.js"></script> https://erank.gt4rents.com/cdn-proxy/production/app.js "https:\/\/assets.erank.com\/build\/x.js"`)
+	body := rewriteBody(raw, buildDomainReplacements(cfg, requestPublicBase(req, cfg)))
+	for _, want := range []string{`src="/assets/app.js"`, ` /cdn-proxy/production/app.js `, `"\/cdn-proxy\/build\/x.js"`} {
+		if !bytes.Contains(body, []byte(want)) {
+			t.Fatalf("missing %s in %s", want, body)
+		}
 	}
-	if !bytes.Contains(body, []byte("https://ernk.amzpremiumsoftware.com/assets/font.woff2")) {
-		t.Fatalf("font host: %s", body)
-	}
-	if bytes.Contains(body, []byte("erank.gt4rents.com")) || bytes.Contains(body, []byte("members.erank.com")) {
-		t.Fatalf("official host leaked: %s", body)
+	if bytes.Contains(body, []byte("erank.gt4rents.com")) || bytes.Contains(body, []byte("members.erank.com")) || bytes.Contains(body, []byte("assets.erank.com")) {
+		t.Fatalf("absolute host leaked: %s", body)
 	}
 }
 

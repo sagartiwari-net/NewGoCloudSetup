@@ -1994,43 +1994,50 @@ func requestPublicBase(r *http.Request, cfg Config) string {
 	return scheme + "://" + host
 }
 
+// addHostRewrite maps a hostname onto a root-relative prefix.
+// Absolute proxy hosts are not used, so the browser keeps the domain that opened the page.
+func addHostRewrite(pairs [][2]string, host, prefix string) [][2]string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return pairs
+	}
+	escPrefix := strings.ReplaceAll(prefix, "/", "\\/")
+	return append(pairs,
+		[2]string{"https://" + host, prefix},
+		[2]string{"http://" + host, prefix},
+		[2]string{"https:\\/\\/" + host, escPrefix},
+		[2]string{"http:\\/\\/" + host, escPrefix},
+		[2]string{"//" + host, prefix},
+	)
+}
+
 // buildDomainReplacements creates a list of old→new domain pairs for HTML rewriting.
-// publicBase is the host the browser is actually on, so a reseller domain stays
-// same-origin instead of being sent to the canonical tool host.
+// Replacements are root-relative, so erank.gt4rents.com and a reseller domain each
+// load assets on their own host.
 func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
-	if strings.TrimSpace(publicBase) == "" {
-		publicBase = fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
-	}
+	_ = publicBase
 	var pairs [][2]string
-	if targetParsed != nil {
-		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})
-		pairs = append(pairs, [2]string{"http://" + targetParsed.Host, publicBase})
+	if targetParsed != nil && targetParsed.Host != "" {
+		pairs = addHostRewrite(pairs, targetParsed.Host, "")
 	}
 	if cdnParsed != nil && cdnParsed.Host != "" && (targetParsed == nil || cdnParsed.Host != targetParsed.Host) {
-		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
-		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
+		pairs = addHostRewrite(pairs, cdnParsed.Host, "/cdn-proxy")
 	}
 	for i, extra := range cfg.ExtraCDNDomains {
 		extra = strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		extra = strings.Split(extra, "/")[0]
-		pairs = append(pairs, [2]string{"https://" + extra, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)})
-		pairs = append(pairs, [2]string{"http://" + extra, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)})
+		pairs = addHostRewrite(pairs, extra, fmt.Sprintf("/extra-cdn-%d", i))
 	}
-	// Common marketing / app aliases → stay on proxy host.
 	for _, alias := range []string{"www.erank.com", "erank.com", "app.erank.com", "login.erank.com", "lime.erank.com"} {
 		if targetParsed != nil && alias == targetParsed.Host {
 			continue
 		}
-		pairs = append(pairs, [2]string{"https://" + alias, publicBase})
-		pairs = append(pairs, [2]string{"http://" + alias, publicBase})
+		pairs = addHostRewrite(pairs, alias, "")
 	}
-	canonHost := panelHostOnly(cfg.PublicHost)
-	canon := fmt.Sprintf("%s://%s", cfg.PublicScheme, canonHost)
-	if canonHost != "" && canon != publicBase {
-		pairs = append(pairs, [2]string{canon, publicBase})
-		pairs = append(pairs, [2]string{"http://" + canonHost, publicBase})
+	if canonHost := panelHostOnly(cfg.PublicHost); canonHost != "" {
+		pairs = addHostRewrite(pairs, canonHost, "")
 	}
 	return pairs
 }
@@ -2041,6 +2048,9 @@ func rewriteLocationHeader(loc string, pairs [][2]string) string {
 	}
 	for _, pair := range pairs {
 		loc = strings.ReplaceAll(loc, pair[0], pair[1])
+	}
+	if loc == "" {
+		return "/"
 	}
 	return loc
 }

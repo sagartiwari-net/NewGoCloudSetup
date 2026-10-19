@@ -101,7 +101,7 @@ func cdnCacheKey(r *http.Request) string {
 	if host == "" {
 		host = "default"
 	}
-	return host + " " + path
+	return "v2 " + host + " " + path
 }
 
 func cdnFilePath(key string) (bodyPath, metaPath string) {
