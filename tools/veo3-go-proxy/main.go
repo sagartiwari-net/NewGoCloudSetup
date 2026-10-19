@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -164,7 +165,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reqSnap := snapVeoBody(r)
-	upstream, err := http.NewRequestWithContext(r.Context(), r.Method, target.Scheme+"://"+target.Host+r.URL.RequestURI(), r.Body)
+	scheme, upHost, uri := flowTarget(r, target)
+	if scheme == "" {
+		writeLightCard(w, http.StatusForbidden, lightCard{
+			Title:   "Not available",
+			Heading: "Not available",
+			Message: "This page is not available here.",
+		})
+		return
+	}
+	upstream, err := http.NewRequestWithContext(r.Context(), r.Method, scheme+"://"+upHost+uri, r.Body)
 	if err != nil {
 		renderProxyProblem(w, r)
 		return
@@ -175,7 +185,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstream.Header.Del(h)
 	}
 	publicHost := panelRequestHost(r, c.PublicHost)
-	rewriteUpstreamOrigin(upstream, publicHost, target.Host)
+	rewriteUpstreamOrigin(upstream, publicHost, "flow.google.com")
 	ua := strings.TrimSpace(acc.UserAgent)
 	if ua == "" {
 		ua = c.UserAgent
@@ -189,7 +199,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstream.Header.Del("Cookie")
 	}
 	rewriteGoogleAuth(upstream, cookie)
-	upstream.Host = target.Host
+	upstream.Host = upHost
 
 	resp, err := chromeClient().Do(upstream)
 	if err != nil {
@@ -205,6 +215,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Header.Set("Location", rewriteText(loc, publicBase, publicHost))
 	}
 	stripAuthSetCookies(resp)
+	resp.Header.Del("Content-Security-Policy")
+	resp.Header.Del("Content-Security-Policy-Report-Only")
+	resp.Header.Del("X-Content-Security-Policy")
+	resp.Header.Del("Report-To")
+	resp.Header.Del("Reporting-Endpoints")
 
 	body, encoding, err := readRewriteBody(resp)
 	if err != nil {
@@ -422,7 +437,7 @@ func readRewriteBody(resp *http.Response) ([]byte, string, error) {
 	if !rewriteContent(resp.Header.Get("Content-Type")) {
 		return nil, "", nil
 	}
-	const max = 12 << 20
+	const max = 32 << 20
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
 		return nil, "", err
@@ -470,7 +485,82 @@ func rewriteText(s, publicBase, publicHost string) string {
 		"http://flow.google.com", publicBase,
 		"//flow.google.com", "//"+publicHost,
 	)
-	return replacer.Replace(s)
+	return rewriteFlowCompanions(replacer.Replace(s), publicBase, publicHost)
+}
+
+var flowCompanionRE = regexp.MustCompile(`(?i)(https?:)?\\?/\\?/([a-z0-9.-]+\.(?:clients6\.google\.com|googleapis\.com|gstatic\.com|googleusercontent\.com)|fonts\.googleapis\.com|www\.google\.com|apis\.google\.com)`)
+
+func rewriteFlowCompanions(s, publicBase, publicHost string) string {
+	escapedBase := strings.ReplaceAll(publicBase, "/", `\/`)
+	return flowCompanionRE.ReplaceAllStringFunc(s, func(match string) string {
+		host := flowCompanionRE.FindStringSubmatch(match)
+		if len(host) < 3 || !flowHostAllowed(host[2]) {
+			return match
+		}
+		prefix := publicBase + "/__/host/" + host[2]
+		if strings.Contains(match, `\/`) {
+			prefix = escapedBase + `\/__\/host\/` + host[2]
+		} else if strings.HasPrefix(match, "//") || strings.HasPrefix(match, `\/\/`) {
+			prefix = "//" + publicHost + "/__/host/" + host[2]
+		}
+		return prefix
+	})
+}
+
+func flowTarget(r *http.Request, main *url.URL) (scheme, host, uri string) {
+	const pfx = "/__/host/"
+	if r != nil && strings.HasPrefix(r.URL.Path, pfx) {
+		rest := strings.TrimPrefix(r.URL.Path, pfx)
+		host, path, ok := strings.Cut(rest, "/")
+		host = strings.ToLower(strings.TrimSpace(host))
+		if !ok || !flowHostAllowed(host) {
+			return "", "", ""
+		}
+		if path == "" {
+			path = "/"
+		} else {
+			path = "/" + path
+		}
+		if r.URL.RawQuery != "" {
+			path += "?" + r.URL.RawQuery
+		}
+		return "https", host, path
+	}
+	if main == nil {
+		return "", "", ""
+	}
+	return main.Scheme, main.Host, r.URL.RequestURI()
+}
+
+func flowHostAllowed(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	switch host {
+	case "www.gstatic.com", "ssl.gstatic.com", "fonts.gstatic.com", "fonts.googleapis.com", "www.google.com", "apis.google.com",
+		"lh3.googleusercontent.com", "lh4.googleusercontent.com", "lh5.googleusercontent.com", "lh6.googleusercontent.com":
+		return true
+	}
+	if host == "" || host == "flow.google.com" || strings.Contains(host, "..") {
+		return false
+	}
+	for _, suffix := range []string{".clients6.google.com", ".googleapis.com", ".gstatic.com", ".googleusercontent.com"} {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func flowQuietPath(path string) bool {
+	p := strings.ToLower(path)
+	if strings.HasPrefix(p, "/__/host/") || strings.HasPrefix(p, "/_/") || strings.Contains(p, "cspreport") {
+		return true
+	}
+	for _, ext := range []string{".js", ".css", ".map", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp4", ".webm", ".m3u8"} {
+		if strings.Contains(p, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func copyResponseHeaders(w http.ResponseWriter, resp *http.Response) {

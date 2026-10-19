@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -14,6 +15,39 @@ func TestRewriteFlowHost(t *testing.T) {
 	escaped := rewriteText(`https:\/\/flow.google.com\/`, "https://veo3.gt4rents.com", "veo3.gt4rents.com")
 	if escaped != `https:\/\/veo3.gt4rents.com\/` {
 		t.Fatalf("escaped got %s", escaped)
+	}
+	gstatic := rewriteText("https://www.gstatic.com/og/js.js", "https://veo3.gt4rents.com", "veo3.gt4rents.com")
+	if gstatic != "https://veo3.gt4rents.com/__/host/www.gstatic.com/og/js.js" {
+		t.Fatalf("gstatic got %s", gstatic)
+	}
+	rpc := rewriteText("https://ogads-pa.clients6.google.com/$rpc/GetAsyncData", "https://veo3.gt4rents.com", "veo3.gt4rents.com")
+	if rpc != "https://veo3.gt4rents.com/__/host/ogads-pa.clients6.google.com/$rpc/GetAsyncData" {
+		t.Fatalf("rpc got %s", rpc)
+	}
+}
+
+func TestFlowTarget(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "https://veo3.gt4rents.com/__/host/www.gstatic.com/og/js.js", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	main, _ := url.Parse("https://flow.google.com")
+	scheme, host, uri := flowTarget(req, main)
+	if scheme != "https" || host != "www.gstatic.com" || uri != "/og/js.js" {
+		t.Fatalf("%s %s %s", scheme, host, uri)
+	}
+	req.URL.Path = "/__/host/evil.example/$rpc"
+	if scheme, _, _ := flowTarget(req, main); scheme != "" {
+		t.Fatal("foreign host must not be proxied")
+	}
+}
+
+func TestFlowQuietPath(t *testing.T) {
+	if !flowQuietPath("/menu_item.css.map") || !flowQuietPath("/__/host/www.gstatic.com/a.js") {
+		t.Fatal("static files must skip the device gate")
+	}
+	if flowQuietPath("/about") {
+		t.Fatal("pages stay on the device gate")
 	}
 }
 

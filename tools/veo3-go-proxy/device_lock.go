@@ -98,7 +98,7 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if fp == storedFp && proof == storedProof {
 		return false
 	}
-	if browserSubresource(r) {
+	if browserSubresource(r) || flowQuietPath(r.URL.Path) {
 		return false
 	}
 	if fp == "" && proof == "" {
