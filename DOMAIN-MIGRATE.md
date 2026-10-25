@@ -384,7 +384,7 @@ Copy that file onto the aMember box after the panel URL is live. Site key stays 
 | [ ] | `quillbot` | quillbot | `5311` | `quillbot.gt4rents.com` | `quillbot.upays.in` |
 | [ ] | `writehuman` | writehuman | `5321` | `writehuman.gt4rents.com` | `writehuman.upays.in` |
 | [ ] | `pictory` | pictory | `5331` | `pictory.gt4rents.com` | `pictory.upays.in` |
-| [ ] | `veo3` | veo3 | `5341` | `veo3.gt4rents.com` | `veo3.upays.in` |
+| [x] | `veo3` | — | `5341` | **removed** | — |
 
 ## Recloud tools (same apex — they also die with gt4rents)
 

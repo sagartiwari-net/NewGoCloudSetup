@@ -114,14 +114,13 @@ var localTools = []seedTool{
 	{"quillbot", "QuillBot", "5311", "ai", credits},
 	{"writehuman", "WriteHuman", "5321", "ai", writeHumanLimits},
 	{"pictory", "Pictory", "5331", "video", nil},
-	{"veo3", "Veo3 AI", "5341", "video", nil},
 }
 
 // Existing panel databases are not re-seeded. Insert QuillBot once so the
 // Access tool list can open qllb.upays.in.
 func ensureQuillbot(db *sql.DB) {
 	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('qllb.upays.in', 'quillbot.gt4rents.com', '127.0.0.1:5311')`).Scan(&n)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE name='QuillBot' OR domain IN ('qllb.upays.in', 'quillbot.gt4rents.com', 'quillbot.upays.in', '127.0.0.1:5311')`).Scan(&n)
 	if n > 0 {
 		return
 	}
@@ -154,7 +153,7 @@ func ensureQuillbot(db *sql.DB) {
 // Access tool list can open wrth.upays.in.
 func ensureWriteHuman(db *sql.DB) {
 	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('wrth.upays.in', 'writehuman.gt4rents.com', '127.0.0.1:5321')`).Scan(&n)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE name='WriteHuman' OR domain IN ('wrth.upays.in', 'writehuman.gt4rents.com', 'writehuman.upays.in', '127.0.0.1:5321')`).Scan(&n)
 	if n > 0 {
 		return
 	}
@@ -187,7 +186,7 @@ func ensureWriteHuman(db *sql.DB) {
 // Access tool list can open pctr.upays.in.
 func ensurePictory(db *sql.DB) {
 	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('pctr.upays.in', 'pictory.gt4rents.com', '127.0.0.1:5331')`).Scan(&n)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE name='Pictory' OR domain IN ('pctr.upays.in', 'pictory.gt4rents.com', 'pictory.upays.in', '127.0.0.1:5331')`).Scan(&n)
 	if n > 0 {
 		return
 	}
@@ -214,35 +213,8 @@ func ensurePictory(db *sql.DB) {
 	log.Printf("added Pictory website %d at pctr.upays.in", websiteID)
 }
 
-// Existing panel databases are not re-seeded. Insert Veo3 AI once so the
-// Access tool list can open ebfb.upays.in.
 func ensureVeo3(db *sql.DB) {
-	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('ebfb.upays.in', 'veo3.gt4rents.com', '127.0.0.1:5341')`).Scan(&n)
-	if n > 0 {
-		return
-	}
-	var toolID int64
-	err := db.QueryRow(`SELECT id FROM tools WHERE name=?`, "Veo3 AI").Scan(&toolID)
-	if err != nil {
-		res, insErr := db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES (?,?,?)`, "Veo3 AI", "video", "[]")
-		if insErr != nil {
-			log.Printf("veo3 tool: %v", insErr)
-			return
-		}
-		toolID, _ = res.LastInsertId()
-	}
-	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
-		VALUES (?,?,?,?,120,?,1,?)`, toolID, "Veo3 AI", "ebfb.upays.in", "secret_veo3", "{}", "veo3")
-	if err != nil {
-		log.Printf("veo3 website: %v", err)
-		return
-	}
-	websiteID, _ := res.LastInsertId()
-	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "Veo3 AI", `["veo3"]`)
-	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
-		websiteID, "Veo3 AI 1", "", "active", "Paste the Chrome cookie JSON array into this cookie.")
-	log.Printf("added Veo3 AI website %d at ebfb.upays.in", websiteID)
+	_ = db
 }
 
 func defaultSeedLimit(key string) int {
