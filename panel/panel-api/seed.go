@@ -137,7 +137,7 @@ func ensureQuillbot(db *sql.DB) {
 	}
 	defaults, _ := json.Marshal(map[string]int{"credits": 100})
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
-		VALUES (?,?,?,?,120,?,1)`, toolID, "QuillBot", "qllb.upays.in", "secret_quillbot", string(defaults))
+		VALUES (?,?,?,?,30,?,1)`, toolID, "QuillBot", "qllb.upays.in", "secret_quillbot", string(defaults))
 	if err != nil {
 		log.Printf("quillbot website: %v", err)
 		return
@@ -170,7 +170,7 @@ func ensureWriteHuman(db *sql.DB) {
 	}
 	defaults, _ := json.Marshal(map[string]int{"words": 10000, "images": 50})
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
-		VALUES (?,?,?,?,120,?,1)`, toolID, "WriteHuman", "wrth.upays.in", "secret_writehuman", string(defaults))
+		VALUES (?,?,?,?,30,?,1)`, toolID, "WriteHuman", "wrth.upays.in", "secret_writehuman", string(defaults))
 	if err != nil {
 		log.Printf("writehuman website: %v", err)
 		return
@@ -201,7 +201,7 @@ func ensurePictory(db *sql.DB) {
 		toolID, _ = res.LastInsertId()
 	}
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
-		VALUES (?,?,?,?,120,?,1)`, toolID, "Pictory", "pctr.upays.in", "secret_pictory", "{}")
+		VALUES (?,?,?,?,30,?,1)`, toolID, "Pictory", "pctr.upays.in", "secret_pictory", "{}")
 	if err != nil {
 		log.Printf("pictory website: %v", err)
 		return
@@ -384,7 +384,7 @@ func ensureToolWalySites(db *sql.DB) {
 				limits = "{}"
 			}
 			res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
-				VALUES (?,?,?,?,120,?,1)`, toolID, site.name, site.domain, "secret_"+strings.ReplaceAll(site.domain, ".", "_"), limits)
+				VALUES (?,?,?,?,30,?,1)`, toolID, site.name, site.domain, "secret_"+strings.ReplaceAll(site.domain, ".", "_"), limits)
 			if insErr != nil {
 				log.Printf("ToolWaly website %s: %v", site.domain, insErr)
 				continue
