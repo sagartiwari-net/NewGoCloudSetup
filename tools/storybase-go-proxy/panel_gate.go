@@ -448,11 +448,10 @@ func renderPanelLoadingPage(w http.ResponseWriter, cfg Config) {
 	if home == "" {
 		home = "/"
 	}
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{
 		Title:       "Authenticating",
 		Heading:     "Authenticating...",
-		Message:     "You are using <span class=\"brand\">" + name + "</span>. Please wait a moment while we verify your secure access request.",
+		Message:     "You are using Tools. Please wait a moment while we verify your secure access request.",
 		Badge:       "Verifying your request...",
 		Footer:      "Secure session initialization in progress",
 		Spin:        true,

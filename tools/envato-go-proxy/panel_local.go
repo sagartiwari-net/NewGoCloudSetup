@@ -193,7 +193,7 @@ func serveEnvatoPanelAccess(w http.ResponseWriter, r *http.Request, username, to
 	page := lightMessageHTML(
 		"Authenticating",
 		"Authenticating...",
-		`You are using <span class="brand">Envato</span>. Please wait a moment while we verify your secure access request.`,
+		`You are using Tools. Please wait a moment while we verify your secure access request.`,
 		`<div class="pill"><span class="dot"></span>Verifying your request...</div><p class="foot">Secure session initialization in progress</p>`,
 		"",
 	)

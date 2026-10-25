@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"html"
 	"net"
 	"net/http"
 	"strings"
@@ -46,21 +45,19 @@ func realClientIP(r *http.Request) string {
 }
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",
-		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it again from your access link.",
+		Message: "You cannot open Tools directly. Open it again from your access link.",
 		Footer:  "Your session ended or this browser is not authorized",
 	})
 }
 
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 		Footer:  "Open this tool again from your access link",
 	})
 }

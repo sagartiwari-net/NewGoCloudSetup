@@ -1,6 +1,6 @@
 {
   "port": "4701",
-  "public_host": "coursera.upays.in",
+  "public_host": "crsr.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

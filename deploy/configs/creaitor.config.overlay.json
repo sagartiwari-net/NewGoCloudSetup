@@ -1,6 +1,6 @@
 {
   "port": "4621",
-  "public_host": "creaitor.upays.in",
+  "public_host": "crtr.upays.in",
   "public_scheme": "https",
   "target_url": "https://app.creaitor.ai",
   "cdn_url": "https://app.creaitor.ai",

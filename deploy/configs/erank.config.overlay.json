@@ -1,6 +1,6 @@
 {
   "port": "5191",
-  "public_host": "erank.upays.in",
+  "public_host": "ernk.upays.in",
   "public_scheme": "https",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "cookie_domain_suffix": "erank.com",

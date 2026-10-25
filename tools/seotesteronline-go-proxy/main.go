@@ -2002,7 +2002,6 @@ func main() {
 		handler.ServeHTTP(w, r)
 	})
 
-
 	server := &http.Server{
 		Addr:           addr,
 		Handler:        safe,

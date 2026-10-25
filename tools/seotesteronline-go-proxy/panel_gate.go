@@ -456,11 +456,10 @@ func renderPanelLoadingPage(w http.ResponseWriter, cfg Config) {
 	if home == "" {
 		home = "/"
 	}
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{
 		Title:       "Authenticating",
 		Heading:     "Authenticating...",
-		Message:     "You are using <span class=\"brand\">" + name + "</span>. Please wait a moment while we verify your secure access request.",
+		Message:     "You are using Tools. Please wait a moment while we verify your secure access request.",
 		Badge:       "Verifying your request...",
 		Footer:      "Secure session initialization in progress",
 		Spin:        true,
@@ -575,11 +574,10 @@ func panelClientIP(r *http.Request) string {
 }
 
 func panelAccessDenied(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",
-		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it from your access link.",
+		Message: "You cannot open Tools directly. Open it from your access link.",
 		Footer:  "A direct visit is not allowed",
 	})
 }

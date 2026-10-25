@@ -1457,7 +1457,7 @@ func renderAccessDeniedPage(w http.ResponseWriter) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",
-		Message: "You cannot open <span class=\"brand\">Ahrefs</span> directly. Open it again from your access link.",
+		Message: "You cannot open Tools directly. Open it again from your access link.",
 		Footer:  "Your session ended or this browser is not authorized",
 	})
 }
@@ -1513,17 +1513,17 @@ func renderNoActiveAccountsPage(w http.ResponseWriter) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "<span class=\"brand\">Ahrefs</span> is temporarily unavailable. Please try again in a few minutes.",
+		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 		Footer:  "Open this tool again from your access link",
 	})
 }
 
 func renderLimitReachedPage(w http.ResponseWriter, limitType string) {
 	title := "Daily Credit Limit Reached"
-	msg := "You have used up your <span class=\"brand\">Ahrefs</span> daily credit limit for today. Your limit resets at midnight (12:00 AM IST)."
+	msg := "You have used up your Tools daily credit limit for today. Your limit resets at midnight (12:00 AM IST)."
 	if limitType == "export" {
 		title = "Weekly Export Rows Limit Reached"
-		msg = "You have reached your weekly CSV export row limit for <span class=\"brand\">Ahrefs</span>."
+		msg = "You have reached your weekly CSV export row limit for Tools."
 	}
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   title,

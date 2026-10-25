@@ -534,11 +534,10 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 // magnificWAFNeedsProxyCard replaces Magnific's dark #080808 "security filter" 403 page.
 // That HTML looks like a blank black screen after domain rewrite (fonts/CDN assets fail).
 func magnificWAFNeedsProxyCard(cfg Config) lightCard {
-	name := html.EscapeString(toolDisplayName(cfg))
 	return lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 		Footer:  "Open this tool again from your access link",
 	}
 }
@@ -549,11 +548,10 @@ func magnificWAFRetryCard(cfg Config) lightCard {
 	if home == "" {
 		home = "/app"
 	}
-	name := html.EscapeString(toolDisplayName(cfg))
 	return lightCard{
 		Title:   "Switching account",
 		Heading: "Switching account",
-		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 		Badge:   "Trying one account at a time",
 		Footer:  "This keeps trying until an account is available",
 		Spin:    true,
@@ -586,11 +584,10 @@ func renderPanelLoadingPage(w http.ResponseWriter, cfg Config) {
 	if home == "" {
 		home = "/"
 	}
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{
 		Title:       "Authenticating",
 		Heading:     "Authenticating...",
-		Message:     "You are using <span class=\"brand\">" + name + "</span>. Please wait a moment while we verify your secure access request.",
+		Message:     "You are using Tools. Please wait a moment while we verify your secure access request.",
 		Badge:       "Verifying your request...",
 		Footer:      "Secure session initialization in progress",
 		Spin:        true,

@@ -850,7 +850,7 @@ func renderWaitingForAccountPage() string {
 	return lightMessageHTML(
 		"Waiting for an account",
 		"Waiting for an account",
-		`No active <span class="brand">Envato</span> account is available right now. Retrying automatically...`,
+		`No active Tools account is available right now. Retrying automatically...`,
 		`<div class="pill"><span class="dot"></span>Checking accounts...</div><p class="foot">Add or fix a mapped account cookie in the panel</p>`,
 		script,
 	)
@@ -936,7 +936,7 @@ func renderAccessDeniedPage(w http.ResponseWriter) {
 	fmt.Fprint(w, lightMessageHTML(
 		"Access Denied",
 		"Access Denied",
-		"You cannot open <span class=\"brand\">Envato</span> directly. Open it again from your access link.",
+		"You cannot open Tools directly. Open it again from your access link.",
 		`<p class="foot">Your session ended or this browser is not authorized</p>`,
 		"",
 	))

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"html"
 	"log"
 	"net/http"
 	"strings"
@@ -145,11 +144,10 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 }
 
 func renderDeviceGate(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{
 		Title:   "Authenticating",
 		Heading: "Authenticating...",
-		Message: "You are using <span class=\"brand\">" + name + "</span>. Please wait a moment while we verify your secure access request.",
+		Message: "You are using Tools. Please wait a moment while we verify your secure access request.",
 		Badge:   "Verifying your request...",
 		Footer:  "Secure session initialization in progress",
 		Spin:    true,
@@ -265,7 +263,6 @@ func flaticonDeviceBindShouldLog(token, fp string) bool {
 	flaticonDeviceBindFP[token] = fp
 	return true
 }
-
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
@@ -548,7 +545,6 @@ function tmPatchRequests(fp, proof) {
 }
 `
 }
-
 
 func injectDeviceHTML(body []byte) []byte {
 	script := []byte(devicePageScript())

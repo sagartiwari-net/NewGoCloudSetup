@@ -1,6 +1,6 @@
 {
   "port": "5021",
-  "public_host": "slidebean.upays.in",
+  "public_host": "sldb.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

@@ -23,19 +23,19 @@ import (
 const configFile = "config.json"
 
 type Config struct {
-	Port          string   `json:"port"`
-	TargetURL     string   `json:"target_url"`
-	PublicHost    string   `json:"public_host"`
-	PublicScheme  string   `json:"public_scheme"`
-	CookieFile    string   `json:"cookie_file"`
-	LocalTestMode bool     `json:"local_test_mode"`
-	BindLocalhost bool     `json:"bind_localhost"`
-	DebugLog      bool     `json:"debug_log"`
-	ToolName      string   `json:"tool_name"`
-	ExtraDomains  []string `json:"extra_domains"`
-	BlockedPaths      []string `json:"blocked_paths"`
-	UserAgent         string   `json:"user_agent"`
-	CloudflareBypass  bool     `json:"cloudflare_bypass"`
+	Port             string   `json:"port"`
+	TargetURL        string   `json:"target_url"`
+	PublicHost       string   `json:"public_host"`
+	PublicScheme     string   `json:"public_scheme"`
+	CookieFile       string   `json:"cookie_file"`
+	LocalTestMode    bool     `json:"local_test_mode"`
+	BindLocalhost    bool     `json:"bind_localhost"`
+	DebugLog         bool     `json:"debug_log"`
+	ToolName         string   `json:"tool_name"`
+	ExtraDomains     []string `json:"extra_domains"`
+	BlockedPaths     []string `json:"blocked_paths"`
+	UserAgent        string   `json:"user_agent"`
+	CloudflareBypass bool     `json:"cloudflare_bypass"`
 	PanelDB          string   `json:"panel_db"`
 	HomePath         string   `json:"home_path"`
 	MySQLHost        string   `json:"mysql_host"`
@@ -943,7 +943,6 @@ func main() {
 				return
 			}
 		}
-
 
 		if strings.HasPrefix(r.URL.Path, "/ext-proxy/") {
 			rest := strings.TrimPrefix(r.URL.Path, "/ext-proxy/")

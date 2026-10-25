@@ -1693,7 +1693,7 @@ func renderAccessDeniedPage(w http.ResponseWriter) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",
-		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it again from your access link.",
+		Message: "You cannot open Tools directly. Open it again from your access link.",
 		Footer:  "Your session ended or this browser is not authorized",
 	})
 }

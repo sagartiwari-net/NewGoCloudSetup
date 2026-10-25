@@ -1,6 +1,6 @@
 {
   "port": "5271",
-  "public_host": "digen.upays.in",
+  "public_host": "ddgn.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

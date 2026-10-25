@@ -1,6 +1,6 @@
 {
   "port": "5101",
-  "public_host": "perplexity.upays.in",
+  "public_host": "prpl.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

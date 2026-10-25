@@ -1,6 +1,6 @@
 {
   "port": "5331",
-  "public_host": "pictory.upays.in",
+  "public_host": "pctr.upays.in",
   "public_scheme": "http",
   "target_url": "https://app.pictory.ai",
   "cdn_url": "https://app.pictory.ai",

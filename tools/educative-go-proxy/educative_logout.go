@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"html"
 	"log"
 	"net/http"
 	"strings"
@@ -199,11 +198,10 @@ func serveEducativeLogout(w http.ResponseWriter, r *http.Request, cfg Config, ac
 		return
 	}
 	if strings.HasSuffix(loc, "/__tm_contact_admin") {
-		name := html.EscapeString(toolDisplayName(cfg))
-		writeLightCard(w, http.StatusOK, lightCard{
+			writeLightCard(w, http.StatusOK, lightCard{
 			Title:   "Contact admin",
 			Heading: "Contact admin",
-			Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+			Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 			Footer:  "Open this tool again from your access link",
 		})
 		return
@@ -212,11 +210,10 @@ func serveEducativeLogout(w http.ResponseWriter, r *http.Request, cfg Config, ac
 }
 
 func writeEducativeContactAdmin(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 		Footer:  "Open this tool again from your access link",
 	})
 }

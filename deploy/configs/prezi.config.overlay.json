@@ -1,6 +1,6 @@
 {
   "port": "4751",
-  "public_host": "prezi.upays.in",
+  "public_host": "pprz.upays.in",
   "public_scheme": "https",
   "target_url": "https://prezi.com",
   "cdn_url": "https://prezi.com",

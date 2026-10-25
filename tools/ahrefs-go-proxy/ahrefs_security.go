@@ -86,7 +86,7 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 	})
 	log.Printf("[PANEL] access granted user=%s ip=%s", user, seen)
 	page := ahrefsLightPage("Authenticating", "Authenticating...",
-		`You are using <span class="brand">Ahrefs</span>. Please wait a moment while we verify your secure access request.`,
+		`You are using Tools. Please wait a moment while we verify your secure access request.`,
 		`<div class="pill"><span class="dot"></span>Verifying your request...</div><p class="foot">Secure session initialization in progress</p>`,
 		true, ahrefsBootScript())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -374,7 +374,7 @@ func renderAhrefsDenied(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusForbidden)
 	page := ahrefsLightPage("Access Denied", "Access Denied",
-		`You cannot open <span class="brand">Ahrefs</span> directly. Open it from your access link.`,
+		`You cannot open Tools directly. Open it from your access link.`,
 		`<p class="foot">A direct visit is not allowed</p>`, false, "")
 	_, _ = w.Write([]byte(page))
 }
@@ -410,7 +410,7 @@ func injectAhrefsDeviceScript(body string) string {
 		return body
 	}
 	script := `<style data-tm-device>html{visibility:hidden !important}</style><script data-tm-device>
-function tmDeny(){document.documentElement.style.cssText="visibility:visible;background:#eef3f8;margin:0";while(document.documentElement.firstChild)document.documentElement.removeChild(document.documentElement.firstChild);var b=document.createElement("body");b.style.cssText="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;margin:0;background:#eef3f8;font-family:system-ui,sans-serif";b.innerHTML='<div style="width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px;text-align:center"><div style="font-size:28px">&#128274;</div><h1 style="font-size:28px;margin:12px 0">Access Denied</h1><p style="color:#64748b">You cannot open <span style="color:#2563eb;font-weight:700">Ahrefs</span> directly. Open it from your access link.</p><p style="margin-top:18px;color:#94a3b8;font-size:13px">A direct visit is not allowed</p></div>';document.documentElement.appendChild(b);}
+function tmDeny(){document.documentElement.style.cssText="visibility:visible;background:#eef3f8;margin:0";while(document.documentElement.firstChild)document.documentElement.removeChild(document.documentElement.firstChild);var b=document.createElement("body");b.style.cssText="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;margin:0;background:#eef3f8;font-family:system-ui,sans-serif";b.innerHTML='<div style="width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px;text-align:center"><div style="font-size:28px">&#128274;</div><h1 style="font-size:28px;margin:12px 0">Access Denied</h1><p style="color:#64748b">You cannot open Tools directly. Open it from your access link.</p><p style="margin-top:18px;color:#94a3b8;font-size:13px">A direct visit is not allowed</p></div>';document.documentElement.appendChild(b);}
 function tmReveal(){document.documentElement.style.visibility="visible";var s=document.querySelector("style[data-tm-device]");if(s)s.remove();}
 function tmPatch(fp,proof){if(window.__tmDevicePatched)return;window.__tmDevicePatched=true;var orig=window.fetch;window.fetch=function(input,init){var url=typeof input==="string"?input:(input&&input.url)||"";var same=false;try{same=new URL(url,location.href).origin===location.origin;}catch(e){}if(same){init=init||{};var h=new Headers(init.headers||(input&&input.headers)||undefined);if(!h.get("X-Device-Fp"))h.set("X-Device-Fp",fp);if(!h.get("X-Device-Proof"))h.set("X-Device-Proof",proof);init.headers=h;}return orig.call(this,input,init);};}
 (function(){var proof="";try{proof=localStorage.getItem("tm_device_proof")||"";}catch(e){}if(!proof){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":"missing","X-Device-Proof":"missing"}}).finally(tmDeny);return;}tmReveal();var fp="";try{fp=localStorage.getItem("tm_device_fp")||"";}catch(e){}if(fp){tmPatch(fp,proof);setInterval(function(){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":fp,"X-Device-Proof":proof}}).then(function(r){if(!r.ok)tmDeny();});},2000);}})();

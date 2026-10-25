@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"net"
@@ -1903,32 +1902,29 @@ func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 // ── ERROR PAGE RENDERERS ──────────────────────────────────────────────────────
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",
-		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it again from your access link.",
+		Message: "You cannot open Tools directly. Open it again from your access link.",
 		Footer:  "Your session ended or this browser is not authorized",
 	})
 }
 
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 		Footer:  "Open this tool again from your access link",
 	})
 }
 
 func renderLimitReachedPage(w http.ResponseWriter, limitType string, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	title := "Daily Limit Reached"
-	msg := "You have used up your daily limit for <span class=\"brand\">" + name + "</span>. Your limit resets at midnight (12:00 AM IST)."
+	msg := "You have used up your daily limit for Tools. Your limit resets at midnight (12:00 AM IST)."
 	if limitType == "export" {
 		title = "Export Limit Reached"
-		msg = "You have reached your export limit for <span class=\"brand\">" + name + "</span>. Please contact support to increase your limit."
+		msg = "You have reached your export limit for Tools. Please contact support to increase your limit."
 	}
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   title,

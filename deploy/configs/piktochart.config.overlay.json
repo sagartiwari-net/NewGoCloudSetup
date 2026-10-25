@@ -1,6 +1,6 @@
 {
   "port": "4541",
-  "public_host": "piktochart.upays.in",
+  "public_host": "pktc.upays.in",
   "public_scheme": "https",
   "target_url": "https://create.piktochart.com",
   "tool_name": "Piktochart",

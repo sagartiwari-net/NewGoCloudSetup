@@ -1,6 +1,6 @@
 {
   "port": "4901",
-  "public_host": "pixlr.upays.in",
+  "public_host": "pxlr.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

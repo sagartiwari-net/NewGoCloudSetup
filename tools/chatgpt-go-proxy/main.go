@@ -1793,11 +1793,10 @@ func triggerAutomationHandler(w http.ResponseWriter, r *http.Request) {
 // ── ERROR PAGE RENDERERS ──────────────────────────────────────────────────────
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",
-		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it from your access link.",
+		Message: "You cannot open Tools directly. Open it from your access link.",
 		Footer:  "A direct visit is not allowed",
 	})
 }
@@ -1812,16 +1811,15 @@ func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 }
 
 func renderLimitReachedPage(w http.ResponseWriter, limitType string, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	creditLabel := cfg.CreditLabel
 	if creditLabel == "" {
 		creditLabel = "Credits"
 	}
 	title := "Daily Limit Reached"
-	message := "You have used the daily " + html.EscapeString(creditLabel) + " limit for <span class=\"brand\">" + name + "</span>. The limit resets at midnight (12:00 AM IST)."
+	message := "You have used the daily " + html.EscapeString(creditLabel) + " limit for Tools. The limit resets at midnight (12:00 AM IST)."
 	if limitType == "export" {
 		title = "Export Limit Reached"
-		message = "You have reached the export limit for <span class=\"brand\">" + name + "</span>."
+		message = "You have reached the export limit for Tools."
 	}
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   title,

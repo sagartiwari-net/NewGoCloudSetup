@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"html"
 	"io"
 	"log"
 	"net/http"
@@ -182,11 +181,10 @@ func serveSyntxLogout(w http.ResponseWriter, r *http.Request, cfg Config, acc To
 		http.Redirect(w, r, syntxHome(cfg), http.StatusFound)
 		return
 	}
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusOK, lightCard{
 		Title:   "Temporarily Unavailable",
 		Heading: "Temporarily Unavailable",
-		Message: "<span class=\"brand\">" + name + "</span> is temporarily unavailable. Please try again in a few minutes.",
+		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 		Footer:  "Open this tool again from your access link",
 	})
 }

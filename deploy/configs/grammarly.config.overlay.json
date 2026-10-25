@@ -1,6 +1,6 @@
 {
   "port": "4911",
-  "public_host": "grammarly.upays.in",
+  "public_host": "grmm.upays.in",
   "public_scheme": "https",
   "website_id": 42,
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",

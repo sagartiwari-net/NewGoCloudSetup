@@ -56,11 +56,11 @@ type goAutoExport struct {
 }
 
 var (
-	cfgMu   sync.RWMutex
-	cfg     Config
-	sessMu  sync.RWMutex
-	sessRaw string
-	sessMT  time.Time
+	cfgMu     sync.RWMutex
+	cfg       Config
+	sessMu    sync.RWMutex
+	sessRaw   string
+	sessMT    time.Time
 	refreshMu sync.Mutex
 )
 

@@ -370,7 +370,7 @@ func rejectCreditLimit(w http.ResponseWriter, r *http.Request, cfg Config) {
 		writeLightCard(w, http.StatusForbidden, lightCard{
 			Title:   "Daily Limit Reached",
 			Heading: "Daily Limit Reached",
-			Message: "You have used the daily " + gzMeterLabel + " limit for <span class=\"brand\">" + name + "</span>. The limit resets at midnight (12:00 AM IST).",
+			Message: "You have used the daily " + gzMeterLabel + " limit for Tools. The limit resets at midnight (12:00 AM IST).",
 			Footer:  "This limit applies to the current access",
 		})
 		return

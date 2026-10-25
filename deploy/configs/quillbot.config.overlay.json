@@ -1,6 +1,6 @@
 {
   "port": "5311",
-  "public_host": "quillbot.upays.in",
+  "public_host": "qllb.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

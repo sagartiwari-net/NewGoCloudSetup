@@ -83,8 +83,8 @@ type Config struct {
 	// CookieFile: path to cookie.txt file (legacy, optional)
 	CookieFile string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	WebsiteID  int    `json:"website_id"`
+	PanelDB   string `json:"panel_db"`
+	WebsiteID int    `json:"website_id"`
 	// BypassAuth: bypasses database user authentication and loads cookie.txt directly (useful for testing without security)
 	BypassAuth bool `json:"bypass_auth"`
 	// Replacements: multiple find/replace pairs for HTML + JSON + live DOM text.
@@ -1886,11 +1886,10 @@ func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 // ── ERROR PAGE RENDERERS ──────────────────────────────────────────────────────
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",
-		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it again from your access link.",
+		Message: "You cannot open Tools directly. Open it again from your access link.",
 		Footer:  "Your session ended or this browser is not authorized",
 	})
 }

@@ -82,18 +82,18 @@ type Config struct {
 	MySQLDB       string `json:"mysql_db"`
 
 	// Security & member area
-	UseDatabase            bool                      `json:"use_database"`
-	BypassAuth             bool                      `json:"bypass_auth"`
-	SecretKey              string                    `json:"secret_key"`
-	SessionDurationMinutes int                       `json:"session_duration_minutes"`
-	MemberAreaURL          string                    `json:"member_area_url"`
-	CookieFile             string                    `json:"cookie_file"`
+	UseDatabase            bool   `json:"use_database"`
+	BypassAuth             bool   `json:"bypass_auth"`
+	SecretKey              string `json:"secret_key"`
+	SessionDurationMinutes int    `json:"session_duration_minutes"`
+	MemberAreaURL          string `json:"member_area_url"`
+	CookieFile             string `json:"cookie_file"`
 	// PanelDB is the local panel database. When set, Open comes from the panel access link.
-	PanelDB string `json:"panel_db"`
-	SensitiveCookies       []string                  `json:"sensitive_cookies"`
-	WatchdogTriggers       []string                  `json:"watchdog_triggers"`
-	SessionSecurity        proxysec.Config           `json:"session_security"`
-	ScreenErrorRedirect    ScreenErrorRedirectConfig `json:"screen_error_redirect"`
+	PanelDB             string                    `json:"panel_db"`
+	SensitiveCookies    []string                  `json:"sensitive_cookies"`
+	WatchdogTriggers    []string                  `json:"watchdog_triggers"`
+	SessionSecurity     proxysec.Config           `json:"session_security"`
+	ScreenErrorRedirect ScreenErrorRedirectConfig `json:"screen_error_redirect"`
 }
 
 // ScreenErrorRedirectConfig watches visible page text and redirects on Cloudflare-style errors.
@@ -1073,7 +1073,6 @@ func injectScreenErrorRedirectHTML(body string, cfg Config, reqPath string) stri
 	}
 	return tag + body
 }
-
 
 func isLogoutBody(bodyStr string, cfg Config) bool {
 	trimmed := strings.TrimSpace(bodyStr)

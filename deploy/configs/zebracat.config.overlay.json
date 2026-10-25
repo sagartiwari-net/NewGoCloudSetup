@@ -1,6 +1,6 @@
 {
   "port": "5111",
-  "public_host": "zebracat.upays.in",
+  "public_host": "zbrc.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

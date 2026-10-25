@@ -1,6 +1,6 @@
 {
   "port": "4681",
-  "public_host": "glorify.upays.in",
+  "public_host": "glrf.upays.in",
   "public_scheme": "https",
   "target_url": "https://app.glorify.com",
   "cdn_url": "https://app.glorify.com",

@@ -1,6 +1,6 @@
 {
   "port": "4641",
-  "public_host": "epidemicsound.upays.in",
+  "public_host": "pdmc.upays.in",
   "public_scheme": "https",
   "target_url": "https://www.epidemicsound.com",
   "cdn_url": "https://www.epidemicsound.com",

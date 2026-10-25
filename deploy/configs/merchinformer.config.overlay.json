@@ -1,6 +1,6 @@
 {
   "port": "4651",
-  "public_host": "merchinformer.upays.in",
+  "public_host": "mrch.upays.in",
   "public_scheme": "https",
   "target_url": "https://members.merchinformer.com",
   "cdn_url": "https://members.merchinformer.com",

@@ -1,6 +1,6 @@
 {
   "port": "5251",
-  "public_host": "zikaanalytics.upays.in",
+  "public_host": "zknl.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

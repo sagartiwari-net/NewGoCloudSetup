@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html"
 	"log"
 	"net"
 	"net/http"
@@ -433,11 +432,10 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
-	name := html.EscapeString(toolDisplayName(cfg))
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",
-		Message: "You cannot open <span class=\"brand\">" + name + "</span> directly. Open it from your access link.",
+		Message: "You cannot open Tools directly. Open it from your access link.",
 		Footer:  "A direct visit is not allowed",
 	})
 }
