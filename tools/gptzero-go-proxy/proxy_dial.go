@@ -149,12 +149,12 @@ func upstreamHTTPClient(proxyStr string) *http.Client {
 func buildUpstreamClient(proxyStr string) *http.Client {
 	px := parseProxyString(proxyStr)
 	tr := &http.Transport{
-		Proxy:               nil,
-		ForceAttemptHTTP2:   true,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 16,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 20 * time.Second,
+		Proxy:                 nil,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   16,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   20 * time.Second,
 		ResponseHeaderTimeout: 90 * time.Second,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if px != nil {

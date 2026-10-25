@@ -37,8 +37,8 @@ type cdnFlight struct {
 }
 
 var (
-	cdnFlights  sync.Map
-	cdnStoreMu  sync.Mutex
+	cdnFlights sync.Map
+	cdnStoreMu sync.Mutex
 )
 
 func pathNoQuery(path string) string {

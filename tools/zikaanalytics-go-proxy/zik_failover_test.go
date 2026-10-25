@@ -43,8 +43,8 @@ func TestZikPublicAssetPath(t *testing.T) {
 
 func TestZikEssentialStorage(t *testing.T) {
 	in := map[string]interface{}{
-		"access":  "jwt",
-		"intercom": "huge",
+		"access":    "jwt",
+		"intercom":  "huge",
 		"_BEAMER_X": "x",
 	}
 	out := zikEssentialStorage(in)

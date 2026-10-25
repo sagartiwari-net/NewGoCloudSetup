@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"net"
@@ -567,7 +566,6 @@ func accessHandler(w http.ResponseWriter, r *http.Request) {
 
 // renderAccessDeniedPage renders a simple, always-visible auth error page
 func renderAccessDeniedPage(w http.ResponseWriter) {
-	name := html.EscapeString(toolDisplayName(loadConfig()))
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",

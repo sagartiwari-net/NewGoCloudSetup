@@ -16,16 +16,16 @@ import (
 )
 
 var (
-	sessionActivateMu         sync.Mutex
-	sessionActivatedKey       string
-	sessionActivatedAt        time.Time
-	sessionActivateFailUntil  time.Time
-	sessionActivateTTL        = 5 * time.Minute
-	sessionActivateSoftForce  = 45 * time.Second
+	sessionActivateMu          sync.Mutex
+	sessionActivatedKey        string
+	sessionActivatedAt         time.Time
+	sessionActivateFailUntil   time.Time
+	sessionActivateTTL         = 5 * time.Minute
+	sessionActivateSoftForce   = 45 * time.Second
 	sessionActivateFailBackoff = 90 * time.Second
-	sessionActivateInFlight   bool
-	sessionActivateClientOnce sync.Once
-	sessionActivateHTTP       *http.Client
+	sessionActivateInFlight    bool
+	sessionActivateClientOnce  sync.Once
+	sessionActivateHTTP        *http.Client
 )
 
 type proxyBodyCacheKeyType struct{}

@@ -366,7 +366,6 @@ func panelAssignedShowLimit(r *http.Request, cfg Config, username string) bool {
 func rejectCreditLimit(w http.ResponseWriter, r *http.Request, cfg Config) {
 	log.Printf("[CREDIT] blocked path=%s", r.URL.Path)
 	if wantsLightDenied(r, r.URL.Path) {
-		name := toolDisplayName(cfg)
 		writeLightCard(w, http.StatusForbidden, lightCard{
 			Title:   "Daily Limit Reached",
 			Heading: "Daily Limit Reached",

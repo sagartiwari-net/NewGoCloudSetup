@@ -46,10 +46,10 @@ func serveCloudflareBypass(w http.ResponseWriter, path string) {
 }
 
 var (
-	reCFScript      = regexp.MustCompile(`(?is)<script[^>]*\bsrc=["'][^"']*cdn-cgi/challenge-platform[^"']*["'][^>]*>\s*</script>`)
-	reCFIframe      = regexp.MustCompile(`(?is)<script>\(function\(\)\{function c\(\)\{var b=a\.contentDocument\|\|a\.contentWindow\.document;if\(b\)\{[^<]*cdn-cgi/challenge-platform[^<]*</script>`)
-	reCFInline      = regexp.MustCompile(`(?is)window\.__CF\$cv\$params=\{[^}]*\};var a=document\.createElement\('script'\);a\.src='/cdn-cgi/challenge-platform[^;]*;document\.getElementsByTagName\('head'\)\[0\]\.appendChild\(a\);`)
-	reCFTurnstile   = regexp.MustCompile(`(?is)<script[^>]*\bsrc=["'][^"']*challenges\.cloudflare\.com[^"']*["'][^>]*>\s*</script>`)
+	reCFScript    = regexp.MustCompile(`(?is)<script[^>]*\bsrc=["'][^"']*cdn-cgi/challenge-platform[^"']*["'][^>]*>\s*</script>`)
+	reCFIframe    = regexp.MustCompile(`(?is)<script>\(function\(\)\{function c\(\)\{var b=a\.contentDocument\|\|a\.contentWindow\.document;if\(b\)\{[^<]*cdn-cgi/challenge-platform[^<]*</script>`)
+	reCFInline    = regexp.MustCompile(`(?is)window\.__CF\$cv\$params=\{[^}]*\};var a=document\.createElement\('script'\);a\.src='/cdn-cgi/challenge-platform[^;]*;document\.getElementsByTagName\('head'\)\[0\]\.appendChild\(a\);`)
+	reCFTurnstile = regexp.MustCompile(`(?is)<script[^>]*\bsrc=["'][^"']*challenges\.cloudflare\.com[^"']*["'][^>]*>\s*</script>`)
 )
 
 func stripCloudflareChallengeHTML(body []byte, cfg Config) []byte {

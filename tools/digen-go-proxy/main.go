@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"net"
@@ -1689,7 +1688,6 @@ func swapActiveAccount(sessionToken string, currentAssignedID int64, websiteID i
 }
 
 func renderAccessDeniedPage(w http.ResponseWriter) {
-	name := html.EscapeString(toolDisplayName(loadConfig()))
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",

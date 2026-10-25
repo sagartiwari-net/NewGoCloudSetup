@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	cdnCacheDir = "cdn-cache"
-	cdnCacheTTL = 72 * time.Hour
-	cdnCacheMax = 20 << 20 // 20MB
+	cdnCacheDir   = "cdn-cache"
+	cdnCacheTTL   = 72 * time.Hour
+	cdnCacheMax   = 20 << 20 // 20MB
 	cdnFlightWait = 45 * time.Second
 )
 
