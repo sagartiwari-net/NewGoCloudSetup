@@ -88,7 +88,7 @@ func (s *server) openAccess(w http.ResponseWriter, r *http.Request) {
 	if scheme != "https" {
 		scheme = "http"
 	}
-	openURL := scheme + "://" + domain + "/access?token=" + url.QueryEscape(token)
+	openURL := scheme + "://" + publicToolHost(domain) + "/access?token=" + url.QueryEscape(token)
 	writeJSON(w, 200, map[string]any{
 		"allowed":    true,
 		"open_url":   openURL,
@@ -96,6 +96,26 @@ func (s *server) openAccess(w http.ResponseWriter, r *http.Request) {
 		"product_id": body.ProductID,
 		"tool":       name,
 	})
+}
+
+// publicToolHost rewrites only the owner apex (gt4rents.com ↔ upays.in).
+// Friend domains stay as stored. TOOL_PUBLIC_APEX chooses the live name; default upays.in.
+func publicToolHost(domain string) string {
+	host := strings.ToLower(strings.TrimSpace(domain))
+	apex := strings.ToLower(strings.TrimSpace(os.Getenv("TOOL_PUBLIC_APEX")))
+	if apex == "" {
+		apex = "upays.in"
+	}
+	apex = strings.TrimPrefix(apex, ".")
+	for _, old := range []string{"gt4rents.com", "upays.in"} {
+		if host == old {
+			return apex
+		}
+		if strings.HasSuffix(host, "."+old) {
+			return strings.TrimSuffix(host, old) + apex
+		}
+	}
+	return strings.TrimSpace(domain)
 }
 
 func (s *server) productMapped(websiteID int, productID string) bool {

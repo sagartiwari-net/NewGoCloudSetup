@@ -1,6 +1,6 @@
 {
   "port": "4501",
-  "public_host": "cnva.gt4rents.com",
+  "public_host": "cnva.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
@@ -14,5 +14,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "target_url/tool_name forced here — canva config.json is gitignored"
+  "_note": "target_url/tool_name forced here \u2014 canva config.json is gitignored"
 }

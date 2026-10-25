@@ -1,6 +1,6 @@
 {
   "port": "4631",
-  "public_host": "wordtune.gt4rents.com",
+  "public_host": "wordtune.upays.in",
   "public_scheme": "https",
   "website_id": 14,
   "target_url": "https://app.wordtune.com",
@@ -16,5 +16,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "Force Wordtune target — stale OUTDIR once had chatgpt.com. website_id 14 = wordtune"
+  "_note": "Force Wordtune target \u2014 stale OUTDIR once had chatgpt.com. website_id 14 = wordtune"
 }

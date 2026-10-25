@@ -1,6 +1,6 @@
 {
   "port": "5291",
-  "public_host": "refs.gt4rents.com",
+  "public_host": "refs.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
@@ -10,5 +10,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "public_scheme is FALLBACK only. Live rewrites use X-Forwarded-Proto (http now, https after SSL) — no rebuild needed when SSL goes live."
+  "_note": "public_scheme is FALLBACK only. Live rewrites use X-Forwarded-Proto (http now, https after SSL) \u2014 no rebuild needed when SSL goes live."
 }

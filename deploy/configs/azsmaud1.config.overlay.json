@@ -1,6 +1,6 @@
 {
   "port": "6004",
-  "public_host": "azsmaud1.gt4rents.com",
+  "public_host": "azsmaud1.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

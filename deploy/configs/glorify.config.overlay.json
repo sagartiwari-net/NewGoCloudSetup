@@ -1,6 +1,6 @@
 {
   "port": "4681",
-  "public_host": "glorify.gt4rents.com",
+  "public_host": "glorify.upays.in",
   "public_scheme": "https",
   "target_url": "https://app.glorify.com",
   "cdn_url": "https://app.glorify.com",
@@ -40,5 +40,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "Force Glorify target — empty target fell through to chatgpt.com"
+  "_note": "Force Glorify target \u2014 empty target fell through to chatgpt.com"
 }

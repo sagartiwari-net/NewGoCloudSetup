@@ -1,6 +1,6 @@
 {
   "port": "4851",
-  "public_host": "educative.gt4rents.com",
+  "public_host": "educative.upays.in",
   "public_scheme": "https",
   "target_url": "https://www.educative.io",
   "cdn_url": "https://www.educative.io",
@@ -30,5 +30,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "Force Educative target — stale OUTDIR / empty target fell through to chatgpt.com"
+  "_note": "Force Educative target \u2014 stale OUTDIR / empty target fell through to chatgpt.com"
 }

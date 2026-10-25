@@ -1,6 +1,6 @@
 {
   "port": "4781",
-  "public_host": "sketchgenius.gt4rents.com",
+  "public_host": "sketchgenius.upays.in",
   "public_scheme": "https",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

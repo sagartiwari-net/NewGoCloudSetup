@@ -1,5 +1,5 @@
 {
-  "domain": "gt4rents.com",
+  "domain": "upays.in",
   "server_ip": "65.109.16.196",
   "server_root": "/www/wwwroot/gt4rents.com",
   "panel_db_server": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
@@ -16,812 +16,812 @@
       "folder": "canva-go-proxy",
       "subdomain": "cnva",
       "port": 4501,
-      "fqdn": "cnva.gt4rents.com"
+      "fqdn": "cnva.upays.in"
     },
     {
       "tool": "jasper",
       "folder": "jasper-go-proxy",
       "subdomain": "jasper",
       "port": 4511,
-      "fqdn": "jasper.gt4rents.com"
+      "fqdn": "jasper.upays.in"
     },
     {
       "tool": "copywritely",
       "folder": "copywritely-go-proxy",
       "subdomain": "copywritely",
       "port": 4521,
-      "fqdn": "copywritely.gt4rents.com"
+      "fqdn": "copywritely.upays.in"
     },
     {
       "tool": "ilovepdf",
       "folder": "ilovepdf-go-proxy",
       "subdomain": "ilovepdf",
       "port": 4531,
-      "fqdn": "ilovepdf.gt4rents.com"
+      "fqdn": "ilovepdf.upays.in"
     },
     {
       "tool": "piktochart",
       "folder": "piktochart-go-proxy",
       "subdomain": "piktochart",
       "port": 4541,
-      "fqdn": "piktochart.gt4rents.com"
+      "fqdn": "piktochart.upays.in"
     },
     {
       "tool": "storybase",
       "folder": "storybase-go-proxy",
       "subdomain": "storybase",
       "port": 4551,
-      "fqdn": "storybase.gt4rents.com"
+      "fqdn": "storybase.upays.in"
     },
     {
       "tool": "woorank",
       "folder": "woorank-go-proxy",
       "subdomain": "wrank",
       "port": 4561,
-      "fqdn": "wrank.gt4rents.com"
+      "fqdn": "wrank.upays.in"
     },
     {
       "tool": "linkedin-learning",
       "folder": "linkedin-learning-go-proxy",
       "subdomain": "linkedinlearning",
       "port": 4571,
-      "fqdn": "linkedinlearning.gt4rents.com"
+      "fqdn": "linkedinlearning.upays.in"
     },
     {
       "tool": "vistacreate",
       "folder": "vistacreate-go-proxy",
       "subdomain": "vistacreate",
       "port": 4581,
-      "fqdn": "vistacreate.gt4rents.com"
+      "fqdn": "vistacreate.upays.in"
     },
     {
       "tool": "sellthetrend",
       "folder": "sellthetrend-go-proxy",
       "subdomain": "sellthetrend",
       "port": 4591,
-      "fqdn": "sellthetrend.gt4rents.com"
+      "fqdn": "sellthetrend.upays.in"
     },
     {
       "tool": "leonardo",
       "folder": "leonardo-go-proxy",
       "subdomain": "leonardo",
       "port": 4601,
-      "fqdn": "leonardo.gt4rents.com"
+      "fqdn": "leonardo.upays.in"
     },
     {
       "tool": "placeit",
       "folder": "placeit-go-proxy",
       "subdomain": "placeit",
       "port": 4611,
-      "fqdn": "placeit.gt4rents.com"
+      "fqdn": "placeit.upays.in"
     },
     {
       "tool": "creaitor",
       "folder": "creaitor-go-proxy",
       "subdomain": "creaitor",
       "port": 4621,
-      "fqdn": "creaitor.gt4rents.com"
+      "fqdn": "creaitor.upays.in"
     },
     {
       "tool": "wordtune",
       "folder": "wordtune-go-proxy",
       "subdomain": "wordtune",
       "port": 4631,
-      "fqdn": "wordtune.gt4rents.com"
+      "fqdn": "wordtune.upays.in"
     },
     {
       "tool": "epidemicsound",
       "folder": "epidemicsound-go-proxy",
       "subdomain": "epidemicsound",
       "port": 4641,
-      "fqdn": "epidemicsound.gt4rents.com"
+      "fqdn": "epidemicsound.upays.in"
     },
     {
       "tool": "merchinformer",
       "folder": "merchinformer-go-proxy",
       "subdomain": "merchinformer",
       "port": 4651,
-      "fqdn": "merchinformer.gt4rents.com"
+      "fqdn": "merchinformer.upays.in"
     },
     {
       "tool": "seositecheckup",
       "folder": "seositecheckup-go-proxy",
       "subdomain": "seositecheckup",
       "port": 4661,
-      "fqdn": "seositecheckup.gt4rents.com"
+      "fqdn": "seositecheckup.upays.in"
     },
     {
       "tool": "flexclip",
       "folder": "flexclip-go-proxy",
       "subdomain": "flexclip",
       "port": 4671,
-      "fqdn": "flexclip.gt4rents.com"
+      "fqdn": "flexclip.upays.in"
     },
     {
       "tool": "glorify",
       "folder": "glorify-go-proxy",
       "subdomain": "glorify",
       "port": 4681,
-      "fqdn": "glorify.gt4rents.com"
+      "fqdn": "glorify.upays.in"
     },
     {
       "tool": "zonguru",
       "folder": "zonguru-go-proxy",
       "subdomain": "zonguru",
       "port": 4691,
-      "fqdn": "zonguru.gt4rents.com"
+      "fqdn": "zonguru.upays.in"
     },
     {
       "tool": "coursera",
       "folder": "coursera-go-proxy",
       "subdomain": "coursera",
       "port": 4701,
-      "fqdn": "coursera.gt4rents.com"
+      "fqdn": "coursera.upays.in"
     },
     {
       "tool": "searchatlas",
       "folder": "searchatlas-go-proxy",
       "subdomain": "searchatlas",
       "port": 4711,
-      "fqdn": "searchatlas.gt4rents.com"
+      "fqdn": "searchatlas.upays.in"
     },
     {
       "tool": "screpy",
       "folder": "screpy-go-proxy",
       "subdomain": "screpy",
       "port": 4721,
-      "fqdn": "screpy.gt4rents.com"
+      "fqdn": "screpy.upays.in"
     },
     {
       "tool": "seobility",
       "folder": "seobility-go-proxy",
       "subdomain": "seobility",
       "port": 4731,
-      "fqdn": "seobility.gt4rents.com"
+      "fqdn": "seobility.upays.in"
     },
     {
       "tool": "copyspace",
       "folder": "copyspace-go-proxy",
       "subdomain": "copyspace",
       "port": 4741,
-      "fqdn": "copyspace.gt4rents.com"
+      "fqdn": "copyspace.upays.in"
     },
     {
       "tool": "prezi",
       "folder": "prezi-go-proxy",
       "subdomain": "prezi",
       "port": 4751,
-      "fqdn": "prezi.gt4rents.com"
+      "fqdn": "prezi.upays.in"
     },
     {
       "tool": "scite",
       "folder": "scite-go-proxy",
       "subdomain": "scite",
       "port": 4761,
-      "fqdn": "scite.gt4rents.com"
+      "fqdn": "scite.upays.in"
     },
     {
       "tool": "shortform",
       "folder": "shortform-go-proxy",
       "subdomain": "shortform",
       "port": 4771,
-      "fqdn": "shortform.gt4rents.com"
+      "fqdn": "shortform.upays.in"
     },
     {
       "tool": "sketchgenius",
       "folder": "sketchgenius-go-proxy",
       "subdomain": "sketchgenius",
       "port": 4781,
-      "fqdn": "sketchgenius.gt4rents.com"
+      "fqdn": "sketchgenius.upays.in"
     },
     {
       "tool": "scribd",
       "folder": "scribd-go-proxy",
       "subdomain": "scribd",
       "port": 4791,
-      "fqdn": "scribd.gt4rents.com"
+      "fqdn": "scribd.upays.in"
     },
     {
       "tool": "seotesteronline",
       "folder": "seotesteronline-go-proxy",
       "subdomain": "seotesteronline",
       "port": 4801,
-      "fqdn": "seotesteronline.gt4rents.com"
+      "fqdn": "seotesteronline.upays.in"
     },
     {
       "tool": "rivalflow",
       "folder": "rivalflow-go-proxy",
       "subdomain": "rivalflow",
       "port": 4811,
-      "fqdn": "rivalflow.gt4rents.com"
+      "fqdn": "rivalflow.upays.in"
     },
     {
       "tool": "artistly",
       "folder": "artistly-go-proxy",
       "subdomain": "artistly",
       "port": 4821,
-      "fqdn": "artistly.gt4rents.com"
+      "fqdn": "artistly.upays.in"
     },
     {
       "tool": "grok",
       "folder": "grok-go-proxy",
       "subdomain": "grok",
       "port": 4831,
-      "fqdn": "grok.gt4rents.com"
+      "fqdn": "grok.upays.in"
     },
     {
       "tool": "cramly",
       "folder": "cramly-go-proxy",
       "subdomain": "cramly",
       "port": 4841,
-      "fqdn": "cramly.gt4rents.com"
+      "fqdn": "cramly.upays.in"
     },
     {
       "tool": "educative",
       "folder": "educative-go-proxy",
       "subdomain": "educative",
       "port": 4851,
-      "fqdn": "educative.gt4rents.com"
+      "fqdn": "educative.upays.in"
     },
     {
       "tool": "creattie",
       "folder": "creattie-go-proxy",
       "subdomain": "creattie",
       "port": 4861,
-      "fqdn": "creattie.gt4rents.com"
+      "fqdn": "creattie.upays.in"
     },
     {
       "tool": "minvo",
       "folder": "minvo-go-proxy",
       "subdomain": "minvo",
       "port": 4871,
-      "fqdn": "minvo.gt4rents.com"
+      "fqdn": "minvo.upays.in"
     },
     {
       "tool": "mojo",
       "folder": "mojo-go-proxy",
       "subdomain": "mojo",
       "port": 4881,
-      "fqdn": "mojo.gt4rents.com"
+      "fqdn": "mojo.upays.in"
     },
     {
       "tool": "uncensoredchat",
       "folder": "uncensoredchat-go-proxy",
       "subdomain": "uncensoredchat",
       "port": 4891,
-      "fqdn": "uncensoredchat.gt4rents.com"
+      "fqdn": "uncensoredchat.upays.in"
     },
     {
       "tool": "pixlr",
       "folder": "pixlr-go-proxy",
       "subdomain": "pixlr",
       "port": 4901,
-      "fqdn": "pixlr.gt4rents.com"
+      "fqdn": "pixlr.upays.in"
     },
     {
       "tool": "grammarly",
       "folder": "grammarly-go-proxy",
       "subdomain": "grammarly",
       "port": 4911,
-      "fqdn": "grammarly.gt4rents.com"
+      "fqdn": "grammarly.upays.in"
     },
     {
       "tool": "flaticon",
       "folder": "flaticon-go-proxy",
       "subdomain": "flaticon",
       "port": 4921,
-      "fqdn": "flaticon.gt4rents.com"
+      "fqdn": "flaticon.upays.in"
     },
     {
       "tool": "answerthepublic",
       "folder": "answerthepublic-go-proxy",
       "subdomain": "answerthepublic",
       "port": 4931,
-      "fqdn": "answerthepublic.gt4rents.com"
+      "fqdn": "answerthepublic.upays.in"
     },
     {
       "tool": "spyfu",
       "folder": "spyfu-go-proxy",
       "subdomain": "spyfu",
       "port": 4941,
-      "fqdn": "spyfu.gt4rents.com"
+      "fqdn": "spyfu.upays.in"
     },
     {
       "tool": "kalodata",
       "folder": "kalodata-go-proxy",
       "subdomain": "kalodata",
       "port": 4951,
-      "fqdn": "kalodata.gt4rents.com"
+      "fqdn": "kalodata.upays.in"
     },
     {
       "tool": "ppspy",
       "folder": "ppspy-go-proxy",
       "subdomain": "ppspy",
       "port": 4961,
-      "fqdn": "ppspy.gt4rents.com"
+      "fqdn": "ppspy.upays.in"
     },
     {
       "tool": "storyblocks",
       "folder": "storyblocks-go-proxy",
       "subdomain": "storyblocks",
       "port": 4971,
-      "fqdn": "storyblocks.gt4rents.com"
+      "fqdn": "storyblocks.upays.in"
     },
     {
       "tool": "syntx",
       "folder": "syntx-go-proxy",
       "subdomain": "syntx",
       "port": 4981,
-      "fqdn": "syntx.gt4rents.com"
+      "fqdn": "syntx.upays.in"
     },
     {
       "tool": "fishaudio",
       "folder": "fishaudio-go-proxy",
       "subdomain": "fishaudio",
       "port": 4991,
-      "fqdn": "fishaudio.gt4rents.com"
+      "fqdn": "fishaudio.upays.in"
     },
     {
       "tool": "chatbotapp",
       "folder": "chatbotapp-go-proxy",
       "subdomain": "chatbotapp",
       "port": 5061,
-      "fqdn": "chatbotapp.gt4rents.com"
+      "fqdn": "chatbotapp.upays.in"
     },
     {
       "tool": "speechify",
       "folder": "speechify-go-proxy",
       "subdomain": "speechify",
       "port": 5011,
-      "fqdn": "speechify.gt4rents.com"
+      "fqdn": "speechify.upays.in"
     },
     {
       "tool": "slidebean",
       "folder": "slidebean-go-proxy",
       "subdomain": "slidebean",
       "port": 5021,
-      "fqdn": "slidebean.gt4rents.com"
+      "fqdn": "slidebean.upays.in"
     },
     {
       "tool": "joggai",
       "folder": "joggai-go-proxy",
       "subdomain": "joggai",
       "port": 5031,
-      "fqdn": "joggai.gt4rents.com"
+      "fqdn": "joggai.upays.in"
     },
     {
       "tool": "videotoblog",
       "folder": "videotoblog-go-proxy",
       "subdomain": "videotoblog",
       "port": 5041,
-      "fqdn": "videotoblog.gt4rents.com"
+      "fqdn": "videotoblog.upays.in"
     },
     {
       "tool": "writecream",
       "folder": "writecream-go-proxy",
       "subdomain": "writecream",
       "port": 5051,
-      "fqdn": "writecream.gt4rents.com"
+      "fqdn": "writecream.upays.in"
     },
     {
       "tool": "similarweb",
       "folder": "similarweb-go-proxy",
       "subdomain": "similarweb",
       "port": 5071,
-      "fqdn": "similarweb.gt4rents.com"
+      "fqdn": "similarweb.upays.in"
     },
     {
       "tool": "branalyzer",
       "folder": "branalyzer-go-proxy",
       "subdomain": "branalyzer",
       "port": 5081,
-      "fqdn": "branalyzer.gt4rents.com"
+      "fqdn": "branalyzer.upays.in"
     },
     {
       "tool": "imgupscaler",
       "folder": "imgupscaler-go-proxy",
       "subdomain": "imgupscaler",
       "port": 5091,
-      "fqdn": "imgupscaler.gt4rents.com"
+      "fqdn": "imgupscaler.upays.in"
     },
     {
       "tool": "perplexity",
       "folder": "perplexity-go-proxy",
       "subdomain": "perplexity",
       "port": 5101,
-      "fqdn": "perplexity.gt4rents.com"
+      "fqdn": "perplexity.upays.in"
     },
     {
       "tool": "zebracat",
       "folder": "zebracat-go-proxy",
       "subdomain": "zebracat",
       "port": 5111,
-      "fqdn": "zebracat.gt4rents.com"
+      "fqdn": "zebracat.upays.in"
     },
     {
       "tool": "magnific",
       "folder": "magnific-go-proxy",
       "subdomain": "mgfc",
       "port": 5121,
-      "fqdn": "mgfc.gt4rents.com"
+      "fqdn": "mgfc.upays.in"
     },
     {
       "tool": "seobuddy",
       "folder": "seobuddy-go-proxy",
       "subdomain": "seobuddy",
       "port": 5131,
-      "fqdn": "seobuddy.gt4rents.com"
+      "fqdn": "seobuddy.upays.in"
     },
     {
       "tool": "semrush-new",
       "folder": "semrush-new-go-proxy",
       "subdomain": "smrs",
       "port": 5141,
-      "fqdn": "smrs.gt4rents.com"
+      "fqdn": "smrs.upays.in"
     },
     {
       "tool": "chatgpt",
       "folder": "chatgpt-go-proxy",
       "subdomain": "cgpt",
       "port": 5151,
-      "fqdn": "cgpt.gt4rents.com"
+      "fqdn": "cgpt.upays.in"
     },
     {
       "tool": "selleramp",
       "folder": "selleramp-go-proxy",
       "subdomain": "selleramp",
       "port": 5161,
-      "fqdn": "selleramp.gt4rents.com"
+      "fqdn": "selleramp.upays.in"
     },
     {
       "tool": "claude-ai",
       "folder": "claude-ai-go-proxy",
       "subdomain": "clud",
       "port": 5171,
-      "fqdn": "clud.gt4rents.com"
+      "fqdn": "clud.upays.in"
     },
     {
       "tool": "airbrush",
       "folder": "airbrush-go-proxy",
       "subdomain": "airbrush",
       "port": 5181,
-      "fqdn": "airbrush.gt4rents.com"
+      "fqdn": "airbrush.upays.in"
     },
     {
       "tool": "erank",
       "folder": "erank-go-proxy",
       "subdomain": "erank",
       "port": 5191,
-      "fqdn": "erank.gt4rents.com"
+      "fqdn": "erank.upays.in"
     },
     {
       "tool": "helium10",
       "folder": "helium10-go-proxy",
       "subdomain": "helium10",
       "port": 5201,
-      "fqdn": "helium10.gt4rents.com"
+      "fqdn": "helium10.upays.in"
     },
     {
       "tool": "junglescout",
       "folder": "junglescout-go-proxy",
       "subdomain": "junglescout",
       "port": 5211,
-      "fqdn": "junglescout.gt4rents.com"
+      "fqdn": "junglescout.upays.in"
     },
     {
       "tool": "helium-learning",
       "folder": "helium-learning-go-proxy",
       "subdomain": "heliumlearning",
       "port": 5221,
-      "fqdn": "heliumlearning.gt4rents.com"
+      "fqdn": "heliumlearning.upays.in"
     },
     {
       "tool": "indexification",
       "folder": "indexification-go-proxy",
       "subdomain": "indexification",
       "port": 5231,
-      "fqdn": "indexification.gt4rents.com"
+      "fqdn": "indexification.upays.in"
     },
     {
       "tool": "closerscopy",
       "folder": "closerscopy-go-proxy",
       "subdomain": "closerscopy",
       "port": 5241,
-      "fqdn": "closerscopy.gt4rents.com"
+      "fqdn": "closerscopy.upays.in"
     },
     {
       "tool": "zikaanalytics",
       "folder": "zikaanalytics-go-proxy",
       "subdomain": "zikaanalytics",
       "port": 5251,
-      "fqdn": "zikaanalytics.gt4rents.com"
+      "fqdn": "zikaanalytics.upays.in"
     },
     {
       "tool": "envato",
       "folder": "envato-go-proxy",
       "subdomain": "envt",
       "port": 5261,
-      "fqdn": "envt.gt4rents.com"
+      "fqdn": "envt.upays.in"
     },
     {
       "tool": "digen",
       "folder": "digen-go-proxy",
       "subdomain": "digen",
       "port": 5271,
-      "fqdn": "digen.gt4rents.com"
+      "fqdn": "digen.upays.in"
     },
     {
       "tool": "ubersuggest",
       "folder": "ubersuggest-go-proxy",
       "subdomain": "ubersuggest",
       "port": 5281,
-      "fqdn": "ubersuggest.gt4rents.com"
+      "fqdn": "ubersuggest.upays.in"
     },
     {
       "tool": "ahrefs",
       "folder": "ahrefs-go-proxy",
       "subdomain": "refs",
       "port": 5291,
-      "fqdn": "refs.gt4rents.com"
+      "fqdn": "refs.upays.in"
     },
     {
       "tool": "gptzero",
       "folder": "gptzero-go-proxy",
       "subdomain": "gptzero",
       "port": 5301,
-      "fqdn": "gptzero.gt4rents.com"
+      "fqdn": "gptzero.upays.in"
     },
     {
       "tool": "quillbot",
       "folder": "quillbot-go-proxy",
       "subdomain": "quillbot",
       "port": 5311,
-      "fqdn": "quillbot.gt4rents.com"
+      "fqdn": "quillbot.upays.in"
     },
     {
       "tool": "writehuman",
       "folder": "writehuman-go-proxy",
       "subdomain": "writehuman",
       "port": 5321,
-      "fqdn": "writehuman.gt4rents.com"
+      "fqdn": "writehuman.upays.in"
     },
     {
       "tool": "pictory",
       "folder": "pictory-go-proxy",
       "subdomain": "pictory",
       "port": 5331,
-      "fqdn": "pictory.gt4rents.com"
+      "fqdn": "pictory.upays.in"
     },
     {
       "tool": "veo3",
       "folder": "veo3-go-proxy",
       "subdomain": "veo3",
       "port": 5341,
-      "fqdn": "veo3.gt4rents.com"
+      "fqdn": "veo3.upays.in"
     },
     {
       "tool": "azsm2",
       "folder": "recloud/azad/azsm2",
       "subdomain": "azsm2",
       "port": 6000,
-      "fqdn": "azsm2.gt4rents.com"
+      "fqdn": "azsm2.upays.in"
     },
     {
       "tool": "azsm3",
       "folder": "recloud/azad/azsm3",
       "subdomain": "azsm3",
       "port": 6001,
-      "fqdn": "azsm3.gt4rents.com"
+      "fqdn": "azsm3.upays.in"
     },
     {
       "tool": "azsm4",
       "folder": "recloud/azad/azsm4",
       "subdomain": "azsm4",
       "port": 6002,
-      "fqdn": "azsm4.gt4rents.com"
+      "fqdn": "azsm4.upays.in"
     },
     {
       "tool": "azsm5",
       "folder": "recloud/azad/azsm5",
       "subdomain": "azsm5",
       "port": 6003,
-      "fqdn": "azsm5.gt4rents.com"
+      "fqdn": "azsm5.upays.in"
     },
     {
       "tool": "azsmaud1",
       "folder": "recloud/azad/azsmaud1",
       "subdomain": "azsmaud1",
       "port": 6004,
-      "fqdn": "azsmaud1.gt4rents.com"
+      "fqdn": "azsmaud1.upays.in"
     },
     {
       "tool": "azkwfind",
       "folder": "recloud/azad/azkwfind",
       "subdomain": "azkwfind",
       "port": 6005,
-      "fqdn": "azkwfind.gt4rents.com"
+      "fqdn": "azkwfind.upays.in"
     },
     {
       "tool": "azgram",
       "folder": "recloud/azad/azgram",
       "subdomain": "azgram",
       "port": 6006,
-      "fqdn": "azgram.gt4rents.com"
+      "fqdn": "azgram.upays.in"
     },
     {
       "tool": "azleo",
       "folder": "recloud/azad/azleo",
       "subdomain": "azleo",
       "port": 6007,
-      "fqdn": "azleo.gt4rents.com"
+      "fqdn": "azleo.upays.in"
     },
     {
       "tool": "azrewritify",
       "folder": "recloud/azad/azrewritify",
       "subdomain": "azrewritify",
       "port": 6008,
-      "fqdn": "azrewritify.gt4rents.com"
+      "fqdn": "azrewritify.upays.in"
     },
     {
       "tool": "azjasper",
       "folder": "recloud/azad/azjasper",
       "subdomain": "azjasper",
       "port": 6009,
-      "fqdn": "azjasper.gt4rents.com"
+      "fqdn": "azjasper.upays.in"
     },
     {
       "tool": "azquill",
       "folder": "recloud/azad/azquill",
       "subdomain": "azquill",
       "port": 6010,
-      "fqdn": "azquill.gt4rents.com"
+      "fqdn": "azquill.upays.in"
     },
     {
       "tool": "markhsm1",
       "folder": "recloud/markhor/markhsm1",
       "subdomain": "markhsm1",
       "port": 6100,
-      "fqdn": "markhsm1.gt4rents.com"
+      "fqdn": "markhsm1.upays.in"
     },
     {
       "tool": "markhsm2",
       "folder": "recloud/markhor/markhsm2",
       "subdomain": "markhsm2",
       "port": 6101,
-      "fqdn": "markhsm2.gt4rents.com"
+      "fqdn": "markhsm2.upays.in"
     },
     {
       "tool": "markhenv",
       "folder": "recloud/markhor/markhenv",
       "subdomain": "markhenv",
       "port": 6102,
-      "fqdn": "markhenv.gt4rents.com"
+      "fqdn": "markhenv.upays.in"
     },
     {
       "tool": "markhgram",
       "folder": "recloud/markhor/markhgram",
       "subdomain": "markhgram",
       "port": 6103,
-      "fqdn": "markhgram.gt4rents.com"
+      "fqdn": "markhgram.upays.in"
     },
     {
       "tool": "markhquill",
       "folder": "recloud/markhor/markhquill",
       "subdomain": "markhquill",
       "port": 6104,
-      "fqdn": "markhquill.gt4rents.com"
+      "fqdn": "markhquill.upays.in"
     },
     {
       "tool": "markhgpt",
       "folder": "recloud/markhor/markhgpt",
       "subdomain": "markhgpt",
       "port": 6105,
-      "fqdn": "markhgpt.gt4rents.com"
+      "fqdn": "markhgpt.upays.in"
     },
     {
       "tool": "markhke",
       "folder": "recloud/markhor/markhke",
       "subdomain": "markhke",
       "port": 6106,
-      "fqdn": "markhke.gt4rents.com"
+      "fqdn": "markhke.upays.in"
     },
     {
       "tool": "markhuber",
       "folder": "recloud/markhor/markhuber",
       "subdomain": "markhuber",
       "port": 6107,
-      "fqdn": "markhuber.gt4rents.com"
+      "fqdn": "markhuber.upays.in"
     },
     {
       "tool": "markhanswer",
       "folder": "recloud/markhor/markhanswer",
       "subdomain": "markhanswer",
       "port": 6108,
-      "fqdn": "markhanswer.gt4rents.com"
+      "fqdn": "markhanswer.upays.in"
     },
     {
       "tool": "tbaazarsm",
       "folder": "recloud/toolbaazar/tbaazarsm",
       "subdomain": "tbaazarsm",
       "port": 6200,
-      "fqdn": "tbaazarsm.gt4rents.com"
+      "fqdn": "tbaazarsm.upays.in"
     },
     {
       "tool": "tbaazaraudit",
       "folder": "recloud/toolbaazar/tbaazaraudit",
       "subdomain": "tbaazaraudit",
       "port": 6201,
-      "fqdn": "tbaazaraudit.gt4rents.com"
+      "fqdn": "tbaazaraudit.upays.in"
     },
     {
       "tool": "amzckeepa",
       "folder": "recloud/amztoolsconsultant/amzckeepa",
       "subdomain": "amzckeepa",
       "port": 6300,
-      "fqdn": "amzckeepa.gt4rents.com"
+      "fqdn": "amzckeepa.upays.in"
     },
     {
       "tool": "amzcheliumdia",
       "folder": "recloud/amztoolsconsultant/amzcheliumdia",
       "subdomain": "amzcheliumdia",
       "port": 6301,
-      "fqdn": "amzcheliumdia.gt4rents.com"
+      "fqdn": "amzcheliumdia.upays.in"
     },
     {
       "tool": "amzcheliumplat",
       "folder": "recloud/amztoolsconsultant/amzcheliumplat",
       "subdomain": "amzcheliumplat",
       "port": 6302,
-      "fqdn": "amzcheliumplat.gt4rents.com"
+      "fqdn": "amzcheliumplat.upays.in"
     },
     {
       "tool": "amzcselleramp",
       "folder": "recloud/amztoolsconsultant/amzcselleramp",
       "subdomain": "amzcselleramp",
       "port": 6303,
-      "fqdn": "amzcselleramp.gt4rents.com"
+      "fqdn": "amzcselleramp.upays.in"
     },
     {
       "tool": "amzccg",
       "folder": "recloud/amztoolsconsultant/amzcgpt",
       "subdomain": "amzccg",
       "port": 6304,
-      "fqdn": "amzccg.gt4rents.com"
+      "fqdn": "amzccg.upays.in"
     },
     {
       "tool": "amzcft",
       "folder": "recloud/amztoolsconsultant/amzcft",
       "subdomain": "amzcft",
       "port": 6305,
-      "fqdn": "amzcft.gt4rents.com"
+      "fqdn": "amzcft.upays.in"
     },
     {
       "tool": "amzcnichs",
       "folder": "recloud/amztoolsconsultant/amzcnichs",
       "subdomain": "amzcnichs",
       "port": 6306,
-      "fqdn": "amzcnichs.gt4rents.com"
+      "fqdn": "amzcnichs.upays.in"
     },
     {
       "tool": "amzcenv",
       "folder": "recloud/amztoolsconsultant/amzcenv",
       "subdomain": "amzcenv",
       "port": 6307,
-      "fqdn": "amzcenv.gt4rents.com"
+      "fqdn": "amzcenv.upays.in"
     },
     {
       "tool": "shsm1",
       "folder": "recloud/seoshop/shsm1",
       "subdomain": "shsm1",
       "port": 6400,
-      "fqdn": "shsm1.gt4rents.com"
+      "fqdn": "shsm1.upays.in"
     },
     {
       "tool": "shsm2",
       "folder": "recloud/seoshop/shsm2",
       "subdomain": "shsm2",
       "port": 6401,
-      "fqdn": "shsm2.gt4rents.com"
+      "fqdn": "shsm2.upays.in"
     }
   ]
 }

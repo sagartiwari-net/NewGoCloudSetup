@@ -1,6 +1,6 @@
 {
   "port": "5151",
-  "public_host": "cgpt.gt4rents.com",
+  "public_host": "cgpt.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "use_database": false,
@@ -8,5 +8,5 @@
   "bypass_auth": false,
   "tool_name": "ChatGPT",
   "target_url": "https://chatgpt.com",
-  "_note": "Panel mode only — never enable use_database/session_security from old production templates"
+  "_note": "Panel mode only \u2014 never enable use_database/session_security from old production templates"
 }

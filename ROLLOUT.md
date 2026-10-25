@@ -1,7 +1,11 @@
-# gt4rents.com rollout checklist
+# Tool rollout checklist (live apex `upays.in`)
+
+**2026-10-25:** `gt4rents.com` is registrar-suspended. Public hosts are `*.upays.in`. Disk, MySQL name, and systemd stay under `/www/wwwroot/gt4rents.com`. Move ticks: **`DOMAIN-MIGRATE.md`**. The lists below are the last known state on the old apex.
+
+Live database is phpMyAdmin MySQL `gt4rents` (`127.0.0.1:3306`, user `gt4rents`). `panel.db` is a frozen backup. Do not open it for a new tool, and do not copy it back over MySQL. Older ticks below mention `panel.db` because that file was the store at the time.
 
 Living tick-list. Update as each tool goes green.  
-Server: `65.109.16.196` · Domain: `gt4rents.com` · Repo: this folder → `/www/wwwroot/gt4rents.com/_repo`
+Server: `65.109.16.196` · Domain: **`upays.in`** (old: `gt4rents.com`) · Repo: this folder → `/www/wwwroot/gt4rents.com/_repo`
 
 **Agreed order (2026-10-04):**
 
@@ -141,6 +145,7 @@ Verified on an access link. Each tool is listed once.
 - [x] `placeit` (:4611) — **HTTPS OK** (2026-10-07): panel access working
 - [x] `ppspy` (:4961) — **HTTPS OK** (2026-10-11): `app.ppspy.com`, home `/dashboard`.
 - [x] `prezi` (:4751) — **HTTPS OK** (2026-10-08): panel username + UserDropdown blocked; Craft CDN/API device soft-allow (was stuck on “Laying out the canvas”)
+- [x] `quillbot` (:5311) — **HTTPS OK** (2026-10-11): `quillbot.com`. Login is the saved Firebase session, either the GoAuto export or a bare `firebaseLocalStorageDb` dump. The editor saves. Hide only the account menu's logout row. The account name shows the panel username.
 - [x] `refs` — Ahrefs (:5291) — HTTP access-link LIVE
 - [x] `rivalflow` (:4811) — **HTTPS OK** (2026-10-11): `app.rivalflow.com`, home `/actionflow`.
 - [x] `screpy` (:4721) — **HTTPS OK** (2026-10-11): `app.screpy.com`, home `/dashboard`. Hide only the sidebar account row (avatar, name, and Free badge).
@@ -164,12 +169,12 @@ Verified on an access link. Each tool is listed once.
 - [x] `writecream` (:5051) — **HTTPS OK** (2026-10-11): `app.writecream.com`, home `/dashboard`. Hide only the header account menu (avatar, name, Lifetime Subscription, and Logout).
 - [x] `writehuman` (:5321) — official proxy for `https://writehuman.ai` (2026-10-17). Same security shell as the other official tools: panel access link, device fingerprint, and the light cards (direct open shows Access Denied; panel Open shows Authenticating). Disk cache `cdn-cache/` (72h) for JS, CSS, fonts, and images, with a 1-year immutable browser header. HTML and API responses stay `no-store`. Login is the Chrome cookie array, including the Supabase auth cookie. The panel website row is created when the panel API binary that contains `ensureWriteHuman` starts, so a new tool also needs `./deploy/build-panel.sh` and a panel API restart before it appears in Product Mapping.
 - [x] `wrank` — WooRank (:4561) — **HTTPS OK** (2026-10-05): `wrank` host (not brand SB), HTTP/2 ALPN route, host-jail `https://x/` blocked, device force-visible, panel.db cookies + overview
+- [x] `zikaanalytics` (:5251) — **HTTPS OK** (2026-10-12): `app.zikanalytics.com`, home `/dashboard`. A saved GoAuto cookie (SessionToken + localStorage `access`) leaves the access link and the dashboard opens. A research 401 does not replace the page before it loads.
 
 ### Not started
 
 Built with the batch. Not verified on an access link yet.
 
-- [ ] `quillbot` (:5311) — `https://quillbot.com`. Login is the saved Firebase session, either the GoAuto export or a bare `firebaseLocalStorageDb` dump. Paste that cookie on the panel account. Not verified on an access link yet.
 - [ ] `heliumlearning` (:5221)
 - [ ] `indexification` (:5231)
 - [ ] `merchinformer` (:4651)
@@ -177,7 +182,6 @@ Built with the batch. Not verified on an access link yet.
 - [ ] `storyblocks` (:4971)
 - [ ] `ubersuggest` (:5281)
 - [ ] `uncensoredchat` (:4891)
-- [ ] `zikaanalytics` (:5251)
 
 ### Tried — still an issue
 

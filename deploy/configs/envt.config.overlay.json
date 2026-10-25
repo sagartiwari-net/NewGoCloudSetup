@@ -1,6 +1,6 @@
 {
   "port": "5261",
-  "public_host": "envt.gt4rents.com",
+  "public_host": "envt.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

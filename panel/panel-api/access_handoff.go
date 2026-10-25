@@ -630,7 +630,7 @@ func (s *server) issueAccessToken(websiteID int, domain, username, productID, ip
 	if scheme != "https" {
 		scheme = "http"
 	}
-	return scheme + "://" + domain + "/access?token=" + url.QueryEscape(token), nil
+	return scheme + "://" + publicToolHost(domain) + "/access?token=" + url.QueryEscape(token), nil
 }
 
 func (s *server) listAccessRejects(w http.ResponseWriter, r *http.Request) {

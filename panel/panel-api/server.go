@@ -46,6 +46,8 @@ func (s *server) withCORS(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 		allow := strings.HasPrefix(origin, "http://localhost:") ||
 			strings.HasPrefix(origin, "http://127.0.0.1:") ||
+			origin == "https://panel.upays.in" ||
+			origin == "http://panel.upays.in" ||
 			origin == "https://panel.gt4rents.com" ||
 			origin == "http://panel.gt4rents.com"
 		if allow {

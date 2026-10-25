@@ -1,6 +1,6 @@
 {
   "port": "5191",
-  "public_host": "erank.gt4rents.com",
+  "public_host": "erank.upays.in",
   "public_scheme": "https",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "cookie_domain_suffix": "erank.com",
@@ -12,5 +12,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "gt4rents panel.db mode — Mapped Accounts cookies from panel.db"
+  "_note": "panel mode \u2014 cookies come from MySQL gt4rents. panel.db is a frozen backup and is not opened."
 }

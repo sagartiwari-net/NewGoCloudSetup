@@ -1,6 +1,6 @@
 {
   "port": "4561",
-  "public_host": "wrank.gt4rents.com",
+  "public_host": "wrank.upays.in",
   "public_scheme": "https",
   "website_id": 7,
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
@@ -17,5 +17,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "Renamed from woorank.gt4rents.com → wrank.gt4rents.com (Safe Browsing). Rebuild with ./deploy/build-one.sh wrank — never leave a ChatGPT binary on :4561."
+  "_note": "Renamed from woorank.gt4rents.com \u2192 wrank.gt4rents.com (Safe Browsing). Rebuild with ./deploy/build-one.sh wrank \u2014 never leave a ChatGPT binary on :4561."
 }

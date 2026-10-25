@@ -1,7 +1,7 @@
 {
   "port": "5161",
   "website_id": 131,
-  "public_host": "selleramp.gt4rents.com",
+  "public_host": "selleramp.upays.in",
   "public_scheme": "https",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
@@ -11,7 +11,20 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "blocked_paths": ["/r/account", "/r/settings", "/r/user-management", "/integrations/index", "/site/logout", "/site/login", "/r/api/auth/session/sign-out"],
-  "blocked_prefixes": ["/r/account", "/r/settings", "/r/user-management", "/r/api/auth/session"],
+  "blocked_paths": [
+    "/r/account",
+    "/r/settings",
+    "/r/user-management",
+    "/integrations/index",
+    "/site/logout",
+    "/site/login",
+    "/r/api/auth/session/sign-out"
+  ],
+  "blocked_prefixes": [
+    "/r/account",
+    "/r/settings",
+    "/r/user-management",
+    "/r/api/auth/session"
+  ],
   "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
 }

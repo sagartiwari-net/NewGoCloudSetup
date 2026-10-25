@@ -1,6 +1,6 @@
 {
   "port": "4671",
-  "public_host": "flexclip.gt4rents.com",
+  "public_host": "flexclip.upays.in",
   "public_scheme": "https",
   "target_url": "https://www.flexclip.com",
   "cdn_url": "https://www.flexclip.com",
@@ -44,12 +44,30 @@
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
   "replacements": [
-    { "search": "Digitavision.Com", "replace": "ToolsMandi" },
-    { "search": "DigitaVision.Com", "replace": "ToolsMandi" },
-    { "search": "digitavision.com", "replace": "ToolsMandi" },
-    { "search": "DigitaVision", "replace": "ToolsMandi" },
-    { "search": "Digitavision", "replace": "ToolsMandi" },
-    { "search": "digitavision", "replace": "ToolsMandi" }
+    {
+      "search": "Digitavision.Com",
+      "replace": "ToolsMandi"
+    },
+    {
+      "search": "DigitaVision.Com",
+      "replace": "ToolsMandi"
+    },
+    {
+      "search": "digitavision.com",
+      "replace": "ToolsMandi"
+    },
+    {
+      "search": "DigitaVision",
+      "replace": "ToolsMandi"
+    },
+    {
+      "search": "Digitavision",
+      "replace": "ToolsMandi"
+    },
+    {
+      "search": "digitavision",
+      "replace": "ToolsMandi"
+    }
   ],
   "_note": "Empty target fell through to chatgpt.com. App is https://www.flexclip.com/editor/."
 }

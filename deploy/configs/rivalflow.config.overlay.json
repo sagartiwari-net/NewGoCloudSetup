@@ -1,6 +1,6 @@
 {
   "port": "4811",
-  "public_host": "rivalflow.gt4rents.com",
+  "public_host": "rivalflow.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,

@@ -134,7 +134,7 @@ def fetch(url):
 
 for label, url in (
     ("localhost", f"http://127.0.0.1:{port}/"),
-    ("public", "https://panel.gt4rents.com/"),
+    ("public", "https://panel.upays.in/"),
 ):
     info, body = fetch(url)
     bad = b"Redirecting to sign in" in body or b"turbopack-" in body

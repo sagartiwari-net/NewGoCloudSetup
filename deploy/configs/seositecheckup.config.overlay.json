@@ -1,6 +1,6 @@
 {
   "port": "4661",
-  "public_host": "seositecheckup.gt4rents.com",
+  "public_host": "seositecheckup.upays.in",
   "public_scheme": "https",
   "website_id": 17,
   "target_url": "https://app.seositecheckup.com",
@@ -15,5 +15,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "website_id 17 = seositecheckup.gt4rents.com — force https + correct target"
+  "_note": "website_id 17 = seositecheckup.gt4rents.com \u2014 force https + correct target"
 }

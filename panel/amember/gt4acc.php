@@ -13,7 +13,7 @@
  * site, tool, username, sorted product ids, customer IP, unix time, nonce.
  */
 
-const PANEL_HANDOFF_URL = 'https://panel.gt4rents.com/api/access/handoff';
+const PANEL_HANDOFF_URL = 'https://panel.upays.in/api/access/handoff';
 const PANEL_SITE_DOMAIN = 'toolsmandi.com';
 const PANEL_SITE_KEY = 'paste-the-key-from-allowed-sites';
 

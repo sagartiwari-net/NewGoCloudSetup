@@ -1,6 +1,6 @@
 {
   "port": "5171",
-  "public_host": "clud.gt4rents.com",
+  "public_host": "clud.upays.in",
   "public_scheme": "http",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
@@ -8,5 +8,5 @@
   "tool_name": "Claude AI",
   "target_url": "https://claude.ai",
   "home_path": "/new",
-  "_note": "Panel mode — MUST assign Proxy Manager proxy on Claude AI account (same as Envato). Without it CF blanks the tool; binary shows Proxy required page."
+  "_note": "Panel mode \u2014 MUST assign Proxy Manager proxy on Claude AI account (same as Envato). Without it CF blanks the tool; binary shows Proxy required page."
 }

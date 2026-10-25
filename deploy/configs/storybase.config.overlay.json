@@ -1,6 +1,6 @@
 {
   "port": "4551",
-  "public_host": "storybase.gt4rents.com",
+  "public_host": "storybase.upays.in",
   "public_scheme": "https",
   "target_url": "https://www.storybase.com",
   "cdn_url": "https://www.storybase.com",
@@ -16,5 +16,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "Force www.storybase.com — empty target falls through to chatgpt.com default; 502 malformed HTTP = need HTTP/1.1 ALPN (same as ilovepdf)"
+  "_note": "Force www.storybase.com \u2014 empty target falls through to chatgpt.com default; 502 malformed HTTP = need HTTP/1.1 ALPN (same as ilovepdf)"
 }

@@ -1,6 +1,6 @@
 {
   "port": "4761",
-  "public_host": "scite.gt4rents.com",
+  "public_host": "scite.upays.in",
   "public_scheme": "https",
   "target_url": "https://scite.ai",
   "cdn_url": "https://cdn.scite.ai",

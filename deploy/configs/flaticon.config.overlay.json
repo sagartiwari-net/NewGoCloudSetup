@@ -1,6 +1,6 @@
 {
   "port": "4921",
-  "public_host": "flaticon.gt4rents.com",
+  "public_host": "flaticon.upays.in",
   "public_scheme": "https",
   "website_id": 43,
   "target_url": "https://www.flaticon.com",
@@ -16,5 +16,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "website_id 43 — Freepik WAF on Hetzner requires Proxy Manager residential proxy on the account"
+  "_note": "website_id 43 \u2014 Freepik WAF on Hetzner requires Proxy Manager residential proxy on the account"
 }

@@ -1,6 +1,6 @@
 {
   "port": "4531",
-  "public_host": "ilovepdf.gt4rents.com",
+  "public_host": "ilovepdf.upays.in",
   "public_scheme": "https",
   "target_url": "https://www.ilovepdf.com",
   "cdn_url": "https://www.ilovepdf.com",
@@ -15,5 +15,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "Force www.ilovepdf.com — empty target falls through to chatgpt.com default; Bad Gateway = start :4531"
+  "_note": "Force www.ilovepdf.com \u2014 empty target falls through to chatgpt.com default; Bad Gateway = start :4531"
 }

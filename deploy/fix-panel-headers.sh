@@ -2,7 +2,10 @@
 # Panel Chrome error "This page couldn't load" is a reset when the Cookie
 # header is bigger than nginx or Node will accept. Raise both, then restart the UI.
 set -euo pipefail
-CONF="/www/server/panel/vhost/nginx/panel.gt4rents.com.conf"
+CONF="/www/server/panel/vhost/nginx/panel.upays.in.conf"
+if [[ ! -f "${CONF}" ]]; then
+  CONF="/www/server/panel/vhost/nginx/panel.gt4rents.com.conf"
+fi
 
 python3 - "$CONF" <<'PY'
 import pathlib, sys
@@ -22,6 +25,10 @@ t = t.replace("large_client_header_buffers 8 128k;", "large_client_header_buffer
 t = t.replace("proxy_set_header Connection $connection_upgrade;", 'proxy_set_header Connection "";')
 t = t.replace("proxy_set_header Connection $http_connection;", 'proxy_set_header Connection "";')
 if "client_header_buffer_size" not in t:
+    t = t.replace(
+        "server_name panel.upays.in;",
+        "server_name panel.upays.in;\n    client_header_buffer_size 512k;\n    large_client_header_buffers 8 512k;",
+    )
     t = t.replace(
         "server_name panel.gt4rents.com;",
         "server_name panel.gt4rents.com;\n    client_header_buffer_size 512k;\n    large_client_header_buffers 8 512k;",
