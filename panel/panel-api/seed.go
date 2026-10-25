@@ -84,7 +84,6 @@ var localTools = []seedTool{
 	{"syntx", "SYNTX", "4981", "ai", nil},
 	{"fishaudio", "Fish Audio", "4991", "audio", credits},
 	{"chatbotapp", "Chatbot App", "5001", "ai", credits},
-	{"speechify", "Speechify", "5011", "audio", credits},
 	{"slidebean", "Slidebean", "5021", "design", nil},
 	{"joggai", "JoggAI", "5031", "video", credits},
 	{"videotoblog", "Video to Blog", "5041", "ai", credits},
@@ -119,10 +118,10 @@ var localTools = []seedTool{
 }
 
 // Existing panel databases are not re-seeded. Insert QuillBot once so the
-// Access tool list can open quillbot.gt4rents.com.
+// Access tool list can open quillbot.upays.in.
 func ensureQuillbot(db *sql.DB) {
 	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('quillbot.gt4rents.com', '127.0.0.1:5311')`).Scan(&n)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('quillbot.upays.in', 'quillbot.gt4rents.com', '127.0.0.1:5311')`).Scan(&n)
 	if n > 0 {
 		return
 	}
@@ -139,7 +138,7 @@ func ensureQuillbot(db *sql.DB) {
 	}
 	defaults, _ := json.Marshal(map[string]int{"credits": 100})
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
-		VALUES (?,?,?,?,120,?,1)`, toolID, "QuillBot", "quillbot.gt4rents.com", "secret_quillbot", string(defaults))
+		VALUES (?,?,?,?,120,?,1)`, toolID, "QuillBot", "quillbot.upays.in", "secret_quillbot", string(defaults))
 	if err != nil {
 		log.Printf("quillbot website: %v", err)
 		return
@@ -148,14 +147,14 @@ func ensureQuillbot(db *sql.DB) {
 	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "QuillBot", `["5311"]`)
 	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
 		websiteID, "QuillBot 1", "", "active", "Paste the Firebase session JSON into this cookie.")
-	log.Printf("added QuillBot website %d at quillbot.gt4rents.com", websiteID)
+	log.Printf("added QuillBot website %d at quillbot.upays.in", websiteID)
 }
 
 // Existing panel databases are not re-seeded. Insert WriteHuman once so the
-// Access tool list can open writehuman.gt4rents.com.
+// Access tool list can open writehuman.upays.in.
 func ensureWriteHuman(db *sql.DB) {
 	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('writehuman.gt4rents.com', '127.0.0.1:5321')`).Scan(&n)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('writehuman.upays.in', 'writehuman.gt4rents.com', '127.0.0.1:5321')`).Scan(&n)
 	if n > 0 {
 		return
 	}
@@ -172,7 +171,7 @@ func ensureWriteHuman(db *sql.DB) {
 	}
 	defaults, _ := json.Marshal(map[string]int{"words": 10000, "images": 50})
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
-		VALUES (?,?,?,?,120,?,1)`, toolID, "WriteHuman", "writehuman.gt4rents.com", "secret_writehuman", string(defaults))
+		VALUES (?,?,?,?,120,?,1)`, toolID, "WriteHuman", "writehuman.upays.in", "secret_writehuman", string(defaults))
 	if err != nil {
 		log.Printf("writehuman website: %v", err)
 		return
@@ -181,14 +180,14 @@ func ensureWriteHuman(db *sql.DB) {
 	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "WriteHuman", `["writehuman"]`)
 	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
 		websiteID, "WriteHuman 1", "", "active", "Paste the Chrome cookie array into this cookie.")
-	log.Printf("added WriteHuman website %d at writehuman.gt4rents.com", websiteID)
+	log.Printf("added WriteHuman website %d at writehuman.upays.in", websiteID)
 }
 
 // Existing panel databases are not re-seeded. Insert Pictory once so the
-// Access tool list can open pictory.gt4rents.com.
+// Access tool list can open pictory.upays.in.
 func ensurePictory(db *sql.DB) {
 	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('pictory.gt4rents.com', '127.0.0.1:5331')`).Scan(&n)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('pictory.upays.in', 'pictory.gt4rents.com', '127.0.0.1:5331')`).Scan(&n)
 	if n > 0 {
 		return
 	}
@@ -203,7 +202,7 @@ func ensurePictory(db *sql.DB) {
 		toolID, _ = res.LastInsertId()
 	}
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
-		VALUES (?,?,?,?,120,?,1)`, toolID, "Pictory", "pictory.gt4rents.com", "secret_pictory", "{}")
+		VALUES (?,?,?,?,120,?,1)`, toolID, "Pictory", "pictory.upays.in", "secret_pictory", "{}"
 	if err != nil {
 		log.Printf("pictory website: %v", err)
 		return
@@ -212,14 +211,14 @@ func ensurePictory(db *sql.DB) {
 	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "Pictory", `["pictory"]`)
 	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
 		websiteID, "Pictory 1", "", "active", "Paste a localStorage JSON object, or a referer export that contains storage.localStorage. A Chrome cookie array also works.")
-	log.Printf("added Pictory website %d at pictory.gt4rents.com", websiteID)
+	log.Printf("added Pictory website %d at pictory.upays.in", websiteID)
 }
 
 // Existing panel databases are not re-seeded. Insert Veo3 AI once so the
-// Access tool list can open veo3.gt4rents.com.
+// Access tool list can open veo3.upays.in.
 func ensureVeo3(db *sql.DB) {
 	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('veo3.gt4rents.com', '127.0.0.1:5341')`).Scan(&n)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE domain IN ('veo3.upays.in', 'veo3.gt4rents.com', '127.0.0.1:5341')`).Scan(&n)
 	if n > 0 {
 		return
 	}
@@ -234,7 +233,7 @@ func ensureVeo3(db *sql.DB) {
 		toolID, _ = res.LastInsertId()
 	}
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
-		VALUES (?,?,?,?,120,?,1,?)`, toolID, "Veo3 AI", "veo3.gt4rents.com", "secret_veo3", "{}", "veo3")
+		VALUES (?,?,?,?,120,?,1,?)`, toolID, "Veo3 AI", "veo3.upays.in", "secret_veo3", "{}", "veo3"
 	if err != nil {
 		log.Printf("veo3 website: %v", err)
 		return
@@ -243,7 +242,7 @@ func ensureVeo3(db *sql.DB) {
 	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "Veo3 AI", `["veo3"]`)
 	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
 		websiteID, "Veo3 AI 1", "", "active", "Paste the Chrome cookie JSON array into this cookie.")
-	log.Printf("added Veo3 AI website %d at veo3.gt4rents.com", websiteID)
+	log.Printf("added Veo3 AI website %d at veo3.upays.in", websiteID)
 }
 
 func defaultSeedLimit(key string) int {
@@ -377,10 +376,10 @@ func ensureToolWalySites(db *sql.DB) {
 		owner  string
 	}
 	sites := []site{
-		{"Ahrefs", "ToolWaly Ahrefs", "refs.toolwaly.com", "refs.gt4rents.com"},
-		{"Semrush", "ToolWaly Semrush", "smrs.toolwaly.com", "smrs.gt4rents.com"},
-		{"Canva", "ToolWaly Canva", "cnva.toolwaly.com", "cnva.gt4rents.com"},
-		{"Grammarly", "ToolWaly Grammarly", "grammarly.toolwaly.com", "grammarly.gt4rents.com"},
+		{"Ahrefs", "ToolWaly Ahrefs", "refs.toolwaly.com", "refs.upays.in"},
+		{"Semrush", "ToolWaly Semrush", "smrs.toolwaly.com", "smrs.upays.in"},
+		{"Canva", "ToolWaly Canva", "cnva.toolwaly.com", "cnva.upays.in"},
+		{"Grammarly", "ToolWaly Grammarly", "grammarly.toolwaly.com", "grammarly.upays.in"},
 	}
 	var opID int64
 	if db.QueryRow(`SELECT id FROM operators WHERE username=?`, "ToolWaly").Scan(&opID) != nil || opID <= 0 {
@@ -443,7 +442,7 @@ func ensureT4ToolzAhrefs(db *sql.DB) {
 	}
 	limits := "{}"
 	sessionMinutes := 30
-	_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}'), COALESCE(session_duration, 30) FROM websites WHERE lower(trim(domain))=?`, "refs.gt4rents.com").Scan(&limits, &sessionMinutes)
+	_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}'), COALESCE(session_duration, 30) FROM websites WHERE lower(trim(domain)) IN ('refs.upays.in', 'refs.gt4rents.com') ORDER BY CASE WHEN domain LIKE '%.upays.in' THEN 0 ELSE 1 END LIMIT 1`).Scan(&limits, &sessionMinutes)
 	if strings.TrimSpace(limits) == "" {
 		limits = "{}"
 	}

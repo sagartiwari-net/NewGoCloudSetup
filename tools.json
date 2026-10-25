@@ -369,13 +369,6 @@
       "fqdn": "chatbotapp.upays.in"
     },
     {
-      "tool": "speechify",
-      "folder": "speechify-go-proxy",
-      "subdomain": "speechify",
-      "port": 5011,
-      "fqdn": "speechify.upays.in"
-    },
-    {
       "tool": "slidebean",
       "folder": "slidebean-go-proxy",
       "subdomain": "slidebean",

@@ -352,7 +352,7 @@ Copy that file onto the aMember box after the panel URL is live. Site key stays 
 | [ ] | `syntx` | syntx | `4981` | `syntx.gt4rents.com` | `syntx.upays.in` |
 | [ ] | `fishaudio` | fishaudio | `4991` | `fishaudio.gt4rents.com` | `fishaudio.upays.in` |
 | [ ] | `chatbotapp` | chatbotapp | `5061` | `chatbotapp.gt4rents.com` | `chatbotapp.upays.in` |
-| [ ] | `speechify` | speechify | `5011` | `speechify.gt4rents.com` | `speechify.upays.in` |
+| [x] | `speechify` | — | `5011` | **removed** (phishing risk — not on `upays.in`) | — |
 | [ ] | `slidebean` | slidebean | `5021` | `slidebean.gt4rents.com` | `slidebean.upays.in` |
 | [ ] | `joggai` | joggai | `5031` | `joggai.gt4rents.com` | `joggai.upays.in` |
 | [ ] | `videotoblog` | videotoblog | `5041` | `videotoblog.gt4rents.com` | `videotoblog.upays.in` |

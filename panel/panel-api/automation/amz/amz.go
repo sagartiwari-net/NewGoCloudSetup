@@ -117,7 +117,7 @@ func (Recipe) Login(ctx context.Context, username, password string) ([]automatio
 	}
 	cookies := HomepageCookies(append(portalCookies(jar), recordedPortal(record)...))
 	log.Printf("[automation] amz result logged in on the panel server. %s is the member dashboard (%d bytes). PHPSESSID is the session cookie. Saved %s", automation.Where(memberLanded), len(member), cookieShapes(cookies))
-	log.Printf("[automation] amz result the same PHPSESSID still shows the login form in your own browser, because aMember tied this session to the panel server. Open https://amzcheliumdia.gt4rents.com/black-box/products to view it")
+	log.Printf("[automation] amz result the same PHPSESSID still shows the login form in your own browser, because aMember tied this session to the panel server. Open https://amzcheliumdia.upays.in/black-box/products to view it")
 	if len(cookies) == 0 {
 		return nil, automation.At(automation.ErrLoginPage, memberLanded)
 	}
