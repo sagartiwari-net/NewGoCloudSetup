@@ -202,7 +202,7 @@ func ensurePictory(db *sql.DB) {
 		toolID, _ = res.LastInsertId()
 	}
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled)
-		VALUES (?,?,?,?,120,?,1)`, toolID, "Pictory", "pictory.upays.in", "secret_pictory", "{}"
+		VALUES (?,?,?,?,120,?,1)`, toolID, "Pictory", "pictory.upays.in", "secret_pictory", "{}")
 	if err != nil {
 		log.Printf("pictory website: %v", err)
 		return
@@ -233,7 +233,7 @@ func ensureVeo3(db *sql.DB) {
 		toolID, _ = res.LastInsertId()
 	}
 	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
-		VALUES (?,?,?,?,120,?,1,?)`, toolID, "Veo3 AI", "veo3.upays.in", "secret_veo3", "{}", "veo3"
+		VALUES (?,?,?,?,120,?,1,?)`, toolID, "Veo3 AI", "veo3.upays.in", "secret_veo3", "{}", "veo3")
 	if err != nil {
 		log.Printf("veo3 website: %v", err)
 		return
