@@ -12,7 +12,14 @@ SELECT src.tool_id,
        30,
        src.default_limits_json,
        src.session_security_enabled,
-       ''
+       CONCAT(
+         'sgb',
+         IF(
+           TRIM(COALESCE(src.access_slug, '')) = '',
+           SUBSTRING_INDEX(src.domain, '.', 1),
+           SUBSTRING_INDEX(src.access_slug, '-', 1)
+         )
+       )
   FROM websites src
  WHERE src.domain LIKE '%.upays.in'
    AND src.domain NOT REGEXP '^(az|markh|amzc|tbaazar|shsm)'
