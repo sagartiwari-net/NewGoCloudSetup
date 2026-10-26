@@ -18,9 +18,10 @@ SELECT src.tool_id,
           WHERE x.domain = REPLACE(src.domain, '.upays.in', '.seogbtools.com')
        );
 
-INSERT INTO accounts (website_id, name, cookie, status, description)
-SELECT w.id, CONCAT(w.name, ' 1'), '', 'active',
-       'Paste this website''s own cookie. It is not shared with upays.in.'
+INSERT INTO accounts (website_id, name, cookie, user_agent_id, user_agent, proxy_id, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
+SELECT w.id, CONCAT(w.name, ' 1'), '', 0, '', 0, '', 'active', 0,
+       'Paste this website''s own cookie. It is not shared with upays.in.',
+       '', '', '', ''
   FROM websites w
  WHERE w.domain LIKE '%.seogbtools.com'
    AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.website_id = w.id);
