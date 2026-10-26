@@ -1,5 +1,8 @@
 -- SeoGroupBuy reseller copies of official *.upays.in websites onto *.seogbtools.com.
 -- Does not change upays.in rows. Skips other-friends recloud hosts (az/markh/amzc/tbaazar/shsm).
+-- Live MySQL is STRICT; mysql CLI has no implicit defaults. Match panel inserts.
+
+SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION';
 
 INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
 SELECT src.tool_id,
@@ -18,10 +21,10 @@ SELECT src.tool_id,
           WHERE x.domain = REPLACE(src.domain, '.upays.in', '.seogbtools.com')
        );
 
-INSERT INTO accounts (website_id, name, cookie, user_agent_id, user_agent, proxy_id, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
+INSERT INTO accounts (website_id, name, cookie, user_agent_id, user_agent, proxy_id, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at, failure_count)
 SELECT w.id, CONCAT(w.name, ' 1'), '', 0, '', 0, '', 'active', 0,
        'Paste this website''s own cookie. It is not shared with upays.in.',
-       '', '', '', ''
+       '', '', '', '', 0
   FROM websites w
  WHERE w.domain LIKE '%.seogbtools.com'
    AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.website_id = w.id);
