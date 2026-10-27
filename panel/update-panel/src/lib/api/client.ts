@@ -760,6 +760,14 @@ export async function saveAutomationJob(input: {
   return { status: "ok" }
 }
 
+export async function bulkAutomationJobs(input: {
+  ids: number[]
+  enabled?: boolean
+  interval_minutes?: number
+}): Promise<{ status: string; updated: number }> {
+  return api("/api/automation/jobs/bulk", { method: "POST", body: JSON.stringify(input) })
+}
+
 export async function deleteAutomationJob(id: number): Promise<Ok> {
   await api(`/api/automation/jobs${qs({ id })}`, { method: "DELETE" })
   return { status: "ok" }

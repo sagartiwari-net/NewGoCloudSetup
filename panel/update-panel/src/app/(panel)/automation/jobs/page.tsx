@@ -1,10 +1,11 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { PlusIcon } from "lucide-react"
+import { toast } from "sonner"
 
 import { ChoiceSelect } from "@/components/choice-select"
 import { ConfirmDialog } from "@/components/confirm-dialog"
@@ -22,6 +23,7 @@ import { Switch } from "@/components/ui/switch"
 import { useResource } from "@/hooks/use-resource"
 import {
   automationOptions,
+  bulkAutomationJobs,
   deleteAutomationJob,
   listAutomationJobs,
   runAutomationJob,
@@ -84,10 +86,52 @@ export default function AutomationJobsPage() {
   const [pendingDelete, setPendingDelete] = useState<AutomationJob | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [running, setRunning] = useState<number | null>(null)
+  const [selected, setSelected] = useState<number[]>([])
+  const [bulkPending, setBulkPending] = useState(false)
+  const [intervalOpen, setIntervalOpen] = useState(false)
   const rows = data?.jobs.items ?? []
   const options = data?.options
+  const pageIds = rows.map((row) => row.id)
+  const allChecked = pageIds.length > 0 && pageIds.every((id) => selected.includes(id))
+
+  useEffect(() => {
+    setSelected([])
+  }, [query])
+
+  async function applyBulk(input: { enabled?: boolean; interval_minutes?: number }, success: string) {
+    if (selected.length === 0) return
+    setBulkPending(true)
+    const ok = await runMutation(() => bulkAutomationJobs({ ids: selected, ...input }), success)
+    setBulkPending(false)
+    if (ok) reload()
+    return ok
+  }
 
   const columns: DataColumn<AutomationJob>[] = [
+    {
+      id: "select",
+      header: "Select",
+      headerCell: () => (
+        <Checkbox
+          aria-label="Select jobs on this page"
+          checked={allChecked}
+          onCheckedChange={(next) => {
+            setSelected((current) => next
+              ? [...new Set([...current, ...pageIds])]
+              : current.filter((id) => !pageIds.includes(id)))
+          }}
+        />
+      ),
+      cell: (row) => (
+        <Checkbox
+          aria-label={`Select ${row.name}`}
+          checked={selected.includes(row.id)}
+          onCheckedChange={(next) => {
+            setSelected((current) => next ? [...current, row.id] : current.filter((id) => id !== row.id))
+          }}
+        />
+      ),
+    },
     { id: "name", header: "Name", cell: (row) => row.name, sortValue: (row) => row.name },
     {
       id: "credential",
@@ -166,15 +210,42 @@ export default function AutomationJobsPage() {
         title="Jobs"
         description="Each job checks one saved session and writes the tool cookie onto the website you pick."
         action={
-          <Button
-            onClick={() => {
-              setEditing(null)
-              setOpen(true)
-            }}
-          >
-            <PlusIcon data-icon="inline-start" />
-            New job
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={selected.length === 0 || bulkPending}
+              onClick={() => {
+                void applyBulk({ enabled: true }, `Enabled ${selected.length} jobs`)
+              }}
+            >
+              Enable {selected.length === 0 ? "selected" : selected.length}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={selected.length === 0 || bulkPending}
+              onClick={() => {
+                void applyBulk({ enabled: false }, `Disabled ${selected.length} jobs`)
+              }}
+            >
+              Disable {selected.length === 0 ? "selected" : selected.length}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={selected.length === 0 || bulkPending}
+              onClick={() => setIntervalOpen(true)}
+            >
+              Set interval on {selected.length === 0 ? "selected" : selected.length}
+            </Button>
+            <Button
+              onClick={() => {
+                setEditing(null)
+                setOpen(true)
+              }}
+            >
+              <PlusIcon data-icon="inline-start" />
+              New job
+            </Button>
+          </div>
         }
       />
       <Field className="md:max-w-sm">
@@ -226,6 +297,24 @@ export default function AutomationJobsPage() {
           />
         ) : null}
       </FormOverlay>
+      <FormOverlay
+        open={intervalOpen}
+        onOpenChange={setIntervalOpen}
+        title="Set interval"
+        description={`Applies one timer to the ${selected.length} selected jobs. 0 turns the timer off.`}
+      >
+        {intervalOpen ? (
+          <JobBulkIntervalForm
+            key={selected.join(",")}
+            jobIds={selected}
+            onDone={async () => {
+              setIntervalOpen(false)
+              setSelected([])
+              reload()
+            }}
+          />
+        ) : null}
+      </FormOverlay>
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         onOpenChange={(next) => {
@@ -248,6 +337,59 @@ export default function AutomationJobsPage() {
         }}
       />
     </>
+  )
+}
+
+function JobBulkIntervalForm({
+  jobIds,
+  onDone,
+}: {
+  jobIds: number[]
+  onDone: () => Promise<void>
+}) {
+  const [minutes, setMinutes] = useState("60")
+  const [error, setError] = useState("")
+  const [pending, setPending] = useState(false)
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault()
+    const intervalMinutes = Number(minutes)
+    if (!Number.isInteger(intervalMinutes) || intervalMinutes < 0 || intervalMinutes > 1440 || (intervalMinutes !== 0 && intervalMinutes < 5)) {
+      setError("Use 0 to turn the timer off, or 5 to 1440 minutes")
+      return
+    }
+    if (jobIds.length === 0) {
+      setError("Select at least one job")
+      return
+    }
+    setPending(true)
+    setError("")
+    try {
+      const result = await bulkAutomationJobs({ ids: jobIds, interval_minutes: intervalMinutes })
+      toast.success(`Interval updated on ${result.updated} jobs`)
+      await onDone()
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Something went wrong")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <FieldGroup>
+        <Field data-invalid={Boolean(error) || undefined}>
+          <FieldLabel htmlFor="bulk-job-interval">Interval (minutes)</FieldLabel>
+          <Input id="bulk-job-interval" type="number" min={0} max={1440} value={minutes} onChange={(event) => setMinutes(event.target.value)} />
+          <FieldDescription>0 turns the timer off. Logout and Run now still run while Enabled is on.</FieldDescription>
+          {error ? <FieldError>{error}</FieldError> : null}
+        </Field>
+        <Button type="submit" disabled={pending}>
+          {pending ? <Spinner data-icon="inline-start" /> : null}
+          Update {jobIds.length} jobs
+        </Button>
+      </FieldGroup>
+    </form>
   )
 }
 

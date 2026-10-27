@@ -1007,3 +1007,66 @@ func TestAhrefsCopyWritesTheOtherOwnWebsite(t *testing.T) {
 		t.Fatal("mapped account cookie was not readable")
 	}
 }
+
+func TestBulkAutomationJobs(t *testing.T) {
+	s, mux := openAutomationTestDB(t)
+	expires := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	res, err := s.db.Exec(`INSERT INTO operators (username, password_hash, role, status) VALUES ('seller', 'x', 'reseller', 'active')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sellerID, _ := res.LastInsertId()
+	if _, err := s.db.Exec(`INSERT INTO admin_sessions (token, operator_id, expires_at) VALUES ('reseller-bulk', ?, ?)`, sellerID, expires); err != nil {
+		t.Fatal(err)
+	}
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	var websiteID int
+	if err := s.db.QueryRow(`SELECT id FROM websites WHERE kind='recloud'`).Scan(&websiteID); err != nil {
+		t.Fatal(err)
+	}
+	first := insertAutomationJob(t, s, "Job one", cred, websiteID, 0)
+	second := insertAutomationJob(t, s, "Job two", cred, websiteID, 0)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET enabled=0 WHERE id=?`, second); err != nil {
+		t.Fatal(err)
+	}
+
+	denied := callAuth(t, mux, http.MethodPost, "/api/automation/jobs/bulk", fmt.Sprintf(`{"ids":[%d],"enabled":true}`, first), "reseller-bulk")
+	if denied.Code != 403 {
+		t.Fatalf("reseller status %d body %s", denied.Code, denied.Body.String())
+	}
+	empty := callAuth(t, mux, http.MethodPost, "/api/automation/jobs/bulk", `{"ids":[]}`, "recloud-test")
+	if empty.Code != 400 {
+		t.Fatalf("empty status %d body %s", empty.Code, empty.Body.String())
+	}
+	badInterval := callAuth(t, mux, http.MethodPost, "/api/automation/jobs/bulk", fmt.Sprintf(`{"ids":[%d],"interval_minutes":3}`, first), "recloud-test")
+	if badInterval.Code != 400 {
+		t.Fatalf("interval status %d body %s", badInterval.Code, badInterval.Body.String())
+	}
+
+	enable := callAuth(t, mux, http.MethodPost, "/api/automation/jobs/bulk", fmt.Sprintf(`{"ids":[%d,%d],"enabled":true}`, first, second), "recloud-test")
+	if enable.Code != 200 {
+		t.Fatalf("enable status %d body %s", enable.Code, enable.Body.String())
+	}
+	interval := callAuth(t, mux, http.MethodPost, "/api/automation/jobs/bulk", fmt.Sprintf(`{"ids":[%d,%d],"interval_minutes":23}`, first, second), "recloud-test")
+	if interval.Code != 200 {
+		t.Fatalf("set interval status %d body %s", interval.Code, interval.Body.String())
+	}
+	disable := callAuth(t, mux, http.MethodPost, "/api/automation/jobs/bulk", fmt.Sprintf(`{"ids":[%d,%d],"enabled":false}`, first, second), "recloud-test")
+	if disable.Code != 200 {
+		t.Fatalf("disable status %d body %s", disable.Code, disable.Body.String())
+	}
+
+	var enabled, minutes int
+	if err := s.db.QueryRow(`SELECT enabled, interval_minutes FROM automation_jobs WHERE id=?`, first).Scan(&enabled, &minutes); err != nil {
+		t.Fatal(err)
+	}
+	if enabled != 0 || minutes != 23 {
+		t.Fatalf("first enabled=%d interval=%d", enabled, minutes)
+	}
+	if err := s.db.QueryRow(`SELECT enabled, interval_minutes FROM automation_jobs WHERE id=?`, second).Scan(&enabled, &minutes); err != nil {
+		t.Fatal(err)
+	}
+	if enabled != 0 || minutes != 23 {
+		t.Fatalf("second enabled=%d interval=%d", enabled, minutes)
+	}
+}

@@ -1396,6 +1396,80 @@ func (s *server) saveAutomationJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
+func (s *server) bulkAutomationJobs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	var body struct {
+		IDs             []int `json:"ids"`
+		Enabled         *bool `json:"enabled"`
+		IntervalMinutes *int  `json:"interval_minutes"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeErr(w, 400, "Select at least one job")
+		return
+	}
+	if len(body.IDs) > 200 {
+		writeErr(w, 400, "Select at most 200 jobs")
+		return
+	}
+	if body.Enabled == nil && body.IntervalMinutes == nil {
+		writeErr(w, 400, "Choose enable, disable, or an interval")
+		return
+	}
+	if body.IntervalMinutes != nil {
+		n := *body.IntervalMinutes
+		if n != 0 && (n < 5 || n > 1440) {
+			writeErr(w, 400, "Use 0 to turn the timer off, or 5 to 1440 minutes")
+			return
+		}
+	}
+	now := time.Now().UTC()
+	stamp := now.Format(time.RFC3339)
+	updated := 0
+	seen := map[int]bool{}
+	for _, id := range body.IDs {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		var lastRun string
+		var prevInterval int
+		if err := s.db.QueryRow(`SELECT interval_minutes, last_run_at FROM automation_jobs WHERE id=?`, id).Scan(&prevInterval, &lastRun); err != nil {
+			continue
+		}
+		sets := []string{"updated_at=?"}
+		args := []any{stamp}
+		if body.Enabled != nil {
+			enabled := 0
+			if *body.Enabled {
+				enabled = 1
+			}
+			sets = append(sets, "enabled=?")
+			args = append(args, enabled)
+		}
+		if body.IntervalMinutes != nil {
+			sets = append(sets, "interval_minutes=?", "next_run_at=?")
+			args = append(args, *body.IntervalMinutes, automationNextRun(lastRun, *body.IntervalMinutes, now).Format(time.RFC3339))
+		}
+		args = append(args, id)
+		if _, err := s.db.Exec(`UPDATE automation_jobs SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...); err != nil {
+			continue
+		}
+		updated++
+	}
+	if updated == 0 {
+		writeErr(w, 400, "No jobs were updated")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "ok", "updated": updated})
+}
+
 func (s *server) deleteAutomationJob(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.master(w, r); !ok {
 		return

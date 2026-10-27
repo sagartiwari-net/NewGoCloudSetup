@@ -175,6 +175,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/automation/storage", s.saveAutomationStorage)
 	mux.HandleFunc("GET /api/automation/jobs", s.listAutomationJobs)
 	mux.HandleFunc("POST /api/automation/jobs", s.saveAutomationJob)
+	mux.HandleFunc("POST /api/automation/jobs/bulk", s.bulkAutomationJobs)
 	mux.HandleFunc("POST /api/automation/jobs/{id}/run", s.runAutomationJobNow)
 	mux.HandleFunc("DELETE /api/automation/jobs", s.deleteAutomationJob)
 	mux.HandleFunc("GET /api/automation/logs", s.listAutomationLogs)
