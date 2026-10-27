@@ -6,7 +6,7 @@ SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION';
 
 INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
 SELECT src.tool_id,
-       src.name,
+       CONCAT('SeoGroupBuy ', src.name),
        REPLACE(src.domain, '.upays.in', '.seogbtools.com'),
        CONCAT('secret_sgb_', src.id),
        30,
