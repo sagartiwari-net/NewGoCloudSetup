@@ -161,7 +161,6 @@ export default function AutomationJobsPage() {
           {row.last_result ? (
             <Badge variant={row.last_result === "ok" ? "fresh" : "destructive"}>{row.last_result}</Badge>
           ) : null}
-          {row.last_reason ? <span className="text-sm text-muted-foreground">{row.last_reason}</span> : null}
         </div>
       ),
       sortValue: (row) => row.last_run_at,
