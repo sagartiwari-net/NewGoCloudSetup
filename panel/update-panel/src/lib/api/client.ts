@@ -281,6 +281,10 @@ export async function deleteAccount(id: number): Promise<Ok> {
   return { status: "ok" }
 }
 
+export async function bulkDeleteAccounts(ids: number[]): Promise<{ status: string; deleted: number }> {
+  return api("/api/accounts/bulk-delete", { method: "POST", body: JSON.stringify({ ids }) })
+}
+
 export async function listCookieLinks(): Promise<{ items: CookieLink[] }> {
   return api("/api/cookie-links")
 }

@@ -6,6 +6,7 @@ import { PlusIcon } from "lucide-react"
 import { AccountEditor } from "@/components/account-editor"
 import { useAuth } from "@/components/auth-provider"
 import { ChoiceSelect } from "@/components/choice-select"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataColumn } from "@/components/data-table"
 import { FormOverlay } from "@/components/form-overlay"
 import { PageHeader } from "@/components/page-header"
@@ -20,6 +21,7 @@ import { useResource } from "@/hooks/use-resource"
 import {
   assignAccountsProxy,
   assignAccountsUserAgent,
+  bulkDeleteAccounts,
   listAccounts,
   listAgentChoices,
   listAccountWebsites,
@@ -42,6 +44,8 @@ export default function AccountsPage() {
   const [bulk, setBulk] = useState<"proxy" | "agent" | null>(null)
   const [bulkValue, setBulkValue] = useState("")
   const [applying, setApplying] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const { data, loading, reload } = useResource(
     `${session?.role ?? "none"}-${page}-${pageSize}-${query}-${websiteFilter}`,
     async () => {
@@ -190,6 +194,9 @@ export default function AccountsPage() {
           >
             Set user agent
           </Button>
+          <Button variant="destructive" onClick={() => setPendingDelete(true)}>
+            Delete selected
+          </Button>
         </div>
       ) : null}
       <Card>
@@ -290,6 +297,25 @@ export default function AccountsPage() {
           </div>
         </div>
       </FormOverlay>
+      <ConfirmDialog
+        open={pendingDelete}
+        onOpenChange={setPendingDelete}
+        title="Delete accounts"
+        description={`Delete ${selected.length} selected accounts? This cannot be undone.`}
+        confirmLabel="Delete"
+        pending={deleting}
+        onConfirm={() => {
+          if (selected.length === 0) return
+          setDeleting(true)
+          void runMutation(() => bulkDeleteAccounts(selected), `Deleted ${selected.length} accounts`).then((ok) => {
+            setDeleting(false)
+            if (!ok) return
+            setPendingDelete(false)
+            setSelected([])
+            reload()
+          })
+        }}
+      />
     </>
   )
 }

@@ -131,6 +131,55 @@ func TestCookieLinkFollowsUntilStopped(t *testing.T) {
 	}
 }
 
+func TestBulkDeleteAccounts(t *testing.T) {
+	t.Setenv("GT4RENTS_MYSQL_PASSWORD", "")
+	db := openRecloudTestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+	s := &server{db: db}
+	mux := http.NewServeMux()
+	s.routes(mux)
+
+	var keptID, websiteID int
+	if err := db.QueryRow(`SELECT id, website_id FROM accounts WHERE name='kept'`).Scan(&keptID, &websiteID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.Exec(`INSERT INTO accounts (website_id, name, cookie, user_agent, proxy, status, show_limit, description, automation_task_uid, automation_ingest_key, cookie_updated_at, last_used_at)
+		VALUES (?, 'drop-one', '', '', '', 'active', 1, '', '', '', ?, ''), (?, 'drop-two', '', '', '', 'active', 1, '', '', '', ?, '')`, websiteID, now, websiteID, now); err != nil {
+		t.Fatal(err)
+	}
+	var first, second int
+	if err := db.QueryRow(`SELECT id FROM accounts WHERE name='drop-one'`).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT id FROM accounts WHERE name='drop-two'`).Scan(&second); err != nil {
+		t.Fatal(err)
+	}
+
+	empty := callJSON(t, mux, http.MethodPost, "/api/accounts/bulk-delete", `{"ids":[]}`)
+	if empty.Code != 400 {
+		t.Fatalf("empty status %d body %s", empty.Code, empty.Body.String())
+	}
+	gone := callJSON(t, mux, http.MethodPost, "/api/accounts/bulk-delete", fmt.Sprintf(`{"ids":[%d,%d]}`, first, second))
+	if gone.Code != 200 {
+		t.Fatalf("delete status %d body %s", gone.Code, gone.Body.String())
+	}
+	var leftover int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM accounts WHERE id IN (?,?)`, first, second).Scan(&leftover); err != nil {
+		t.Fatal(err)
+	}
+	if leftover != 0 {
+		t.Fatalf("deleted leftover=%d", leftover)
+	}
+	var kept int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM accounts WHERE id=?`, keptID).Scan(&kept); err != nil {
+		t.Fatal(err)
+	}
+	if kept != 1 {
+		t.Fatal("kept account was deleted")
+	}
+}
+
 func followerShare(t *testing.T, db *sql.DB, id int) (string, string, string, string) {
 	t.Helper()
 	var cookie, ua, proxy, status string

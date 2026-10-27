@@ -91,6 +91,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/accounts/{id}", s.getAccount)
 	mux.HandleFunc("POST /api/accounts", s.saveAccount)
 	mux.HandleFunc("DELETE /api/accounts", s.deleteAccount)
+	mux.HandleFunc("POST /api/accounts/bulk-delete", s.bulkDeleteAccounts)
 	mux.HandleFunc("POST /api/accounts/proxy", s.assignProxy)
 	mux.HandleFunc("POST /api/accounts/user-agent", s.assignUserAgent)
 	mux.HandleFunc("GET /api/users", s.listUsers)

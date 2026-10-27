@@ -614,6 +614,60 @@ func (s *server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	s.deleteID("accounts")(w, r)
 }
 
+func (s *server) bulkDeleteAccounts(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.auth(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		IDs []int `json:"ids"`
+	}
+	if err := readBody(r, &body); err != nil {
+		writeErr(w, 400, "Invalid body")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeErr(w, 400, "Select at least one account")
+		return
+	}
+	if len(body.IDs) > 200 {
+		writeErr(w, 400, "Select at most 200 accounts")
+		return
+	}
+	seen := map[int]bool{}
+	ids := make([]int, 0, len(body.IDs))
+	for _, id := range body.IDs {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		websiteID, found := s.websiteOf("accounts", id)
+		if !found || !s.owns(op, websiteID) {
+			writeErr(w, 403, "You cannot manage this website")
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		writeErr(w, 400, "Select at least one account")
+		return
+	}
+	s.ensureCookieLinks()
+	deleted := 0
+	for _, id := range ids {
+		if _, err := s.db.Exec(`DELETE FROM accounts WHERE id=?`, id); err != nil {
+			continue
+		}
+		_, _ = s.db.Exec(`DELETE FROM account_cookie_links WHERE follower_account_id=? OR source_account_id=?`, id, id)
+		deleted++
+	}
+	if deleted == 0 {
+		writeErr(w, 400, "No accounts were deleted")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "ok", "deleted": deleted})
+}
+
 func (s *server) assignProxy(w http.ResponseWriter, r *http.Request) {
 	op, ok := s.auth(w, r)
 	if !ok {
