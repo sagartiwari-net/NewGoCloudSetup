@@ -18,12 +18,9 @@ const extensionTemplateDir = "extension"
 // publicOriginFromRequest resolves the public origin/host this extension should
 // talk to. Prefers config.json public_host/scheme, falls back to request host.
 func publicOriginFromRequest(r *http.Request, cfg Config) (origin, host string) {
-	host = strings.TrimSpace(cfg.PublicHost)
+	host = tenantPublicHost(r, cfg)
 	if host == "" {
-		host = r.Host
-		if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {
-			host = strings.TrimSpace(strings.Split(fwd, ",")[0])
-		}
+		host = panelRequestHost(r, cfg.PublicHost)
 	}
 	scheme := strings.TrimSpace(cfg.PublicScheme)
 	if scheme == "" {

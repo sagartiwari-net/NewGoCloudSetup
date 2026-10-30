@@ -30,14 +30,14 @@ func cdnFilePath(key string) (string, string) {
 	return filepath.Join(cdnCacheDir, name), filepath.Join(cdnCacheDir, name+".meta")
 }
 
-func loadDiskStatic(method, path string) *staticCacheEntry {
+func loadDiskStatic(method, path, host string) *staticCacheEntry {
 	if method != http.MethodGet && method != http.MethodHead {
 		return nil
 	}
 	if !isCacheableStaticPath(path) {
 		return nil
 	}
-	key := staticCacheKey(http.MethodGet, path)
+	key := staticCacheKey(http.MethodGet, path, host)
 	bodyPath, metaPath := cdnFilePath(key)
 	info, err := os.Stat(bodyPath)
 	if err != nil || time.Since(info.ModTime()) > cdnCacheTTL {
@@ -67,7 +67,7 @@ func loadDiskStatic(method, path string) *staticCacheEntry {
 	}
 }
 
-func storeDiskStatic(method, path string, status int, contentType, encoding string, body []byte) {
+func storeDiskStatic(method, path, host string, status int, contentType, encoding string, body []byte) {
 	if method != http.MethodGet || status != http.StatusOK || !isCacheableStaticPath(path) {
 		return
 	}
@@ -75,13 +75,13 @@ func storeDiskStatic(method, path string, status int, contentType, encoding stri
 		return
 	}
 	ct := strings.ToLower(contentType)
-	if strings.Contains(ct, "text/html") || strings.Contains(ct, "json") || strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") {
+	if strings.Contains(ct, "text/html") || strings.Contains(ct, "json") || strings.Contains(ct, "javascript") || strings.Contains(ct, "ecmascript") || strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") {
 		return
 	}
 	if err := os.MkdirAll(cdnCacheDir, 0o755); err != nil {
 		return
 	}
-	key := staticCacheKey(method, path)
+	key := staticCacheKey(method, path, host)
 	bodyPath, metaPath := cdnFilePath(key)
 	tmp := bodyPath + ".tmp"
 	if err := os.WriteFile(tmp, body, 0o644); err != nil {

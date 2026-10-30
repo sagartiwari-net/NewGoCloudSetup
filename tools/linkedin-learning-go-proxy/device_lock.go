@@ -44,8 +44,9 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		return fmt.Errorf("missing proof")
 	}
 	if fp == "missing" || proof == "missing" {
-		panelSess.Delete(sessionToken)
-		return fmt.Errorf("device mismatch")
+		// Do not kill the session. LinkedIn's SPA used to inject devicePageScript
+		// which posted these sentinels and signed the user out on every open.
+		return fmt.Errorf("missing proof")
 	}
 	if sess.proof == "" {
 		sess.fp = fp
@@ -105,18 +106,11 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if browserSubresource(r) {
 		return false
 	}
+	// Empty headers: we skip devicePageScript on LinkedIn HTML (SPA Access Denied
+	// loop), so XHR never sends X-Device-*. Blocking them 401s the app. Allow
+	// empty headers; a real proof mismatch still kills a copied cookie jar.
 	if fp == "" && proof == "" {
-		// A normal refresh is a document load and cannot send the device headers.
-		// The page script checks this browser's saved proof. Images and files cannot
-		// send those headers either, so they are allowed above.
-		if isDocumentNavigation(r) {
-			return false
-		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
+		return false
 	}
 	panelSess.Delete(token)
 	recordCookieShare(cfg, r, token)

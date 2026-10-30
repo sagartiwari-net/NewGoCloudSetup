@@ -914,12 +914,26 @@ type staticCacheEntry struct {
 
 var staticAssetCache sync.Map // key -> *staticCacheEntry
 
-func staticCacheKey(method, path string) string {
-	if i := strings.Index(path, "?"); i >= 0 {
-		// Keep cache-buster query (?0.999) in key so versioned assets stay correct
-		return method + " " + path
+func staticCacheHost(r *http.Request, fallback string) string {
+	host := ""
+	if r != nil {
+		host = panelRequestHost(r, fallback)
 	}
-	return method + " " + path
+	if host == "" {
+		host = panelHostOnly(fallback)
+	}
+	if host == "" {
+		return "default"
+	}
+	return host
+}
+
+func staticCacheKey(method, path, host string) string {
+	host = panelHostOnly(host)
+	if host == "" {
+		host = "default"
+	}
+	return host + "\n" + method + " " + path
 }
 
 func isCacheableStaticPath(path string) bool {
@@ -939,22 +953,22 @@ func isCacheableStaticPath(path string) bool {
 	return false
 }
 
-func getStaticCached(method, path string) *staticCacheEntry {
+func getStaticCached(method, path, host string) *staticCacheEntry {
 	if method != http.MethodGet && method != http.MethodHead {
 		return nil
 	}
 	if !isCacheableStaticPath(path) {
 		return nil
 	}
-	v, ok := staticAssetCache.Load(staticCacheKey(method, path))
+	v, ok := staticAssetCache.Load(staticCacheKey(method, path, host))
 	if !ok {
 		// HEAD can reuse GET cache
 		if method == http.MethodHead {
-			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path))
+			v, ok = staticAssetCache.Load(staticCacheKey(http.MethodGet, path, host))
 		}
 		if !ok {
-			if disk := loadDiskStatic(method, path); disk != nil {
-				staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+			if disk := loadDiskStatic(method, path, host); disk != nil {
+				staticAssetCache.Store(staticCacheKey(http.MethodGet, path, host), disk)
 				return disk
 			}
 			return nil
@@ -962,9 +976,9 @@ func getStaticCached(method, path string) *staticCacheEntry {
 	}
 	ent := v.(*staticCacheEntry)
 	if time.Now().After(ent.expires) {
-		staticAssetCache.Delete(staticCacheKey(http.MethodGet, path))
-		if disk := loadDiskStatic(method, path); disk != nil {
-			staticAssetCache.Store(staticCacheKey(http.MethodGet, path), disk)
+		staticAssetCache.Delete(staticCacheKey(http.MethodGet, path, host))
+		if disk := loadDiskStatic(method, path, host); disk != nil {
+			staticAssetCache.Store(staticCacheKey(http.MethodGet, path, host), disk)
 			return disk
 		}
 		return nil
@@ -972,23 +986,27 @@ func getStaticCached(method, path string) *staticCacheEntry {
 	return ent
 }
 
-func putStaticCached(method, path string, status int, contentType, encoding string, body []byte) {
+func putStaticCached(method, path, host string, status int, contentType, encoding string, body []byte) {
 	if method != http.MethodGet || status != 200 || !isCacheableStaticPath(path) {
 		return
 	}
 	if len(body) == 0 || len(body) > 8<<20 { // skip empty / >8MB
 		return
 	}
+	ct := strings.ToLower(contentType)
+	if strings.Contains(ct, "javascript") || strings.Contains(ct, "ecmascript") {
+		return
+	}
 	cp := make([]byte, len(body))
 	copy(cp, body)
-	staticAssetCache.Store(staticCacheKey(method, path), &staticCacheEntry{
+	staticAssetCache.Store(staticCacheKey(method, path, host), &staticCacheEntry{
 		status:      status,
 		contentType: contentType,
 		encoding:    encoding,
 		body:        cp,
 		expires:     time.Now().Add(6 * time.Hour),
 	})
-	storeDiskStatic(method, path, status, contentType, encoding, cp)
+	storeDiskStatic(method, path, host, status, contentType, encoding, cp)
 }
 
 func serveStaticCached(w http.ResponseWriter, r *http.Request, ent *staticCacheEntry) {
@@ -2140,9 +2158,12 @@ func patcherScript(cfg Config) string {
 	}
 	extraCDNJS.WriteString("]")
 
+	ownerHost := panelHostOnly(cfg.PublicHost)
+
 	return fmt.Sprintf(`<script>
 (function() {
     var T = '%s', C = '%s', O = window.location.origin;
+    var OWNER = '%s';
     var HOME = '%s';
     var BLOCKED = [%s];
     // Extra CDN domains proxied through our server (fixes CORS on external APIs)
@@ -2208,6 +2229,9 @@ func patcherScript(cfg Config) string {
         }
         u = u.replace('https://'+T, O).replace('http://'+T, O);
         if (C && C !== T) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
+        if (OWNER && OWNER.indexOf(location.hostname) === -1) {
+          u = u.replace('https://'+OWNER, O).replace('http://'+OWNER, O);
+        }
         // Dynamic chunk-composing hosts (any TLD / mangled IP-derived host)
         if (CHUNK_COMPOSE) {
             u = u.replace(/https?:\/\/chunk-composing\.[^/]+/g, O + CHUNK_COMPOSE);
@@ -2570,7 +2594,7 @@ func patcherScript(cfg Config) string {
     }
 })();
 </script>`,
-		targetHost, cdnHost, homePath, blockedListJS.String(), extraCDNJS.String(), triggerChecks.String(),
+		targetHost, cdnHost, ownerHost, homePath, blockedListJS.String(), extraCDNJS.String(), triggerChecks.String(),
 		func() string {
 			if len(cfg.WatchdogTriggers) > 0 {
 				return "true"
@@ -2962,7 +2986,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 2b. Serve cached static assets (skip upstream TLS) ───────────────────────
-	if ent := getStaticCached(r.Method, path); ent != nil {
+	if ent := getStaticCached(r.Method, path, staticCacheHost(r, cfg.PublicHost)); ent != nil {
 		serveStaticCached(w, r, ent)
 		return
 	}
@@ -3488,9 +3512,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("Content-Security-Policy")
 		w.Header().Del("Content-Security-Policy-Report-Only")
 		w.Header().Del("X-Frame-Options")
-		if usesPanelAccountMode(cfg) {
-			bodyBytes = injectDeviceHTML(bodyBytes)
-		}
+		// Skip devicePageScript on LinkedIn HTML: visibility:hidden + tmDeny()
+		// sends /__tm_access_denied on every open (LinkedIn clears/blocks
+		// localStorage and wraps fetch). Access-link boot already binds the device.
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
@@ -3534,7 +3558,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if strings.Contains(contentType, "application/json") {
 				bodyBytes = stripSubresourceIntegrity(bodyBytes)
 			} else if strings.Contains(contentType, "text/css") {
-				putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, "", bodyBytes)
+				putStaticCached(r.Method, path, publicHost, upstreamResp.StatusCode, contentType, "", bodyBytes)
 			}
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
@@ -3563,7 +3587,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if isCacheableStaticPath(path) && upstreamResp.StatusCode == 200 {
 		bodyBytes, err := io.ReadAll(upstreamResp.Body)
 		if err == nil {
-			putStaticCached(r.Method, path, upstreamResp.StatusCode, contentType, ce, bodyBytes)
+			putStaticCached(r.Method, path, publicHost, upstreamResp.StatusCode, contentType, ce, bodyBytes)
 			w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 			w.Header().Set("X-OCG-Cache", "MISS")
 			w.WriteHeader(upstreamResp.StatusCode)
@@ -3706,7 +3730,7 @@ func warmStaticAssets(cfg Config, cookieHeader string) {
 	var mu sync.Mutex
 	cached := 0
 	for _, p := range assets {
-		if getStaticCached(http.MethodGet, p) != nil {
+		if getStaticCached(http.MethodGet, p, panelHostOnly(cfg.PublicHost)) != nil {
 			continue
 		}
 		wg.Add(1)
@@ -3730,7 +3754,7 @@ func warmStaticAssets(cfg Config, cookieHeader string) {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode == 200 {
-				putStaticCached(http.MethodGet, path, 200, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Encoding"), body)
+				putStaticCached(http.MethodGet, path, panelHostOnly(cfg.PublicHost), 200, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Encoding"), body)
 				mu.Lock()
 				cached++
 				mu.Unlock()
