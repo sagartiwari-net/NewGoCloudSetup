@@ -51,10 +51,17 @@ func cdnCacheKey(r *http.Request) string {
 	if r == nil || r.Method != http.MethodGet {
 		return ""
 	}
-	if isHeliumCDNPath(r.URL.Path) {
-		return r.URL.RequestURI()
+	if !isHeliumCDNPath(r.URL.Path) {
+		return ""
 	}
-	return ""
+	host := panelHostOnly(r.Host)
+	if xh := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); xh != "" {
+		host = panelHostOnly(strings.Split(xh, ",")[0])
+	}
+	if host == "" {
+		host = "default"
+	}
+	return host + "\n" + r.URL.RequestURI()
 }
 
 func cdnFilePath(key string) (bodyPath, metaPath string) {
@@ -138,7 +145,8 @@ func storeCDNCache(r *http.Request, status int, contentType string, body []byte)
 		return
 	}
 	ct := strings.ToLower(contentType)
-	if strings.Contains(ct, "text/html") || strings.Contains(ct, "json") {
+	if strings.Contains(ct, "text/html") || strings.Contains(ct, "json") ||
+		strings.Contains(ct, "javascript") || strings.Contains(ct, "ecmascript") {
 		return
 	}
 	if err := os.MkdirAll(cdnCacheDir, 0o755); err != nil {

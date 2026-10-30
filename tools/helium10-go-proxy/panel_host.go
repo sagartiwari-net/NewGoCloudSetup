@@ -50,17 +50,12 @@ func panelRequestHost(r *http.Request, publicHost string) string {
 }
 
 // tenantPublicHost keeps a second website on this same port on its own domain.
-// A host that is not this tool stays on the configured public host.
+// Helium HTML/JS must rewrite to the Host nginx already routed here. Waiting on
+// a DB tool_id match sent friend dashboards to hhlm.upays.in and they spun forever.
 func tenantPublicHost(r *http.Request, cfg Config) string {
 	fallback := strings.TrimSpace(cfg.PublicHost)
-	if r == nil || fallback == "" {
-		return fallback
-	}
 	candidate := panelRequestHost(r, cfg.PublicHost)
-	if candidate == "" || candidate == panelHostOnly(fallback) || panelHostIsLocal(candidate) {
-		return fallback
-	}
-	if panelHostAllowed(cfg.PublicHost, candidate) {
+	if candidate != "" && !panelHostIsLocal(candidate) {
 		return candidate
 	}
 	return fallback

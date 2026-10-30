@@ -1564,9 +1564,12 @@ func patcherScript(cfg Config) string {
 	}
 	extraCDNJS.WriteString("]")
 
+	ownerHost := panelHostOnly(cfg.PublicHost)
+
 	return fmt.Sprintf(`<script>
 (function() {
     var T = '%s', C = '%s', O = window.location.origin;
+    var OWNER = '%s';
     var HOME = '%s';
     var BLOCKED = [%s];
     // Extra CDN domains proxied through our server (fixes CORS on external APIs)
@@ -1583,7 +1586,7 @@ func patcherScript(cfg Config) string {
             watchdogDone = true;
             var over = document.createElement('div');
             over.style.cssText = 'position:fixed;inset:0;background:#eef3f8;color:#0f172a;z-index:99999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,-apple-system,Segoe UI,sans-serif;gap:16px;padding:24px;';
-            over.innerHTML = '<div style="width:78px;height:78px;border-radius:50%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);animation:tmspin .9s linear infinite;display:grid;place-items:center;"><div style="width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px;">🔒</div></div><div style="width:min(440px,92vw);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:36px;text-align:center;"><h1 style="font-size:24px;font-weight:800;margin:0 0 10px;letter-spacing:-.02em;">Reconnecting...</h1><p style="margin:0;color:#64748b;font-size:15px;line-height:1.55;">Please wait while we switch your secure session.</p></div><style>@keyframes tmspin{to{transform:rotate(360deg)}}</style>';
+            over.innerHTML = '<div style="width:78px;height:78px;border-radius:50%%;background:conic-gradient(#3b82f6 0 70deg,#e7eef8 70deg 360deg);animation:tmspin .9s linear infinite;display:grid;place-items:center;"><div style="width:64px;height:64px;border-radius:50%%;background:#fff;display:grid;place-items:center;font-size:26px;">🔒</div></div><div style="width:min(440px,92vw);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:36px;text-align:center;"><h1 style="font-size:24px;font-weight:800;margin:0 0 10px;letter-spacing:-.02em;">Reconnecting...</h1><p style="margin:0;color:#64748b;font-size:15px;line-height:1.55;">Please wait while we switch your secure session.</p></div><style>@keyframes tmspin{to{transform:rotate(360deg)}}</style>';
             document.body.appendChild(over);
             fetch('/api/rotate-session?reason=' + encodeURIComponent(reason))
             .then(function() { setTimeout(function() { window.location.href = HOME; }, 1200); })
@@ -1656,6 +1659,9 @@ func patcherScript(cfg Config) string {
         if (isOfficialH10StoreURL(u)) return H10_EXT_INSTALL;
         u = u.replace('https://'+T, O).replace('http://'+T, O);
         if (C) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
+        if (OWNER && OWNER.indexOf(location.hostname) === -1) {
+          u = u.replace('https://'+OWNER, O).replace('http://'+OWNER, O);
+        }
         for (var e=0; e<EXTRA.length; e++) u = u.replace(EXTRA[e][0], O+EXTRA[e][1]);
         return u;
     }
@@ -1724,7 +1730,7 @@ func patcherScript(cfg Config) string {
     }
 })();
 </script>`,
-		targetHost, cdnHost, homePath, blockedListJS.String(), extraCDNJS.String(), triggerChecks.String(),
+		targetHost, cdnHost, ownerHost, homePath, blockedListJS.String(), extraCDNJS.String(), triggerChecks.String(),
 		func() string {
 			if len(cfg.WatchdogTriggers) > 0 {
 				return "true"
@@ -2078,6 +2084,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
 			if panelErr != nil {
 				log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
+				renderNoActiveAccountsPage(w, cfg)
+				return
+			}
+			if strings.TrimSpace(parseCookieFromDB(activeAcc.Cookie)) == "" {
+				log.Printf("[PANEL] mapped account '%s' (ID:%d) has no cookie", activeAcc.Name, activeAcc.ID)
 				renderNoActiveAccountsPage(w, cfg)
 				return
 			}
