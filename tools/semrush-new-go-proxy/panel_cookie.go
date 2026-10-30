@@ -76,23 +76,19 @@ func panelSemrushCookie(publicHost string) string {
 		log.Printf("[PANEL] database open failed: %v", err)
 		return ""
 	}
-	var id int
-	var name, raw string
 	websiteID := semrushWebsiteID(db, publicHost)
 	if websiteID <= 0 {
 		log.Printf("[PANEL] no website for host %s", publicHost)
 		return ""
 	}
-	err = db.QueryRow(`SELECT a.id, a.name, a.cookie
-		FROM accounts a
-		WHERE a.website_id=? AND a.status='active' AND TRIM(a.cookie) != ''
-		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC
-		LIMIT 1`, websiteID).Scan(&id, &name, &raw)
+	semrushAccountMu.Lock()
+	acc, err := semrushClaimLeastBusy(db, websiteID, nil)
+	semrushAccountMu.Unlock()
 	if err != nil {
 		log.Printf("[PANEL] no Semrush account cookie: %v", err)
 		return ""
 	}
-	header := cookieHeaderFromStored(raw)
+	id, name, header := acc.ID, acc.Name, acc.Cookie
 	if strings.TrimSpace(header) == "" {
 		log.Printf("[PANEL] account %s id=%d cookie did not parse", name, id)
 		return ""

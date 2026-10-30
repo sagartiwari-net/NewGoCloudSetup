@@ -168,6 +168,94 @@ func semrushRequireSession(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+var semrushAccountMu sync.Mutex
+
+type semrushBusyRow struct {
+	ID   int
+	Live int
+}
+
+func semrushChooseLeastBusy(rows []semrushBusyRow, skip map[int]bool) int {
+	bestID := 0
+	bestLive := int(^uint(0) >> 1)
+	for _, row := range rows {
+		if row.ID <= 0 || (skip != nil && skip[row.ID]) {
+			continue
+		}
+		if bestID == 0 || row.Live < bestLive || (row.Live == bestLive && row.ID < bestID) {
+			bestID = row.ID
+			bestLive = row.Live
+		}
+	}
+	return bestID
+}
+
+func semrushLoadAccount(db *sql.DB, where string, args ...any) (semrushAccount, error) {
+	var acc semrushAccount
+	err := db.QueryRow(`SELECT a.id, a.name, a.cookie,
+		CASE WHEN TRIM(COALESCE(a.user_agent,'')) != '' THEN a.user_agent ELSE COALESCE(ua.user_agent, '') END,
+		CASE WHEN TRIM(COALESCE(p.endpoint,'')) != '' THEN p.endpoint ELSE COALESCE(a.proxy,'') END
+		FROM accounts a
+		JOIN websites w ON w.id = a.website_id
+		LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
+		LEFT JOIN proxies p ON p.id = a.proxy_id
+		WHERE `+where, args...).Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy)
+	if err != nil || strings.TrimSpace(acc.Cookie) == "" {
+		return semrushAccount{}, fmt.Errorf("account")
+	}
+	acc.Cookie = cookieHeaderFromStored(acc.Cookie)
+	if strings.TrimSpace(acc.Cookie) == "" {
+		return semrushAccount{}, fmt.Errorf("account")
+	}
+	return acc, nil
+}
+
+func semrushClaimLeastBusy(db *sql.DB, websiteID int, skip map[int]bool) (semrushAccount, error) {
+	if db == nil || websiteID <= 0 {
+		return semrushAccount{}, fmt.Errorf("website")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	rows, err := db.Query(`SELECT a.id, a.name, a.cookie,
+		CASE WHEN TRIM(COALESCE(a.user_agent,'')) != '' THEN a.user_agent ELSE COALESCE(ua.user_agent, '') END,
+		CASE WHEN TRIM(COALESCE(p.endpoint,'')) != '' THEN p.endpoint ELSE COALESCE(a.proxy,'') END,
+		(SELECT COUNT(*) FROM live_sessions s
+			WHERE s.assigned_account_id = a.id AND s.website_id = a.website_id AND s.expires_at > ?) AS live_n
+		FROM accounts a
+		LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
+		LEFT JOIN proxies p ON p.id = a.proxy_id
+		WHERE a.website_id = ? AND a.status = 'active' AND TRIM(a.cookie) != ''
+		ORDER BY a.id ASC`, now, websiteID)
+	if err != nil {
+		return semrushAccount{}, err
+	}
+	defer rows.Close()
+	var accs []semrushAccount
+	var busy []semrushBusyRow
+	for rows.Next() {
+		var acc semrushAccount
+		var live int64
+		if rows.Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy, &live) != nil {
+			continue
+		}
+		header := cookieHeaderFromStored(acc.Cookie)
+		if strings.TrimSpace(header) == "" {
+			continue
+		}
+		acc.Cookie = header
+		accs = append(accs, acc)
+		busy = append(busy, semrushBusyRow{ID: acc.ID, Live: int(live)})
+	}
+	id := semrushChooseLeastBusy(busy, skip)
+	for _, acc := range accs {
+		if acc.ID == id {
+			_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+			log.Printf("[LB] claimed '%s' (ID:%d) least-busy website_id=%d", acc.Name, acc.ID, websiteID)
+			return acc, nil
+		}
+	}
+	return semrushAccount{}, fmt.Errorf("no active account")
+}
+
 func semrushPanelAccount(publicHost, sessionToken string) (semrushAccount, bool) {
 	db, err := openSemrushPanel()
 	if err != nil {
@@ -185,35 +273,28 @@ func semrushPanelAccount(publicHost, sessionToken string) (semrushAccount, bool)
 	if websiteID <= 0 {
 		return semrushAccount{}, false
 	}
-	load := func(where string, args ...any) (semrushAccount, error) {
-		var acc semrushAccount
-		err := db.QueryRow(`SELECT a.id, a.name, a.cookie,
-			CASE WHEN TRIM(COALESCE(a.user_agent,'')) != '' THEN a.user_agent ELSE COALESCE(ua.user_agent, '') END,
-			CASE WHEN TRIM(COALESCE(p.endpoint,'')) != '' THEN p.endpoint ELSE COALESCE(a.proxy,'') END
-			FROM accounts a
-			JOIN websites w ON w.id = a.website_id
-			LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
-			LEFT JOIN proxies p ON p.id = a.proxy_id
-			WHERE `+where, args...).Scan(&acc.ID, &acc.Name, &acc.Cookie, &acc.UserAgent, &acc.Proxy)
-		if err != nil || strings.TrimSpace(acc.Cookie) == "" {
-			return semrushAccount{}, fmt.Errorf("account")
-		}
-		acc.Cookie = cookieHeaderFromStored(acc.Cookie)
-		return acc, nil
-	}
 	if assigned > 0 {
-		if acc, err := load(`a.id=? AND a.website_id=? AND a.status='active' AND TRIM(a.cookie)!=''`, assigned, websiteID); err == nil {
+		if acc, err := semrushLoadAccount(db, `a.id=? AND a.website_id=? AND a.status='active' AND TRIM(a.cookie)!=''`, assigned, websiteID); err == nil {
 			return acc, true
 		}
 	}
-	acc, err := load(`a.website_id=? AND a.status='active' AND TRIM(a.cookie)!=''
-		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC LIMIT 1`, websiteID)
+	semrushAccountMu.Lock()
+	defer semrushAccountMu.Unlock()
+	if sessionToken != "" {
+		_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0), COALESCE(website_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&assigned, &websiteID)
+		if assigned > 0 {
+			if acc, err := semrushLoadAccount(db, `a.id=? AND a.website_id=? AND a.status='active' AND TRIM(a.cookie)!=''`, assigned, websiteID); err == nil {
+				return acc, true
+			}
+		}
+	}
+	acc, err := semrushClaimLeastBusy(db, websiteID, nil)
 	if err != nil {
 		return semrushAccount{}, false
 	}
 	if sessionToken != "" {
 		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
-		_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+		invalidateSessionAccountCache(sessionToken)
 	}
 	return acc, true
 }
@@ -316,51 +397,30 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 	}
 	if current > 0 {
 		semrushMarkTried(sessionToken, current)
-		_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339), current)
 	}
 	semrushTriedMu.Lock()
-	tried := semrushTried[sessionToken]
+	tried := map[int]bool{}
+	for id, ok := range semrushTried[sessionToken] {
+		if ok {
+			tried[id] = true
+		}
+	}
 	semrushTriedMu.Unlock()
-	rows, err := db.Query(`SELECT a.id, a.name FROM accounts a
-		WHERE a.website_id=? AND a.status='active' AND TRIM(a.cookie) != ''
-		ORDER BY CASE WHEN TRIM(COALESCE(a.last_used_at,'')) = '' THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC`, websiteID)
-	if err != nil {
-		return semrushAccount{}, false
-	}
-	defer rows.Close()
-	nextID := 0
-	nextName := ""
-	for rows.Next() {
-		var id int
-		var name string
-		if rows.Scan(&id, &name) != nil {
-			continue
-		}
-		if tried[id] {
-			continue
-		}
-		nextID = id
-		nextName = name
-		break
-	}
-	rows.Close()
-	if nextID == 0 && current > 0 {
-		again, err := db.Query(`SELECT a.id, a.name FROM accounts a
-			WHERE a.website_id=? AND a.status='active' AND TRIM(a.cookie) != '' AND a.id != ?
-			ORDER BY a.id ASC LIMIT 1`, websiteID, current)
-		if err == nil {
-			if again.Next() {
-				_ = again.Scan(&nextID, &nextName)
-			}
-			again.Close()
-		}
+	if current > 0 {
+		tried[current] = true
 	}
 	var username, fromName string
 	_ = db.QueryRow(`SELECT website_id, username FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID, &username)
 	if current > 0 {
 		_ = db.QueryRow(`SELECT name FROM accounts WHERE id=?`, current).Scan(&fromName)
 	}
-	if nextID == 0 {
+	semrushAccountMu.Lock()
+	acc, err := semrushClaimLeastBusy(db, websiteID, tried)
+	if err != nil && current > 0 {
+		acc, err = semrushClaimLeastBusy(db, websiteID, map[int]bool{current: true})
+	}
+	if err != nil {
+		semrushAccountMu.Unlock()
 		if current > 0 {
 			_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, current)
 		}
@@ -370,16 +430,17 @@ func semrushRotatePanelAccount(publicHost, sessionToken string) (semrushAccount,
 		log.Printf("[SWAP] no further active account after id=%d", current)
 		return semrushAccount{}, false
 	}
-	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, nextID, sessionToken)
+	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
 	if current > 0 {
 		_, _ = db.Exec(`UPDATE accounts SET failure_count=failure_count+1 WHERE id=?`, current)
 	}
 	if websiteID > 0 {
-		tmRecordSwitchLogout(db, websiteID, username, fromName, nextName, "semrush_logout")
+		tmRecordSwitchLogout(db, websiteID, username, fromName, acc.Name, "semrush_logout")
 	}
 	invalidateSessionAccountCache(sessionToken)
-	log.Printf("[SWAP] account id=%d logged out, next id=%d name=%s", current, nextID, nextName)
-	return semrushPanelAccount(publicHost, sessionToken)
+	semrushAccountMu.Unlock()
+	log.Printf("[SWAP] account id=%d logged out, next id=%d name=%s", current, acc.ID, acc.Name)
+	return acc, true
 }
 
 func semrushPanelMode(cfg Config) bool {
@@ -477,11 +538,20 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 	reqHost := panelRequestHost(r, cfg.PublicHost)
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, minutes int
-	err = db.QueryRow(`SELECT username, COALESCE(product_id, ''), COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens WHERE token=? AND expires_at>?
+	claim, err := db.Exec(`UPDATE access_tokens SET expires_at = '1970-01-01T00:00:00Z' WHERE token = ? AND expires_at > ?
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
 		)`,
-		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost)).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
+		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost))
+	if err == nil {
+		n, _ := claim.RowsAffected()
+		if n != 1 {
+			err = fmt.Errorf("token already used")
+		}
+	}
+	if err == nil {
+		err = db.QueryRow(`SELECT username, COALESCE(product_id, ''), COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens WHERE token = ?`, token).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
+	}
 	if err == nil {
 		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
 	}
@@ -511,12 +581,14 @@ func serveSemrushAccess(w http.ResponseWriter, r *http.Request) {
 	if clientIP != "" && (seen == "" || seen == "127.0.0.1" || seen == "::1") {
 		seen = clientIP
 	}
-	acc, ok := semrushPanelAccount(reqHost, "")
+	semrushAccountMu.Lock()
+	acc, accErr := semrushClaimLeastBusy(db, websiteID, nil)
 	accountID := 0
-	if ok {
+	if accErr == nil {
 		accountID = acc.ID
 	}
 	recordSemrushLogin(db, websiteID, accountID, username, sessionToken, seen, r.UserAgent(), expires)
+	semrushAccountMu.Unlock()
 	if accountID > 0 {
 		_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, accountID, sessionToken)
 	}
