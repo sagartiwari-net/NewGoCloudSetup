@@ -69,6 +69,21 @@ func canvaSafeReturn(raw string, cfg Config) string {
 	return raw
 }
 
+func canvaBodyLooksLikeBlock(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	s := strings.ToLower(string(body))
+	if len(s) > 80000 {
+		s = s[:80000]
+	}
+	if strings.Contains(s, "we'll have you designing again soon") ||
+		strings.Contains(s, "we’ll have you designing again soon") {
+		return true
+	}
+	return strings.Contains(s, "rayid") && strings.Contains(s, "canva") && len(body) < 20000
+}
+
 func canvaBodyLooksLikeLogin(body []byte) bool {
 	if len(body) == 0 {
 		return false
@@ -234,6 +249,10 @@ func canvaLoginWatchScript(cfg Config) string {
   function wall(){
     var path = location.pathname || "/";
     if (path === "/login" || path.indexOf("/login/") === 0 || path === "/_login" || path.indexOf("/_login/") === 0 || path === "/signin" || path === "/sign-in") return true;
+    try {
+      var txt = document.body ? String(document.body.innerText || "") : "";
+      if (/we'll have you designing again soon/i.test(txt) || /we’ll have you designing again soon/i.test(txt)) return true;
+    } catch (e) {}
     try {
       var nodes = document.querySelectorAll('a,button,span,[role="button"]');
       for (var i = 0; i < nodes.length; i++) {
