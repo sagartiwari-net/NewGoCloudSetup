@@ -290,6 +290,15 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
+	cfg := loadConfig()
+	if _, sess, ok := sessionFromRequest(r); ok && sess != nil {
+		home := strings.TrimSpace(cfg.HomePath)
+		if home == "" {
+			home = "/"
+		}
+		http.Redirect(w, r, home, http.StatusFound)
+		return
+	}
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",

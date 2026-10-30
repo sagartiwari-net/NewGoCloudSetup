@@ -19,7 +19,12 @@ func sessionFromRequest(r *http.Request) (string, *panelGateSession, bool) {
 	}
 	raw, ok := panelSess.Load(cookie.Value)
 	if !ok {
-		return cookie.Value, nil, false
+		restored, restoreErr := restorePanelSession(cookie.Value)
+		if restoreErr != nil {
+			return cookie.Value, nil, false
+		}
+		panelSess.Store(cookie.Value, restored)
+		return cookie.Value, restored, true
 	}
 	return cookie.Value, raw.(*panelGateSession), true
 }
@@ -245,6 +250,15 @@ func deviceBindShouldLog(token, fp string) bool {
 }
 
 func serveAccessDeniedHTML(w http.ResponseWriter, r *http.Request) {
+	cfg := loadConfig()
+	if _, sess, ok := sessionFromRequest(r); ok && sess != nil {
+		home := strings.TrimSpace(cfg.HomePath)
+		if home == "" {
+			home = "/"
+		}
+		http.Redirect(w, r, home, http.StatusFound)
+		return
+	}
 	writeLightCard(w, http.StatusForbidden, lightCard{
 		Title:   "Access Denied",
 		Heading: "Access Denied",

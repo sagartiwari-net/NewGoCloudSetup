@@ -8,7 +8,7 @@ import (
 )
 
 func TestPanelDeviceProofKillsCopiedSession(t *testing.T) {
-	token, _, err := issuePanelSession("sagar", time.Hour)
+	token, _, err := issuePanelSession("sagar", 1, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestPanelCreditDefaultAndCustom(t *testing.T) {
 }
 
 func TestPanelEndDropsTrackedSession(t *testing.T) {
-	token, _, err := issuePanelSession("sagar-ended", time.Hour)
+	token, _, err := issuePanelSession("sagar-ended", 1, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

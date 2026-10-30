@@ -18,7 +18,12 @@ func sessionFromRequest(r *http.Request) (string, *panelGateSession, bool) {
 	}
 	raw, ok := panelSess.Load(token)
 	if !ok {
-		return token, nil, false
+		restored, restoreErr := restorePanelSession(token)
+		if restoreErr != nil {
+			return token, nil, false
+		}
+		panelSess.Store(token, restored)
+		return token, restored, true
 	}
 	return token, raw.(*panelGateSession), true
 }

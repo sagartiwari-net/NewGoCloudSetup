@@ -20,6 +20,7 @@ import (
 type panelGateSession struct {
 	mu          sync.Mutex
 	username    string
+	websiteID   int
 	expires     time.Time
 	fp          string
 	proof       string
@@ -130,10 +131,11 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 		return nil, err
 	}
 	var username, expires string
-	err = db.QueryRow(`SELECT s.username, s.expires_at FROM live_sessions s
+	var websiteID int
+	err = db.QueryRow(`SELECT s.username, s.expires_at, s.website_id FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
 		JOIN websites owner ON owner.tool_id = w.tool_id
-		WHERE s.session_token = ? AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`, token, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&username, &expires)
+		WHERE s.session_token = ? AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`, token, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&username, &expires, &websiteID)
 	if err != nil {
 		return nil, err
 	}
@@ -143,6 +145,7 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 	}
 	return &panelGateSession{
 		username:    username,
+		websiteID:   websiteID,
 		expires:     exp,
 		tracked:     true,
 		liveOK:      true,
@@ -169,28 +172,33 @@ func panelLiveSessionExists(sessionToken string) bool {
 	return n > 0
 }
 
-func dropPanelSessionsFor(username string) {
+func dropPanelSessionsFor(username string, websiteID int) {
 	panelSess.Range(func(key, value any) bool {
 		sess := value.(*panelGateSession)
 		sess.mu.Lock()
 		name := sess.username
+		wid := sess.websiteID
 		sess.mu.Unlock()
-		if name == username {
-			panelSess.Delete(key)
+		if name != username {
+			return true
 		}
+		if websiteID > 0 && wid > 0 && wid != websiteID {
+			return true
+		}
+		panelSess.Delete(key)
 		return true
 	})
 }
 
-func issuePanelSession(username string, duration time.Duration) (string, time.Time, error) {
+func issuePanelSession(username string, websiteID int, duration time.Duration) (string, time.Time, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		return "", time.Time{}, err
 	}
 	token := hex.EncodeToString(buf)
 	expires := time.Now().Add(duration)
-	dropPanelSessionsFor(username)
-	panelSess.Store(token, &panelGateSession{username: username, expires: expires})
+	dropPanelSessionsFor(username, websiteID)
+	panelSess.Store(token, &panelGateSession{username: username, websiteID: websiteID, expires: expires})
 	return token, expires, nil
 }
 
@@ -210,13 +218,20 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, durationMin int
 	// Consume OTT only when website domain matches public_host or request Host.
-	err = db.QueryRow(`SELECT username, COALESCE(product_id, ''), COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens
-		WHERE token = ? AND expires_at > ?
+	claim, err := db.Exec(`UPDATE access_tokens SET expires_at = '1970-01-01T00:00:00Z' WHERE token = ? AND expires_at > ?
 		AND website_id IN (
 			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
 		)`,
-		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost)).
-		Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
+		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost))
+	if err == nil {
+		n, _ := claim.RowsAffected()
+		if n != 1 {
+			err = fmt.Errorf("token already used")
+		}
+	}
+	if err == nil {
+		err = db.QueryRow(`SELECT username, COALESCE(product_id, ''), COALESCE(client_ip, ''), expires_at, website_id FROM access_tokens WHERE token = ?`, token).Scan(&dbUser, &productID, &clientIP, &expiresRaw, &websiteID)
+	}
 	if err != nil {
 		log.Printf("[PANEL] token rejected host=%s public_host=%s err=%v", reqHost, cfg.PublicHost, err)
 		renderAccessDeniedPage(w, cfg)
@@ -251,7 +266,7 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	if durationMin <= 0 {
 		durationMin = 120
 	}
-	sessionToken, sessionExpiry, err := issuePanelSession(username, time.Duration(durationMin)*time.Minute)
+	sessionToken, sessionExpiry, err := issuePanelSession(username, websiteID, time.Duration(durationMin)*time.Minute)
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
