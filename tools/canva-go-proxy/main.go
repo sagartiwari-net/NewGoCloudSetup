@@ -109,7 +109,7 @@ var (
 	cachedAPIToken   string
 	apiCredMu        sync.RWMutex
 	defaultConfig    = Config{
-		UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+		UserAgent:              chromeAutoUserAgent(),
 		Port:                   "7860",
 		CookieFile:             "cookie.txt",
 		TargetURL:              "https://chatgpt.com",
@@ -1625,7 +1625,7 @@ func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTL
 	cfg := &utls.Config{ServerName: host, InsecureSkipVerify: false}
 	var uConn *utls.UConn
 	if len(nextProtos) > 0 {
-		spec, specErr := utls.UTLSIdToSpec(utls.HelloChrome_133)
+		spec, specErr := utls.UTLSIdToSpec(chromeHelloID())
 		if specErr != nil {
 			tcpConn.Close()
 			return nil, fmt.Errorf("uTLS spec: %w", specErr)
@@ -1642,7 +1642,7 @@ func dialChromeALPN(ctx context.Context, addr string, nextProtos []string) (*uTL
 			return nil, fmt.Errorf("uTLS preset: %w", err)
 		}
 	} else {
-		uConn = utls.UClient(tcpConn, cfg, utls.HelloChrome_133)
+		uConn = utls.UClient(tcpConn, cfg, chromeHelloID())
 	}
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		tcpConn.Close()
@@ -2801,18 +2801,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── WebSocket upgrade: hijack and bidirectionally pipe ───────────────────────
 	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		ua := activeAcc.UserAgent
-		if ua == "" {
-			ua = cfg.UserAgent
-		}
+		ua := canvaUpstreamUA(activeAcc.UserAgent, cfg.UserAgent)
 		proxyWebSocket(w, r, upstreamURL, accountCookieStr, ua, cfg, activeAcc.Proxy)
 		return
 	}
-	ua := activeAcc.UserAgent
-	if ua == "" {
-		ua = cfg.UserAgent
-	}
-	if ua != "" {
+	if ua := canvaUpstreamUA(activeAcc.UserAgent, cfg.UserAgent); ua != "" {
 		upstreamReq.Header.Set("User-Agent", ua)
 	}
 
