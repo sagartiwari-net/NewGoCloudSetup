@@ -619,20 +619,20 @@ func main() {
 			}
 		}
 
-		publicHost := r.Host
-		publicScheme := "http"
-		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-			publicScheme = "https"
-		} else {
-			cfgMu.RLock()
-			publicScheme = cfg.PublicScheme
-			cfgMu.RUnlock()
-		}
-
 		cfgMu.RLock()
 		websiteID := cfg.WebsiteID
 		panelCfg := cfg
 		cfgMu.RUnlock()
+		publicHost := tenantPublicHost(r, panelCfg)
+		if publicHost == "" {
+			publicHost = r.Host
+		}
+		publicScheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			publicScheme = "https"
+		} else if panelCfg.PublicScheme != "" {
+			publicScheme = panelCfg.PublicScheme
+		}
 		panelOn := usesPanelAccountMode(panelCfg)
 		if panelOn {
 			switch r.URL.Path {

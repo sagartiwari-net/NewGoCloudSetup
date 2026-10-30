@@ -186,7 +186,7 @@ func resolveExtensionDir() (string, error) {
 }
 
 func publicOriginFromRequest(r *http.Request, cfg Config) (origin, hostOnly string) {
-	hostWithPort := strings.TrimSpace(cfg.PublicHost)
+	hostWithPort := tenantPublicHost(r, cfg)
 	if hostWithPort == "" {
 		hostWithPort = r.Host
 		if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {

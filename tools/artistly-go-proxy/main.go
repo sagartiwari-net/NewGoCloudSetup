@@ -3333,9 +3333,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" || r.Header.Get("X-Forwarded-Ssl") == "on" {
 		publicScheme = "https"
 	}
-	publicHost := cfg.PublicHost
+	publicHost := tenantPublicHost(r, cfg)
 	if publicHost == "" {
-		// Fallback: use Host header
 		publicHost = r.Host
 		if fwdHost := r.Header.Get("X-Forwarded-Host"); fwdHost != "" {
 			publicHost = fwdHost

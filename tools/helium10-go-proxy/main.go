@@ -1499,6 +1499,12 @@ func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]s
 		prefix, host := strings.TrimSuffix(ph[0], "/"), ph[1]
 		pairs = append(pairs, [2]string{host, publicHost + prefix})
 	}
+	ownerHost := panelHostOnly(cfg.PublicHost)
+	if ownerHost != "" && ownerHost != panelHostOnly(publicHost) {
+		ownerBase := fmt.Sprintf("%s://%s", publicScheme, ownerHost)
+		pairs = append(pairs, [2]string{ownerBase, publicBase})
+		pairs = append(pairs, [2]string{ownerHost, publicHost})
+	}
 	return pairs
 }
 
@@ -2283,9 +2289,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			publicScheme = "https"
 		}
 	}
-	publicHost := cfg.PublicHost
+	publicHost := tenantPublicHost(r, cfg)
 	if publicHost == "" {
-		// Fallback: use Host header
 		publicHost = r.Host
 		if fwdHost := r.Header.Get("X-Forwarded-Host"); fwdHost != "" {
 			publicHost = fwdHost
