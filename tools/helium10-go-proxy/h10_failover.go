@@ -94,28 +94,38 @@ func serveH10AccountSwitch(w http.ResponseWriter, r *http.Request, cfg Config, s
 	}
 	heading := "Switching account"
 	message := "This account signed out. Trying the next available account."
+	delay := 1200
+	switched := false
 	if h10SwitchCooldownOK(sessionToken) {
 		next, err := panelSwitchAccount(cfg, sessionToken, activeAcc.ID, activeAcc.Name, currentUser, reason)
 		if err != nil {
 			heading = "Waiting for an account"
-			message = "No other account is ready yet. Checking again."
+			message = "Update the Helium 10 cookie in the panel, then this page will continue."
+			delay = 8000
 			log.Printf("[FAILOVER] login wall user=%s account=%s reason=%s no other account: %v", currentUser, activeAcc.Name, reason, err)
 		} else {
+			switched = true
 			log.Printf("[FAILOVER] login wall user=%s %s (ID:%d) -> %s (ID:%d) reason=%s", currentUser, activeAcc.Name, activeAcc.ID, next.Name, next.ID, reason)
 		}
 	} else {
 		heading = "Refreshing session"
 		message = "Restoring your Helium 10 session. Please wait."
+		delay = 8000
 		log.Printf("[FAILOVER] cooldown user=%s account=%s reason=%s", currentUser, activeAcc.Name, reason)
 	}
+	footer := "This page continues automatically"
+	if !switched {
+		footer = "Paste a fresh cookie in mapped accounts if this keeps waiting"
+	}
 	writeLightCard(w, http.StatusOK, lightCard{
-		Title:    heading,
-		Heading:  heading,
-		Message:  html.EscapeString(message),
-		Badge:    "Checking the next account",
-		Footer:   "This page refreshes automatically",
-		Spin:     true,
-		Redirect: home,
+		Title:      heading,
+		Heading:    heading,
+		Message:    html.EscapeString(message),
+		Badge:      "Checking the next account",
+		Footer:     footer,
+		Spin:       true,
+		Redirect:   home,
+		RedirectMS: delay,
 	})
 }
 
@@ -156,24 +166,14 @@ func h10LoginWatchScript(cfg Config) string {
     if (text.indexOf(NEEDLE_GOOGLE) !== -1 && text.indexOf(NEEDLE_FORGOT) !== -1) return true;
     return false;
   }
-  function wallPath(){
-    var path = (location.pathname || "/").replace(/\/$/, "") || "/";
-    return path === "/user/signin" || path === "/user/login" || path === "/signin" || path === "/login" ||
-      path.indexOf("/user/signin/") === 0 || path.indexOf("/user/login/") === 0;
-  }
   function switchAccount(reason){
     if (switching) return;
     switching = true;
-    // Dedicated path — never /user/signin (that re-triggers wallPath forever).
     location.replace("/__h10_switch?location=" + encodeURIComponent(HOME) + "&reason=" + encodeURIComponent(reason || "h10_login_wall"));
   }
-  // Path-only must NOT failover (one-account cooldown loop). Soft-bounce home;
-  // failover only when real Helium login wall text is visible.
+  // Only the real Helium login wall — never bounce /user/signin ↔ /dashboard.
   setInterval(function(){
-    if (wallText()) { switchAccount("h10_login_text"); return; }
-    if (wallPath()) {
-      try { location.replace(HOME); } catch (e) {}
-    }
+    if (wallText()) { switchAccount("h10_login_text"); }
   }, 1500);
 })();
 </script>`, home)

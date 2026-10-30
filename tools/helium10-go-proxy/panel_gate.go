@@ -356,8 +356,15 @@ func claimPanelAccount(cfg Config, websiteID ...int) (ToolAccount, error) {
 	return acc, nil
 }
 
-// loadPanelSessionAccount uses the account pinned on the live session.
-// assigned_account_id 0 means auto: claim the least recently used account and pin it.
+const panelNewestCookieOrder = `ORDER BY CASE WHEN TRIM(COALESCE(a.cookie_updated_at, '')) = '' THEN 1 ELSE 0 END, a.cookie_updated_at DESC, a.id DESC`
+
+func pinPanelSessionAccount(db *sql.DB, sessionToken string, acc ToolAccount, now string) {
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+}
+
+// loadPanelSessionAccount uses the account pinned on the live session, but follows
+// a newer mapped cookie when the panel account was replaced or updated.
 func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, error) {
 	panelPickMu.Lock()
 	defer panelPickMu.Unlock()
@@ -374,6 +381,17 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	if !panelWebsiteSameTool(db, cfg.PublicHost, websiteID) {
 		return ToolAccount{}, fmt.Errorf("session is for another website")
 	}
+	newer, newerErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+		  AND ( ? <= 0 OR a.id != ? )
+		  AND TRIM(COALESCE(a.cookie_updated_at, '')) != ''
+		  AND COALESCE(a.cookie_updated_at, '') > COALESCE((SELECT cookie_updated_at FROM accounts WHERE id=?), '')
+		`+panelNewestCookieOrder+` LIMIT 1`, websiteID, assigned, assigned, assigned))
+	if newerErr == nil {
+		pinPanelSessionAccount(db, sessionToken, newer, now)
+		log.Printf("[LB] followed newer cookie '%s' (ID:%d) session was %d", newer.Name, newer.ID, assigned)
+		return newer, nil
+	}
 	if assigned > 0 {
 		acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 			WHERE a.id = ? AND a.website_id = ? AND a.status = 'active' AND a.cookie != ''`, assigned, websiteID))
@@ -383,12 +401,11 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	}
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
-		`+panelAccountOrder+` LIMIT 1`, websiteID))
+		`+panelNewestCookieOrder+` LIMIT 1`, websiteID))
 	if err != nil {
 		return ToolAccount{}, err
 	}
-	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
-	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+	pinPanelSessionAccount(db, sessionToken, acc, now)
 	log.Printf("[LB] auto-assigned '%s' (ID:%d) to session", acc.Name, acc.ID)
 	return acc, nil
 }
@@ -405,7 +422,7 @@ func panelSwitchAccount(cfg Config, sessionToken string, currentID int, currentN
 	now := time.Now().UTC().Format(time.RFC3339)
 	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
 		WHERE a.website_id = COALESCE((SELECT website_id FROM live_sessions WHERE session_token=? LIMIT 1), (SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))) LIMIT 1)) AND a.status = 'active' AND a.cookie != '' AND a.id != ?
-		`+panelAccountOrder+` LIMIT 1`, sessionToken, cfg.PublicHost, panelHostOnly(cfg.PublicHost), currentID))
+		`+panelNewestCookieOrder+` LIMIT 1`, sessionToken, cfg.PublicHost, panelHostOnly(cfg.PublicHost), currentID))
 	websiteID, sessUser := panelLogWebsite(db, sessionToken, cfg.PublicHost)
 	if strings.TrimSpace(username) == "" {
 		username = sessUser
@@ -518,6 +535,7 @@ type lightCard struct {
 	Footer      string
 	Spin        bool
 	Redirect    string
+	RedirectMS  int
 	ExtraScript string
 }
 
@@ -536,7 +554,11 @@ func writeLightCard(w http.ResponseWriter, status int, card lightCard) {
 	}
 	redirect := ""
 	if card.Redirect != "" {
-		redirect = `<script>setTimeout(function(){ window.location.replace(` + fmt.Sprintf("%q", card.Redirect) + `); }, 1200);</script>`
+		delay := card.RedirectMS
+		if delay <= 0 {
+			delay = 1200
+		}
+		redirect = `<script>setTimeout(function(){ window.location.replace(` + fmt.Sprintf("%q", card.Redirect) + `); }, ` + fmt.Sprintf("%d", delay) + `);</script>`
 	}
 	redirect += card.ExtraScript
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

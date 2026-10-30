@@ -2141,14 +2141,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			serveH10AccountSwitch(w, r, cfg, sessionToken, currentUser, activeAcc, "h10_login_wall")
 			return
 		}
-		// Soft bounce only — path-only failover loops forever with one account
-		// ("Refreshing session" ↔ "Waiting for an account"). Real logout is handled
-		// after upstream HTML check + h10LoginWatchScript text needles.
-		if h10LoginDocument(r, path) {
-			log.Printf("[H10] login path bounce → %s user=%s", home, currentUser)
-			http.Redirect(w, r, home, http.StatusFound)
-			return
-		}
+		// Do not bounce /user/signin → /dashboard. That refresh-looped the Helium
+		// spinner when the pinned account cookie was dead. Login HTML failover
+		// below (and the login-wall text watch) switches to a fresh mapped cookie.
 	}
 
 	// ── 5. Build upstream request ─────────────────────────────────────────────────
@@ -2220,21 +2215,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Set account cookie and user-agent
 	accountCookieStr := parseCookieFromDB(activeAcc.Cookie)
-	clientCookies := stripSensitiveCookies(r.Header.Get("Cookie"), cfg)
-	if accountCookieStr != "" {
-		if clientCookies != "" {
-			clientCookies += "; "
-		}
-		clientCookies += accountCookieStr
-	}
-	// Only send Cookie header to helium10.com domains
+	clientCookies := accountCookieStr
+	// Helium10.com gets only the mapped account cookie. Browser leftovers from a
+	// previous account keep the dashboard spinning / signed-out after cookie swaps.
 	hostWithoutPort := upstreamURL.Host
 	if h, _, err := net.SplitHostPort(upstreamURL.Host); err == nil {
 		hostWithoutPort = h
 	}
 	if strings.HasSuffix(hostWithoutPort, "helium10.com") {
-		if clientCookies != "" {
-			upstreamReq.Header.Set("Cookie", clientCookies)
+		if accountCookieStr != "" {
+			upstreamReq.Header.Set("Cookie", accountCookieStr)
+		} else {
+			upstreamReq.Header.Del("Cookie")
 		}
 	} else {
 		upstreamReq.Header.Del("Cookie")
