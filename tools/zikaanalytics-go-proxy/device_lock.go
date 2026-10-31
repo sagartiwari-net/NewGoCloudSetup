@@ -44,19 +44,44 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		return fmt.Errorf("missing proof")
 	}
 	if fp == "missing" || proof == "missing" {
-		panelSess.Delete(sessionToken)
-		return fmt.Errorf("device mismatch")
+		// Do not kill the panel session here — page scripts can race during reload
+		// and a second tenant on this same port was signing the first tab out.
+		return fmt.Errorf("missing client proof")
 	}
 	if sess.proof == "" {
 		sess.fp = fp
 		sess.proof = proof
 		return nil
 	}
-	if sess.proof != proof || sess.fp != fp {
-		panelSess.Delete(sessionToken)
+	if !deviceHeaderMatches(proof, sess.proof) {
+		// Reject this bind only. Killing the session races with Access + a second
+		// website and falsely logs people out.
 		return fmt.Errorf("device mismatch")
 	}
+	if fp != "" {
+		sess.fp = fp
+	}
 	return nil
+}
+
+// deviceHeaderMatches: XHR setRequestHeader appends, so the page script and the
+// proxy both stamp the same proof and the browser sends "proof, proof".
+// That is still this browser. A second different value is a copied session.
+func deviceHeaderMatches(got, stored string) bool {
+	got = strings.TrimSpace(got)
+	stored = strings.TrimSpace(stored)
+	if got == stored {
+		return true
+	}
+	if stored == "" || !strings.Contains(got, ",") {
+		return false
+	}
+	for _, part := range strings.Split(got, ",") {
+		if strings.TrimSpace(part) != stored {
+			return false
+		}
+	}
+	return true
 }
 
 func browserSubresource(r *http.Request) bool {
@@ -222,14 +247,10 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		log.Printf("[DEVICE] bind failed: %v", err)
-		if err.Error() == "device mismatch" {
-			recordCookieShare(cfg, r, token)
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
-			return
-		}
+		// Never wipe the live session from /api/device-bind races. A second
+		// website on this port was kicking the first tab to Access Denied.
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
+		fmt.Fprintf(w, `{"error":"device_bind_failed","message":%q}`, err.Error())
 		return
 	}
 	log.Printf("[DEVICE] proof stored")
@@ -304,7 +325,7 @@ function tmWatch(fp, proof) {
       credentials: "same-origin",
       headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
     }).then(function (res) {
-      if (res.status === 401) tmDeny();
+      if (!res.ok) { try { console.warn("tm device bind", res.status); } catch (e) {} }
     }).catch(function () {});
   }, 5000);
 }
@@ -373,29 +394,9 @@ func deviceBootScript(home string) string {
           headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
         });
       }
-      // Service workers require a secure context. On plain HTTP skip SW and bind directly.
-      if (!navigator.serviceWorker || !window.isSecureContext) {
-        return doBind();
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1500);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+      // Skip the service worker. It raced with a second tenant on this port
+      // and sent the first tab to /__tm_access_denied.
+      return doBind();
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");

@@ -43,10 +43,18 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	host := panelRequestHost(r, cfg.PublicHost)
 	var dbUser, clientIP string
-	err = db.QueryRow(`SELECT username, COALESCE(client_ip, '') FROM access_tokens
-		WHERE token = ? AND expires_at > ?
+	claim, err := db.Exec(`UPDATE access_tokens SET expires_at = '1970-01-01T00:00:00Z' WHERE token = ? AND expires_at > ?
 		AND website_id IN (SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))))`,
-		token, time.Now().UTC().Format(time.RFC3339), host, panelHostOnly(host)).Scan(&dbUser, &clientIP)
+		token, time.Now().UTC().Format(time.RFC3339), host, panelHostOnly(host))
+	if err == nil {
+		n, _ := claim.RowsAffected()
+		if n != 1 {
+			err = fmt.Errorf("token already used")
+		}
+	}
+	if err == nil {
+		err = db.QueryRow(`SELECT username, COALESCE(client_ip, '') FROM access_tokens WHERE token = ?`, token).Scan(&dbUser, &clientIP)
+	}
 	if err == nil {
 		_, _ = db.Exec(`DELETE FROM access_tokens WHERE token=?`, token)
 	}
@@ -226,11 +234,8 @@ func handleAhrefsDeviceBind(w http.ResponseWriter, r *http.Request) {
 	proof := strings.TrimSpace(r.Header.Get("X-Device-Proof"))
 	if err = bindAhrefsDevice(cookie.Value, raw.(*ahrefsGateSession), fp, proof); err != nil {
 		log.Printf("[DEVICE] bind rejected: %v", err)
-		if strings.Contains(err.Error(), "device mismatch") {
-			recordAhrefsCookieShare(r, cookie.Value)
-		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprint(w, `{"ok":false,"error":"bind_failed"}`)
 		return
 	}
@@ -250,8 +255,10 @@ func bindAhrefsDevice(token string, sess *ahrefsGateSession, fp, proof string) e
 	if fp == "" || proof == "" {
 		return fmt.Errorf("missing proof")
 	}
-	if fp == "missing" || proof == "missing" || (sess.proof != "" && (sess.proof != proof || sess.fp != fp)) || (sess.fp != "" && sess.proof == "" && sess.fp != fp) {
-		ahrefsSessions.Delete(token)
+	if fp == "missing" || proof == "missing" {
+		return fmt.Errorf("missing client proof")
+	}
+	if sess.proof != "" && sess.proof != proof {
 		return fmt.Errorf("device mismatch")
 	}
 	if sess.proof == "" {
@@ -413,7 +420,7 @@ func injectAhrefsDeviceScript(body string) string {
 function tmDeny(){document.documentElement.style.cssText="visibility:visible;background:#eef3f8;margin:0";while(document.documentElement.firstChild)document.documentElement.removeChild(document.documentElement.firstChild);var b=document.createElement("body");b.style.cssText="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;margin:0;background:#eef3f8;font-family:system-ui,sans-serif";b.innerHTML='<div style="width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px;text-align:center"><div style="font-size:28px">&#128274;</div><h1 style="font-size:28px;margin:12px 0">Access Denied</h1><p style="color:#64748b">You cannot open Tools directly. Open it from your access link.</p><p style="margin-top:18px;color:#94a3b8;font-size:13px">A direct visit is not allowed</p></div>';document.documentElement.appendChild(b);}
 function tmReveal(){document.documentElement.style.visibility="visible";var s=document.querySelector("style[data-tm-device]");if(s)s.remove();}
 function tmPatch(fp,proof){if(window.__tmDevicePatched)return;window.__tmDevicePatched=true;var orig=window.fetch;window.fetch=function(input,init){var url=typeof input==="string"?input:(input&&input.url)||"";var same=false;try{same=new URL(url,location.href).origin===location.origin;}catch(e){}if(same){init=init||{};var h=new Headers(init.headers||(input&&input.headers)||undefined);if(!h.get("X-Device-Fp"))h.set("X-Device-Fp",fp);if(!h.get("X-Device-Proof"))h.set("X-Device-Proof",proof);init.headers=h;}return orig.call(this,input,init);};}
-(function(){var proof="";try{proof=localStorage.getItem("tm_device_proof")||"";}catch(e){}if(!proof){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":"missing","X-Device-Proof":"missing"}}).finally(tmDeny);return;}tmReveal();var fp="";try{fp=localStorage.getItem("tm_device_fp")||"";}catch(e){}if(fp){tmPatch(fp,proof);setInterval(function(){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":fp,"X-Device-Proof":proof}}).then(function(r){if(!r.ok)tmDeny();});},2000);}})();
+(function(){var proof="";try{proof=localStorage.getItem("tm_device_proof")||"";}catch(e){}if(!proof){try{var b=new Uint8Array(32);(crypto.getRandomValues||function(x){for(var i=0;i<x.length;i++)x[i]=Math.floor(Math.random()*256);})(b);proof=Array.from(b).map(function(n){return n.toString(16).padStart(2,"0");}).join("");localStorage.setItem("tm_device_proof",proof);}catch(e){}tmReveal();return;}tmReveal();var fp="";try{fp=localStorage.getItem("tm_device_fp")||"";}catch(e){}if(fp){tmPatch(fp,proof);setInterval(function(){fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:{"X-Device-Fp":fp,"X-Device-Proof":proof}}).then(function(r){if(!r.ok){try{console.warn("tm device bind",r.status);}catch(e){}}});},2000);}})();
 </script>`
 	lower := strings.ToLower(body)
 	if h := strings.Index(lower, "<head"); h >= 0 {

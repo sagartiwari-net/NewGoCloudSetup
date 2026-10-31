@@ -52,29 +52,9 @@ func panelRequestHost(r *http.Request, publicHost string) string {
 // ahrefsPublicHost keeps a second Ahrefs website on port 5291 on its own domain.
 func ahrefsPublicHost(r *http.Request, cfg Config) string {
 	fallback := strings.TrimSpace(cfg.PublicHost)
-	if r == nil || fallback == "" {
-		return fallback
-	}
 	candidate := panelRequestHost(r, cfg.PublicHost)
-	if candidate == "" || candidate == panelHostOnly(fallback) || panelHostIsLocal(candidate) {
-		return fallback
+	if candidate != "" && !panelHostIsLocal(candidate) {
+		return candidate
 	}
-	db, err := openAhrefsPanel()
-	if err != nil {
-		return fallback
-	}
-	id := ahrefsWebsiteID(db, candidate)
-	if id <= 0 {
-		return fallback
-	}
-	var n int
-	err = db.QueryRow(`SELECT COUNT(*) FROM websites w
-		JOIN websites owner ON owner.tool_id = w.tool_id
-		WHERE w.id = ?
-		  AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`,
-		id, fallback, panelHostOnly(fallback)).Scan(&n)
-	if err != nil || n == 0 {
-		return fallback
-	}
-	return candidate
+	return fallback
 }

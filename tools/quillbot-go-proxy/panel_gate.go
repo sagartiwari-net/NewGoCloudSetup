@@ -222,7 +222,9 @@ func dropPanelSessionsFor(username string, websiteID int) {
 		if name != username {
 			return true
 		}
-		if websiteID > 0 && wid > 0 && wid != websiteID {
+		// Only replace sessions on this same website. Opening a friend host
+		// must not sign out the live tab on the owner host (or any other tenant).
+		if websiteID <= 0 || wid != websiteID {
 			return true
 		}
 		panelSess.Delete(key)

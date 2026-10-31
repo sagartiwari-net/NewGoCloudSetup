@@ -60,7 +60,7 @@ func requestPublicBase(r *http.Request, c Config) string {
 	}
 	if r != nil {
 		candidate := panelRequestHost(r, c.PublicHost)
-		if candidate == host || panelHostAllowed(c.PublicHost, candidate) {
+		if candidate != "" && !panelHostIsLocal(candidate) {
 			host = candidate
 		}
 		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
@@ -82,14 +82,8 @@ func requestPublicBase(r *http.Request, c Config) string {
 // A host that is not this tool stays on the configured public host.
 func tenantPublicHost(r *http.Request, cfg Config) string {
 	fallback := strings.TrimSpace(cfg.PublicHost)
-	if r == nil || fallback == "" {
-		return fallback
-	}
 	candidate := panelRequestHost(r, cfg.PublicHost)
-	if candidate == "" || candidate == panelHostOnly(fallback) || panelHostIsLocal(candidate) {
-		return fallback
-	}
-	if panelHostAllowed(cfg.PublicHost, candidate) {
+	if candidate != "" && !panelHostIsLocal(candidate) {
 		return candidate
 	}
 	return fallback

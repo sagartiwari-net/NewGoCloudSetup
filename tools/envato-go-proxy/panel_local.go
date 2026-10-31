@@ -138,11 +138,18 @@ func serveEnvatoPanelAccess(w http.ResponseWriter, r *http.Request, username, to
 	}
 	var dbUser, clientIP string
 	host := panelRequestHost(r, cfg.PublicHost)
-	err = db.QueryRow(`SELECT username, COALESCE(client_ip, '') FROM access_tokens
-		WHERE token = ? AND expires_at > ?
+	claim, err := db.Exec(`UPDATE access_tokens SET expires_at = '1970-01-01T00:00:00Z' WHERE token = ? AND expires_at > ?
 		AND website_id IN (SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?))))`,
-		token, time.Now().UTC().Format(time.RFC3339), host, panelHostOnly(host)).
-		Scan(&dbUser, &clientIP)
+		token, time.Now().UTC().Format(time.RFC3339), host, panelHostOnly(host))
+	if err == nil {
+		n, _ := claim.RowsAffected()
+		if n != 1 {
+			err = fmt.Errorf("token already used")
+		}
+	}
+	if err == nil {
+		err = db.QueryRow(`SELECT username, COALESCE(client_ip, '') FROM access_tokens WHERE token = ?`, token).Scan(&dbUser, &clientIP)
+	}
 	username = strings.TrimSpace(dbUser)
 	if err != nil || username == "" {
 		log.Printf("[PANEL] token rejected host=%s err=%v", host, err)
@@ -423,10 +430,10 @@ func handleEnvatoDeviceBind(w http.ResponseWriter, r *http.Request) {
 	fp := strings.TrimSpace(r.Header.Get("X-Device-Fp"))
 	proof := strings.TrimSpace(r.Header.Get("X-Device-Proof"))
 	if err := bindEnvatoDevice(cookie.Value, sess, fp, proof); err != nil {
-		if strings.Contains(err.Error(), "device mismatch") {
-			recordEnvatoCookieShare(r, cookie.Value)
-		}
-		renderAccessDeniedPage(w)
+		log.Printf("[DEVICE] bind failed: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, `{"error":"device_bind_failed","message":%q}`, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -686,18 +693,15 @@ func bindEnvatoDevice(token string, sess *envatoLocalSession, fp, proof string) 
 		return fmt.Errorf("missing proof")
 	}
 	if fp == "missing" || proof == "missing" {
-		envatoSessions.Delete(token)
-		return fmt.Errorf("device mismatch")
+		return fmt.Errorf("missing client proof")
 	}
 	if sess.proof == "" {
 		if sess.fp != "" && sess.fp != fp {
-			envatoSessions.Delete(token)
 			return fmt.Errorf("device mismatch")
 		}
 		sess.fp = fp
 		sess.proof = proof
-	} else if sess.proof != proof || sess.fp != fp {
-		envatoSessions.Delete(token)
+	} else if sess.proof != proof {
 		return fmt.Errorf("device mismatch")
 	}
 	db, err := openEnvatoPanel()
@@ -753,6 +757,14 @@ func envatoRejectDevice(w http.ResponseWriter, r *http.Request) bool {
 	username := sess.username
 	sess.mu.Unlock()
 	if !bound {
+		return false
+	}
+	if proof != "" && deviceHeaderMatches(proof, storedProof) {
+		if fp != "" && fp != storedFp {
+			sess.mu.Lock()
+			sess.fp = fp
+			sess.mu.Unlock()
+		}
 		return false
 	}
 	if fp == storedFp && proof == storedProof {

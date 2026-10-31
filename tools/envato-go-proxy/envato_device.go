@@ -3,9 +3,27 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 const deviceProofKey = "tm_device_proof"
+
+func deviceHeaderMatches(got, stored string) bool {
+	got = strings.TrimSpace(got)
+	stored = strings.TrimSpace(stored)
+	if got == stored {
+		return true
+	}
+	if stored == "" || !strings.Contains(got, ",") {
+		return false
+	}
+	for _, part := range strings.Split(got, ",") {
+		if strings.TrimSpace(part) != stored {
+			return false
+		}
+	}
+	return true
+}
 
 func serveDeviceSW(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
@@ -67,7 +85,7 @@ function tmWatch(fp, proof) {
       credentials: "same-origin",
       headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
     }).then(function (res) {
-      if (!res.ok) tmDeny();
+      if (!res.ok) { try { console.warn("tm device bind", res.status); } catch (e) {} }
     }).catch(function () {});
   }, 2000);
 }
@@ -78,11 +96,24 @@ function tmWatch(fp, proof) {
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   try { fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || ""; } catch (e) {}
   if (!proof) {
-    fetch("/api/device-bind", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Device-Fp": "missing", "X-Device-Proof": "missing" }
-    }).finally(tmDeny);
+    tmEnsureProof().then(function (next) {
+      proof = next;
+      return tmFingerprint().then(function (fp) {
+        try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+        return tmStore(fp, proof).then(function () {
+          return fetch("/api/device-bind", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+          }).then(function (res) {
+            if (!res.ok) { tmDeny(); return; }
+            tmReveal();
+            tmPatchRequests(fp, proof);
+            tmWatch(fp, proof);
+          });
+        });
+      });
+    }).catch(tmDeny);
     return;
   }
   tmReveal();
@@ -111,14 +142,11 @@ function tmWatch(fp, proof) {
   }).then(function (fp) {
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
   }).catch(function () {});
 })();
 </script>`
@@ -151,29 +179,9 @@ func deviceBootScript(home string) string {
           headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
         });
       }
-      // Service workers require a secure context. On plain HTTP skip SW and bind directly.
-      if (!navigator.serviceWorker || !window.isSecureContext) {
-        return doBind();
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1500);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+      // Skip the service worker. It raced with a second tenant on this port
+      // and sent the first tab to /__tm_access_denied.
+      return doBind();
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");

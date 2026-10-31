@@ -332,6 +332,26 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 	return nil
 }
 
+// deviceHeaderMatches: XHR setRequestHeader appends, so the page script and the
+// proxy both stamp the same proof and the browser sends "proof, proof".
+// That is still this browser. A second different value is a copied session.
+func deviceHeaderMatches(got, stored string) bool {
+	got = strings.TrimSpace(got)
+	stored = strings.TrimSpace(stored)
+	if got == stored {
+		return true
+	}
+	if stored == "" || !strings.Contains(got, ",") {
+		return false
+	}
+	for _, part := range strings.Split(got, ",") {
+		if strings.TrimSpace(part) != stored {
+			return false
+		}
+	}
+	return true
+}
+
 func browserSubresource(r *http.Request) bool {
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
 	case "image", "style", "font", "script":
@@ -577,7 +597,7 @@ function tmWatch(fp, proof) {
       headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
     }).then(function (res) {
       // 401 = session gone. 403 bind races must not kick a live user out.
-      if (res.status === 401) tmDeny();
+      if (!res.ok) { try { console.warn("tm device bind", res.status); } catch (e) {} }
     }).catch(function () {});
   }, 2000);
 }

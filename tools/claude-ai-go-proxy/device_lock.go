@@ -44,19 +44,44 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		return fmt.Errorf("missing proof")
 	}
 	if fp == "missing" || proof == "missing" {
-		panelSess.Delete(sessionToken)
-		return fmt.Errorf("device mismatch")
+		// Do not kill the panel session here — page scripts can race during reload
+		// and a second tenant on this same port was signing the first tab out.
+		return fmt.Errorf("missing client proof")
 	}
 	if sess.proof == "" {
 		sess.fp = fp
 		sess.proof = proof
 		return nil
 	}
-	if sess.proof != proof || sess.fp != fp {
-		panelSess.Delete(sessionToken)
+	if !deviceHeaderMatches(proof, sess.proof) {
+		// Reject this bind only. Killing the session races with Access + a second
+		// website and falsely logs people out.
 		return fmt.Errorf("device mismatch")
 	}
+	if fp != "" {
+		sess.fp = fp
+	}
 	return nil
+}
+
+// deviceHeaderMatches: XHR setRequestHeader appends, so the page script and the
+// proxy both stamp the same proof and the browser sends "proof, proof".
+// That is still this browser. A second different value is a copied session.
+func deviceHeaderMatches(got, stored string) bool {
+	got = strings.TrimSpace(got)
+	stored = strings.TrimSpace(stored)
+	if got == stored {
+		return true
+	}
+	if stored == "" || !strings.Contains(got, ",") {
+		return false
+	}
+	for _, part := range strings.Split(got, ",") {
+		if strings.TrimSpace(part) != stored {
+			return false
+		}
+	}
+	return true
 }
 
 // clearPanelDeviceBinding lets the same browser re-bind after Claude clears localStorage on logout.
@@ -129,6 +154,14 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	username := sess.username
 	sess.mu.Unlock()
 	if !bound {
+		return false
+	}
+	if proof != "" && deviceHeaderMatches(proof, storedProof) {
+		if fp != "" && fp != storedFp {
+			sess.mu.Lock()
+			sess.fp = fp
+			sess.mu.Unlock()
+		}
 		return false
 	}
 	if fp == storedFp && proof == storedProof {
@@ -223,14 +256,10 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		log.Printf("[DEVICE] bind failed: %v", err)
-		if err.Error() == "device mismatch" {
-			recordCookieShare(cfg, r, token)
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
-			return
-		}
+		// Never wipe the live session from /api/device-bind races. A second
+		// website on this port was kicking the first tab to Access Denied.
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
+		fmt.Fprintf(w, `{"error":"device_bind_failed","message":%q}`, err.Error())
 		return
 	}
 	// Avoid log spam from tmWatch re-bind every 2s.
@@ -310,7 +339,7 @@ function tmWatch(fp, proof) {
       headers: { "X-Device-Fp": fp, "X-Device-Proof": proof, "X-Device-Quiet": "1" }
     }).then(function (res) {
       // Network blips / CF challenge must not kill a live Claude session.
-      if (res && (res.status === 401 || res.status === 403)) tmDeny();
+      if (!res.ok) { try { console.warn("tm device bind", res.status); } catch (e) {} }
     }).catch(function () {});
   }, 15000);
 }
