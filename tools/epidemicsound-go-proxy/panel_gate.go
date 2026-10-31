@@ -204,7 +204,9 @@ func dropPanelSessionsFor(username string, websiteID int) {
 		if name != username {
 			return true
 		}
-		if websiteID > 0 && wid > 0 && wid != websiteID {
+		// Only replace sessions on this same website. Opening pdmc.seogbtools.com
+		// must not sign out the live tab on pdmc.upays.in (or any other tenant).
+		if websiteID <= 0 || wid != websiteID {
 			return true
 		}
 		panelSess.Delete(key)

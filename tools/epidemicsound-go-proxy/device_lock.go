@@ -44,19 +44,44 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		return fmt.Errorf("missing proof")
 	}
 	if fp == "missing" || proof == "missing" {
-		panelSess.Delete(sessionToken)
-		return fmt.Errorf("device mismatch")
+		// Do not kill the panel session here — page scripts can race during reload
+		// and a second tenant on this same port was signing the first tab out.
+		return fmt.Errorf("missing client proof")
 	}
 	if sess.proof == "" {
 		sess.fp = fp
 		sess.proof = proof
 		return nil
 	}
-	if sess.proof != proof || sess.fp != fp {
-		panelSess.Delete(sessionToken)
+	if !deviceHeaderMatches(proof, sess.proof) {
+		// Reject this bind only. Killing the session races with Access + a second
+		// website (pdmc.upays.in vs pdmc.seogbtools.com) and falsely logs people out.
 		return fmt.Errorf("device mismatch")
 	}
+	if fp != "" {
+		sess.fp = fp
+	}
 	return nil
+}
+
+// deviceHeaderMatches: XHR setRequestHeader appends, so the page script and the
+// proxy both stamp the same proof and the browser sends "proof, proof".
+// That is still this browser. A second different value is a copied session.
+func deviceHeaderMatches(got, stored string) bool {
+	got = strings.TrimSpace(got)
+	stored = strings.TrimSpace(stored)
+	if got == stored {
+		return true
+	}
+	if stored == "" || !strings.Contains(got, ",") {
+		return false
+	}
+	for _, part := range strings.Split(got, ",") {
+		if strings.TrimSpace(part) != stored {
+			return false
+		}
+	}
+	return true
 }
 
 func browserSubresource(r *http.Request) bool {
@@ -106,7 +131,7 @@ func isDocumentNavigation(r *http.Request) bool {
 // rejectPanelDevice blocks a copied cookie jar. A document request with a missing
 // or different proof deletes the session for every profile that holds it.
 func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool {
-	if !usesPanelAccountMode(cfg) {
+	if !usesPanelAccountMode(cfg) || cfg.BypassAuth {
 		return false
 	}
 	token, sess, ok := sessionFromRequest(r)
@@ -123,23 +148,24 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !bound {
 		return false
 	}
+	if proof != "" && deviceHeaderMatches(proof, storedProof) {
+		if fp != "" && fp != storedFp {
+			sess.mu.Lock()
+			sess.fp = fp
+			sess.mu.Unlock()
+		}
+		return false
+	}
 	if fp == storedFp && proof == storedProof {
 		return false
 	}
-	if browserSubresource(r) {
+	if browserSubresource(r) || epidemicAPIRequest(r) {
 		return false
 	}
 	if fp == "" && proof == "" {
 		// A normal refresh is a document load and cannot send the device headers.
 		// Assistant GraphQL is called on client-api and also omits those headers.
-		if isDocumentNavigation(r) || epidemicAPIRequest(r) {
-			return false
-		}
-		log.Printf("[DEVICE] required path=%s", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
+		return false
 	}
 	panelSess.Delete(token)
 	recordCookieShare(cfg, r, token)
@@ -167,11 +193,9 @@ func renderDeviceGate(w http.ResponseWriter, cfg Config) {
   var proof = "";
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   if (!proof) {
-    fetch("/api/device-bind", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Device-Fp": "missing", "X-Device-Proof": "missing" }
-    }).finally(function () {
+    tmEnsureProof().then(function (next) {
+      window.location.reload();
+    }).catch(function () {
       var title = document.querySelector("h1");
       var msg = document.querySelector(".msg");
       var pill = document.querySelector(".pill");
@@ -187,30 +211,7 @@ func renderDeviceGate(w http.ResponseWriter, cfg Config) {
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
     return tmStore(fp, proof).then(function () {
       tmPatchRequests(fp, proof);
-      if (!navigator.serviceWorker) {
-        window.location.reload();
-        return new Promise(function () {});
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-          window.location.reload();
-          return new Promise(function () {});
-        }
-        return new Promise(function (resolve, reject) {
-          var timer = setTimeout(function () { reject(new Error("sw")); }, 4000);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            if (navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-            }
-            window.location.reload();
-            resolve();
-          }, { once: true });
-        });
-      });
+      window.location.reload();
     });
   }).catch(function () {
     var title = document.querySelector("h1");
@@ -242,14 +243,10 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		log.Printf("[DEVICE] bind failed: %v", err)
-		if err.Error() == "device mismatch" {
-			recordCookieShare(cfg, r, token)
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
-			return
-		}
+		// Never wipe the live session from /api/device-bind races. A second
+		// website on this port was kicking the first tab to Access Denied.
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, `{"error":"device_bind_failed"}`)
+		fmt.Fprintf(w, `{"error":"device_bind_failed","message":%q}`, err.Error())
 		return
 	}
 	log.Printf("[DEVICE] proof stored")
@@ -297,6 +294,8 @@ function tmReveal() {
   var lock = document.querySelector("style[data-tm-device]");
   if (lock) lock.remove();
 }
+// Never leave users on a permanent blank page if bind/fingerprint hangs.
+setTimeout(function () { try { tmReveal(); } catch (e) {} }, 2500);
 function tmWatch(fp, proof) {
   if (window.__tmWatch) return;
   window.__tmWatch = setInterval(function () {
@@ -305,7 +304,9 @@ function tmWatch(fp, proof) {
       credentials: "same-origin",
       headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
     }).then(function (res) {
-      if (!res.ok) tmDeny();
+      // A 403 here is a bind race, not a copied cookie. Kicking this tab sent
+      // pdmc.upays.in to /__tm_access_denied while pdmc.seogbtools.com stayed open.
+      if (!res.ok) { try { console.warn("tm device bind", res.status); } catch (e) {} }
     }).catch(function () {});
   }, 2000);
 }
@@ -316,11 +317,24 @@ function tmWatch(fp, proof) {
   try { proof = localStorage.getItem("` + deviceProofKey + `") || ""; } catch (e) {}
   try { fp = localStorage.getItem("tm_device_fp") || sessionStorage.getItem("tm_device_fp") || ""; } catch (e) {}
   if (!proof) {
-    fetch("/api/device-bind", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-Device-Fp": "missing", "X-Device-Proof": "missing" }
-    }).finally(tmDeny);
+    tmEnsureProof().then(function (next) {
+      proof = next;
+      return tmFingerprint().then(function (fp) {
+        try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
+        return tmStore(fp, proof).then(function () {
+          return fetch("/api/device-bind", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-Device-Fp": fp, "X-Device-Proof": proof }
+          }).then(function (res) {
+            if (!res.ok) { tmDeny(); return; }
+            tmReveal();
+            tmPatchRequests(fp, proof);
+            tmWatch(fp, proof);
+          });
+        });
+      });
+    }).catch(tmDeny);
     return;
   }
   tmReveal();
@@ -349,14 +363,11 @@ function tmWatch(fp, proof) {
   }).then(function (fp) {
     tmPatchRequests(fp, proof);
     tmWatch(fp, proof);
-    if (!navigator.serviceWorker) return;
-    navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-      return navigator.serviceWorker.ready;
-    }).then(function () {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ fp: fp, proof: proof });
-      }
-    }).catch(function () {});
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {});
+    }
   }).catch(function () {});
 })();
 </script>`
@@ -389,29 +400,9 @@ func deviceBootScript(home string) string {
           headers: { "X-Device-Fp": dev.fp, "X-Device-Proof": dev.proof }
         });
       }
-      // Service workers require a secure context. On plain HTTP skip SW and bind directly.
-      if (!navigator.serviceWorker || !window.isSecureContext) {
-        return doBind();
-      }
-      return navigator.serviceWorker.register("/tm-device-sw.js", { scope: "/" }).then(function () {
-        return navigator.serviceWorker.ready;
-      }).then(function () {
-        if (navigator.serviceWorker.controller) return dev;
-        return new Promise(function (resolve) {
-          var timer = setTimeout(function () { resolve(dev); }, 1500);
-          navigator.serviceWorker.addEventListener("controllerchange", function () {
-            clearTimeout(timer);
-            resolve(dev);
-          }, { once: true });
-        });
-      }).then(function () {
-        try {
-          if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ fp: dev.fp, proof: dev.proof });
-          }
-        } catch (e) {}
-        return doBind();
-      }).catch(function () { return doBind(); });
+      // Skip the service worker. It raced with a second tenant on this port
+      // and sent the first tab to /__tm_access_denied.
+      return doBind();
     });
   }).then(function (res) {
     if (!res || !res.ok) throw new Error("bind");
