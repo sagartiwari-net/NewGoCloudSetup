@@ -1388,7 +1388,7 @@ func handleAhrefsAccountSwitch(w http.ResponseWriter, r *http.Request) {
 	cfg := loadConfig()
 	current, ok := ahrefsPanelAccount(panelRequestHost(r, cfg.PublicHost), sessionToken)
 	if !ok {
-		renderAccountSwitchPage(w, "", ahrefsSwitchReturnPath(r))
+		renderAccountSwitchPageFor(w, "", ahrefsSwitchReturnPath(r), ahrefsSessionUser(sessionToken))
 		return
 	}
 	userName := ahrefsSessionUser(sessionToken)
@@ -1402,7 +1402,7 @@ func handleAhrefsAccountSwitch(w http.ResponseWriter, r *http.Request) {
 		renderNoActiveAccountsPage(w)
 		return
 	}
-	renderAccountSwitchPage(w, next.Name, safeAhrefsSwitchNext(r.URL.Query().Get("next")))
+	renderAccountSwitchPageFor(w, next.Name, safeAhrefsSwitchNext(r.URL.Query().Get("next")), userName)
 }
 
 func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
@@ -1449,6 +1449,9 @@ func rotateSessionHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"error":"no_other_accounts","message":"%v"}`, switchErr)
 		return
 	}
+	if currentUser != "" && currentUser != "unknown" {
+		ahrefsRevertRecentCreditOnSwitch(currentUser)
+	}
 
 	fmt.Fprintf(w, `{"status":"ok","switched_to":"%s","id":%d}`, nextAcc.Name, nextAcc.ID)
 }
@@ -1463,6 +1466,11 @@ func renderAccessDeniedPage(w http.ResponseWriter) {
 }
 
 func renderAccountSwitchPage(w http.ResponseWriter, accountName, reloadPath string) {
+	renderAccountSwitchPageFor(w, accountName, reloadPath, "")
+}
+
+func renderAccountSwitchPageFor(w http.ResponseWriter, accountName, reloadPath, username string) {
+	ahrefsRevertRecentCreditOnSwitch(username)
 	if reloadPath == "" {
 		reloadPath = "/site-explorer"
 	}
@@ -3416,6 +3424,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var pendingLimit ahrefsLimitHit
 	pendingLimitOK := false
+	pendingExportAsk := 0
 	if limitUser != "" && !isAsset {
 		limitBody := ahrefsReadLimitBody(r)
 		if hit, ok := ahrefsLimitHitFor(r, limitBody); ok {
@@ -3427,6 +3436,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			ask := 0
 			if hit.isExport {
 				ask = ahrefsExportAsk(r, limitBody)
+				pendingExportAsk = ask
 			}
 			over := found && view.limit > 0 && view.used >= view.limit
 			exportShort := hit.isExport && found && view.limit > 0 && ask > 0 && view.used+ask > view.limit
@@ -3449,7 +3459,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			renderNoActiveAccountsPage(w)
 			return
 		}
-		renderAccountSwitchPage(w, nextAcc.Name, ahrefsSwitchReturnPath(r))
+		renderAccountSwitchPageFor(w, nextAcc.Name, ahrefsSwitchReturnPath(r), userName)
 		return
 	}
 	var resp *http.Response
@@ -3648,7 +3658,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				activeAcc = nextAcc
 				ahrefsPanelSwitchBump(sessionToken)
-				renderAccountSwitchPage(w, nextAcc.Name, ahrefsSwitchReturnPath(r))
+				renderAccountSwitchPageFor(w, nextAcc.Name, ahrefsSwitchReturnPath(r), userName)
 				return
 			}
 			nextAcc, switchErr = switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, switchReason)
@@ -3659,9 +3669,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 					creditHitCache.Delete(pendingCreditDedupKey)
 					pendingCreditCharge = false
 				}
+				ahrefsRevertRecentCreditOnSwitch(currentUser)
 				renderNoActiveAccountsPage(w)
 				return
 			}
+			ahrefsRevertRecentCreditOnSwitch(currentUser)
 			activeAcc = nextAcc
 			continue
 		}
@@ -3711,7 +3723,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderNoActiveAccountsPage(w)
 				return
 			}
-			renderAccountSwitchPage(w, nextAcc.Name, ahrefsSwitchReturnPath(r))
+			renderAccountSwitchPageFor(w, nextAcc.Name, ahrefsSwitchReturnPath(r), userName)
 			return
 		}
 		host := cfg.PublicHost
@@ -3741,7 +3753,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderNoActiveAccountsPage(w)
 				return
 			}
-			renderAccountSwitchPage(w, nextAcc.Name, ahrefsSwitchReturnPath(r))
+			renderAccountSwitchPageFor(w, nextAcc.Name, ahrefsSwitchReturnPath(r), userName)
 			return
 		}
 		copyResponseHeaders(w, resp.Header)
@@ -3774,14 +3786,22 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if pendingLimitOK && resp.StatusCode >= 200 && resp.StatusCode < 300 && ahrefsUsableResult(rawBody) {
 		if pendingLimit.isExport {
-			pendingLimit.amount = ahrefsCSVRows(rawBody)
-			view, _, found := ahrefsMeterView(limitUser, pendingLimit.key, 1000, pendingLimit.reset)
-			if found && view.limit > 0 && view.used+pendingLimit.amount > view.limit {
-				ahrefsBlockLimit(w, r, pendingLimit, view.used, view.limit, pendingLimit.amount)
-				return
+			amount, billOK := ahrefsExportBillAmount(pendingExportAsk, resp.Header.Get("Content-Type"), rawBody)
+			if !billOK {
+				log.Printf("[LIMITS] skip export bill user=%s path=%s — not a CSV download", limitUser, r.URL.Path)
+				pendingLimitOK = false
+			} else {
+				pendingLimit.amount = amount
+				view, _, found := ahrefsMeterView(limitUser, pendingLimit.key, 1000, pendingLimit.reset)
+				if found && view.limit > 0 && view.used+pendingLimit.amount > view.limit {
+					ahrefsBlockLimit(w, r, pendingLimit, view.used, view.limit, pendingLimit.amount)
+					return
+				}
 			}
 		}
-		ahrefsSaveUsage(limitUser, pendingLimit)
+		if pendingLimitOK {
+			ahrefsSaveUsage(limitUser, pendingLimit)
+		}
 	} else if pendingLimitOK {
 		log.Printf("[LIMITS] skip credit user=%s path=%s status=%d — result not delivered", limitUser, r.URL.Path, resp.StatusCode)
 	}
@@ -3815,6 +3835,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 					creditHitCache.Delete(pendingCreditDedupKey)
 				}
 			} else {
+				ahrefsNoteLegacyCreditLog(currentUser, currentWebsiteID, pendingCreditLog)
 				log.Printf("[LIMITS] Logged 1 credit hit for '%s' on %s under website_id %d", currentUser, pendingCreditLog, currentWebsiteID)
 
 				// Overview domain switch: Ahrefs often bills the previous domain again right
@@ -3857,8 +3878,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/csv")
 
 	if isExportRequest && !isAsset && db != nil {
-		// Automatically expire custom limits that have passed their expiration date
-		_, _ = db.Exec(`
+		// Legacy weekly export ledger — only real CSV downloads (not JSON Export APIs).
+		rowCount, exportBillOK := ahrefsExportBillAmount(pendingExportAsk, resp.Header.Get("Content-Type"), rawBody)
+		if exportBillOK && rowCount > 0 {
+			// Automatically expire custom limits that have passed their expiration date
+			_, _ = db.Exec(`
 			UPDATE ahrefs_users u
 			JOIN ahrefs_websites w ON u.website_id = w.id
 			SET u.credit_limit = COALESCE(w.default_credit_limit, 50),
@@ -3867,87 +3891,54 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			WHERE u.custom_limit_expire_at IS NOT NULL AND u.custom_limit_expire_at < NOW()
 		`)
 
-		var creditLimit, exportLimit int
-		var exportCycleStart sql.NullTime
-		var userStatus string
+			var exportLimit int
+			var exportCycleStart sql.NullTime
 
-		err = db.QueryRow("SELECT credit_limit, export_limit, export_cycle_start, status FROM ahrefs_users WHERE username = ? AND website_id = ?", currentUser, currentWebsiteID).Scan(&creditLimit, &exportLimit, &exportCycleStart, &userStatus)
-		if err == sql.ErrNoRows {
-			creditLimit = 50
-			exportLimit = 100000
-			userStatus = "active"
-			err = nil
-		}
-		if err == nil {
-			// Highly robust newline counter supporting UTF-16 LE, UTF-16 BE, and UTF-8/ASCII
-			rowCount := 0
-			if len(rawBody) >= 2 && rawBody[0] == 0xff && rawBody[1] == 0xfe {
-				// UTF-16 LE BOM (Standard Ahrefs Export)
-				rowCount = bytes.Count(rawBody, []byte{0x0a, 0x00})
-			} else if len(rawBody) >= 2 && rawBody[0] == 0xfe && rawBody[1] == 0xff {
-				// UTF-16 BE BOM
-				rowCount = bytes.Count(rawBody, []byte{0x00, 0x0a})
-			} else {
-				// Fallback: check if the body has a lot of null bytes (indicating UTF-16 LE without BOM)
-				nullCount := bytes.Count(rawBody, []byte{0x00})
-				if nullCount > len(rawBody)/3 {
-					// Likely UTF-16 LE
-					rowCount = bytes.Count(rawBody, []byte{0x0a, 0x00})
-				} else {
-					// Standard UTF-8 / ASCII
-					rowCount = bytes.Count(rawBody, []byte("\n"))
+			err = db.QueryRow("SELECT export_limit, export_cycle_start FROM ahrefs_users WHERE username = ? AND website_id = ?", currentUser, currentWebsiteID).Scan(&exportLimit, &exportCycleStart)
+			if err == sql.ErrNoRows {
+				exportLimit = 100000
+				err = nil
+			}
+			if err == nil {
+				var totalExportedRows int
+				err = db.QueryRow("SELECT COALESCE(SUM(rows_count), 0) FROM ahrefs_export_logs WHERE username = ? AND website_id = ?", currentUser, currentWebsiteID).Scan(&totalExportedRows)
+				if err != nil {
+					log.Printf("[DB] Error scanning export logs for '%s' under website_id %d: %v", currentUser, currentWebsiteID, err)
 				}
-			}
 
-			// If rowCount is still 0, try counting standard newlines as fallback
-			if rowCount == 0 && len(rawBody) > 0 {
-				rowCount = bytes.Count(rawBody, []byte("\n"))
-			}
+				if totalExportedRows+rowCount > exportLimit {
+					log.Printf("[LIMITS] Blocked export for user '%s' — Row limit reached. Row count: %d, current cycle: %d/%d on website_id %d", currentUser, rowCount, totalExportedRows, exportLimit, currentWebsiteID)
 
-			// Subtract 1 for the CSV header row
-			if rowCount > 0 {
-				rowCount--
-			}
+					isAPICall := strings.HasPrefix(reqPath, "/v4/") ||
+						strings.Contains(r.Header.Get("Accept"), "application/json") ||
+						strings.Contains(r.Header.Get("X-Requested-With"), "XMLHttpRequest") ||
+						strings.Contains(reqPath, "Export") ||
+						strings.Contains(reqPath, "export")
 
-			var totalExportedRows int
-			err = db.QueryRow("SELECT COALESCE(SUM(rows_count), 0) FROM ahrefs_export_logs WHERE username = ? AND website_id = ?", currentUser, currentWebsiteID).Scan(&totalExportedRows)
-			if err != nil {
-				log.Printf("[DB] Error scanning export logs for '%s' under website_id %d: %v", currentUser, currentWebsiteID, err)
-			}
-
-			if totalExportedRows+rowCount > exportLimit {
-				log.Printf("[LIMITS] Blocked export for user '%s' — Row limit reached. Row count: %d, current cycle: %d/%d on website_id %d", currentUser, rowCount, totalExportedRows, exportLimit, currentWebsiteID)
-
-				isAPICall := strings.HasPrefix(reqPath, "/v4/") ||
-					strings.Contains(r.Header.Get("Accept"), "application/json") ||
-					strings.Contains(r.Header.Get("X-Requested-With"), "XMLHttpRequest") ||
-					strings.Contains(reqPath, "Export") ||
-					strings.Contains(reqPath, "export")
-
-				if isAPICall {
-					w.Header().Set("Content-Type", "application/json; charset=utf-8")
-					w.Header().Set("X-Limit-Reached", "weekly_export")
-					w.WriteHeader(http.StatusForbidden)
-					fmt.Fprintf(w, `{"error":"weekly_export_limit_reached","message":"Weekly Export Rows Limit Reached. You have reached your weekly CSV export row limit (%d / %d rows).","code":403}`, totalExportedRows, exportLimit)
-				} else {
-					renderLimitReachedPage(w, "export")
+					if isAPICall {
+						w.Header().Set("Content-Type", "application/json; charset=utf-8")
+						w.Header().Set("X-Limit-Reached", "weekly_export")
+						w.WriteHeader(http.StatusForbidden)
+						fmt.Fprintf(w, `{"error":"weekly_export_limit_reached","message":"Weekly Export Rows Limit Reached. You have reached your weekly CSV export row limit (%d / %d rows).","code":403}`, totalExportedRows, exportLimit)
+					} else {
+						renderLimitReachedPage(w, "export")
+					}
+					return
 				}
-				return
-			}
 
-			// Log this export rows count (strip query parameters to fit VARCHAR(255) safely)
-			logPath := reqPath
-			if idx := strings.Index(logPath, "?"); idx != -1 {
-				logPath = logPath[:idx]
-			}
-			if len(logPath) > 255 {
-				logPath = logPath[:255]
-			}
-			_, err = db.Exec("INSERT INTO ahrefs_export_logs (username, website_id, rows_count, endpoint) VALUES (?, ?, ?, ?)", currentUser, currentWebsiteID, rowCount, logPath)
-			if err != nil {
-				log.Printf("[DB] Failed logging export rows for '%s' under website_id %d: %v", currentUser, currentWebsiteID, err)
-			} else {
-				log.Printf("[LIMITS] Logged %d export rows for '%s' on %s (%d/%d used this week) under website_id %d", rowCount, currentUser, logPath, totalExportedRows+rowCount, exportLimit, currentWebsiteID)
+				logPath := reqPath
+				if idx := strings.Index(logPath, "?"); idx != -1 {
+					logPath = logPath[:idx]
+				}
+				if len(logPath) > 255 {
+					logPath = logPath[:255]
+				}
+				_, err = db.Exec("INSERT INTO ahrefs_export_logs (username, website_id, rows_count, endpoint) VALUES (?, ?, ?, ?)", currentUser, currentWebsiteID, rowCount, logPath)
+				if err != nil {
+					log.Printf("[DB] Failed logging export rows for '%s' under website_id %d: %v", currentUser, currentWebsiteID, err)
+				} else {
+					log.Printf("[LIMITS] Logged %d export rows for '%s' on %s (%d/%d used this week) under website_id %d", rowCount, currentUser, logPath, totalExportedRows+rowCount, exportLimit, currentWebsiteID)
+				}
 			}
 		}
 	}
@@ -4025,7 +4016,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if isHTML {
 		processed := rewriteHTMLWithConfig(string(rawBody), proxyRoot, cfg)
 		if currentUser != "" {
-			injection := fmt.Sprintf("<script>window.TM_USERNAME = %q;</script>", currentUser)
+			injection := fmt.Sprintf("<script>window.TM_USERNAME = %q;</script>", currentUser) + ahrefsExportErrorRefreshScript()
 			if idx := strings.Index(strings.ToLower(processed), "<head>"); idx != -1 {
 				processed = processed[:idx+6] + injection + processed[idx+6:]
 			}

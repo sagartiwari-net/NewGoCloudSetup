@@ -128,8 +128,15 @@ func ahrefsCleanTarget(s string) string {
 }
 
 func ahrefsExportPath(path string) bool {
-	if strings.Contains(path, "ExportSettings") || strings.Contains(path, "tkGetExport") {
-		return false
+	lower := strings.ToLower(path)
+	// Status / settings / create calls are not the CSV download itself.
+	for _, skip := range []string{
+		"exportsettings", "tkgetexport", "exportprogress", "exportstatus",
+		"exportjob", "createexport", "getexportstatus", "exporthistory",
+	} {
+		if strings.Contains(lower, skip) {
+			return false
+		}
 	}
 	return strings.Contains(path, "Export") || strings.Contains(path, "export")
 }
@@ -566,6 +573,9 @@ func ahrefsSaveUsage(username string, hit ahrefsLimitHit) {
 			userID, hit.key, hit.label, hit.reset, view.used+hit.amount, view.limit)
 	}
 	log.Printf("[LIMITS] %s +%d user=%s action=%s", hit.key, hit.amount, username, hit.action)
+	if hit.key == "credits" && !hit.isExport {
+		ahrefsNoteCreditCharge(username, websiteID, hit.amount, hit.family, hit.action, hit.target, "")
+	}
 }
 
 type ahrefsBillStamp struct {
