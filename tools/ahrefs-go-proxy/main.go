@@ -1260,7 +1260,8 @@ func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
 		target: shown, amount: rows, reset: 7,
 		family: fmt.Sprintf("chart-export:%d", time.Now().UnixNano()), isExport: true,
 	}
-	view, _, found := ahrefsMeterView(username, hit.key, 1000, hit.reset)
+	chartHost := panelRequestHost(r, loadConfig().PublicHost)
+	view, _, found := ahrefsMeterViewOnHost(username, chartHost, hit.key, 1000, hit.reset)
 	if found && view.limit > 0 && rows > 0 && view.used+rows > view.limit {
 		message := ahrefsLimitMessage(hit, view.used, view.limit, rows)
 		log.Printf("[LIMITS] blocked chart export user=%s rows=%d used=%d limit=%d", username, rows, view.used, view.limit)
@@ -1271,7 +1272,7 @@ func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rows > 0 {
-		ahrefsSaveUsage(username, hit)
+		ahrefsSaveUsageOnHost(username, chartHost, hit)
 	}
 	out := withUTF8CSVBom(body)
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -1300,8 +1301,9 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"show_limit":false}`))
 		return
 	}
-	credits, _, _ := ahrefsMeterView(username, "credits", 30, 1)
-	exports, _, _ := ahrefsMeterView(username, "exports", 1000, 7)
+	reqHost := panelRequestHost(r, loadConfig().PublicHost)
+	credits, _, _ := ahrefsMeterViewOnHost(username, reqHost, "credits", 30, 1)
+	exports, _, _ := ahrefsMeterViewOnHost(username, reqHost, "exports", 1000, 7)
 	token := ""
 	if cookie != nil {
 		token = cookie.Value
@@ -3425,6 +3427,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	var pendingLimit ahrefsLimitHit
 	pendingLimitOK := false
 	pendingExportAsk := 0
+	limitHost := panelRequestHost(r, cfg.PublicHost)
 	if limitUser != "" && !isAsset {
 		limitBody := ahrefsReadLimitBody(r)
 		if hit, ok := ahrefsLimitHitFor(r, limitBody); ok {
@@ -3432,7 +3435,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if hit.isExport {
 				fallback = 1000
 			}
-			view, _, found := ahrefsMeterView(limitUser, hit.key, fallback, hit.reset)
+			view, _, found := ahrefsMeterViewOnHost(limitUser, limitHost, hit.key, fallback, hit.reset)
 			ask := 0
 			if hit.isExport {
 				ask = ahrefsExportAsk(r, limitBody)
@@ -3792,7 +3795,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				pendingLimitOK = false
 			} else {
 				pendingLimit.amount = amount
-				view, _, found := ahrefsMeterView(limitUser, pendingLimit.key, 1000, pendingLimit.reset)
+				view, _, found := ahrefsMeterViewOnHost(limitUser, limitHost, pendingLimit.key, 1000, pendingLimit.reset)
 				if found && view.limit > 0 && view.used+pendingLimit.amount > view.limit {
 					ahrefsBlockLimit(w, r, pendingLimit, view.used, view.limit, pendingLimit.amount)
 					return
@@ -3800,7 +3803,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if pendingLimitOK {
-			ahrefsSaveUsage(limitUser, pendingLimit)
+			ahrefsSaveUsageOnHost(limitUser, limitHost, pendingLimit)
 		}
 	} else if pendingLimitOK {
 		log.Printf("[LIMITS] skip credit user=%s path=%s status=%d — result not delivered", limitUser, r.URL.Path, resp.StatusCode)

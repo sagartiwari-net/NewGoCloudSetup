@@ -51,3 +51,13 @@ func TestAhrefsRecentCreditRevertRequiresCharge(t *testing.T) {
 	// No charge recorded → revert is a no-op (must not panic / invent credits).
 	ahrefsRevertRecentCreditOnSwitch("nobody-here-for-test")
 }
+
+func TestExportDuplicateBillSameClick(t *testing.T) {
+	key := "sagar\nexport-csv\n200"
+	if ahrefsDuplicateBill(key, "export-csv") {
+		t.Fatal("first bill must pass")
+	}
+	if !ahrefsDuplicateBill(key, "export-csv") {
+		t.Fatal("second bill within window must skip")
+	}
+}

@@ -96,6 +96,12 @@ export default function UsagePage() {
     },
     { id: "tool", header: "Tool", cell: (row) => row.tool_name, sortValue: (row) => row.tool_name },
     {
+      id: "website",
+      header: "Website",
+      cell: (row) => row.website_name || row.user.website_name || "—",
+      sortValue: (row) => row.website_name || row.user.website_name || "",
+    },
+    {
       id: "limits",
       header: "Limits",
       cell: (row) =>
@@ -187,7 +193,11 @@ export default function UsagePage() {
       <Dialog open={Boolean(openLogs)} onOpenChange={(next) => { if (!next) setLogsFor(null) }}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{openLogs ? `${openLogs.username} · ${openLogs.tool_name}` : "Logs"}</DialogTitle>
+            <DialogTitle>
+              {openLogs
+                ? `${openLogs.username} · ${openLogs.tool_name} · ${openLogs.website_name || openLogs.user.website_name}`
+                : "Logs"}
+            </DialogTitle>
             <DialogDescription>Newest deduction first. Times are India Standard Time.</DialogDescription>
           </DialogHeader>
           {openLogs ? (

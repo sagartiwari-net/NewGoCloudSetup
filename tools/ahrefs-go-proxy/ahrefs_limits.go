@@ -39,7 +39,9 @@ func ahrefsLimitHitFor(r *http.Request, body []byte) (ahrefsLimitHit, bool) {
 		return hit, true
 	}
 	if ahrefsExportPath(path) {
-		hit := ahrefsLimitHit{key: "exports", label: "Exports", action: "Export", target: path, amount: 0, reset: 7, family: "export:" + path, isExport: true}
+		// One family for every CSV download so parallel Export URLs from one click
+		// share the same short dedupe window (see ahrefsDuplicateBill).
+		hit := ahrefsLimitHit{key: "exports", label: "Exports", action: "Export", target: path, amount: 0, reset: 7, family: "export-csv", isExport: true}
 		hit.target = ahrefsUsageLabel(r, body, hit.action)
 		return hit, true
 	}
@@ -493,6 +495,10 @@ type ahrefsMeter struct {
 }
 
 func ahrefsMeterView(username, key string, fallbackLimit, resetDays int) (ahrefsMeter, int, bool) {
+	return ahrefsMeterViewOnHost(username, loadConfig().PublicHost, key, fallbackLimit, resetDays)
+}
+
+func ahrefsMeterViewOnHost(username, requestHost, key string, fallbackLimit, resetDays int) (ahrefsMeter, int, bool) {
 	view := ahrefsMeter{limit: fallbackLimit}
 	_ = resetDays
 	if username == "" {
@@ -504,7 +510,7 @@ func ahrefsMeterView(username, key string, fallbackLimit, resetDays int) (ahrefs
 	}
 	var websiteID int
 	var raw string
-	websiteID = ahrefsWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	websiteID = ahrefsWebsiteIDForUser(db, username, requestHost)
 	err = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}') FROM websites WHERE id=?`, websiteID).Scan(&raw)
 	if err != nil || websiteID == 0 {
 		return view, 0, false
@@ -529,10 +535,22 @@ func ahrefsMeterView(username, key string, fallbackLimit, resetDays int) (ahrefs
 }
 
 func ahrefsSaveUsage(username string, hit ahrefsLimitHit) {
+	ahrefsSaveUsageOnHost(username, loadConfig().PublicHost, hit)
+}
+
+func ahrefsSaveUsageOnHost(username, requestHost string, hit ahrefsLimitHit) {
 	if username == "" || hit.amount < 1 {
 		return
 	}
-	if ahrefsDuplicateBill(username+"\n"+hit.family+"\n"+hit.target, hit.family) {
+	dupKey := username + "\n" + hit.family + "\n" + hit.target
+	dupFamily := hit.family
+	if hit.isExport {
+		// Same click often hits 2 Export URLs; bill once for this amount briefly.
+		dupKey = fmt.Sprintf("%s\nexport-csv\n%d", username, hit.amount)
+		dupFamily = "export-csv"
+	}
+	if ahrefsDuplicateBill(dupKey, dupFamily) {
+		log.Printf("[LIMITS] skip duplicate %s +%d user=%s action=%s", hit.key, hit.amount, username, hit.action)
 		return
 	}
 	db, err := openAhrefsPanel()
@@ -540,8 +558,7 @@ func ahrefsSaveUsage(username string, hit ahrefsLimitHit) {
 		log.Printf("[LIMITS] panel open failed: %v", err)
 		return
 	}
-	var websiteID int
-	websiteID = ahrefsWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	websiteID := ahrefsWebsiteIDForUser(db, username, requestHost)
 	if websiteID == 0 {
 		return
 	}
@@ -568,7 +585,7 @@ func ahrefsSaveUsage(username string, hit ahrefsLimitHit) {
 		changed, _ = res.RowsAffected()
 	}
 	if err != nil || changed == 0 {
-		view, _, _ := ahrefsMeterView(username, hit.key, 0, hit.reset)
+		view, _, _ := ahrefsMeterViewOnHost(username, requestHost, hit.key, 0, hit.reset)
 		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 			userID, hit.key, hit.label, hit.reset, view.used+hit.amount, view.limit)
 	}
@@ -593,8 +610,13 @@ func ahrefsDuplicateBill(key, family string) bool {
 	ahrefsBillMu.Lock()
 	defer ahrefsBillMu.Unlock()
 	window := 800 * time.Millisecond
-	if family == "se-overview" {
+	switch family {
+	case "se-overview":
 		window = 2 * time.Minute
+	case "export-csv":
+		// Parallel/sequential Export calls from one click finish within a couple seconds.
+		// A later intentional export (re-open modal, click again) is outside this window.
+		window = 4 * time.Second
 	}
 	if last, ok := ahrefsBillRecent[key]; ok && time.Since(last.at) < window {
 		return true

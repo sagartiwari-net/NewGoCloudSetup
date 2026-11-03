@@ -118,6 +118,11 @@ func ahrefsWebsiteIDForUser(db *sql.DB, username, fallbackHost string) int {
 	if db == nil {
 		return 0
 	}
+	// Prefer the host on this request so one username on refs.upays.in does not
+	// create / bill meters on another Ahrefs website (Quota Logs duplicates).
+	if id := ahrefsWebsiteID(db, fallbackHost); id > 0 {
+		return id
+	}
 	var id int
 	if strings.TrimSpace(username) != "" {
 		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE username=? AND expires_at > ? ORDER BY id DESC LIMIT 1`,
@@ -130,7 +135,7 @@ func ahrefsWebsiteIDForUser(db *sql.DB, username, fallbackHost string) int {
 			return id
 		}
 	}
-	return ahrefsWebsiteID(db, fallbackHost)
+	return 0
 }
 
 func ahrefsParseExpiry(raw string) (time.Time, bool) {
