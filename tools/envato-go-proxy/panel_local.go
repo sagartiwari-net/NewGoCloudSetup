@@ -277,7 +277,8 @@ func envatoPanelProxyCandidates(primary string) []*url.URL {
 }
 
 // envatoPanelAssets uses the account pinned on the live session (ChatGPT-style).
-// It never "upgrades" to a stronger cookie/proxy — that broke round-robin.
+// Cookie is always taken from that session's website_id — never cfg.PublicHost alone —
+// so envt.seogbtools.com cannot fall back to envt.upays.in cookies.
 func envatoPanelAssets(cfg Config, sessionToken string) (cookie, userAgent, proxy string) {
 	userAgent = cfg.UserAgent
 	db, err := openEnvatoPanel()
@@ -287,20 +288,26 @@ func envatoPanelAssets(cfg Config, sessionToken string) (cookie, userAgent, prox
 	envatoPickMu.Lock()
 	defer envatoPickMu.Unlock()
 	now := time.Now().UTC().Format(time.RFC3339)
-	var accountID int
+	var accountID, websiteID int
 	if sessionToken != "" {
-		_ = db.QueryRow(`SELECT assigned_account_id FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&accountID)
+		_ = db.QueryRow(`SELECT COALESCE(assigned_account_id, 0), COALESCE(website_id, 0) FROM live_sessions WHERE session_token=? AND expires_at>?`, sessionToken, now).Scan(&accountID, &websiteID)
 	}
-	panelCookie, panelUA, panelProxy, id, err := envatoAccountByID(db, cfg.PublicHost, accountID)
+	if websiteID <= 0 || !envatoWebsiteSameTool(db, cfg.PublicHost, websiteID) {
+		websiteID = envatoWebsiteID(db, cfg.PublicHost)
+	}
+	if websiteID <= 0 {
+		return cookie, userAgent, proxy
+	}
+	panelCookie, panelUA, panelProxy, id, err := envatoAccountByWebsiteID(db, websiteID, accountID)
 	if err != nil || strings.TrimSpace(panelCookie) == "" {
-		panelCookie, panelUA, panelProxy, id, err = envatoClaimAccountLocked(db, cfg.PublicHost)
+		panelCookie, panelUA, panelProxy, id, err = envatoClaimAccountByWebsiteID(db, websiteID)
 		if err != nil {
-			log.Printf("[PANEL] account lookup: %v", err)
+			log.Printf("[PANEL] account lookup website=%d: %v", websiteID, err)
 			return cookie, userAgent, proxy
 		}
 		if sessionToken != "" && id > 0 {
 			_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, id, sessionToken)
-			log.Printf("[LB] auto-assigned account %d to envato session", id)
+			log.Printf("[LB] auto-assigned account %d to envato session website=%d", id, websiteID)
 		}
 	}
 	if strings.TrimSpace(panelCookie) != "" {
@@ -315,8 +322,8 @@ func envatoPanelAssets(cfg Config, sessionToken string) (cookie, userAgent, prox
 	return cookie, userAgent, proxy
 }
 
-func envatoAccountByID(db *sql.DB, publicHost string, accountID int) (cookie, userAgent, proxy string, id int, err error) {
-	if accountID <= 0 {
+func envatoAccountByWebsiteID(db *sql.DB, websiteID, accountID int) (cookie, userAgent, proxy string, id int, err error) {
+	if accountID <= 0 || websiteID <= 0 {
 		return "", "", "", 0, fmt.Errorf("no assigned account")
 	}
 	err = db.QueryRow(`SELECT a.id, a.cookie,
@@ -327,7 +334,7 @@ func envatoAccountByID(db *sql.DB, publicHost string, accountID int) (cookie, us
 		LEFT JOIN user_agents ua ON ua.id = a.user_agent_id
 		LEFT JOIN proxies p ON p.id = a.proxy_id
 		WHERE a.id=? AND a.website_id=? AND a.status='active' AND TRIM(a.cookie) != ''`,
-		accountID, envatoWebsiteID(db, publicHost)).Scan(&id, &cookie, &userAgent, &proxy)
+		accountID, websiteID).Scan(&id, &cookie, &userAgent, &proxy)
 	return cookie, userAgent, proxy, id, err
 }
 
@@ -343,18 +350,25 @@ const envatoAccountSelect = `SELECT a.id, a.cookie,
 // ChatGPT-style round-robin: least recently used first; unused (empty last_used_at) first.
 const envatoAccountOrder = ` ORDER BY CASE WHEN a.last_used_at = '' OR a.last_used_at IS NULL THEN 0 ELSE 1 END, a.last_used_at ASC, a.id ASC`
 
-// envatoClaimAccountLocked picks the LRU active account and stamps last_used_at.
+// envatoClaimAccountByWebsiteID picks the LRU active account for that website and stamps last_used_at.
 // Caller must hold envatoPickMu.
-func envatoClaimAccountLocked(db *sql.DB, publicHost string) (cookie, userAgent, proxy string, id int, err error) {
-	err = db.QueryRow(envatoAccountSelect+envatoAccountOrder+` LIMIT 1`, envatoWebsiteID(db, publicHost)).
+func envatoClaimAccountByWebsiteID(db *sql.DB, websiteID int) (cookie, userAgent, proxy string, id int, err error) {
+	if websiteID <= 0 {
+		return "", "", "", 0, fmt.Errorf("website not found")
+	}
+	err = db.QueryRow(envatoAccountSelect+envatoAccountOrder+` LIMIT 1`, websiteID).
 		Scan(&id, &cookie, &userAgent, &proxy)
 	if err != nil {
 		return "", "", "", 0, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, id)
-	log.Printf("[LB] claimed account ID:%d for %s", id, publicHost)
+	log.Printf("[LB] claimed account ID:%d for website=%d", id, websiteID)
 	return cookie, userAgent, proxy, id, nil
+}
+
+func envatoClaimAccountLocked(db *sql.DB, publicHost string) (cookie, userAgent, proxy string, id int, err error) {
+	return envatoClaimAccountByWebsiteID(db, envatoWebsiteID(db, publicHost))
 }
 
 // envatoPanelSwitch moves the session to the next LRU active account (instant logout failover).
@@ -574,15 +588,40 @@ func envatoWebsiteID(db *sql.DB, host string) int {
 	return id
 }
 
+// envatoWebsiteSameTool is true when websiteID is Envato (same tool_id as publicHost, or tool name Envato).
+func envatoWebsiteSameTool(db *sql.DB, publicHost string, websiteID int) bool {
+	if db == nil || websiteID <= 0 {
+		return false
+	}
+	var n int
+	err := db.QueryRow(`SELECT COUNT(*) FROM websites w
+		JOIN websites owner ON owner.tool_id = w.tool_id
+		WHERE w.id = ?
+		  AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`,
+		websiteID, publicHost, panelHostOnly(publicHost)).Scan(&n)
+	if err == nil && n > 0 {
+		return true
+	}
+	err = db.QueryRow(`SELECT COUNT(*) FROM websites w
+		JOIN tools t ON t.id = w.tool_id
+		WHERE w.id = ? AND t.name = 'Envato'`, websiteID).Scan(&n)
+	return err == nil && n > 0
+}
+
 func envatoWebsiteIDForUser(db *sql.DB, username, fallbackHost string) int {
 	if db == nil {
 		return 0
 	}
 	var id int
 	if strings.TrimSpace(username) != "" {
-		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE username=? AND expires_at > ? ORDER BY id DESC LIMIT 1`,
-			username, time.Now().UTC().Format(time.RFC3339)).Scan(&id)
-		if id > 0 {
+		err := db.QueryRow(`SELECT s.website_id FROM live_sessions s
+			JOIN websites w ON w.id = s.website_id
+			JOIN websites owner ON owner.tool_id = w.tool_id
+			WHERE s.username = ? AND s.expires_at > ?
+			  AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))
+			ORDER BY s.id DESC LIMIT 1`,
+			username, time.Now().UTC().Format(time.RFC3339), fallbackHost, panelHostOnly(fallbackHost)).Scan(&id)
+		if err == nil && id > 0 {
 			return id
 		}
 	}
@@ -597,7 +636,7 @@ func envatoSiteAccount(db *sql.DB, publicHost string) (websiteID, accountID, min
 		return websiteID, accountID, minutes
 	}
 	envatoPickMu.Lock()
-	_, _, _, accountID, err = envatoClaimAccountLocked(db, publicHost)
+	_, _, _, accountID, err = envatoClaimAccountByWebsiteID(db, websiteID)
 	envatoPickMu.Unlock()
 	if err != nil {
 		log.Printf("[PANEL] account claim: %v", err)
