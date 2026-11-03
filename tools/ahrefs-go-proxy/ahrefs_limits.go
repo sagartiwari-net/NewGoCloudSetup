@@ -55,7 +55,7 @@ func ahrefsLimitHitFor(r *http.Request, body []byte) (ahrefsLimitHit, bool) {
 }
 
 func ahrefsUsageLabel(r *http.Request, body []byte, action string) string {
-	domain, keyword := "", ""
+	domain, keyword, report := "", "", ""
 	note := func(raw string) {
 		if strings.TrimSpace(raw) == "" {
 			return
@@ -65,32 +65,83 @@ func ahrefsUsageLabel(r *http.Request, body []byte, action string) string {
 			ahrefsWalkTarget(parsed, &domain, &keyword)
 			return
 		}
-		if domain == "" {
-			domain = ahrefsCleanTarget(raw)
+		if domain == "" && keyword == "" {
+			cleaned := ahrefsCleanTarget(raw)
+			if strings.Contains(cleaned, ".") && !strings.Contains(cleaned, " ") {
+				domain = cleaned
+			} else if keyword == "" {
+				keyword = strings.TrimSpace(raw)
+			}
 		}
 	}
-	q := r.URL.Query()
-	note(q.Get("input"))
-	note(q.Get("target"))
-	note(q.Get("keyword"))
+	if r != nil {
+		q := r.URL.Query()
+		note(q.Get("input"))
+		note(q.Get("target"))
+		note(q.Get("keyword"))
+		note(q.Get("q"))
+		note(q.Get("search"))
+		if ref := strings.TrimSpace(r.Referer()); ref != "" {
+			if u, err := url.Parse(ref); err == nil {
+				note(u.Query().Get("keyword"))
+				note(u.Query().Get("target"))
+				note(u.Query().Get("q"))
+				note(u.Query().Get("input"))
+				if report == "" {
+					report = ahrefsReportTipFromPath(u.Path)
+				}
+			}
+		}
+		if report == "" {
+			report = ahrefsReportTipFromPath(r.URL.Path)
+		}
+	}
 	if len(body) > 0 && len(body) < 1<<20 {
 		note(string(body))
 	}
-	subject := domain
-	if keyword != "" && !strings.EqualFold(keyword, domain) {
-		if subject != "" {
-			subject += " · " + keyword
-		} else {
-			subject = keyword
-		}
+	parts := make([]string, 0, 3)
+	if keyword != "" {
+		parts = append(parts, keyword)
+	} else if domain != "" {
+		parts = append(parts, domain)
 	}
-	if subject == "" {
+	if report != "" {
+		parts = append(parts, report)
+	}
+	if len(parts) == 0 {
 		return action
 	}
-	if len(subject) > 180 {
-		subject = subject[:180]
+	label := action + " · " + strings.Join(parts, " · ")
+	if len(label) > 180 {
+		label = label[:180]
 	}
-	return action + " · " + subject
+	return label
+}
+
+func ahrefsReportTipFromPath(path string) string {
+	path = strings.ToLower(path)
+	switch {
+	case strings.Contains(path, "matching") || strings.Contains(path, "/ideas"):
+		return "matching terms"
+	case strings.Contains(path, "related"):
+		return "related terms"
+	case strings.Contains(path, "search-suggestions") || strings.Contains(path, "suggestions"):
+		return "search suggestions"
+	case strings.Contains(path, "also-rank"):
+		return "also rank for"
+	case strings.Contains(path, "organic-keywords"):
+		return "organic keywords"
+	case strings.Contains(path, "top-pages"):
+		return "top pages"
+	case strings.Contains(path, "backlink"):
+		return "backlinks"
+	case strings.Contains(path, "refdomain") || strings.Contains(path, "referring"):
+		return "referring domains"
+	case strings.Contains(path, "overview"):
+		return "overview"
+	default:
+		return ""
+	}
 }
 
 func ahrefsWalkTarget(v interface{}, domain, keyword *string) {
@@ -107,7 +158,7 @@ func ahrefsWalkTarget(v interface{}, domain, keyword *string) {
 				if *domain == "" && text != "" && !strings.EqualFold(text, "subdomains") && !strings.EqualFold(text, "prefix") && !strings.EqualFold(text, "exact") {
 					*domain = ahrefsCleanTarget(text)
 				}
-			case "keyword", "searchterm":
+			case "keyword", "searchterm", "q", "query", "search", "seedkeyword", "seed":
 				if *keyword == "" && text != "" {
 					*keyword = strings.TrimSpace(text)
 				}

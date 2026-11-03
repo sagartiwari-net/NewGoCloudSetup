@@ -278,6 +278,37 @@ func exportFilenameFromContentDisposition(cd string) string {
 	return ""
 }
 
+// ahrefsEnrichRecentExportLabel replaces a generic "Export" quota row with the
+// real download name once the SPA posts the blob to /api/chart-export.
+func ahrefsEnrichRecentExportLabel(username, requestHost, label string) {
+	label = strings.TrimSpace(strings.TrimSuffix(label, ".csv"))
+	if username == "" || label == "" || strings.EqualFold(label, "export") {
+		return
+	}
+	dbPanel, err := openAhrefsPanel()
+	if err != nil {
+		return
+	}
+	websiteID := ahrefsWebsiteIDForUser(dbPanel, username, requestHost)
+	if websiteID == 0 {
+		return
+	}
+	since := time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339)
+	var id int
+	err = dbPanel.QueryRow(`SELECT id FROM usage_events
+		WHERE website_id=? AND username=? AND limit_key='exports' AND timestamp>=?
+		  AND (target_path='Export' OR target_path LIKE 'Export ·%' OR TRIM(COALESCE(target_path,''))='')
+		ORDER BY id DESC LIMIT 1`, websiteID, username, since).Scan(&id)
+	if err != nil || id == 0 {
+		return
+	}
+	if _, err := dbPanel.Exec(`UPDATE usage_events SET target_path=?, action=? WHERE id=?`, label, "Export", id); err != nil {
+		log.Printf("[LIMITS] enrich export label failed user=%s: %v", username, err)
+		return
+	}
+	log.Printf("[LIMITS] enrich export label user=%s id=%d → %s", username, id, label)
+}
+
 func ahrefsExportErrorRefreshScript() string {
 	return `<script data-tm-ahrefs-export-refresh="1">
 (function(){

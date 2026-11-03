@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"net/http"
+	"strings"
+	"testing"
+)
 
 func TestAhrefsLooksLikeCSV(t *testing.T) {
 	csv := []byte("Keyword,Volume\nai,100\n")
@@ -68,5 +72,23 @@ func TestExportFilenameFromContentDisposition(t *testing.T) {
 	got := exportFilenameFromContentDisposition(`attachment; filename="google_us_chatgpt_matching-terms_2026-11-03_08-41-51.csv"`)
 	if got != "google_us_chatgpt_matching-terms_2026-11-03_08-41-51.csv" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestAhrefsUsageLabelFromReferer(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "https://refs.example/v4/keIdeas", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Referer", "https://refs.example/keywords-explorer/google/us/ideas?keyword=semrush")
+	got := ahrefsUsageLabel(req, nil, "Keyword ideas")
+	if !strings.Contains(got, "semrush") || !strings.Contains(got, "matching terms") {
+		t.Fatalf("label=%q", got)
+	}
+	req2, _ := http.NewRequest(http.MethodGet, "https://refs.example/v4/keExport", nil)
+	req2.Header.Set("Referer", "https://refs.example/keywords-explorer/google/us/ideas?keyword=semrush")
+	got2 := ahrefsUsageLabel(req2, nil, "Export")
+	if !strings.Contains(got2, "semrush") {
+		t.Fatalf("export label=%q", got2)
 	}
 }

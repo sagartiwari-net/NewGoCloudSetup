@@ -611,7 +611,7 @@ func extractTarget(r *http.Request) string {
 
 	// Helper to extract target from query map
 	extractFromValues := func(vals url.Values) string {
-		keys := []string{"target", "keyword", "domain", "url", "query", "q", "input"}
+		keys := []string{"target", "keyword", "domain", "url", "query", "q", "input", "search"}
 		for _, k := range keys {
 			if v := vals.Get(k); v != "" {
 				return v
@@ -655,6 +655,15 @@ func extractTarget(r *http.Request) string {
 		vals, err := url.ParseQuery(query)
 		if err == nil {
 			if t := extractFromValues(vals); t != "" {
+				return t
+			}
+		}
+	}
+
+	// 4. Browser page (Referer) — Keywords Explorer keeps keyword= here
+	if ref := strings.TrimSpace(r.Referer()); ref != "" {
+		if u, err := url.Parse(ref); err == nil {
+			if t := extractFromValues(u.Query()); t != "" {
 				return t
 			}
 		}
@@ -1260,15 +1269,17 @@ func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
 	// Keywords Explorer (and similar) already billed when the CSV passed the proxy.
 	// The SPA then re-wraps that file as a blob → this endpoint. Do not bill twice.
 	alreadyMetered := ahrefsTableExportRewrap(linkName, page)
+	chartHost := panelRequestHost(r, loadConfig().PublicHost)
 	if alreadyMetered {
 		log.Printf("[LIMITS] chart export skip bill user=%s file=%s — table export already metered on proxy", username, filename)
+		// Proxy row often only says "Export"; upgrade it with the real download name.
+		ahrefsEnrichRecentExportLabel(username, chartHost, shown)
 	}
 	hit := ahrefsLimitHit{
 		key: "exports", label: "Exports", action: "Chart export",
 		target: shown, amount: rows, reset: 7,
 		family: fmt.Sprintf("chart-export:%d", time.Now().UnixNano()), isExport: true,
 	}
-	chartHost := panelRequestHost(r, loadConfig().PublicHost)
 	if !alreadyMetered {
 		view, _, found := ahrefsMeterViewOnHost(username, chartHost, hit.key, 1000, hit.reset)
 		if found && view.limit > 0 && rows > 0 && view.used+rows > view.limit {
