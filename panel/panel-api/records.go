@@ -78,7 +78,9 @@ func (s *server) refreshLimits() {
 		defaults    map[string]int
 	}
 	expired := []expiredUser{}
-	if err == nil {
+	if err != nil {
+		log.Printf("[maintenance] custom-limit users query: %v", err)
+	} else {
 		for rows.Next() {
 			var item expiredUser
 			var rawLimits string
@@ -93,7 +95,7 @@ func (s *server) refreshLimits() {
 		rows.Close()
 	}
 	for _, user := range expired {
-		meters, mErr := s.db.Query(`SELECT key FROM user_meters WHERE user_id=? AND is_custom=1`, user.id)
+		meters, mErr := s.db.Query(`SELECT "key" FROM user_meters WHERE user_id=? AND is_custom=1`, user.id)
 		keys := []string{}
 		if mErr == nil {
 			for meters.Next() {
@@ -112,14 +114,16 @@ func (s *server) refreshLimits() {
 		_, _ = s.db.Exec(`UPDATE panel_users SET custom_limit_expire_at=NULL WHERE id=?`, user.id)
 	}
 
-	meterRows, err := s.db.Query(`SELECT m.id, m.reset_days, COALESCE(m.period_start,''), u.username, u.website_id, m.key
+	meterRows, err := s.db.Query(`SELECT m.id, m.reset_days, COALESCE(m.period_start,''), u.username, u.website_id, m."key"
 		FROM user_meters m JOIN panel_users u ON u.id=m.user_id`)
 	type meterPeriod struct {
 		id, days, website    int
 		start, username, key string
 	}
 	meters := []meterPeriod{}
-	if err == nil {
+	if err != nil {
+		log.Printf("[maintenance] user_meters period query: %v", err)
+	} else {
 		for meterRows.Next() {
 			var item meterPeriod
 			_ = meterRows.Scan(&item.id, &item.days, &item.start, &item.username, &item.website, &item.key)
@@ -127,6 +131,7 @@ func (s *server) refreshLimits() {
 		}
 		meterRows.Close()
 	}
+	resetN := 0
 	for _, meter := range meters {
 		start := periodStartIST(meter.days, now).UTC().Format(time.RFC3339)
 		if meter.start == start || meter.start > start {
@@ -135,7 +140,14 @@ func (s *server) refreshLimits() {
 		var used int
 		_ = s.db.QueryRow(`SELECT COALESCE(SUM(amount), 0) FROM usage_events WHERE website_id=? AND username=? AND limit_key=? AND timestamp>=?`,
 			meter.website, meter.username, meter.key, start).Scan(&used)
-		_, _ = s.db.Exec(`UPDATE user_meters SET used=?, period_start=? WHERE id=?`, used, start, meter.id)
+		if _, err := s.db.Exec(`UPDATE user_meters SET used=?, period_start=? WHERE id=?`, used, start, meter.id); err != nil {
+			log.Printf("[maintenance] meter reset id=%d: %v", meter.id, err)
+			continue
+		}
+		resetN++
+	}
+	if resetN > 0 || len(expired) > 0 {
+		log.Printf("[maintenance] limit reset meters=%d expired_custom_users=%d", resetN, len(expired))
 	}
 }
 
@@ -144,18 +156,36 @@ var (
 	lastPurge time.Time
 )
 
+const purgeMinInterval = 10 * time.Minute
+
+// purgeOldRows runs limit resets + log cleanup. HTTP handlers throttle to once per 10m.
 func (s *server) purgeOldRows() {
+	s.runPurge(false)
+}
+
+// pollMaintenance keeps daily limit resets and log cleanup running even when nobody
+// opens the panel UI (previously purge only ran as a side-effect of dashboard/list APIs).
+func (s *server) pollMaintenance() {
+	s.runPurge(true)
+	for {
+		time.Sleep(2 * time.Minute)
+		s.runPurge(true)
+	}
+}
+
+func (s *server) runPurge(force bool) {
 	purgeMu.Lock()
-	if time.Since(lastPurge) < 10*time.Minute {
-		purgeMu.Unlock()
+	defer purgeMu.Unlock()
+	if !force && time.Since(lastPurge) < purgeMinInterval {
 		return
 	}
 	lastPurge = time.Now()
-	purgeMu.Unlock()
 
 	s.refreshLimits()
 	now := time.Now().UTC()
-	_, _ = s.db.Exec(`DELETE FROM live_sessions WHERE expires_at <= ?`, now.Format(time.RFC3339))
+	if _, err := s.db.Exec(`DELETE FROM live_sessions WHERE expires_at <= ?`, now.Format(time.RFC3339)); err != nil {
+		log.Printf("[maintenance] live_sessions cleanup: %v", err)
+	}
 	dayRows, err := s.db.Query(`SELECT DISTINCT reset_days FROM usage_events WHERE reset_days > 0`)
 	if err == nil {
 		days := []int{}
@@ -168,8 +198,12 @@ func (s *server) purgeOldRows() {
 		dayRows.Close()
 		for _, reset := range days {
 			cutoff := now.Add(-time.Duration(reset) * 24 * time.Hour).Format(time.RFC3339)
-			_, _ = s.db.Exec(`DELETE FROM usage_events WHERE reset_days=? AND timestamp < ?`, reset, cutoff)
+			if _, err := s.db.Exec(`DELETE FROM usage_events WHERE reset_days=? AND timestamp < ?`, reset, cutoff); err != nil {
+				log.Printf("[maintenance] usage_events cleanup reset_days=%d: %v", reset, err)
+			}
 		}
+	} else {
+		log.Printf("[maintenance] usage_events reset_days query: %v", err)
 	}
 	week := now.Add(-7 * 24 * time.Hour).Format(time.RFC3339)
 	hours48 := now.Add(-48 * time.Hour).Format(time.RFC3339)
@@ -184,6 +218,7 @@ func (s *server) purgeOldRows() {
 	_, _ = s.db.Exec(`DELETE FROM telegram_deliveries WHERE created_at < ?`, hours48)
 	hours3 := now.Add(-3 * time.Hour).Format(time.RFC3339)
 	_, _ = s.db.Exec(`DELETE FROM automation_logs WHERE created_at < ?`, hours3)
+	log.Printf("[maintenance] limit refresh + log purge done")
 }
 
 func parseTime(value string) (time.Time, bool) {

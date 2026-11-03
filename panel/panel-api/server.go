@@ -35,6 +35,7 @@ func main() {
 	go s.pollTelegramInbox()
 	go s.pollTelegramNotices()
 	go s.pollAutomation()
+	go s.pollMaintenance()
 	log.Printf("panel api on http://%s", addr)
 	log.Fatal(http.ListenAndServe(addr, s.withCORS(mux)))
 }
