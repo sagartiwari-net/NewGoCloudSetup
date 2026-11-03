@@ -56,8 +56,8 @@ func openDB(path string) *sql.DB {
 		log.Fatal(err)
 	}
 	_, _ = db.Exec(`ALTER TABLE access_tokens ADD COLUMN client_ip TEXT NOT NULL DEFAULT ''`)
-	_, _ = db.Exec(`ALTER TABLE user_meters ADD COLUMN period_start TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE panel_users ADD COLUMN limit_visibility TEXT NOT NULL DEFAULT ''`)
+	ensureUserMeterColumns(db)
 	ensureCatalogOwners(db)
 	ensureAccessHandoff(db)
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS extension_events (
@@ -140,6 +140,7 @@ func openMySQL() *sql.DB {
 		log.Fatalf("[DB] MySQL ping failed: %v", err)
 	}
 	log.Printf("[DB] panel API using MySQL %s/%s", host, name)
+	ensureUserMeterColumns(db)
 	ensureCatalogOwners(db)
 	ensureAccessHandoff(db)
 	seed(db)
@@ -155,6 +156,19 @@ func openMySQL() *sql.DB {
 	ensureAmzPremiumSoftwareSites(db)
 	ensureAccessAlertSettings(db)
 	return db
+}
+
+func ensureUserMeterColumns(db *sql.DB) {
+	// Daily/weekly limit reset stores the IST period window here. Live MySQL was
+	// missing it (SQLite open path used to ADD it; openMySQL did not).
+	if _, err := db.Exec(`ALTER TABLE user_meters ADD COLUMN period_start VARCHAR(64) NOT NULL DEFAULT ''`); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "duplicate column") && !strings.Contains(msg, "exists") {
+			log.Printf("[DB] user_meters.period_start: %v", err)
+		}
+	} else {
+		log.Printf("[DB] added user_meters.period_start for limit resets")
+	}
 }
 
 func ensureCatalogOwners(db *sql.DB) {

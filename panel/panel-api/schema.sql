@@ -93,7 +93,8 @@ CREATE TABLE IF NOT EXISTS user_meters (
   reset_days INTEGER NOT NULL,
   used INTEGER NOT NULL DEFAULT 0,
   "limit" INTEGER NOT NULL,
-  is_custom INTEGER NOT NULL DEFAULT 0
+  is_custom INTEGER NOT NULL DEFAULT 0,
+  period_start TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS live_sessions (
