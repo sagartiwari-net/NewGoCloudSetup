@@ -251,6 +251,7 @@ func ensureAutomationTables(db *sql.DB) {
 			log.Printf("[automation] column update failed: %v", err)
 		}
 	}
+	ensureAmzToolsConsultantJobs(db)
 	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) == "" {
 		return
 	}
@@ -259,6 +260,85 @@ func ensureAutomationTables(db *sql.DB) {
 			_, _ = db.Exec(`ALTER TABLE ` + table + ` MODIFY COLUMN id INTEGER NOT NULL AUTO_INCREMENT`)
 		}
 	})
+}
+
+// ensureAmzToolsConsultantJobs creates tool jobs for each AmzToolsConsultant recloud
+// website once the Home (session) credential exists. Keepa is its own cookie; the
+// rest share the homepage PHPSESSID (and are linked as cookie followers of Diamond).
+func ensureAmzToolsConsultantJobs(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	var credID int
+	if db.QueryRow(`SELECT id FROM automation_credentials WHERE provider='amztoolsconsultant' ORDER BY id LIMIT 1`).Scan(&credID) != nil || credID <= 0 {
+		return
+	}
+	interval := 22
+	var homeInterval int
+	if db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE credential_id=? AND job_kind='session' ORDER BY id LIMIT 1`, credID).Scan(&homeInterval) == nil && homeInterval >= 5 {
+		interval = homeInterval
+	}
+	type toolJob struct {
+		name   string
+		prefix string
+		keepa  bool
+	}
+	jobs := []toolJob{
+		{"AmzToolsConsultant Helium10 Diamond", "amzcheliumdia", false},
+		{"AmzToolsConsultant Helium10 Platinum", "amzcheliumplat", false},
+		{"AmzToolsConsultant SellerAmp", "amzcselleramp", false},
+		{"AmzToolsConsultant ChatGPT", "amzccg", false},
+		{"AmzToolsConsultant Freedom Ticket", "amzcft", false},
+		{"AmzToolsConsultant Niche Scraper", "amzcnichs", false},
+		{"AmzToolsConsultant Envato", "amzcenv", false},
+		{"AmzToolsConsultant Keepa", "amzckeepa", true},
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var diamondAccountID int
+	for _, job := range jobs {
+		var websiteID int
+		err := db.QueryRow(`SELECT id FROM websites
+			WHERE kind='recloud' AND (lower(domain) LIKE lower(?) OR lower(domain) LIKE lower(?))
+			ORDER BY CASE WHEN domain LIKE '%.upays.in' THEN 0 ELSE 1 END, id LIMIT 1`,
+			job.prefix+".%", job.prefix+".%").Scan(&websiteID)
+		if err != nil || websiteID <= 0 {
+			continue
+		}
+		var existing int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM automation_jobs WHERE credential_id=? AND target_website_id=?`, credID, websiteID).Scan(&existing)
+		if existing == 0 {
+			next := time.Now().UTC().Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
+			if _, err := db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
+				VALUES (?,?,?,?,0,?,1,0,?,'','','',?,?, 'tool')`,
+				job.name, "amztoolsconsultant", credID, websiteID, interval, next, now, now); err != nil {
+				log.Printf("[automation] amz job %s: %v", job.name, err)
+			} else {
+				log.Printf("[automation] added job %s → website %d", job.name, websiteID)
+			}
+		}
+		var accountID int
+		_ = db.QueryRow(`SELECT id FROM accounts WHERE website_id=? ORDER BY id LIMIT 1`, websiteID).Scan(&accountID)
+		if accountID <= 0 {
+			continue
+		}
+		if !job.keepa && strings.Contains(job.prefix, "amzcheliumdia") {
+			diamondAccountID = accountID
+		}
+		if job.keepa || diamondAccountID <= 0 || accountID == diamondAccountID {
+			continue
+		}
+		var linked int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM account_cookie_links WHERE follower_account_id=?`, accountID).Scan(&linked)
+		if linked > 0 {
+			continue
+		}
+		if _, err := db.Exec(`INSERT INTO account_cookie_links (follower_account_id, source_account_id, created_at) VALUES (?,?,?)`,
+			accountID, diamondAccountID, now); err != nil {
+			log.Printf("[automation] amz cookie share %s: %v", job.name, err)
+		} else {
+			log.Printf("[automation] shared AmzToolsConsultant cookie: follower account %d ← diamond %d", accountID, diamondAccountID)
+		}
+	}
 }
 
 func automationPublicReason(err error) string {
@@ -504,8 +584,14 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	}
 	secrets = append(secrets, cookieValues(portal)...)
 	if job.Kind == "session" {
-		s.writeAutomationLog(job, "info", "stored homepage cookie", secrets)
-		s.finishAutomation(job, "ok", "stored homepage cookie")
+		message := "stored homepage cookie"
+		if job.Provider == "amztoolsconsultant" {
+			if extra, err := s.writeAmzDiamondCookie(portal); err == nil && extra != "" {
+				message = message + "; " + extra
+			}
+		}
+		s.writeAutomationLog(job, "info", message, secrets)
+		s.finishAutomation(job, "ok", message)
 		return
 	}
 	if strings.TrimSpace(site.Upstream) == "" {
@@ -887,7 +973,11 @@ func (s *server) writeAmzDiamondCookie(portal []cookieJSON) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rows, err := s.db.Query(`SELECT id FROM websites WHERE kind='recloud' AND upstream_url LIKE ?`, "https://ht01.amztoolsconsultant.com%")
+	// All shared AmzToolsConsultant recloud rows (not Keepa/browseanywhere).
+	rows, err := s.db.Query(`SELECT id FROM websites WHERE kind='recloud'
+		AND lower(upstream_url) LIKE '%amztoolsconsultant.com%'
+		AND lower(upstream_url) NOT LIKE '%browseanywhere%'
+		AND lower(upstream_url) NOT LIKE '%kp01%'`)
 	if err != nil {
 		return "", err
 	}

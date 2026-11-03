@@ -3,7 +3,6 @@ package amz
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"panel-api/automation"
@@ -41,9 +40,12 @@ func TestDiamondUsesHomepageCookie(t *testing.T) {
 	if len(got) != 1 || got[0].Value != "portal-session" || got[0].Domain != ".amztoolsconsultant.com" || got[0].HostOnly {
 		t.Fatalf("diamond cookie %#v", got)
 	}
-	_, err = Recipe{}.Capture(context.Background(), portal, "https://en01.amztoolsconsultant.com/")
-	if !errors.Is(err, automation.ErrUpstream) {
-		t.Fatalf("other tool err %v", err)
+	gotEnv, err := Recipe{}.Capture(context.Background(), portal, "https://en01.amztoolsconsultant.com/")
+	if err != nil {
+		t.Fatalf("shared envato err %v", err)
+	}
+	if len(gotEnv) != 1 || gotEnv[0].Value != "portal-session" {
+		t.Fatalf("shared envato cookie %#v", gotEnv)
 	}
 }
 

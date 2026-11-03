@@ -131,14 +131,17 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		return nil, automation.ErrUpstream
 	}
 	switch targetKind(parsed) {
-	case "diamond":
+	case "diamond", "shared":
 		cookies := HomepageCookies(portal)
-		log.Printf("[automation] amz diamond uses homepage cookies=%s", automation.Names(cookies))
+		log.Printf("[automation] amz shared tool %s uses homepage cookies=%s", parsed.Hostname(), automation.Names(cookies))
 		if len(cookies) == 0 {
 			return nil, automation.ErrNoCookie
 		}
-		if err := ProbeDiamond(ctx, cookies); err != nil {
-			return nil, err
+		// Helium10 Diamond still probes its home so a dead portal session fails early.
+		if targetKind(parsed) == "diamond" {
+			if err := ProbeDiamond(ctx, cookies); err != nil {
+				return nil, err
+			}
 		}
 		return cookies, nil
 	case "keepa":
@@ -219,6 +222,11 @@ func targetKind(parsed *url.URL) string {
 	}
 	if host == "ht01.amztoolsconsultant.com" || strings.Contains(path, "black-box") || strings.Contains(path, "diamond") {
 		return "diamond"
+	}
+	// Helium Platinum, SellerAmp, ChatGPT, Freedom Ticket, Niche Scraper, Envato —
+	// same aMember PHPSESSID as the homepage (Keepa is the only separate cookie).
+	if strings.Contains(host, "amztoolsconsultant.com") {
+		return "shared"
 	}
 	return ""
 }
