@@ -115,12 +115,12 @@ Seed is reseller ko **sirf** `*.amzpremiumsoftware.com` websites pe rakhta hai (
 | Field | Value |
 |-------|--------|
 | Credential | `AmzToolsConsultant` / provider `amztoolsconsultant` |
-| Homepage job | `AmzToolsConsultant Home` (`job_kind=session`) — logs into members portal, stores PHPSESSID |
-| Shared cookie tools | Helium10 Diamond + Platinum, SellerAmp, ChatGPT (`amzccg`), Freedom Ticket, Niche Scraper, Envato — same homepage cookie; Diamond is cookie-share source |
-| Separate cookie | **Keepa** (`amzckeepa` → browseanywhere) — own Capture path |
-| How jobs appear | Panel API seed `ensureAmzToolsConsultantJobs` on start (does not touch other resellers) |
+| Homepage job | `AmzToolsConsultant Home` (`job_kind=session`) — portal login → Storage |
+| Shared update job | **`AmzToolsConsultant Shared`** — one job writes homepage cookie to Helium10 Diamond; Platinum / SellerAmp / ChatGPT / Freedom Ticket / Niche Scraper / Envato follow via Shared cookies |
+| Separate job | **`AmzToolsConsultant Keepa`** — browseanywhere cookie (not shared with the others) |
+| Seed | `ensureAmzToolsConsultantJobs` — creates Shared + Keepa only; deletes extra per-tool jobs |
 
-Restart panel-api after deploy to create any missing tool jobs. Interval copies the Home job (default 22 min).
+Restart panel-api after deploy. Interval copies Home (default 22 min).
 
 ---
 

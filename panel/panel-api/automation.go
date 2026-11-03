@@ -262,9 +262,10 @@ func ensureAutomationTables(db *sql.DB) {
 	})
 }
 
-// ensureAmzToolsConsultantJobs creates tool jobs for each AmzToolsConsultant recloud
-// website once the Home (session) credential exists. Keepa is its own cookie; the
-// rest share the homepage PHPSESSID (and are linked as cookie followers of Diamond).
+// ensureAmzToolsConsultantJobs keeps only two tool jobs besides Home:
+//   1) Shared — writes homepage PHPSESSID to Helium10 Diamond; followers get it via cookie share
+//   2) Keepa — separate browseanywhere cookie
+// Extra per-tool jobs from an earlier seed are removed.
 func ensureAmzToolsConsultantJobs(db *sql.DB) {
 	if db == nil {
 		return
@@ -278,66 +279,111 @@ func ensureAmzToolsConsultantJobs(db *sql.DB) {
 	if db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE credential_id=? AND job_kind='session' ORDER BY id LIMIT 1`, credID).Scan(&homeInterval) == nil && homeInterval >= 5 {
 		interval = homeInterval
 	}
-	type toolJob struct {
-		name   string
-		prefix string
-		keepa  bool
+
+	sharedPrefixes := []string{
+		"amzcheliumdia", "amzcheliumplat", "amzcselleramp", "amzccg", "amzcft", "amzcnichs", "amzcenv",
 	}
-	jobs := []toolJob{
-		{"AmzToolsConsultant Helium10 Diamond", "amzcheliumdia", false},
-		{"AmzToolsConsultant Helium10 Platinum", "amzcheliumplat", false},
-		{"AmzToolsConsultant SellerAmp", "amzcselleramp", false},
-		{"AmzToolsConsultant ChatGPT", "amzccg", false},
-		{"AmzToolsConsultant Freedom Ticket", "amzcft", false},
-		{"AmzToolsConsultant Niche Scraper", "amzcnichs", false},
-		{"AmzToolsConsultant Envato", "amzcenv", false},
-		{"AmzToolsConsultant Keepa", "amzckeepa", true},
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	var diamondAccountID int
-	for _, job := range jobs {
+	websiteIDByPrefix := map[string]int{}
+	accountIDByPrefix := map[string]int{}
+	for _, prefix := range append(append([]string{}, sharedPrefixes...), "amzckeepa") {
 		var websiteID int
 		err := db.QueryRow(`SELECT id FROM websites
-			WHERE kind='recloud' AND (lower(domain) LIKE lower(?) OR lower(domain) LIKE lower(?))
+			WHERE kind='recloud' AND lower(domain) LIKE lower(?)
 			ORDER BY CASE WHEN domain LIKE '%.upays.in' THEN 0 ELSE 1 END, id LIMIT 1`,
-			job.prefix+".%", job.prefix+".%").Scan(&websiteID)
+			prefix+".%").Scan(&websiteID)
 		if err != nil || websiteID <= 0 {
 			continue
 		}
-		var existing int
-		_ = db.QueryRow(`SELECT COUNT(*) FROM automation_jobs WHERE credential_id=? AND target_website_id=?`, credID, websiteID).Scan(&existing)
-		if existing == 0 {
-			next := time.Now().UTC().Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
-			if _, err := db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
-				VALUES (?,?,?,?,0,?,1,0,?,'','','',?,?, 'tool')`,
-				job.name, "amztoolsconsultant", credID, websiteID, interval, next, now, now); err != nil {
-				log.Printf("[automation] amz job %s: %v", job.name, err)
-			} else {
-				log.Printf("[automation] added job %s → website %d", job.name, websiteID)
-			}
-		}
+		websiteIDByPrefix[prefix] = websiteID
 		var accountID int
 		_ = db.QueryRow(`SELECT id FROM accounts WHERE website_id=? ORDER BY id LIMIT 1`, websiteID).Scan(&accountID)
-		if accountID <= 0 {
+		if accountID > 0 {
+			accountIDByPrefix[prefix] = accountID
+		}
+	}
+	diamondWebsiteID := websiteIDByPrefix["amzcheliumdia"]
+	diamondAccountID := accountIDByPrefix["amzcheliumdia"]
+	keepaWebsiteID := websiteIDByPrefix["amzckeepa"]
+
+	keepWebsite := map[int]bool{}
+	if diamondWebsiteID > 0 {
+		keepWebsite[diamondWebsiteID] = true
+	}
+	if keepaWebsiteID > 0 {
+		keepWebsite[keepaWebsiteID] = true
+	}
+	rows, err := db.Query(`SELECT id, target_website_id, name FROM automation_jobs
+		WHERE credential_id=? AND COALESCE(job_kind,'tool')='tool'`, credID)
+	if err == nil {
+		type dropJob struct {
+			id, website int
+			name        string
+		}
+		var drop []dropJob
+		for rows.Next() {
+			var item dropJob
+			if rows.Scan(&item.id, &item.website, &item.name) != nil {
+				continue
+			}
+			if keepWebsite[item.website] {
+				continue
+			}
+			drop = append(drop, item)
+		}
+		rows.Close()
+		for _, item := range drop {
+			_, _ = db.Exec(`DELETE FROM automation_job_sites WHERE job_id=?`, item.id)
+			if _, err := db.Exec(`DELETE FROM automation_jobs WHERE id=?`, item.id); err != nil {
+				log.Printf("[automation] remove extra amz job %s: %v", item.name, err)
+			} else {
+				log.Printf("[automation] removed extra AmzToolsConsultant job %q (website %d)", item.name, item.website)
+			}
+		}
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	ensureOne := func(name string, websiteID int) {
+		if websiteID <= 0 {
+			return
+		}
+		var jobID int
+		err := db.QueryRow(`SELECT id FROM automation_jobs WHERE credential_id=? AND target_website_id=? AND COALESCE(job_kind,'tool')='tool' ORDER BY id LIMIT 1`,
+			credID, websiteID).Scan(&jobID)
+		if err == nil && jobID > 0 {
+			_, _ = db.Exec(`UPDATE automation_jobs SET name=?, interval_minutes=?, enabled=1, updated_at=? WHERE id=?`,
+				name, interval, now, jobID)
+			return
+		}
+		next := time.Now().UTC().Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
+		if _, err := db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
+			VALUES (?,?,?,?,0,?,1,0,?,'','','',?,?, 'tool')`,
+			name, "amztoolsconsultant", credID, websiteID, interval, next, now, now); err != nil {
+			log.Printf("[automation] amz job %s: %v", name, err)
+			return
+		}
+		log.Printf("[automation] added job %s → website %d", name, websiteID)
+	}
+	ensureOne("AmzToolsConsultant Shared", diamondWebsiteID)
+	ensureOne("AmzToolsConsultant Keepa", keepaWebsiteID)
+
+	if diamondAccountID <= 0 {
+		return
+	}
+	for _, prefix := range sharedPrefixes {
+		if prefix == "amzcheliumdia" {
 			continue
 		}
-		if !job.keepa && strings.Contains(job.prefix, "amzcheliumdia") {
-			diamondAccountID = accountID
-		}
-		if job.keepa || diamondAccountID <= 0 || accountID == diamondAccountID {
+		accountID := accountIDByPrefix[prefix]
+		if accountID <= 0 || accountID == diamondAccountID {
 			continue
 		}
-		var linked int
-		_ = db.QueryRow(`SELECT COUNT(*) FROM account_cookie_links WHERE follower_account_id=?`, accountID).Scan(&linked)
-		if linked > 0 {
-			continue
-		}
+		_, _ = db.Exec(`DELETE FROM account_cookie_links WHERE follower_account_id=?`, accountID)
 		if _, err := db.Exec(`INSERT INTO account_cookie_links (follower_account_id, source_account_id, created_at) VALUES (?,?,?)`,
 			accountID, diamondAccountID, now); err != nil {
-			log.Printf("[automation] amz cookie share %s: %v", job.name, err)
-		} else {
-			log.Printf("[automation] shared AmzToolsConsultant cookie: follower account %d ← diamond %d", accountID, diamondAccountID)
+			log.Printf("[automation] amz cookie share %s: %v", prefix, err)
+			continue
 		}
+		log.Printf("[automation] shared AmzToolsConsultant cookie: %s account %d ← Shared source %d", prefix, accountID, diamondAccountID)
 	}
 }
 
