@@ -542,14 +542,9 @@ func ahrefsSaveUsageOnHost(username, requestHost string, hit ahrefsLimitHit) {
 	if username == "" || hit.amount < 1 {
 		return
 	}
-	dupKey := username + "\n" + hit.family + "\n" + hit.target
-	dupFamily := hit.family
-	if hit.isExport {
-		// Same click often hits 2 Export URLs; bill once for this amount briefly.
-		dupKey = fmt.Sprintf("%s\nexport-csv\n%d", username, hit.amount)
-		dupFamily = "export-csv"
-	}
-	if ahrefsDuplicateBill(dupKey, dupFamily) {
+	// Do not dedupe exports by size/time — intentional same-size exports must each bill.
+	// Keyword Explorer double-count is fixed by skipping chart-export rewrap billing.
+	if ahrefsDuplicateBill(username+"\n"+hit.family+"\n"+hit.target, hit.family) {
 		log.Printf("[LIMITS] skip duplicate %s +%d user=%s action=%s", hit.key, hit.amount, username, hit.action)
 		return
 	}
@@ -610,13 +605,8 @@ func ahrefsDuplicateBill(key, family string) bool {
 	ahrefsBillMu.Lock()
 	defer ahrefsBillMu.Unlock()
 	window := 800 * time.Millisecond
-	switch family {
-	case "se-overview":
+	if family == "se-overview" {
 		window = 2 * time.Minute
-	case "export-csv":
-		// Parallel/sequential Export calls from one click finish within a couple seconds.
-		// A later intentional export (re-open modal, click again) is outside this window.
-		window = 4 * time.Second
 	}
 	if last, ok := ahrefsBillRecent[key]; ok && time.Since(last.at) < window {
 		return true

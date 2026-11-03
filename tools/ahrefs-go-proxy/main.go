@@ -1252,27 +1252,37 @@ func handleAhrefsChartExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := ahrefsCSVRows(body)
-	filename := chartExportName(headerExportValue(r, "X-Export-Link"), headerExportValue(r, "X-Export-Title"), headerExportValue(r, "X-Export-Page"))
+	linkName := headerExportValue(r, "X-Export-Link")
+	page := headerExportValue(r, "X-Export-Page")
+	filename := chartExportName(linkName, headerExportValue(r, "X-Export-Title"), page)
 	log.Printf("[LIMITS] chart export user=%s rows=%d file=%s", username, rows, filename)
 	shown := strings.TrimSuffix(filename, ".csv")
+	// Keywords Explorer (and similar) already billed when the CSV passed the proxy.
+	// The SPA then re-wraps that file as a blob → this endpoint. Do not bill twice.
+	alreadyMetered := ahrefsTableExportRewrap(linkName, page)
+	if alreadyMetered {
+		log.Printf("[LIMITS] chart export skip bill user=%s file=%s — table export already metered on proxy", username, filename)
+	}
 	hit := ahrefsLimitHit{
 		key: "exports", label: "Exports", action: "Chart export",
 		target: shown, amount: rows, reset: 7,
 		family: fmt.Sprintf("chart-export:%d", time.Now().UnixNano()), isExport: true,
 	}
 	chartHost := panelRequestHost(r, loadConfig().PublicHost)
-	view, _, found := ahrefsMeterViewOnHost(username, chartHost, hit.key, 1000, hit.reset)
-	if found && view.limit > 0 && rows > 0 && view.used+rows > view.limit {
-		message := ahrefsLimitMessage(hit, view.used, view.limit, rows)
-		log.Printf("[LIMITS] blocked chart export user=%s rows=%d used=%d limit=%d", username, rows, view.used, view.limit)
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusForbidden)
-		payload, _ := json.Marshal(map[string]string{"error": "weekly_export_limit_reached", "message": message})
-		_, _ = w.Write(payload)
-		return
-	}
-	if rows > 0 {
-		ahrefsSaveUsageOnHost(username, chartHost, hit)
+	if !alreadyMetered {
+		view, _, found := ahrefsMeterViewOnHost(username, chartHost, hit.key, 1000, hit.reset)
+		if found && view.limit > 0 && rows > 0 && view.used+rows > view.limit {
+			message := ahrefsLimitMessage(hit, view.used, view.limit, rows)
+			log.Printf("[LIMITS] blocked chart export user=%s rows=%d used=%d limit=%d", username, rows, view.used, view.limit)
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			payload, _ := json.Marshal(map[string]string{"error": "weekly_export_limit_reached", "message": message})
+			_, _ = w.Write(payload)
+			return
+		}
+		if rows > 0 {
+			ahrefsSaveUsageOnHost(username, chartHost, hit)
+		}
 	}
 	out := withUTF8CSVBom(body)
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -3795,6 +3805,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				pendingLimitOK = false
 			} else {
 				pendingLimit.amount = amount
+				if name := exportFilenameFromContentDisposition(resp.Header.Get("Content-Disposition")); name != "" {
+					pendingLimit.target = strings.TrimSuffix(name, ".csv")
+					pendingLimit.action = "Export"
+				} else if ref := r.Referer(); strings.Contains(ref, "keywords-explorer") {
+					// Prefer page context over generic "Export" in Quota Logs.
+					pendingLimit.target = ahrefsUsageLabel(r, nil, "Export")
+				}
 				view, _, found := ahrefsMeterViewOnHost(limitUser, limitHost, pendingLimit.key, 1000, pendingLimit.reset)
 				if found && view.limit > 0 && view.used+pendingLimit.amount > view.limit {
 					ahrefsBlockLimit(w, r, pendingLimit, view.used, view.limit, pendingLimit.amount)

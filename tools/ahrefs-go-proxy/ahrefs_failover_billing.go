@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"log"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -215,6 +216,66 @@ func ahrefsRefundLegacyCreditLog(username string, websiteID int, endpoint string
 	}
 	n, _ := res.RowsAffected()
 	return n > 0
+}
+
+// ahrefsTableExportRewrap is true when the SPA wrapped an Ahrefs server CSV
+// (already billed on the proxy Export path) into a blob for /api/chart-export.
+// Billing again here is what made 300 → 600 when the download was slow.
+func ahrefsTableExportRewrap(linkName, page string) bool {
+	link := strings.ToLower(strings.TrimSpace(linkName))
+	page = strings.ToLower(page)
+	if strings.Contains(page, "keywords-explorer") {
+		return true
+	}
+	for _, tip := range []string{
+		"matching-terms", "related-terms", "search-suggestions", "also-rank-for",
+		"organic-keywords", "top-pages", "referring-domains", "backlinks",
+		"paid-keywords", "organic-competitors",
+	} {
+		if strings.Contains(link, tip) {
+			return true
+		}
+	}
+	if strings.HasPrefix(link, "google_") || strings.HasPrefix(link, "bing_") || strings.HasPrefix(link, "youtube_") {
+		return true
+	}
+	// google_us_chatgpt_matching-terms_2026-11-03_08-41-51.csv
+	if len(link) > 20 {
+		for i := 0; i+19 < len(link); i++ {
+			if link[i] == '_' && link[i+5] == '-' && link[i+8] == '-' && link[i+11] == '_' &&
+				link[i+14] == '-' && link[i+17] == '-' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func exportFilenameFromContentDisposition(cd string) string {
+	cd = strings.TrimSpace(cd)
+	if cd == "" {
+		return ""
+	}
+	lower := strings.ToLower(cd)
+	for _, key := range []string{"filename*=utf-8''", "filename*=UTF-8''", "filename="} {
+		if i := strings.Index(lower, strings.ToLower(key)); i >= 0 {
+			raw := strings.TrimSpace(cd[i+len(key):])
+			if strings.HasPrefix(raw, "\"") {
+				raw = strings.Trim(raw, "\"")
+			} else if cut := strings.IndexAny(raw, ";"); cut >= 0 {
+				raw = raw[:cut]
+			}
+			raw = strings.TrimSpace(raw)
+			if unesc, err := url.QueryUnescape(raw); err == nil && unesc != "" {
+				raw = unesc
+			}
+			raw = strings.Trim(raw, `"'`)
+			if raw != "" {
+				return raw
+			}
+		}
+	}
+	return ""
 }
 
 func ahrefsExportErrorRefreshScript() string {

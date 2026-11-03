@@ -52,12 +52,21 @@ func TestAhrefsRecentCreditRevertRequiresCharge(t *testing.T) {
 	ahrefsRevertRecentCreditOnSwitch("nobody-here-for-test")
 }
 
-func TestExportDuplicateBillSameClick(t *testing.T) {
-	key := "sagar\nexport-csv\n200"
-	if ahrefsDuplicateBill(key, "export-csv") {
-		t.Fatal("first bill must pass")
+func TestAhrefsTableExportRewrap(t *testing.T) {
+	if !ahrefsTableExportRewrap("google_us_chatgpt_matching-terms_2026-11-03_08-41-51.csv", "/keywords-explorer/google/us/ideas") {
+		t.Fatal("matching-terms on KE must skip second bill")
 	}
-	if !ahrefsDuplicateBill(key, "export-csv") {
-		t.Fatal("second bill within window must skip")
+	if !ahrefsTableExportRewrap("", "/keywords-explorer/google/us/overview") {
+		t.Fatal("keywords-explorer page must skip second bill")
+	}
+	if ahrefsTableExportRewrap("ahrefs-chart.csv", "/site-explorer/overview") {
+		t.Fatal("real chart export must still bill")
+	}
+}
+
+func TestExportFilenameFromContentDisposition(t *testing.T) {
+	got := exportFilenameFromContentDisposition(`attachment; filename="google_us_chatgpt_matching-terms_2026-11-03_08-41-51.csv"`)
+	if got != "google_us_chatgpt_matching-terms_2026-11-03_08-41-51.csv" {
+		t.Fatalf("got %q", got)
 	}
 }
