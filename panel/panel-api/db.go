@@ -101,6 +101,8 @@ func openDB(path string) *sql.DB {
 	ensureResellers(db)
 	ensureToolWalySites(db)
 	ensureT4ToolzAhrefs(db)
+	ensureSeoGroupBuyExtraSites(db)
+	ensureAmzPremiumSoftwareSites(db)
 	ensureAccessAlertSettings(db)
 	return db
 }
@@ -149,6 +151,8 @@ func openMySQL() *sql.DB {
 	ensureResellers(db)
 	ensureToolWalySites(db)
 	ensureT4ToolzAhrefs(db)
+	ensureSeoGroupBuyExtraSites(db)
+	ensureAmzPremiumSoftwareSites(db)
 	ensureAccessAlertSettings(db)
 	return db
 }

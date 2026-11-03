@@ -144,8 +144,6 @@ func ensureQuillbot(db *sql.DB) {
 	}
 	websiteID, _ := res.LastInsertId()
 	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "QuillBot", `["5311"]`)
-	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
-		websiteID, "QuillBot 1", "", "active", "Paste the Firebase session JSON into this cookie.")
 	log.Printf("added QuillBot website %d at qllb.upays.in", websiteID)
 }
 
@@ -177,8 +175,6 @@ func ensureWriteHuman(db *sql.DB) {
 	}
 	websiteID, _ := res.LastInsertId()
 	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "WriteHuman", `["writehuman"]`)
-	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
-		websiteID, "WriteHuman 1", "", "active", "Paste the Chrome cookie array into this cookie.")
 	log.Printf("added WriteHuman website %d at wrth.upays.in", websiteID)
 }
 
@@ -208,8 +204,6 @@ func ensurePictory(db *sql.DB) {
 	}
 	websiteID, _ := res.LastInsertId()
 	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "Pictory", `["pictory"]`)
-	_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
-		websiteID, "Pictory 1", "", "active", "Paste a localStorage JSON object, or a referer export that contains storage.localStorage. A Chrome cookie array also works.")
 	log.Printf("added Pictory website %d at pctr.upays.in", websiteID)
 }
 
@@ -391,8 +385,6 @@ func ensureToolWalySites(db *sql.DB) {
 			}
 			websiteID, _ = res.LastInsertId()
 			_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, site.name, `["toolwaly"]`)
-			_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
-				websiteID, site.name+" 1", "", "active", "Paste this website's own cookie. It is not shared with gt4rents.")
 			log.Printf("added %s website %d at %s", site.name, websiteID, site.domain)
 		}
 		_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
@@ -438,8 +430,6 @@ func ensureT4ToolzAhrefs(db *sql.DB) {
 		}
 		websiteID, _ = res.LastInsertId()
 		_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, name, `["t4toolz"]`)
-		_, _ = db.Exec(`INSERT INTO accounts (website_id, name, cookie, status, description) VALUES (?,?,?,?,?)`,
-			websiteID, name+" 1", "", "active", "Paste this website's own cookie. It is not shared with gt4rents.")
 		log.Printf("added %s website %d at %s", name, websiteID, domain)
 		return
 	}
@@ -455,6 +445,191 @@ func ensureT4ToolzAhrefs(db *sql.DB) {
 		return
 	}
 	_, _ = db.Exec(`UPDATE websites SET access_slug=? WHERE id=?`, slug, websiteID)
+}
+
+// SeoGroupBuy extra Semrush/ChatGPT hosts share smrs/cgpt ports; separate buttons + product 5.
+func ensureSeoGroupBuyExtraSites(db *sql.DB) {
+	type site struct {
+		tool   string
+		name   string
+		domain string
+		owner  string
+		slug   string
+	}
+	sites := []site{
+		{"Semrush", "SeoGroupBuy Semrush 2", "smrs2.seogbtools.com", "smrs.seogbtools.com", "sgbsmrs2"},
+		{"Semrush", "SeoGroupBuy Semrush 3", "smrs3.seogbtools.com", "smrs.seogbtools.com", "sgbsmrs3"},
+		{"Semrush", "SeoGroupBuy Semrush 4", "smrs4.seogbtools.com", "smrs.seogbtools.com", "sgbsmrs4"},
+		{"Semrush", "SeoGroupBuy Semrush 5", "smrs5.seogbtools.com", "smrs.seogbtools.com", "sgbsmrs5"},
+		{"ChatGPT", "SeoGroupBuy ChatGPT 2", "cgpt2.seogbtools.com", "cgpt.seogbtools.com", "sgbcgpt2"},
+		{"ChatGPT", "SeoGroupBuy ChatGPT 3", "cgpt3.seogbtools.com", "cgpt.seogbtools.com", "sgbcgpt3"},
+	}
+	var opID int64
+	if db.QueryRow(`SELECT id FROM operators WHERE username=?`, "SeoGroupBuy").Scan(&opID) != nil || opID <= 0 {
+		log.Printf("SeoGroupBuy reseller is missing; extra websites were not assigned")
+		return
+	}
+	var destIDs []int
+	rows, err := db.Query(`SELECT id FROM telegram_destinations WHERE reseller_id=? AND enabled=1`, opID)
+	if err == nil {
+		for rows.Next() {
+			var id int
+			if rows.Scan(&id) == nil {
+				destIDs = append(destIDs, id)
+			}
+		}
+		rows.Close()
+	}
+	for _, site := range sites {
+		var toolID int64
+		if db.QueryRow(`SELECT id FROM tools WHERE name=?`, site.tool).Scan(&toolID) != nil || toolID <= 0 {
+			log.Printf("SeoGroupBuy %s: tool row missing", site.tool)
+			continue
+		}
+		var websiteID int64
+		var currentSlug string
+		err := db.QueryRow(`SELECT id, COALESCE(access_slug, '') FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.domain).Scan(&websiteID, &currentSlug)
+		if err != nil {
+			limits := "{}"
+			sessionMinutes := 30
+			_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}'), COALESCE(session_duration, 30) FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.owner).Scan(&limits, &sessionMinutes)
+			if strings.TrimSpace(limits) == "" {
+				limits = "{}"
+			}
+			if sessionMinutes < 1 {
+				sessionMinutes = 30
+			}
+			var taken int
+			if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=?`, site.slug).Scan(&taken) == nil {
+				log.Printf("SeoGroupBuy %s: button name %s is already used by website %d", site.name, site.slug, taken)
+				continue
+			}
+			res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
+				VALUES (?,?,?,?,?,?,1,?)`, toolID, site.name, site.domain, "secret_"+strings.ReplaceAll(site.domain, ".", "_"), sessionMinutes, limits, site.slug)
+			if insErr != nil {
+				log.Printf("SeoGroupBuy website %s: %v", site.domain, insErr)
+				continue
+			}
+			websiteID, _ = res.LastInsertId()
+			_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, site.name, `["5"]`)
+			log.Printf("added %s website %d at %s", site.name, websiteID, site.domain)
+		} else if strings.TrimSpace(currentSlug) == "" {
+			var taken int
+			if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=? AND id<>?`, site.slug, websiteID).Scan(&taken) != nil {
+				_, _ = db.Exec(`UPDATE websites SET access_slug=? WHERE id=?`, site.slug, websiteID)
+			}
+		}
+		_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
+		var productCount int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM products WHERE website_id=?`, websiteID).Scan(&productCount)
+		if productCount == 0 {
+			_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, site.name, `["5"]`)
+		}
+		if len(destIDs) > 0 {
+			attachRoute(db, int(websiteID), destIDs)
+		}
+	}
+}
+
+// AmzPremiumSoftware uses the same 7 tool ports as upays.in, on amzpremiumsoftware.com.
+func ensureAmzPremiumSoftwareSites(db *sql.DB) {
+	type site struct {
+		tool   string
+		name   string
+		domain string
+		owner  string
+		slug   string
+	}
+	sites := []site{
+		{"ChatGPT", "AmzPremium ChatGPT", "cht.amzpremiumsoftware.com", "cgpt.upays.in", "amzcgpt"},
+		{"Claude AI", "AmzPremium Claude", "cld.amzpremiumsoftware.com", "clud.upays.in", "amzclud"},
+		{"Jungle Scout", "AmzPremium Jungle Scout", "jngl.amzpremiumsoftware.com", "jngl.upays.in", "amzjngl"},
+		{"eRank", "AmzPremium eRank", "ernk.amzpremiumsoftware.com", "ernk.upays.in", "amzernk"},
+		{"SellerAmp", "AmzPremium SellerAmp", "seller.amzpremiumsoftware.com", "sllr.upays.in", "amzsllr"},
+		{"Helium Learning", "AmzPremium Helium Learning", "hlearn.amzpremiumsoftware.com", "hlml.upays.in", "amzhlml"},
+		{"Zik Analytics", "AmzPremium Zik Analytics", "zik.amzpremiumsoftware.com", "zknl.upays.in", "amzzik"},
+	}
+	var opID int64
+	if db.QueryRow(`SELECT id FROM operators WHERE username=?`, "AmzPremiumToolz").Scan(&opID) != nil || opID <= 0 {
+		log.Printf("AmzPremiumToolz reseller is missing; websites were not assigned")
+		return
+	}
+	var destIDs []int
+	rows, err := db.Query(`SELECT id FROM telegram_destinations WHERE reseller_id=? AND enabled=1`, opID)
+	if err == nil {
+		for rows.Next() {
+			var id int
+			if rows.Scan(&id) == nil {
+				destIDs = append(destIDs, id)
+			}
+		}
+		rows.Close()
+	}
+	var own []int
+	for _, site := range sites {
+		var toolID int64
+		if db.QueryRow(`SELECT id FROM tools WHERE name=?`, site.tool).Scan(&toolID) != nil || toolID <= 0 {
+			log.Printf("AmzPremium %s: tool row missing", site.tool)
+			continue
+		}
+		var websiteID int64
+		var currentSlug string
+		err := db.QueryRow(`SELECT id, COALESCE(access_slug, '') FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.domain).Scan(&websiteID, &currentSlug)
+		if err != nil {
+			limits := "{}"
+			sessionMinutes := 30
+			_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}'), COALESCE(session_duration, 30) FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.owner).Scan(&limits, &sessionMinutes)
+			if strings.TrimSpace(limits) == "" {
+				limits = "{}"
+			}
+			if sessionMinutes < 1 {
+				sessionMinutes = 30
+			}
+			var taken int
+			if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=?`, site.slug).Scan(&taken) == nil {
+				log.Printf("AmzPremium %s: button name %s is already used by website %d", site.name, site.slug, taken)
+				continue
+			}
+			res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
+				VALUES (?,?,?,?,?,?,1,?)`, toolID, site.name, site.domain, "secret_"+strings.ReplaceAll(site.domain, ".", "_"), sessionMinutes, limits, site.slug)
+			if insErr != nil {
+				log.Printf("AmzPremium website %s: %v", site.domain, insErr)
+				continue
+			}
+			websiteID, _ = res.LastInsertId()
+			_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, site.name, `["amzpremium"]`)
+			log.Printf("added %s website %d at %s", site.name, websiteID, site.domain)
+		} else if strings.TrimSpace(currentSlug) == "" {
+			var taken int
+			if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=? AND id<>?`, site.slug, websiteID).Scan(&taken) != nil {
+				_, _ = db.Exec(`UPDATE websites SET access_slug=? WHERE id=?`, site.slug, websiteID)
+			}
+		}
+		_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
+		own = append(own, int(websiteID))
+		if len(destIDs) > 0 {
+			attachRoute(db, int(websiteID), destIDs)
+		}
+	}
+	if len(own) == 0 {
+		return
+	}
+	_, _ = db.Exec(`DELETE FROM operator_websites WHERE operator_id=? AND website_id NOT IN (`+placeholders(len(own))+`)`, append([]any{opID}, intsToAny(own)...)...)
+}
+
+func placeholders(n int) string {
+	if n < 1 {
+		return "NULL"
+	}
+	return strings.TrimRight(strings.Repeat("?,", n), ",")
+}
+
+func intsToAny(ids []int) []any {
+	out := make([]any, len(ids))
+	for i, id := range ids {
+		out[i] = id
+	}
+	return out
 }
 
 func attachRoute(db *sql.DB, websiteID int, destIDs []int) {
