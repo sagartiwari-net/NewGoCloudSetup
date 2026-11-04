@@ -565,7 +565,6 @@ func ensureAmzPremiumSoftwareSites(db *sql.DB) {
 		}
 		rows.Close()
 	}
-	var own []int
 	for _, site := range sites {
 		var toolID int64
 		if db.QueryRow(`SELECT id FROM tools WHERE name=?`, site.tool).Scan(&toolID) != nil || toolID <= 0 {
@@ -606,15 +605,107 @@ func ensureAmzPremiumSoftwareSites(db *sql.DB) {
 			}
 		}
 		_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
-		own = append(own, int(websiteID))
 		if len(destIDs) > 0 {
 			attachRoute(db, int(websiteID), destIDs)
 		}
 	}
-	if len(own) == 0 {
+	// Keep every *.amzpremiumsoftware.com row (including seller2–10 extras), drop legacy upays assigns.
+	_, _ = db.Exec(`DELETE FROM operator_websites
+		WHERE operator_id=?
+		  AND website_id NOT IN (SELECT id FROM websites WHERE domain LIKE '%.amzpremiumsoftware.com')`, opID)
+}
+
+// AmzPremium extra SellerAmp hosts share seller port 5161; separate buttons + product 5.
+func ensureAmzPremiumExtraSellerAmp(db *sql.DB) {
+	type site struct {
+		name   string
+		domain string
+		slug   string
+	}
+	const owner = "seller.amzpremiumsoftware.com"
+	sites := []site{
+		{"AmzPremium SellerAmp 2", "seller2.amzpremiumsoftware.com", "amzsllr2"},
+		{"AmzPremium SellerAmp 3", "seller3.amzpremiumsoftware.com", "amzsllr3"},
+		{"AmzPremium SellerAmp 4", "seller4.amzpremiumsoftware.com", "amzsllr4"},
+		{"AmzPremium SellerAmp 5", "seller5.amzpremiumsoftware.com", "amzsllr5"},
+		{"AmzPremium SellerAmp 6", "seller6.amzpremiumsoftware.com", "amzsllr6"},
+		{"AmzPremium SellerAmp 7", "seller7.amzpremiumsoftware.com", "amzsllr7"},
+		{"AmzPremium SellerAmp 8", "seller8.amzpremiumsoftware.com", "amzsllr8"},
+		{"AmzPremium SellerAmp 9", "seller9.amzpremiumsoftware.com", "amzsllr9"},
+		{"AmzPremium SellerAmp 10", "seller10.amzpremiumsoftware.com", "amzsllr10"},
+	}
+	var opID int64
+	if db.QueryRow(`SELECT id FROM operators WHERE username=?`, "AmzPremiumToolz").Scan(&opID) != nil || opID <= 0 {
+		log.Printf("AmzPremiumToolz reseller is missing; extra SellerAmp websites were not assigned")
 		return
 	}
-	_, _ = db.Exec(`DELETE FROM operator_websites WHERE operator_id=? AND website_id NOT IN (`+placeholders(len(own))+`)`, append([]any{opID}, intsToAny(own)...)...)
+	var toolID int64
+	if db.QueryRow(`SELECT id FROM tools WHERE name=?`, "SellerAmp").Scan(&toolID) != nil || toolID <= 0 {
+		log.Printf("AmzPremium SellerAmp: tool row missing")
+		return
+	}
+	var destIDs []int
+	rows, err := db.Query(`SELECT id FROM telegram_destinations WHERE reseller_id=? AND enabled=1`, opID)
+	if err == nil {
+		for rows.Next() {
+			var id int
+			if rows.Scan(&id) == nil {
+				destIDs = append(destIDs, id)
+			}
+		}
+		rows.Close()
+	}
+	limits := "{}"
+	sessionMinutes := 30
+	_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}'), COALESCE(session_duration, 30) FROM websites WHERE lower(trim(domain))=lower(trim(?))`, owner).Scan(&limits, &sessionMinutes)
+	if strings.TrimSpace(limits) == "" {
+		limits = "{}"
+	}
+	if sessionMinutes < 1 {
+		sessionMinutes = 30
+	}
+	for _, site := range sites {
+		var websiteID int64
+		var currentSlug string
+		err := db.QueryRow(`SELECT id, COALESCE(access_slug, '') FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.domain).Scan(&websiteID, &currentSlug)
+		if err != nil {
+			var taken int
+			if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=?`, site.slug).Scan(&taken) == nil {
+				log.Printf("AmzPremium %s: button name %s is already used by website %d", site.name, site.slug, taken)
+				continue
+			}
+			res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
+				VALUES (?,?,?,?,?,?,1,?)`, toolID, site.name, site.domain, "secret_"+strings.ReplaceAll(site.domain, ".", "_"), sessionMinutes, limits, site.slug)
+			if insErr != nil {
+				log.Printf("AmzPremium website %s: %v", site.domain, insErr)
+				continue
+			}
+			websiteID, _ = res.LastInsertId()
+			_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, site.name, `["5"]`)
+			log.Printf("added %s website %d at %s", site.name, websiteID, site.domain)
+		} else if strings.TrimSpace(currentSlug) == "" {
+			var taken int
+			if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=? AND id<>?`, site.slug, websiteID).Scan(&taken) != nil {
+				_, _ = db.Exec(`UPDATE websites SET access_slug=? WHERE id=?`, site.slug, websiteID)
+			}
+		}
+		_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
+		var productCount int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM products WHERE website_id=?`, websiteID).Scan(&productCount)
+		if productCount == 0 {
+			_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, site.name, `["5"]`)
+		} else {
+			_, _ = db.Exec(`UPDATE products SET product_ids_json=? WHERE website_id=?`, `["5"]`, websiteID)
+		}
+		if len(destIDs) > 0 {
+			attachRoute(db, int(websiteID), destIDs)
+		}
+	}
+	// Base seller product → 5 as well.
+	var baseID int64
+	if db.QueryRow(`SELECT id FROM websites WHERE lower(trim(domain))=lower(trim(?))`, owner).Scan(&baseID) == nil && baseID > 0 {
+		_, _ = db.Exec(`UPDATE products SET product_ids_json=? WHERE website_id=?`, `["5"]`, baseID)
+	}
 }
 
 func placeholders(n int) string {

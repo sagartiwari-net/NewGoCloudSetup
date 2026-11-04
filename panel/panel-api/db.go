@@ -103,6 +103,7 @@ func openDB(path string) *sql.DB {
 	ensureT4ToolzAhrefs(db)
 	ensureSeoGroupBuyExtraSites(db)
 	ensureAmzPremiumSoftwareSites(db)
+	ensureAmzPremiumExtraSellerAmp(db)
 	ensureAccessAlertSettings(db)
 	return db
 }
@@ -154,6 +155,7 @@ func openMySQL() *sql.DB {
 	ensureT4ToolzAhrefs(db)
 	ensureSeoGroupBuyExtraSites(db)
 	ensureAmzPremiumSoftwareSites(db)
+	ensureAmzPremiumExtraSellerAmp(db)
 	ensureAccessAlertSettings(db)
 	return db
 }

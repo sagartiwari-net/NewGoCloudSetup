@@ -23,8 +23,8 @@ Ek tool = ek port. Reseller ka host usi port pe reverse-proxy hota hai; panel me
 |--------|---------|-------------|
 | **A. Friend wildcard / one vhost** | Poora domain `*.friend.com` isi box pe (SeoGroupBuy) | `deploy/nginx-seogbtools.server.conf` + `deploy/nginx-host-port.map.conf` + SQL |
 | **B. Per-host aaPanel site** | Har subdomain alag site (ToolWaly, T4, AmzPremium) | DNS A → IP, aaPanel Static site → `127.0.0.1:<port>`, SSL LE |
-| **C. Panel seed (auto)** | Panel API start pe rows ensure | `panel/panel-api/seed.go` (`ensureToolWalySites`, `ensureSeoGroupBuyExtraSites`, `ensureAmzPremiumSoftwareSites`, `ensureT4ToolzAhrefs`) |
-| **D. One-shot SQL** | Pehli baar / seed se pehle live DB | `deploy/add-seogbtools-reseller.sql`, `deploy/add-seogbtools-extra-smrs-cgpt.sql`, `deploy/add-amzpremiumsoftware-reseller.sql` |
+| **C. Panel seed (auto)** | Panel API start pe rows ensure | `panel/panel-api/seed.go` (`ensureToolWalySites`, `ensureSeoGroupBuyExtraSites`, `ensureAmzPremiumSoftwareSites`, `ensureAmzPremiumExtraSellerAmp`, `ensureT4ToolzAhrefs`) |
+| **D. One-shot SQL** | Pehli baar / seed se pehle live DB | `deploy/add-seogbtools-reseller.sql`, `deploy/add-seogbtools-extra-smrs-cgpt.sql`, `deploy/add-amzpremiumsoftware-reseller.sql`, `deploy/add-amzpremium-extra-selleramp.sql` |
 
 Nginx map (host → port) hamesha update: `deploy/nginx-host-port.map.conf` → server pe copy → `nginx -t && nginx -s reload`.
 
@@ -92,8 +92,8 @@ Is reseller ko owner (`upays`/`gt4rents`) websites assign mat rakho — sirf in 
 |-------|--------|
 | Panel username | `AmzPremiumToolz` |
 | Domain | `amzpremiumsoftware.com` |
-| How added | **Method B + C + D** — `deploy/add-amzpremiumsoftware-reseller.sql`, `ensureAmzPremiumSoftwareSites`, nginx map + per-host (or friend) vhost |
-| Product | `["amzpremium"]` |
+| How added | **Method A-style wildcard + C + D** — `deploy/add-amzpremiumsoftware-reseller.sql`, `ensureAmzPremiumSoftwareSites` / `ensureAmzPremiumExtraSellerAmp`, nginx map + `nginx-amzpremiumsoftware.server.conf` |
+| Product | default `["amzpremium"]`; **SellerAmp (all 10)** → `["5"]` |
 | Accounts | SQL **does not** insert accounts — panel se cookie map karo |
 
 | Panel name | URL | Access slug | Port | Owner twin |
@@ -105,6 +105,23 @@ Is reseller ko owner (`upays`/`gt4rents`) websites assign mat rakho — sirf in 
 | AmzPremium SellerAmp | `https://seller.amzpremiumsoftware.com` | `amzsllr` | 5161 | `sllr.upays.in` |
 | AmzPremium Helium Learning | `https://hlearn.amzpremiumsoftware.com` | `amzhlml` | 5221 | `hlml.upays.in` |
 | AmzPremium Zik Analytics | `https://zik.amzpremiumsoftware.com` | `amzzik` | 5251 | `zknl.upays.in` |
+
+### Extra SellerAmp (Nov 2026) — ×10 total
+
+**Method C+D:** `deploy/add-amzpremium-extra-selleramp.sql` + `ensureAmzPremiumExtraSellerAmp`.  
+Product: **`5`** (base `seller` + `seller2`–`seller10`). Port `5161`. Mapped account: none until panel se.
+
+| Panel name | URL | Access slug |
+|------------|-----|-------------|
+| AmzPremium SellerAmp 2 | `https://seller2.amzpremiumsoftware.com` | `amzsllr2` |
+| AmzPremium SellerAmp 3 | `https://seller3.amzpremiumsoftware.com` | `amzsllr3` |
+| AmzPremium SellerAmp 4 | `https://seller4.amzpremiumsoftware.com` | `amzsllr4` |
+| AmzPremium SellerAmp 5 | `https://seller5.amzpremiumsoftware.com` | `amzsllr5` |
+| AmzPremium SellerAmp 6 | `https://seller6.amzpremiumsoftware.com` | `amzsllr6` |
+| AmzPremium SellerAmp 7 | `https://seller7.amzpremiumsoftware.com` | `amzsllr7` |
+| AmzPremium SellerAmp 8 | `https://seller8.amzpremiumsoftware.com` | `amzsllr8` |
+| AmzPremium SellerAmp 9 | `https://seller9.amzpremiumsoftware.com` | `amzsllr9` |
+| AmzPremium SellerAmp 10 | `https://seller10.amzpremiumsoftware.com` | `amzsllr10` |
 
 Seed is reseller ko **sirf** `*.amzpremiumsoftware.com` websites pe rakhta hai (purani shared upays rows hata deta hai).
 
