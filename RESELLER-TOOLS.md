@@ -129,7 +129,7 @@ Restart panel-api after deploy. Interval copies Home (default 22 min).
 | Field | Value |
 |-------|--------|
 | Domain | `t4toolz.com` |
-| How added | **Method B + C** — `ensureT4ToolzAhrefs` in `seed.go` |
+| How added | **Method A-style wildcard + C** — aaPanel `t4toolz.com` / `*.t4toolz.com` + map `ah2.t4toolz.com`→5291; `ensureT4ToolzAhrefs` in `seed.go` |
 | Product | `["t4toolz"]` |
 
 | Panel name | URL | Access slug | Port | Shares |
