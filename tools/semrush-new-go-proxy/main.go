@@ -1137,6 +1137,22 @@ func main() {
 					if redirectTo == "/" || redirectTo == fromPath {
 						redirectTo = "/home/"
 					}
+					// No Semrush cookie (or /home/ ↔ multilogin) used to bounce forever → ERR_TOO_MANY_REDIRECTS.
+					loopHome := fromPath == "/home" || fromPath == "/home/" || fromPath == "/" || fromPath == ""
+					if strings.TrimSpace(cookieHdr) == "" || (loopHome && (redirectTo == "/home/" || redirectTo == "/home")) {
+						page, switched := semrushAccountSwapPage(resp.Request)
+						credit = false
+						log.Printf("[MULTILOGIN] break redirect loop from=%s cookie=%t switched=%v", fromPath, strings.TrimSpace(cookieHdr) != "", switched)
+						resp.StatusCode = http.StatusOK
+						resp.Header.Set("Content-Type", "text/html; charset=utf-8")
+						resp.Header.Set("Cache-Control", "no-store")
+						resp.Body = io.NopCloser(strings.NewReader(page))
+						resp.ContentLength = int64(len(page))
+						resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(page)))
+						resp.Header.Del("Content-Encoding")
+						resp.Header.Del("Location")
+						return nil
+					}
 					replacedLoc := proxyScheme + "://" + proxyHost + redirectTo
 					resp.Header.Set("Location", replacedLoc)
 					loc = replacedLoc
