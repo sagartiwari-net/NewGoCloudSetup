@@ -1,5 +1,7 @@
 # Reseller websites
 
+**Inventory (kaun sa tool / URL / kaise add):** [`RESELLER-TOOLS.md`](./RESELLER-TOOLS.md) — naya link add karo to wahan update karo.
+
 Ek tool ka ek hi process aur ek hi port rehta hai. Dost ka domain usi port par aata hai, lekin panel mein uski website alag hoti hai. Cookie, limit, session, logs, aur Telegram usi website par rehte hain. gt4rents wali website ke saath mix nahi hote.
 
 Server IP wahi hai jo `gt4rents.com` use karta hai: `65.109.16.196`.
@@ -51,21 +53,22 @@ Domain: `toolwaly.com`
 | Semrush | `https://smrs.toolwaly.com` | 5141 | `smrs.gt4rents.com` |
 | Canva | `https://cnva.toolwaly.com` | 4501 | `cnva.gt4rents.com` |
 | Grammarly | `https://grammarly.toolwaly.com` | 4911 | `grammarly.gt4rents.com` |
+| Envato | `https://envt.toolwaly.com` | 5261 | `envt.gt4rents.com` |
 
-Panel website names: ToolWaly Ahrefs, ToolWaly Semrush, ToolWaly Canva, ToolWaly Grammarly.  
+Panel website names: ToolWaly Ahrefs, ToolWaly Semrush, ToolWaly Canva, ToolWaly Grammarly, ToolWaly Envato.  
 Har ek ka apna account hai. Cookie abhi khali hai. Product id placeholder `toolwaly` hai, access link se pehle asli aMember product id daalni hai.
 
-Telegram sirf ToolWaly ke destinations par jaata hai, aur sirf in char websites ke logout/spam events par. Destinations panel mein pehle se hon to panel API restart unhe route se jod deta hai. Abhi koi chat nahi hai to pehle chat add karo, phir panel API restart.
+Telegram sirf ToolWaly ke destinations par jaata hai, aur in ToolWaly websites ke logout/spam events par. Destinations panel mein pehle se hon to panel API restart unhe route se jod deta hai. Abhi koi chat nahi hai to pehle chat add karo, phir panel API restart.
 
-Agar ToolWaly reseller par gt4rents wali Semrush, Envato, ya ChatGPT website bhi assigned hai, use hata dena. Warna us login par woh shared rows bhi dikhengi.
+Agar ToolWaly reseller par gt4rents / upays wali Semrush, Envato, ya ChatGPT website bhi assigned hai, use hata dena. Warna us login par woh shared rows bhi dikhengi.
 
 ## Cloudflare (toolwaly.com)
-
-Ye char A records `65.109.16.196` par hain, DNS only: `refs`, `smrs`, `cnva`, `grammarly`. Grey cloud rehne do. SSL aaPanel ki alag site par Let's Encrypt se lagega.
+image.png
+A records `65.109.16.196` par hain, DNS only: `refs`, `smrs`, `cnva`, `grammarly`, `envt`. Grey cloud rehne do. SSL aaPanel ki alag site par Let's Encrypt se lagega.
 
 ## aaPanel
 
-`gt4rents.com` ki config mat badalna. Char alag sites banao.
+`gt4rents.com` ki config mat badalna. Alag sites banao.
 
 | Add site domain | Reverse proxy |
 |-----------------|---------------|
@@ -73,6 +76,7 @@ Ye char A records `65.109.16.196` par hain, DNS only: `refs`, `smrs`, `cnva`, `g
 | `smrs.toolwaly.com` | `http://127.0.0.1:5141` |
 | `cnva.toolwaly.com` | `http://127.0.0.1:4501` |
 | `grammarly.toolwaly.com` | `http://127.0.0.1:4911` |
+| `envt.toolwaly.com` | `http://127.0.0.1:5261` |
 
 Har site: PHP Static, phir upar wala `location /` block, phir SSL → Let's Encrypt.
 
@@ -90,6 +94,7 @@ added ToolWaly Ahrefs website … at refs.toolwaly.com
 added ToolWaly Semrush website … at smrs.toolwaly.com
 added ToolWaly Canva website … at cnva.toolwaly.com
 added ToolWaly Grammarly website … at grammarly.toolwaly.com
+added ToolWaly Envato website … at envt.toolwaly.com
 ```
 
 ```bash

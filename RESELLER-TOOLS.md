@@ -80,9 +80,10 @@ Baaki tools: same short subdomain as upays, e.g. Envato `https://envt.seogbtools
 | ToolWaly Semrush | `https://smrs.toolwaly.com` | 5141 | `smrs.upays.in` |
 | ToolWaly Canva | `https://cnva.toolwaly.com` | 4501 | `cnva.upays.in` |
 | ToolWaly Grammarly | `https://grammarly.toolwaly.com` | 4911 | `grmm.upays.in` |
+| ToolWaly Envato | `https://envt.toolwaly.com` | 5261 | `envt.upays.in` |
 
-DNS: grey A records for `refs`, `smrs`, `cnva`, `grammarly` → `65.109.16.196`.  
-Is reseller ko owner (`upays`/`gt4rents`) websites assign mat rakho — sirf in char rows.
+DNS: grey A records for `refs`, `smrs`, `cnva`, `grammarly`, `envt` → `65.109.16.196`.  
+Is reseller ko owner (`upays`/`gt4rents`) websites assign mat rakho — sirf in ToolWaly rows.
 
 ---
 

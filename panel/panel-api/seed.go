@@ -346,6 +346,7 @@ func ensureToolWalySites(db *sql.DB) {
 		{"Semrush", "ToolWaly Semrush", "smrs.toolwaly.com", "smrs.upays.in"},
 		{"Canva", "ToolWaly Canva", "cnva.toolwaly.com", "cnva.upays.in"},
 		{"Grammarly", "ToolWaly Grammarly", "grammarly.toolwaly.com", "grmm.upays.in"},
+		{"Envato", "ToolWaly Envato", "envt.toolwaly.com", "envt.upays.in"},
 	}
 	var opID int64
 	if db.QueryRow(`SELECT id FROM operators WHERE username=?`, "ToolWaly").Scan(&opID) != nil || opID <= 0 {
