@@ -1523,51 +1523,96 @@ func sellerAmpHomePath(cfg Config) string {
 	return "/sas/lookup"
 }
 
-// breakSellerAmpAuthLocation stops NextAuth/Yii login bounce loops after domain rewrite.
-func breakSellerAmpAuthLocation(loc, publicScheme, publicHost string, cfg Config) string {
+func isSellerAmpAuthLocation(loc string) bool {
 	lower := strings.ToLower(loc)
-	if !strings.Contains(lower, "/r/api/auth/session/sign-out") &&
-		!strings.Contains(lower, "/site/login") &&
-		!strings.Contains(lower, "/site/logout") {
+	return strings.Contains(lower, "/r/api/auth/session/sign-out") ||
+		strings.Contains(lower, "/r/api/auth/") ||
+		strings.Contains(lower, "/site/login") ||
+		strings.Contains(lower, "/site/logout")
+}
+
+// breakSellerAmpAuthLocation maps login/sign-out Locations to home.
+// Never bounce back to returnUrl — that caused ERR_TOO_MANY_REDIRECTS on
+// /sas/lookup?SasLookup[search_term]=… (login → lookup → login …).
+func breakSellerAmpAuthLocation(loc, publicScheme, publicHost string, cfg Config) string {
+	if !isSellerAmpAuthLocation(loc) {
 		return loc
 	}
-	fallback := fmt.Sprintf("%s://%s%s", publicScheme, publicHost, sellerAmpHomePath(cfg))
+	out := fmt.Sprintf("%s://%s%s", publicScheme, publicHost, sellerAmpHomePath(cfg))
+	log.Printf("[PROXY] broke auth redirect → %s (was %s)", out, clipLog(loc, 120))
+	return out
+}
+
+func clipLog(s string, n int) string {
+	if n < 1 || len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
+// sellerAmpSameResourceRedirect is true when Location points at the same path+query
+// we just requested (self-redirect loop after domain rewrite).
+func sellerAmpSameResourceRedirect(r *http.Request, loc, publicHost string) bool {
+	if r == nil || strings.TrimSpace(loc) == "" {
+		return false
+	}
 	u, err := url.Parse(loc)
 	if err != nil {
-		return fallback
+		return false
 	}
-	target := u.Query().Get("redirectTo")
-	if target == "" {
-		target = u.Query().Get("returnUrl")
-	}
-	if target == "" {
-		return fallback
-	}
-	decoded, err := url.QueryUnescape(target)
-	if err != nil {
-		decoded = target
-	}
-	pathOnly, rawQuery := decoded, ""
-	if tu, err := url.Parse(decoded); err == nil && (tu.Scheme != "" || strings.HasPrefix(decoded, "/")) {
-		if tu.Path != "" {
-			pathOnly = tu.Path
-			rawQuery = tu.RawQuery
-		} else if i := strings.Index(decoded, "?"); i >= 0 {
-			pathOnly, rawQuery = decoded[:i], decoded[i+1:]
+	if u.Host != "" {
+		host := strings.ToLower(panelHostOnly(u.Host))
+		ph := strings.ToLower(panelHostOnly(publicHost))
+		reqHost := strings.ToLower(panelHostOnly(r.Host))
+		if host != ph && host != reqHost && !strings.HasSuffix(host, "."+ph) {
+			return false
 		}
-	} else if i := strings.Index(decoded, "?"); i >= 0 {
-		pathOnly, rawQuery = decoded[:i], decoded[i+1:]
 	}
-	if !strings.HasPrefix(pathOnly, "/") {
-		return fallback
+	reqPath := normalizeSellerAmpPath(r.URL.Path)
+	locPath := normalizeSellerAmpPath(u.Path)
+	if reqPath != locPath {
+		return false
 	}
-	pathOnly = normalizeSellerAmpPath(pathOnly)
-	out := fmt.Sprintf("%s://%s%s", publicScheme, publicHost, pathOnly)
-	if rawQuery != "" {
-		out += "?" + rawQuery
+	return u.RawQuery == r.URL.RawQuery
+}
+
+func renderSellerAmpAuthRecovery(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken string, activeAcc ToolAccount, currentUser string) {
+	home := sellerAmpHomePath(cfg)
+	switched := false
+	nextName := ""
+	if usesPanelAccountMode(cfg) && sessionToken != "" {
+		if next, err := panelSwitchAccount(cfg, sessionToken, activeAcc.ID); err == nil {
+			switched = true
+			nextName = next.Name
+		}
+	} else if dbConnected && sessionToken != "" && activeAcc.ID > 0 {
+		if next, err := switchToNextAccount(sessionToken, activeAcc.ID, activeAcc.Name, currentUser, "selleramp_auth_redirect"); err == nil {
+			switched = true
+			nextName = next.Name
+		}
 	}
-	log.Printf("[PROXY] broke auth redirect → %s", out)
-	return out
+	if switched {
+		msg := "Account session expired. Switching accounts..."
+		if nextName != "" {
+			msg = "Account session expired. Switching to " + nextName + "..."
+		}
+		writeLightCard(w, http.StatusOK, lightCard{
+			Title:    "Switching account",
+			Heading:  "Switching account",
+			Message:  msg,
+			Badge:    "Trying another account",
+			Footer:   "This keeps trying until an account is available",
+			Spin:     true,
+			Redirect: home,
+		})
+		return
+	}
+	writeLightCard(w, http.StatusOK, lightCard{
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
+		Footer:  "Open this tool again from your access link",
+	})
 }
 
 // buildDomainReplacements creates a list of old→new domain pairs for HTML rewriting.
@@ -2423,6 +2468,30 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	contentType := upstreamResp.Header.Get("Content-Type")
 	// Build all domain pairs for location header rewriting (same as HTML body rewriting)
 	locationPairs := buildDomainReplacements(publicScheme, publicHost, cfg)
+
+	// Auth / self Location loops (common on /sas/lookup searches when cookie is dead).
+	if upstreamResp.StatusCode >= 300 && upstreamResp.StatusCode < 400 {
+		if rawLoc := strings.TrimSpace(upstreamResp.Header.Get("Location")); rawLoc != "" {
+			rewritten := rawLoc
+			for _, pair := range locationPairs {
+				rewritten = strings.ReplaceAll(rewritten, pair[0], pair[1])
+			}
+			if isSellerAmpAuthLocation(rawLoc) || isSellerAmpAuthLocation(rewritten) {
+				log.Printf("[PROXY] auth redirect intercepted path=%s status=%d loc=%s", path, upstreamResp.StatusCode, clipLog(rawLoc, 160))
+				_, _ = io.Copy(io.Discard, upstreamResp.Body)
+				renderSellerAmpAuthRecovery(w, r, cfg, sessionToken, activeAcc, currentUser)
+				return
+			}
+			broken := breakSellerAmpAuthLocation(rewritten, publicScheme, publicHost, cfg)
+			if sellerAmpSameResourceRedirect(r, broken, publicHost) || sellerAmpSameResourceRedirect(r, rewritten, publicHost) {
+				log.Printf("[PROXY] self redirect intercepted path=%s loc=%s", path, clipLog(rewritten, 160))
+				_, _ = io.Copy(io.Discard, upstreamResp.Body)
+				http.Redirect(w, r, sellerAmpHomePath(cfg), http.StatusFound)
+				return
+			}
+		}
+	}
+
 	for k, vv := range upstreamResp.Header {
 		kLower := strings.ToLower(k)
 		if kLower == "set-cookie" {

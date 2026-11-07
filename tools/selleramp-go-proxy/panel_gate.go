@@ -424,8 +424,45 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	return acc, nil
 }
 
-// panelSwitchAccount moves this session to the next active account.
+// panelSwitchAccount moves this session to the next active account (skip current).
 // failure_count goes up. status stays active so the account can be used again later.
+func panelSwitchAccount(cfg Config, sessionToken string, currentID int) (ToolAccount, error) {
+	panelPickMu.Lock()
+	defer panelPickMu.Unlock()
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	var websiteID int
+	err = db.QueryRow(`SELECT website_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&websiteID)
+	if err != nil || websiteID <= 0 {
+		return ToolAccount{}, fmt.Errorf("session")
+	}
+	if !panelWebsiteSameTool(db, cfg.PublicHost, websiteID) {
+		return ToolAccount{}, fmt.Errorf("session is for another website")
+	}
+	acc, err := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+		WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != '' AND a.id != ?
+		`+panelAccountOrder+` LIMIT 1`, websiteID, currentID))
+	if err != nil {
+		acc, err = scanPanelAccount(db.QueryRow(panelAccountSelect+`
+			WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+			`+panelAccountOrder+` LIMIT 1`, websiteID))
+	}
+	if err != nil {
+		return ToolAccount{}, err
+	}
+	if acc.ID == currentID {
+		return ToolAccount{}, fmt.Errorf("no other active account")
+	}
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=?, failure_count=failure_count+1 WHERE id=?`, now, currentID)
+	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
+	_, _ = db.Exec(`UPDATE live_sessions SET assigned_account_id=? WHERE session_token=?`, acc.ID, sessionToken)
+	log.Printf("[LB] panel switch session → '%s' (ID:%d) from id=%d", acc.Name, acc.ID, currentID)
+	return acc, nil
+}
+
 func scanPanelAccount(row *sql.Row) (ToolAccount, error) {
 	var acc ToolAccount
 	var showLimit int
