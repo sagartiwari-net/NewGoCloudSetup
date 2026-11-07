@@ -24,6 +24,7 @@ type panelGateSession struct {
 	expires     time.Time
 	fp          string
 	proof       string
+	proofAlt    string // extension iframe partitioned localStorage
 	tracked     bool
 	liveChecked time.Time
 	liveOK      bool
@@ -362,7 +363,7 @@ func claimPanelAccount(cfg Config, websiteID ...int) (ToolAccount, error) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = db.Exec(`UPDATE accounts SET last_used_at=? WHERE id=?`, now, acc.ID)
-	log.Printf("[LB] claimed account '%s' (ID:%d) for %s", acc.Name, acc.ID, cfg.PublicHost)
+	log.Printf("[LB] claimed account '%s' (ID:%d) for website_id=%d", acc.Name, acc.ID, wid)
 	return acc, nil
 }
 
@@ -395,6 +396,23 @@ func loadPanelSessionAccount(cfg Config, sessionToken string) (ToolAccount, erro
 	var assigned, websiteID int
 	err = db.QueryRow(`SELECT assigned_account_id, website_id FROM live_sessions WHERE session_token=? AND expires_at > ?`, sessionToken, now).Scan(&assigned, &websiteID)
 	if err != nil {
+		// Memory session can outlive a raced live_sessions delete (device bind).
+		if raw, ok := panelSess.Load(sessionToken); ok {
+			sess := raw.(*panelGateSession)
+			sess.mu.Lock()
+			wid := sess.websiteID
+			alive := time.Now().Before(sess.expires)
+			sess.mu.Unlock()
+			if alive && wid > 0 {
+				acc, accErr := scanPanelAccount(db.QueryRow(panelAccountSelect+`
+					WHERE a.website_id = ? AND a.status = 'active' AND a.cookie != ''
+					`+panelAccountOrder+` LIMIT 1`, wid))
+				if accErr == nil {
+					log.Printf("[LB] memory-fallback account '%s' (ID:%d) wid=%d", acc.Name, acc.ID, wid)
+					return acc, nil
+				}
+			}
+		}
 		return ToolAccount{}, err
 	}
 	if !panelWebsiteSameTool(db, cfg.PublicHost, websiteID) {

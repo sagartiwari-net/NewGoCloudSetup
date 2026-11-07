@@ -161,9 +161,14 @@ func TestBindPanelDeviceRejectsCookieShare(t *testing.T) {
 	if !errors.Is(err, errDeviceCookieShare) {
 		t.Fatalf("want cookie_share, got %v", err)
 	}
-	err = bindPanelDevice(token, "fp", "other-proof")
+	// First alternate proof = extension iframe partition (accepted).
+	if err := bindPanelDevice(token, "fp", "other-proof"); err != nil {
+		t.Fatalf("first alt proof should bind, got %v", err)
+	}
+	// Third distinct proof = real cookie share.
+	err = bindPanelDevice(token, "fp", "third-proof")
 	if !errors.Is(err, errDeviceCookieShare) {
-		t.Fatalf("want cookie_share on mismatch, got %v", err)
+		t.Fatalf("want cookie_share on third proof, got %v", err)
 	}
 }
 

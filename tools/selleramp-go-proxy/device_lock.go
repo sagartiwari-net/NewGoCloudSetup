@@ -336,11 +336,18 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		return nil
 	}
 	// Proof is the stable device secret. Canvas FP can change between reloads/tabs.
-	if sess.proof != proof {
-		return errDeviceCookieShare
+	if sess.proof == proof || sess.proofAlt == proof {
+		sess.fp = fp
+		return nil
 	}
-	sess.fp = fp
-	return nil
+	// Chrome partitions localStorage for extension iframes → a second legitimate
+	// proof. Accept one alt; a third distinct proof is treated as cookie share.
+	if sess.proofAlt == "" {
+		sess.proofAlt = proof
+		log.Printf("[DEVICE] alt proof stored (extension partition) user=%s", sess.username)
+		return nil
+	}
+	return errDeviceCookieShare
 }
 
 // deviceHeaderMatches: XHR setRequestHeader appends, so the page script and the
@@ -422,14 +429,15 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	proof := strings.TrimSpace(r.Header.Get("X-Device-Proof"))
 	sess.mu.Lock()
 	bound := sess.proof != ""
-	storedFp, storedProof := sess.fp, sess.proof
+	storedFp, storedProof, storedAlt := sess.fp, sess.proof, sess.proofAlt
 	username := sess.username
 	sess.mu.Unlock()
 	if !bound {
 		return false
 	}
 	// Proof match is enough — canvas FP often changes between tabs/reloads.
-	if proof != "" && proof != "missing" && proof == storedProof {
+	// Alt proof covers the Chrome extension iframe storage partition.
+	if proof != "" && proof != "missing" && (proof == storedProof || proof == storedAlt) {
 		if fp != "" && fp != "missing" && fp != storedFp {
 			sess.mu.Lock()
 			sess.fp = fp
@@ -570,14 +578,25 @@ func deviceBindHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"error":"no_session","message":"Open this tool again from your access link."}`)
 		return
 	}
-	err := bindPanelDevice(token, strings.TrimSpace(r.Header.Get("X-Device-Fp")), strings.TrimSpace(r.Header.Get("X-Device-Proof")))
+	fp := strings.TrimSpace(r.Header.Get("X-Device-Fp"))
+	proof := strings.TrimSpace(r.Header.Get("X-Device-Proof"))
+	err := bindPanelDevice(token, fp, proof)
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		log.Printf("[DEVICE] bind failed: %v", err)
 		if errors.Is(err, errDeviceCookieShare) {
-			recordCookieShare(cfg, r, token)
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, `{"error":"cookie_share","message":"Open this tool again from your access link."}`)
+			// Only the Access Denied page reports proof=missing on purpose.
+			// A second real proof is usually the extension iframe partition —
+			// killing the session there signs out the main tab too.
+			if fp == "missing" || proof == "missing" {
+				recordCookieShare(cfg, r, token)
+				w.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprintf(w, `{"error":"cookie_share","message":"Open this tool again from your access link."}`)
+				return
+			}
+			log.Printf("[DEVICE] proof conflict without kill (not missing) path=%s", r.URL.Path)
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, `{"status":"ok","note":"proof_conflict_ignored"}`)
 			return
 		}
 		w.WriteHeader(http.StatusForbidden)
