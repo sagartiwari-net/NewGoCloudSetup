@@ -1627,6 +1627,11 @@ func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]s
 		[2]string{"http://selleramp.com/extension", publicBase + "/ext-install"},
 		[2]string{"https://www.selleramp.com/extension", publicBase + "/ext-install"},
 		[2]string{"http://www.selleramp.com/extension", publicBase + "/ext-install"},
+		[2]string{publicBase + "/extension", publicBase + "/ext-install"},
+		[2]string{"/extension\"", "/ext-install\""},
+		[2]string{"/extension'", "/ext-install'"},
+		[2]string{`href="/extension"`, `href="/ext-install"`},
+		[2]string{`href='/extension'`, `href='/ext-install'`},
 	)
 	if targetParsed != nil {
 		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})
@@ -2074,6 +2079,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Banner "install extension" links to /extension — serve our host-bound installer.
+	if path == "/extension" || path == "/extension/" {
+		http.Redirect(w, r, "/ext-install", http.StatusFound)
+		return
+	}
+
 	// ── 0. Skip proxy for admin API routes ──────────────────────────────────────
 	if strings.HasPrefix(path, "/api/auth-handshake") ||
 		strings.HasPrefix(path, "/api/device-bind") ||
@@ -2082,6 +2093,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		strings.HasPrefix(path, "/api/rotate-session") ||
 		strings.HasPrefix(path, "/access") ||
 		path == "/ext-install" ||
+		path == "/extension" ||
+		path == "/extension/" ||
 		path == "/extension.zip" ||
 		path == "/__logs" ||
 		path == "/__logs.json" ||

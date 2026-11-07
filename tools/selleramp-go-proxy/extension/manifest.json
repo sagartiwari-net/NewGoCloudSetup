@@ -79,6 +79,12 @@
       "*://*.sellertoolkit.co.uk/*",
       "*://app.wamp.com/*",
       "*://uat.wamp.com/*",
+      "*://*.upays.in/*",
+      "*://*.gt4rents.com/*",
+      "*://*.seogbtools.com/*",
+      "*://*.toolwaly.com/*",
+      "*://*.amzpremiumsoftware.com/*",
+      "*://*.t4toolz.com/*",
       "__SAS_PROXY_MATCH__"
     ]
   },

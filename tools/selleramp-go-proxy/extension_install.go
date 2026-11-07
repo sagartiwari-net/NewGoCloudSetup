@@ -16,24 +16,31 @@ import (
 const extensionTemplateDir = "extension"
 
 // publicOriginFromRequest resolves the public origin/host this extension should
-// talk to. Prefers config.json public_host/scheme, falls back to request host.
+// talk to. Prefer the request Host (reseller tenant) over config public_host —
+// otherwise seller.amzpremiumsoftware.com downloads a zip baked for sllr.upays.in
+// and chrome.runtime messaging never connects (banner stays forever).
 func publicOriginFromRequest(r *http.Request, cfg Config) (origin, host string) {
-	host = strings.TrimSpace(cfg.PublicHost)
+	host = tenantPublicHost(r, cfg)
 	if host == "" {
+		host = strings.TrimSpace(cfg.PublicHost)
+	}
+	if host == "" && r != nil {
 		host = r.Host
 		if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {
 			host = strings.TrimSpace(strings.Split(fwd, ",")[0])
 		}
 	}
+	host = panelHostOnly(host)
 	scheme := strings.TrimSpace(cfg.PublicScheme)
 	if scheme == "" {
 		scheme = "https"
-		if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+	}
+	if r != nil {
+		if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil {
+			scheme = "https"
+		} else if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "http") {
 			scheme = "http"
 		}
-	}
-	if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-		scheme = "https"
 	}
 	origin = scheme + "://" + host
 	return origin, host
@@ -101,10 +108,12 @@ func bakeExtensionBytes(origin, host string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func extensionInstallPageHandler(w http.ResponseWriter, _ *http.Request) {
+func extensionInstallPageHandler(w http.ResponseWriter, r *http.Request) {
+	cfg := loadConfig()
+	origin, host := publicOriginFromRequest(r, cfg)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	fmt.Fprint(w, `<!doctype html>
+	fmt.Fprintf(w, `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -112,27 +121,30 @@ func extensionInstallPageHandler(w http.ResponseWriter, _ *http.Request) {
 <title>Install SellerAmp SAS Extension</title>
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f5f6f8;color:#20242a;font-family:Arial,sans-serif}
-.card{width:100%;max-width:560px;padding:34px;background:#fff;border-radius:18px;box-shadow:0 16px 45px rgba(0,0,0,.09)}
+.card{width:100%%;max-width:560px;padding:34px;background:#fff;border-radius:18px;box-shadow:0 16px 45px rgba(0,0,0,.09)}
 .brand{color:#ef7622;font-size:14px;font-weight:700;margin-bottom:10px}h1{margin:0 0 10px;font-size:27px}.lead{color:#626b76;line-height:1.55}
 .btn{display:block;margin:24px 0;padding:14px 20px;border-radius:10px;background:#ef7622;color:#fff;text-align:center;text-decoration:none;font-weight:700}.btn:hover{background:#d96010}
 h2{font-size:15px;margin:24px 0 10px}ol{padding-left:22px;color:#626b76;line-height:1.75}code{padding:2px 6px;border-radius:5px;background:#eef0f3;color:#303740}
-.note{font-size:12px;color:#8a929c;line-height:1.5}
+.note{font-size:12px;color:#8a929c;line-height:1.5}.host{margin:12px 0;padding:10px 12px;border-radius:8px;background:#fff7f0;color:#9a4b0f;font-size:13px;word-break:break-all}
 </style>
 </head>
 <body><main class="card">
 <div class="brand">SellerAmp SAS</div>
 <h1>Install Chrome Extension</h1>
-<p class="lead">Download the SellerAmp SAS extension and install it in Chrome.</p>
+<p class="lead">Download the SellerAmp SAS extension and install it in Chrome. Use this package only on this site.</p>
+<div class="host">Bound to: <strong>%s</strong></div>
 <a class="btn" href="/extension.zip">Download Extension (.zip)</a>
 <h2>Installation steps</h2>
 <ol>
+<li>Remove any older SellerAmp / SAS unpacked extension first.</li>
 <li>Download and unzip the file.</li>
 <li>Open <code>chrome://extensions</code> in Chrome.</li>
 <li>Enable <strong>Developer mode</strong>.</li>
 <li>Click <strong>Load unpacked</strong> and select the unzipped folder.</li>
+<li>Reload <code>%s</code> and allow the extension if Chrome asks.</li>
 </ol>
-<p class="note">Chrome requires manually loading custom extensions through Developer mode.</p>
-</main></body></html>`)
+<p class="note">Do not install the Chrome Web Store copy — it will not talk to this proxy. Chrome requires Developer mode + Load unpacked.</p>
+</main></body></html>`, origin, host)
 }
 
 func extensionZipHandler(w http.ResponseWriter, r *http.Request) {
