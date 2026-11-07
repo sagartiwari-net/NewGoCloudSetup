@@ -568,6 +568,7 @@ func writeLightCard(w http.ResponseWriter, status int, card lightCard) {
 	}
 	redirect += card.ExtraScript
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	allowExtensionFraming(w)
 	w.WriteHeader(status)
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html lang="en">

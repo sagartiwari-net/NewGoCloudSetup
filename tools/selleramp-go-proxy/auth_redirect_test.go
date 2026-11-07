@@ -11,6 +11,7 @@ func TestIsSellerAmpAuthLocation(t *testing.T) {
 		"https://sas.selleramp.com/site/login?returnUrl=%2Fsas%2Flookup": true,
 		"/site/logout": true,
 		"https://sas.selleramp.com/r/api/auth/session/sign-out?redirectTo=/sas/lookup": true,
+		"https://sas.selleramp.com/r/api/auth/session":                                 false,
 		"https://sas.selleramp.com/sas/lookup?SasLookup%5Bsearch_term%5D=x":           false,
 		"/sas/lookup": false,
 	}

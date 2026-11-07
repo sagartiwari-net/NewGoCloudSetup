@@ -1525,10 +1525,18 @@ func sellerAmpHomePath(cfg Config) string {
 
 func isSellerAmpAuthLocation(loc string) bool {
 	lower := strings.ToLower(loc)
+	// Do NOT match every /r/api/auth/* — NextAuth session checks are normal.
 	return strings.Contains(lower, "/r/api/auth/session/sign-out") ||
-		strings.Contains(lower, "/r/api/auth/") ||
 		strings.Contains(lower, "/site/login") ||
 		strings.Contains(lower, "/site/logout")
+}
+
+// allowExtensionFraming lets the SAS Chrome extension iframe load this host.
+// Middleware used to set X-Frame-Options: SAMEORIGIN which Chrome shows as
+// "seller… refused to connect" inside the extension panel.
+func allowExtensionFraming(w http.ResponseWriter) {
+	w.Header().Del("X-Frame-Options")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'self' chrome-extension: *")
 }
 
 // breakSellerAmpAuthLocation maps login/sign-out Locations to home.
@@ -2516,13 +2524,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				renderSellerAmpAuthRecovery(w, r, cfg, sessionToken, activeAcc, currentUser)
 				return
 			}
-			broken := breakSellerAmpAuthLocation(rewritten, publicScheme, publicHost, cfg)
-			if sellerAmpSameResourceRedirect(r, broken, publicHost) || sellerAmpSameResourceRedirect(r, rewritten, publicHost) {
-				log.Printf("[PROXY] self redirect intercepted path=%s loc=%s", path, clipLog(rewritten, 160))
-				_, _ = io.Copy(io.Discard, upstreamResp.Body)
-				http.Redirect(w, r, sellerAmpHomePath(cfg), http.StatusFound)
-				return
-			}
+			_ = breakSellerAmpAuthLocation(rewritten, publicScheme, publicHost, cfg)
+			// Do not bounce same-path redirects to home — that made searches look like
+			// a no-op. Auth loops are handled above; PRG/search Locations pass through.
 		}
 	}
 
@@ -2607,10 +2611,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		pairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 		bodyBytes = rewriteBody(bodyBytes, pairs)
 
-		// Remove CSP header (prevents our injected scripts)
+		// Strip upstream CSP/XFO then re-allow extension framing.
 		w.Header().Del("Content-Security-Policy")
 		w.Header().Del("Content-Security-Policy-Report-Only")
-		w.Header().Del("X-Frame-Options")
+		allowExtensionFraming(w)
 		// Skip full devicePageScript (visibility:hidden + deny races). Inject a light
 		// session keepalive instead: cookie jar often keeps a dead ct_session, so every
 		// same-origin navigation/fetch must carry ?__tm_s= / X-Ct-Session from sessionStorage.
@@ -2740,11 +2744,11 @@ func main() {
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 			return
 		}
-		// Security headers
+		// Security headers — never SAMEORIGIN; extension iframe needs to embed this host.
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		allowExtensionFraming(w)
 		mux.ServeHTTP(w, r)
 	})
 
