@@ -2315,8 +2315,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if authErr != nil && !isStatic {
 		// NextAuth poll should get JSON null, not Access Denied HTML (that page can
 		// report cookie_share=missing and wipe the real tab session).
-		if path == "/r/api/auth/session" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		if path == "/r/api/auth/session" {
 			writeSellerAmpNextAuthSession(w, "")
+			return
+		}
+		if path == "/r/api/auth/csrf" {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			fmt.Fprintf(w, `{"csrfToken":"tm-proxy-csrf"}`)
 			return
 		}
 		cands := ctSessionCandidates(r)
@@ -2363,8 +2368,20 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// NextAuth session check — serve synthetic JSON (do not proxy / block).
-	if path == "/r/api/auth/session" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+	if path == "/r/api/auth/session" && (r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodPost) {
 		writeSellerAmpNextAuthSession(w, currentUser)
+		return
+	}
+	if path == "/r/api/auth/csrf" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		fmt.Fprintf(w, `{"csrfToken":"tm-proxy-csrf"}`)
+		return
+	}
+	if (path == "/r/api/auth/signout" || path == "/r/api/auth/session/sign-out") && (r.Method == http.MethodPost || r.Method == http.MethodGet) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"url":"/"}`))
 		return
 	}
 

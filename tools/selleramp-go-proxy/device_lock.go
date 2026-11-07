@@ -340,14 +340,13 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 		sess.fp = fp
 		return nil
 	}
-	// Chrome partitions localStorage for extension iframes → a second legitimate
-	// proof. Accept one alt; a third distinct proof is treated as cookie share.
-	if sess.proofAlt == "" {
-		sess.proofAlt = proof
-		log.Printf("[DEVICE] alt proof stored (extension partition) user=%s", sess.username)
-		return nil
-	}
-	return errDeviceCookieShare
+	// Chrome partitions localStorage per embed context (tab, extension panel,
+	// Amazon side-panel iframe). Rotate alt instead of cookie_share — a third
+	// partition was signing everyone out when opening Amazon.
+	sess.proofAlt = proof
+	sess.fp = fp
+	log.Printf("[DEVICE] alt proof rotated (partition) user=%s", sess.username)
+	return nil
 }
 
 // deviceHeaderMatches: XHR setRequestHeader appends, so the page script and the
@@ -411,17 +410,27 @@ func isChromeExtensionRequest(r *http.Request) bool {
 	return false
 }
 
-// rejectPanelDevice blocks a copied cookie jar. Bound sessions must present the
-// device proof on API/XHR; document HTML is allowed once so the keepalive script
-// can verify localStorage and report cookie_share if proof is missing.
+// rejectPanelDevice soft-checks device proof on API/XHR.
+// IMPORTANT: never call recordCookieShare here — Amazon + extension iframes each
+// get a partitioned localStorage proof; killing on mismatch signed out every tab.
+// Session kill stays only on /api/device-bind with proof=missing (stolen reporter).
 func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool {
 	if !usesPanelAccountMode(cfg) {
 		return false
 	}
-	if isStaticAssetPath(r.URL.Path) {
+	path := r.URL.Path
+	if isStaticAssetPath(path) {
+		return false
+	}
+	// Telemetry / NextAuth noise — never block or kill.
+	if strings.HasPrefix(path, "/r/api/monitoring") ||
+		path == "/r/api/auth/session" ||
+		path == "/r/api/auth/csrf" ||
+		path == "/__tm_shrink" {
 		return false
 	}
 	token, sess, ok := sessionFromRequest(r)
+	_ = token
 	if !ok || sess == nil {
 		return false
 	}
@@ -435,9 +444,11 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 	if !bound {
 		return false
 	}
-	// Proof match is enough — canvas FP often changes between tabs/reloads.
-	// Alt proof covers the Chrome extension iframe storage partition.
-	if proof != "" && proof != "missing" && (proof == storedProof || proof == storedAlt) {
+	if browserSubresource(r) || isDocumentNavigation(r) {
+		return false
+	}
+	// Known proof (tab or any recent partition) — allow.
+	if proof != "" && proof != "missing" && (proof == storedProof || proof == storedAlt || deviceHeaderMatches(proof, storedProof) || deviceHeaderMatches(proof, storedAlt)) {
 		if fp != "" && fp != "missing" && fp != storedFp {
 			sess.mu.Lock()
 			sess.fp = fp
@@ -445,48 +456,25 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		}
 		return false
 	}
-	if browserSubresource(r) {
+	// New non-empty proof from Amazon/extension partition — adopt as alt, allow.
+	if proof != "" && proof != "missing" {
+		sess.mu.Lock()
+		sess.proofAlt = proof
+		if fp != "" && fp != "missing" {
+			sess.fp = fp
+		}
+		sess.mu.Unlock()
+		log.Printf("[DEVICE] adopted partition proof on %s user=%s (no kill)", path, username)
 		return false
 	}
-	if fp == "" && proof == "" {
-		// Document navigation cannot send custom headers — HTML + keepalive script
-		// verifies localStorage. API/XHR without proof = cookie copy / foreign profile.
-		if isDocumentNavigation(r) {
-			return false
-		}
-		if isChromeExtensionRequest(r) {
-			log.Printf("[DEVICE] extension soft-deny (no kill) path=%s user=%s", r.URL.Path, username)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-			return true
-		}
-		log.Printf("[DEVICE] required path=%s user=%s", r.URL.Path, username)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
-		return true
-	}
-	if isChromeExtensionRequest(r) {
-		// Wrong/missing proof from extension must not sign out the browser tab.
-		log.Printf("[DEVICE] extension proof mismatch soft-deny (no kill) path=%s user=%s", r.URL.Path, username)
-		if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
-			renderAccessDeniedPage(w, cfg)
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
-		}
-		return true
-	}
-	recordCookieShare(cfg, r, token)
-	log.Printf("[DEVICE] session killed user=%s missing=%v", username, proof == "" || proof == "missing")
-	if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
+	// Missing proof on API: soft-deny this request only — keep session alive.
+	log.Printf("[DEVICE] soft-deny (no kill) path=%s user=%s ext=%v", path, username, isChromeExtensionRequest(r))
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
 		renderAccessDeniedPage(w, cfg)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
+		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
 	}
 	return true
 }
