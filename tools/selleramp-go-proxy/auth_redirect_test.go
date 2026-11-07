@@ -90,3 +90,34 @@ func TestResolveSellerAmpFollowURLMapsPublicHost(t *testing.T) {
 		t.Fatalf("path=%q", next.Path)
 	}
 }
+
+func TestResolveSellerAmpFollowURLKeepsNextSASPath(t *testing.T) {
+	target, err := url.Parse("https://sas.selleramp.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur := *target
+	cur.Path = "/sas/lookup"
+	next, err := resolveSellerAmpFollowURL(cur, "https://sas.selleramp.com/r/sas/lookup?SasLookup%5Bsearch_term%5D=tempered", "sllr.upays.in", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Path != "/r/sas/lookup" {
+		t.Fatalf("path=%q want /r/sas/lookup (must not normalize back to /sas)", next.Path)
+	}
+}
+
+func TestSellerAmpUpstreamPathPrefersNextLookup(t *testing.T) {
+	cases := map[string]string{
+		"/sas/lookup":           "/r/sas/lookup",
+		"/sas/history":          "/r/sas/history",
+		"/r/sas/lookup":         "/r/sas/lookup",
+		"/site/login":           "/site/login",
+		"/sas":                  "/r/sas/lookup",
+	}
+	for in, want := range cases {
+		if got := sellerAmpUpstreamPath(in); got != want {
+			t.Fatalf("sellerAmpUpstreamPath(%q)=%q want %q", in, got, want)
+		}
+	}
+}

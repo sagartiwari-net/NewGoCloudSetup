@@ -1504,8 +1504,7 @@ var httpClient = buildChromeHTTPClient()
 
 // ── URL REWRITING HELPERS ─────────────────────────────────────────────────────
 
-// normalizeSellerAmpPath maps Next.js /r/sas/* onto Yii /sas/* so premium cookies work.
-// /r/sas/lookup without NextAuth 307s → sign-out → site/login → returnUrl → infinite loop.
+// normalizeSellerAmpPath collapses Next.js /r/sas/* onto Yii /sas/* for comparison only.
 func normalizeSellerAmpPath(path string) string {
 	if path == "/r/sas" {
 		return "/sas"
@@ -1514,6 +1513,24 @@ func normalizeSellerAmpPath(path string) string {
 		return "/sas/" + strings.TrimPrefix(path, "/r/sas/")
 	}
 	return path
+}
+
+// sellerAmpUpstreamPath picks the path SellerAmp serves today.
+// Yii /sas/lookup 302s to Next /r/sas/lookup with Set-Cookie; if we request /sas
+// (or normalize /r→/sas on follow) we bounce forever and show Temporarily Unavailable.
+func sellerAmpUpstreamPath(path string) string {
+	switch {
+	case path == "/r/sas" || strings.HasPrefix(path, "/r/sas/"):
+		return path
+	case path == "/sas/lookup" || strings.HasPrefix(path, "/sas/lookup/"):
+		return "/r/sas/lookup" + strings.TrimPrefix(path, "/sas/lookup")
+	case path == "/sas/history" || strings.HasPrefix(path, "/sas/history/"):
+		return "/r/sas/history" + strings.TrimPrefix(path, "/sas/history")
+	case path == "/sas" || path == "/sas/":
+		return "/r/sas/lookup"
+	default:
+		return path
+	}
 }
 
 func sellerAmpHomePath(cfg Config) string {
@@ -1708,7 +1725,7 @@ func resolveSellerAmpFollowURL(current url.URL, loc, publicHost string, target *
 		next.Scheme = target.Scheme
 		next.Host = target.Host
 	}
-	next.Path = normalizeSellerAmpPath(next.Path)
+	// Keep /r/sas/* as-is — normalizing back to /sas recreates the lookup bounce loop.
 	return next, nil
 }
 
@@ -2217,16 +2234,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := loadConfig()
 	path := r.URL.Path
 
-	// Canonicalize /r/sas/* → /sas/* in the browser (breaks NextAuth redirect loops)
-	if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
-		(path == "/r/sas" || strings.HasPrefix(path, "/r/sas/")) {
-		dest := normalizeSellerAmpPath(path)
-		if r.URL.RawQuery != "" {
-			dest += "?" + r.URL.RawQuery
-		}
-		http.Redirect(w, r, dest, http.StatusFound)
-		return
-	}
+	// Do NOT redirect /r/sas/* → /sas/* anymore. SellerAmp now 302s Yii
+	// /sas/lookup → Next /r/sas/lookup; collapsing those paths caused search loops.
 
 	// Banner "install extension" links to /extension — serve our host-bound installer.
 	if path == "/extension" || path == "/extension/" {
@@ -2452,7 +2461,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamURL := *r.URL
 	upstreamURL.Scheme = targetParsed.Scheme
 	upstreamURL.Host = targetParsed.Host
-	upstreamURL.Path = normalizeSellerAmpPath(path)
+	upstreamURL.Path = sellerAmpUpstreamPath(path)
 	// Never leak panel bootstrap token to SellerAmp.
 	if q := upstreamURL.Query(); q.Has("__tm_s") {
 		q.Del("__tm_s")
@@ -2689,10 +2698,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[PROXY] redirect resolve failed path=%s loc=%s: %v", path, clipLog(rawLoc, 120), resolveErr)
 			break
 		}
-		followKey := normalizeSellerAmpPath(nextURL.Path) + "?" + nextURL.RawQuery
-		sameHop := followKey == normalizeSellerAmpPath(currentUpstreamURL.Path)+"?"+currentUpstreamURL.RawQuery
+		followKey := nextURL.Path + "?" + nextURL.RawQuery
+		sameHop := followKey == currentUpstreamURL.Path+"?"+currentUpstreamURL.RawQuery
 		// Same URL with no new cookies cannot progress. Revisit without cookie
 		// change means +/%20 oscillation or a hard upstream loop.
+		// Note: /sas/lookup → /r/sas/lookup is a real hop (different keys).
 		if (sameHop && !changed) || (seenFollow[followKey] && !changed) {
 			log.Printf("[PROXY] self-path redirect exhausted path=%s loc=%s setcookie=%d", path, clipLog(rawLoc, 160), len(setCookies))
 			_, _ = io.Copy(io.Discard, upstreamResp.Body)
