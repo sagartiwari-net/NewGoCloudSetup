@@ -107,6 +107,22 @@ func TestResolveSellerAmpFollowURLKeepsNextSASPath(t *testing.T) {
 	}
 }
 
+func TestIsBlockedPathAllowsNextAuthSessionPoll(t *testing.T) {
+	cfg := Config{
+		BlockedPaths:     []string{"/r/api/auth/session/sign-out"},
+		BlockedPrefixes:  []string{"/r/api/auth/session", "/r/account"},
+	}
+	if isBlockedPath("/r/api/auth/session", cfg) {
+		t.Fatal("/r/api/auth/session must not be blocked")
+	}
+	if !isBlockedPath("/r/api/auth/session/sign-out", cfg) {
+		t.Fatal("sign-out should stay blocked")
+	}
+	if !isBlockedPath("/r/account", cfg) {
+		t.Fatal("/r/account should stay blocked")
+	}
+}
+
 func TestSellerAmpUpstreamPathPrefersNextLookup(t *testing.T) {
 	cases := map[string]string{
 		"/sas/lookup":           "/r/sas/lookup",

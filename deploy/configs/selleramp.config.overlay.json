@@ -18,13 +18,14 @@
     "/integrations/index",
     "/site/logout",
     "/site/login",
-    "/r/api/auth/session/sign-out"
+    "/r/api/auth/session/sign-out",
+    "/r/api/auth/signin",
+    "/api/auth/signin"
   ],
   "blocked_prefixes": [
     "/r/account",
     "/r/settings",
-    "/r/user-management",
-    "/r/api/auth/session"
+    "/r/user-management"
   ],
   "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
 }

@@ -438,6 +438,12 @@ func isBlockedPath(path string, cfg Config) bool {
 		path = path[:idx]
 	}
 	path = strings.TrimSuffix(path, "/")
+	// NextAuth session poll must stay open. Blocking "/r/api/auth/session" (prefix)
+	// broke Amazon extension product panels ("Error undefined") and cascaded into
+	// Access Denied / cookie_share kills on refresh.
+	if path == "/r/api/auth/session" {
+		return false
+	}
 	for _, p := range cfg.BlockedPaths {
 		if path == p {
 			return true
@@ -449,6 +455,21 @@ func isBlockedPath(path string, cfg Config) bool {
 		}
 	}
 	return false
+}
+
+// writeSellerAmpNextAuthSession answers Next.js /r/api/auth/session without
+// hitting upstream NextAuth (premium cookies are Yii-era; NextAuth would 401).
+func writeSellerAmpNextAuthSession(w http.ResponseWriter, username string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if strings.TrimSpace(username) == "" || username == "guest_static" {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("null"))
+		return
+	}
+	exp := time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339)
+	name, _ := json.Marshal(username)
+	fmt.Fprintf(w, `{"user":{"name":%s,"email":%s},"expires":%q}`, name, name, exp)
 }
 
 func startDailyResetCron() {
@@ -2292,6 +2313,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if authErr != nil && !isStatic {
+		// NextAuth poll should get JSON null, not Access Denied HTML (that page can
+		// report cookie_share=missing and wipe the real tab session).
+		if path == "/r/api/auth/session" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			writeSellerAmpNextAuthSession(w, "")
+			return
+		}
 		cands := ctSessionCandidates(r)
 		hasCt := len(cands) > 0
 		tokPrefix := ""
@@ -2333,6 +2360,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if isStatic && authErr != nil {
 		// CSS/JS/images arrive without ?__tm_s=; cookie jar often dropped ct_session.
 		currentUser = "guest_static"
+	}
+
+	// NextAuth session check — serve synthetic JSON (do not proxy / block).
+	if path == "/r/api/auth/session" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		writeSellerAmpNextAuthSession(w, currentUser)
+		return
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
