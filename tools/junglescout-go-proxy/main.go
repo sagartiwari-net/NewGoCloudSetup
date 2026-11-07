@@ -2160,10 +2160,17 @@ func pickHTTPClient(cfg Config, path string) *http.Client {
 // ── URL REWRITING HELPERS ─────────────────────────────────────────────────────
 
 // buildDomainReplacements creates a list of old→new domain pairs for HTML rewriting.
-func buildDomainReplacements(cfg Config) [][2]string {
+// publicHost must be the request tenant host (owner or reseller), not only cfg.PublicHost.
+func buildDomainReplacements(publicScheme, publicHost string, cfg Config) [][2]string {
+	if publicScheme == "" {
+		publicScheme = cfg.PublicScheme
+	}
+	if publicHost == "" {
+		publicHost = cfg.PublicHost
+	}
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
-	publicBase := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
+	publicBase := fmt.Sprintf("%s://%s", publicScheme, publicHost)
 	var pairs [][2]string
 	// Extension install — never send users to Chrome Web Store / official extension pages.
 	pairs = append(pairs,
@@ -2204,6 +2211,17 @@ func buildDomainReplacements(cfg Config) [][2]string {
 		}
 		pairs = append(pairs, [2]string{"https://" + alias, publicBase})
 		pairs = append(pairs, [2]string{"http://" + alias, publicBase})
+	}
+	// Remap owner public_host → this tenant so reseller pages never keep jngl.upays.in links.
+	ownerHost := panelHostOnly(cfg.PublicHost)
+	tenantHost := panelHostOnly(publicHost)
+	if ownerHost != "" && tenantHost != "" && !strings.EqualFold(ownerHost, tenantHost) {
+		ownerScheme := publicScheme
+		if cfg.PublicScheme != "" {
+			ownerScheme = cfg.PublicScheme
+		}
+		ownerBase := fmt.Sprintf("%s://%s", ownerScheme, ownerHost)
+		pairs = append(pairs, [2]string{ownerBase, publicBase})
 	}
 	return pairs
 }
@@ -2414,18 +2432,21 @@ func redirectRouteScript() string {
 	return `<script>(function(){try{var p=new URLSearchParams(location.search);var r=p.get('redirectRoute');if(r&&r.charAt(0)==='/'){var hash='#'+r;history.replaceState(null,'',hash);if(!location.hash)location.hash=r;}}catch(e){}})();</script>`
 }
 
-func hostnameSpoofInner(cfg Config) string {
+func hostnameSpoofInner(cfg Config, proxyHostname string) string {
 	// Spoof hostname/host (not href/origin) so embeds like Wistia Academy
 	// treat the page as members.junglescout.com. patchUrl must rewrite any
 	// absolute members/api URLs the SPA builds back onto the proxy origin.
-	proxyHostname := cfg.PublicHost
+	if proxyHostname == "" {
+		proxyHostname = cfg.PublicHost
+	}
 	port := strings.TrimSpace(cfg.Port)
-	if host, p, err := net.SplitHostPort(cfg.PublicHost); err == nil {
+	if host, p, err := net.SplitHostPort(proxyHostname); err == nil {
 		proxyHostname = host
 		if p != "" {
 			port = p
 		}
 	}
+	ownerHostname := panelHostOnly(cfg.PublicHost)
 	low := strings.ToLower(proxyHostname)
 	if strings.Contains(low, "junglescout.com") {
 		return ""
@@ -2443,11 +2464,15 @@ func hostnameSpoofInner(cfg Config) string {
         var FAKE_NAME = %q;
         var FAKE_HOST = %q;
         var PROXY_NAME = %q;
+        var OWNER_NAME = %q;
         function isLocalDevHost(h) {
             if (!h) return false;
             h = String(h).toLowerCase();
-            return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === PROXY_NAME.toLowerCase() ||
-              h.indexOf('127.0.0.1:') === 0 || h.indexOf('localhost:') === 0 || h.indexOf(PROXY_NAME.toLowerCase()+':') === 0;
+            return h === '127.0.0.1' || h === 'localhost' || h === '::1' ||
+              h === PROXY_NAME.toLowerCase() || h === OWNER_NAME.toLowerCase() ||
+              h.indexOf('127.0.0.1:') === 0 || h.indexOf('localhost:') === 0 ||
+              h.indexOf(PROXY_NAME.toLowerCase()+':') === 0 ||
+              (OWNER_NAME && h.indexOf(OWNER_NAME.toLowerCase()+':') === 0);
         }
         var _hostDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'hostname');
         if (_hostDesc && _hostDesc.get) {
@@ -2476,7 +2501,7 @@ func hostnameSpoofInner(cfg Config) string {
         // Do not spoof location.origin — that makes same-origin checks / device-bind
         // resolve against members.junglescout.com and triggers CORS failures.
 	} catch(e) {}
-`, fakeHostname, fakeHostWithPort, proxyHostname)
+`, fakeHostname, fakeHostWithPort, proxyHostname, ownerHostname)
 }
 
 // hideProfileMenuItemsScript hides only profile-dropdown rows (settings / logout)
@@ -2736,15 +2761,17 @@ func datadomeChallengePatchScript(cfg Config) string {
 		extraClean = strings.Split(extraClean, "/")[0]
 		extras.WriteString(fmt.Sprintf("{h:%q,p:%q},", extraClean, fmt.Sprintf("/extra-cdn-%d", i)))
 	}
-	publicBase := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
-	if cfg.PublicScheme == "" || cfg.PublicHost == "" {
-		publicBase = ""
+	ownerBase := ""
+	if cfg.PublicScheme != "" && cfg.PublicHost != "" {
+		ownerBase = fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
 	}
 	return fmt.Sprintf(`<script>(function(){
-  var O=%q||location.origin;
+  var O=location.origin;
+  var OWNER=%q;
   var EXTRAS=[%s];
   function patch(u){
     if(typeof u!=='string') return u;
+    if(OWNER && u.indexOf(OWNER)===0) return O+u.slice(OWNER.length);
     var pairs=[
       ['https://members.junglescout.com', O],
       ['http://members.junglescout.com', O],
@@ -2789,7 +2816,7 @@ func datadomeChallengePatchScript(cfg Config) string {
       return res;
     });
   };
-})();</script>`, publicBase, extras.String())
+})();</script>`, ownerBase, extras.String())
 }
 
 func forwardDatadomeHeaders(w http.ResponseWriter, upstreamResp *http.Response, path string, cfg Config) {
@@ -2858,7 +2885,7 @@ func serviceWorkerHandler(w http.ResponseWriter, r *http.Request) {
 
 // ── CLIENT-SIDE PATCHER SCRIPT ────────────────────────────────────────────────
 
-func patcherScript(cfg Config) string {
+func patcherScript(cfg Config, requestPublicHost string) string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
 	targetHost := ""
@@ -2901,15 +2928,17 @@ func patcherScript(cfg Config) string {
 		logoutAutoJS = buildLogoutAutomationJS(cfg)
 	}
 
-	hostnameSpoof := hostnameSpoofInner(cfg)
-	publicBase := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
-	if cfg.PublicScheme == "" || cfg.PublicHost == "" {
-		publicBase = ""
+	hostnameSpoof := hostnameSpoofInner(cfg, requestPublicHost)
+	ownerBase := ""
+	if cfg.PublicScheme != "" && cfg.PublicHost != "" {
+		ownerBase = fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
 	}
 
 	return fmt.Sprintf(`<script>
 (function() {
-    var T = '%s', C = '%s', O = '%s' || window.location.origin;
+    // Always the current tab origin — reseller hosts share this process with owner
+    // public_host; hardcoding owner caused CORS and empty Catalyst sidebar menus.
+    var T = '%s', C = '%s', O = window.location.origin, OWNER = '%s';
     var HOME = '%s';
     var BLOCKED = [%s];
     var EXTRAS = [%s];
@@ -2921,6 +2950,7 @@ func patcherScript(cfg Config) string {
         if (typeof u !== 'string') return null;
         if (u.charAt(0) === '/' && u.indexOf('/static/') === 0) return STATIC_ORIGIN + u;
         if (u.indexOf(O + '/static/') === 0) return STATIC_ORIGIN + u.slice(O.length);
+        if (OWNER && u.indexOf(OWNER + '/static/') === 0) return STATIC_ORIGIN + u.slice(OWNER.length);
         if (u.indexOf(STATIC_ORIGIN + '/static/') === 0) return u;
         return null;
     }
@@ -2930,6 +2960,8 @@ func patcherScript(cfg Config) string {
         if (typeof u !== 'string') return u;
         var direct = directStatic(u);
         if (direct) return direct;
+        // Owner twin absolute URLs → this reseller/owner tab origin (same-origin APIs).
+        if (OWNER && u.indexOf(OWNER) === 0) u = O + u.slice(OWNER.length);
         // Official login → /login-proxy on our host (keeps query for account-switch later).
         if (/login\.junglescout\.com/i.test(u)) {
             try {
@@ -3030,6 +3062,10 @@ func patcherScript(cfg Config) string {
             recoverHandler.fn = function() {
                 var real = _hrefGet.call(window.location);
                 if (real.indexOf(O) === 0) return;
+                if (OWNER && real.indexOf(OWNER) === 0) {
+                    window.location.replace(O + real.slice(OWNER.length));
+                    return;
+                }
                 if (real.indexOf(OFFICIAL) === 0) {
                     window.location.replace(O + real.slice(OFFICIAL.length));
                     return;
@@ -3110,7 +3146,7 @@ func patcherScript(cfg Config) string {
     %s
 })();
 </script>`,
-		targetHost, cdnHost, publicBase, homePath, blockedListJS.String(), extraCDNsJS.String(), hostnameSpoof, triggerChecks.String(),
+		targetHost, cdnHost, ownerBase, homePath, blockedListJS.String(), extraCDNsJS.String(), hostnameSpoof, triggerChecks.String(),
 		func() string {
 			if len(cfg.WatchdogTriggers) > 0 && !cfg.LocalTestMode {
 				return "true"
@@ -3860,7 +3896,18 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		rl.bodyHint = bodyDiagnostic(upstreamResp.StatusCode, peek)
 	}
 
-	rewritePairs := buildDomainReplacements(cfg)
+	publicScheme := cfg.PublicScheme
+	if publicScheme == "" {
+		publicScheme = "https"
+		if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" && r.Header.Get("X-Forwarded-Ssl") != "on" {
+			publicScheme = "http"
+		}
+	}
+	publicHost := tenantPublicHost(r, cfg)
+	if publicHost == "" {
+		publicHost = panelHostOnly(r.Host)
+	}
+	rewritePairs := buildDomainReplacements(publicScheme, publicHost, cfg)
 
 	// ── 7. Handle response headers ───────────────────────────────────────────────
 	contentType := upstreamResp.Header.Get("Content-Type")
@@ -3974,11 +4021,6 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// Rewrite domain references
 		bodyBytes = rewriteBody(bodyBytes, rewritePairs)
 		bodyBytes = regexp.MustCompile(`(?i)<base[^>]+href=["']https?://[^"']*junglescout\.com[^"']*["'][^>]*>`).ReplaceAll(bodyBytes, []byte(""))
-		configuredPublic := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
-		if r.Host != "" && r.Host != cfg.PublicHost {
-			actualPublic := fmt.Sprintf("%s://%s", cfg.PublicScheme, r.Host)
-			bodyBytes = bytes.ReplaceAll(bodyBytes, []byte(configuredPublic), []byte(actualPublic))
-		}
 
 		// DataDome challenge: keep page clean but patch fetch/XHR so solved cookies
 		// land on our proxy host (otherwise loop forever on Contabo IP).
@@ -4025,10 +4067,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if targetParsed != nil && targetParsed.Hostname() != "" {
 				staticHost = targetParsed.Hostname()
 			}
-			publicBase := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
-			if r.Host != "" && r.Host != cfg.PublicHost {
-				publicBase = fmt.Sprintf("%s://%s", cfg.PublicScheme, r.Host)
-			}
+			publicBase := fmt.Sprintf("%s://%s", publicScheme, publicHost)
 			bodyBytes = rewriteStaticToOrigin(bodyBytes, staticHost, publicBase)
 		} else if cfg.LocalTestMode {
 			bodyBytes = stripLocalTestScripts(bodyBytes)
@@ -4052,7 +4091,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				displayUser = strings.TrimSpace(name)
 			}
 		}
-		earlyInject := loginStayScript() + serviceWorkerRegisterScript(cfg) + antiClickjackFixScript() + academyVideoScript() + hideProfileMenuItemsScript(displayUser) + redirectRouteScript() + extensionRouteScript() + patcherScript(cfg)
+		earlyInject := loginStayScript() + serviceWorkerRegisterScript(cfg) + antiClickjackFixScript() + academyVideoScript() + hideProfileMenuItemsScript(displayUser) + redirectRouteScript() + extensionRouteScript() + patcherScript(cfg, publicHost)
 		if usesPanelAccountMode(cfg) {
 			earlyInject += jungleAPIUnauthorizedWatchScript()
 		}
@@ -4067,7 +4106,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			if !usesPanelAccountMode(cfg) {
 				earlyInject += staticDirectScript(staticHost)
 			}
-			earlyInject += redirectRouteScript() + extensionRouteScript() + localTestStubScript() + patcherScript(cfg)
+			earlyInject += redirectRouteScript() + extensionRouteScript() + localTestStubScript() + patcherScript(cfg, publicHost)
 		}
 		if !usesCookieFileMode(cfg) {
 			ss := normalizeSessionSecurity(cfg)
