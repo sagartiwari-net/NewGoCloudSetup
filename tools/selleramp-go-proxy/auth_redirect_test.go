@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -55,5 +57,36 @@ func TestSellerAmpSelfPathRedirectIgnoresQuery(t *testing.T) {
 	post.Host = "seller.amzpremiumsoftware.com"
 	if sellerAmpSelfPathRedirect(post, loc, "seller.amzpremiumsoftware.com") {
 		t.Fatal("POST PRG self-path should not be intercepted")
+	}
+}
+
+func TestMergeSetCookieHeader(t *testing.T) {
+	got := mergeSetCookieHeader("a=1; b=2", []string{
+		"b=9; Path=/; HttpOnly",
+		"c=3; Path=/",
+		"a=; Max-Age=0; Path=/",
+	})
+	if !strings.Contains(got, "b=9") || !strings.Contains(got, "c=3") || strings.Contains(got, "a=") {
+		t.Fatalf("unexpected merge result: %q", got)
+	}
+}
+
+func TestResolveSellerAmpFollowURLMapsPublicHost(t *testing.T) {
+	target, err := url.Parse("https://sas.selleramp.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur := *target
+	cur.Path = "/sas/lookup"
+	cur.RawQuery = "SasLookup%5Bsearch_term%5D=x"
+	next, err := resolveSellerAmpFollowURL(cur, "https://seller.amzpremiumsoftware.com/sas/lookup?SasLookup%5Bsearch_term%5D=x", "seller.amzpremiumsoftware.com", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Host != "sas.selleramp.com" {
+		t.Fatalf("host=%q", next.Host)
+	}
+	if next.Path != "/sas/lookup" {
+		t.Fatalf("path=%q", next.Path)
 	}
 }

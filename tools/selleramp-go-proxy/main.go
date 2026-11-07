@@ -1611,6 +1611,120 @@ func sellerAmpSelfPathRedirect(r *http.Request, loc, publicHost string) bool {
 	return normalizeSellerAmpPath(r.URL.Path) == normalizeSellerAmpPath(u.Path)
 }
 
+// mergeSetCookieHeader applies upstream Set-Cookie values into a Cookie request header.
+func mergeSetCookieHeader(cookieHeader string, setCookies []string) string {
+	best := map[string]string{}
+	order := []string{}
+	add := func(name, value string, drop bool) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		if drop {
+			delete(best, name)
+			return
+		}
+		if _, ok := best[name]; !ok {
+			order = append(order, name)
+		}
+		best[name] = value
+	}
+	for _, part := range strings.Split(cookieHeader, ";") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		eq := strings.Index(trimmed, "=")
+		if eq <= 0 {
+			continue
+		}
+		add(trimmed[:eq], trimmed[eq+1:], false)
+	}
+	for _, sc := range setCookies {
+		sc = strings.TrimSpace(sc)
+		if sc == "" {
+			continue
+		}
+		first, attrs, _ := strings.Cut(sc, ";")
+		eq := strings.Index(first, "=")
+		if eq <= 0 {
+			continue
+		}
+		name := strings.TrimSpace(first[:eq])
+		value := first[eq+1:]
+		drop := false
+		for _, attr := range strings.Split(attrs, ";") {
+			a := strings.TrimSpace(strings.ToLower(attr))
+			if a == "max-age=0" || strings.HasPrefix(a, "expires=thu, 01 jan 1970") {
+				drop = true
+				break
+			}
+		}
+		add(name, value, drop)
+	}
+	parts := make([]string, 0, len(best))
+	seen := map[string]bool{}
+	for _, name := range order {
+		if v, ok := best[name]; ok {
+			parts = append(parts, name+"="+v)
+			seen[name] = true
+		}
+	}
+	for name, v := range best {
+		if !seen[name] {
+			parts = append(parts, name+"="+v)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+func stripHopByHopAndForwarded(h http.Header) {
+	for _, name := range []string{
+		"Connection", "Upgrade", "Proxy-Connection", "Keep-Alive", "TE", "Trailer",
+		"Transfer-Encoding", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto",
+		"X-Forwarded-Port", "X-Forwarded-Ssl", "X-Real-IP", "Forwarded",
+		"True-Client-IP", "CF-Connecting-IP", "CF-Ray", "CF-Visitor", "CDN-Loop",
+		"X-Device-Fp", "X-Device-Proof",
+	} {
+		h.Del(name)
+	}
+}
+
+// resolveSellerAmpFollowURL maps a Location (possibly rewritten to our public host)
+// back to an absolute sas.selleramp.com URL for a server-side follow.
+func resolveSellerAmpFollowURL(current url.URL, loc, publicHost string, target *url.URL) (*url.URL, error) {
+	loc = strings.TrimSpace(loc)
+	if loc == "" || target == nil {
+		return nil, fmt.Errorf("empty location")
+	}
+	ref, err := url.Parse(loc)
+	if err != nil {
+		return nil, err
+	}
+	next := current.ResolveReference(ref)
+	ph := strings.ToLower(panelHostOnly(publicHost))
+	nh := strings.ToLower(panelHostOnly(next.Host))
+	if nh == "" || nh == ph || strings.HasSuffix(nh, "."+ph) {
+		next.Scheme = target.Scheme
+		next.Host = target.Host
+	}
+	next.Path = normalizeSellerAmpPath(next.Path)
+	return next, nil
+}
+
+func persistPanelAccountCookieHeader(cfg Config, accountID int, cookieHeader string) {
+	if !usesPanelAccountMode(cfg) || accountID <= 0 || strings.TrimSpace(cookieHeader) == "" {
+		return
+	}
+	db, err := openPanelDB(cfg)
+	if err != nil {
+		return
+	}
+	if _, err := db.Exec(`UPDATE accounts SET cookie=? WHERE id=?`, cookieHeader, accountID); err != nil {
+		log.Printf("[PANEL] cookie persist failed id=%d: %v", accountID, err)
+	}
+}
+
 func renderSellerAmpAuthRecovery(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken string, activeAcc ToolAccount, currentUser string) {
 	home := sellerAmpHomePath(cfg)
 	switched := false
@@ -2447,18 +2561,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
 	}
 
-	// Remove proxy / hop-by-hop headers (HTTP/2 rejects Connection: upgrade from nginx)
-	upstreamReq.Header.Del("X-Device-Fp")
-	upstreamReq.Header.Del("X-Device-Proof")
-	upstreamReq.Header.Del("X-Forwarded-For")
-	upstreamReq.Header.Del("X-Real-IP")
-	upstreamReq.Header.Del("Connection")
-	upstreamReq.Header.Del("Upgrade")
-	upstreamReq.Header.Del("Proxy-Connection")
-	upstreamReq.Header.Del("Keep-Alive")
-	upstreamReq.Header.Del("TE")
-	upstreamReq.Header.Del("Trailer")
-	upstreamReq.Header.Del("Transfer-Encoding")
+	// Strip hop-by-hop + forwarded headers. Leaking X-Forwarded-Host/Proto makes
+	// SellerAmp emit Location back to our public host → self-path redirect loops.
+	stripHopByHopAndForwarded(upstreamReq.Header)
 
 	// Rewrite Origin and Referer — prefer config.json values (most reliable).
 	// Falls back to request headers when config is blank (local dev mode).
@@ -2531,8 +2636,112 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
-	defer upstreamResp.Body.Close()
 
+	// ── 7. Follow upstream redirects server-side; never bounce self-path to browser ─
+	locationPairs := buildDomainReplacements(publicScheme, publicHost, cfg)
+	cookieDirty := false
+	currentUpstreamURL := upstreamURL
+	seenFollow := map[string]bool{}
+
+	for hop := 0; hop < 5; hop++ {
+		if upstreamResp.StatusCode < 300 || upstreamResp.StatusCode >= 400 {
+			break
+		}
+		rawLoc := strings.TrimSpace(upstreamResp.Header.Get("Location"))
+		if rawLoc == "" {
+			break
+		}
+		rewritten := rawLoc
+		for _, pair := range locationPairs {
+			rewritten = strings.ReplaceAll(rewritten, pair[0], pair[1])
+		}
+		setCookies := upstreamResp.Header.Values("Set-Cookie")
+		pushProxyLog(ProxyLogEntry{
+			Source:  "REDIRECT",
+			Level:   "warn",
+			Method:  r.Method,
+			Path:    path,
+			Status:  upstreamResp.StatusCode,
+			User:    currentUser,
+			Account: activeAcc.Name,
+			Detail:  fmt.Sprintf("hop=%d setcookie=%d raw=%s loc=%s", hop, len(setCookies), clipLog(rawLoc, 100), clipLog(rewritten, 140)),
+			HasUID:  r.Header.Get("X-UID") != "" || upstreamReq.Header.Get("X-UID") != "",
+			HasAPI:  r.Header.Get("X-API-TOKEN") != "" || upstreamReq.Header.Get("X-API-TOKEN") != "",
+			CookieN: countCookieNames(accountCookieStr),
+		})
+		if isSellerAmpAuthLocation(rawLoc) || isSellerAmpAuthLocation(rewritten) {
+			log.Printf("[PROXY] auth redirect intercepted path=%s status=%d loc=%s", path, upstreamResp.StatusCode, clipLog(rawLoc, 160))
+			_, _ = io.Copy(io.Discard, upstreamResp.Body)
+			upstreamResp.Body.Close()
+			renderSellerAmpAuthRecovery(w, r, cfg, sessionToken, activeAcc, currentUser)
+			return
+		}
+
+		merged := mergeSetCookieHeader(accountCookieStr, setCookies)
+		changed := merged != accountCookieStr
+		if changed {
+			accountCookieStr = merged
+			cookieDirty = true
+		}
+
+		nextURL, resolveErr := resolveSellerAmpFollowURL(currentUpstreamURL, rawLoc, publicHost, targetParsed)
+		if resolveErr != nil {
+			log.Printf("[PROXY] redirect resolve failed path=%s loc=%s: %v", path, clipLog(rawLoc, 120), resolveErr)
+			break
+		}
+		followKey := normalizeSellerAmpPath(nextURL.Path) + "?" + nextURL.RawQuery
+		sameHop := followKey == normalizeSellerAmpPath(currentUpstreamURL.Path)+"?"+currentUpstreamURL.RawQuery
+		// Same URL with no new cookies cannot progress. Revisit without cookie
+		// change means +/%20 oscillation or a hard upstream loop.
+		if (sameHop && !changed) || (seenFollow[followKey] && !changed) {
+			log.Printf("[PROXY] self-path redirect exhausted path=%s loc=%s setcookie=%d", path, clipLog(rawLoc, 160), len(setCookies))
+			_, _ = io.Copy(io.Discard, upstreamResp.Body)
+			upstreamResp.Body.Close()
+			renderSellerAmpAuthRecovery(w, r, cfg, sessionToken, activeAcc, currentUser)
+			return
+		}
+		seenFollow[followKey] = true
+
+		_, _ = io.Copy(io.Discard, upstreamResp.Body)
+		upstreamResp.Body.Close()
+
+		followReq, reqErr := http.NewRequestWithContext(
+			context.WithValue(r.Context(), proxyContextKey, activeAcc.Proxy),
+			http.MethodGet, nextURL.String(), nil,
+		)
+		if reqErr != nil {
+			http.Error(w, "Failed to follow upstream redirect", http.StatusBadGateway)
+			return
+		}
+		if ua := strings.TrimSpace(activeAcc.UserAgent); ua != "" {
+			followReq.Header.Set("User-Agent", ua)
+		} else if cfg.UserAgent != "" {
+			followReq.Header.Set("User-Agent", cfg.UserAgent)
+		}
+		followReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		followReq.Header.Set("Referer", targetBase+"/")
+		followReq.Host = targetParsed.Host
+		stripHopByHopAndForwarded(followReq.Header)
+		ensureAPIAuthHeaders(followReq)
+		if accountCookieStr != "" {
+			followReq.Header.Set("Cookie", accountCookieStr)
+		}
+		log.Printf("[PROXY] following upstream redirect hop=%d → %s cookies=%d setcookie=%d", hop+1, clipLog(nextURL.String(), 160), countCookieNames(accountCookieStr), len(setCookies))
+		upstreamResp, err = httpClient.Do(followReq)
+		if err != nil {
+			log.Printf("[PROXY] follow failed path=%s: %v", path, err)
+			http.Error(w, "Bad Gateway", http.StatusBadGateway)
+			return
+		}
+		currentUpstreamURL = *nextURL
+		upstreamReq = followReq
+	}
+	defer upstreamResp.Body.Close()
+	if cookieDirty {
+		persistPanelAccountCookieHeader(cfg, activeAcc.ID, accountCookieStr)
+	}
+
+	contentType := upstreamResp.Header.Get("Content-Type")
 	logUpstream := func(body []byte) {
 		if !shouldLogUpstreamStatus(upstreamResp.StatusCode, path) {
 			return
@@ -2552,41 +2761,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// ── 7. Handle Set-Cookie and Location headers from upstream ──────────────────
-	contentType := upstreamResp.Header.Get("Content-Type")
-	// Build all domain pairs for location header rewriting (same as HTML body rewriting)
-	locationPairs := buildDomainReplacements(publicScheme, publicHost, cfg)
-
-	// Auth / self Location loops (common on /sas/lookup searches when cookie is dead).
 	if upstreamResp.StatusCode >= 300 && upstreamResp.StatusCode < 400 {
 		if rawLoc := strings.TrimSpace(upstreamResp.Header.Get("Location")); rawLoc != "" {
 			rewritten := rawLoc
 			for _, pair := range locationPairs {
 				rewritten = strings.ReplaceAll(rewritten, pair[0], pair[1])
 			}
-			pushProxyLog(ProxyLogEntry{
-				Source:  "REDIRECT",
-				Level:   "warn",
-				Method:  r.Method,
-				Path:    path,
-				Status:  upstreamResp.StatusCode,
-				User:    currentUser,
-				Account: activeAcc.Name,
-				Detail:  "Location: " + clipLog(rewritten, 220),
-				HasUID:  r.Header.Get("X-UID") != "" || upstreamReq.Header.Get("X-UID") != "",
-				HasAPI:  r.Header.Get("X-API-TOKEN") != "" || upstreamReq.Header.Get("X-API-TOKEN") != "",
-				CookieN: countCookieNames(accountCookieStr),
-			})
-			if isSellerAmpAuthLocation(rawLoc) || isSellerAmpAuthLocation(rewritten) {
-				log.Printf("[PROXY] auth redirect intercepted path=%s status=%d loc=%s", path, upstreamResp.StatusCode, clipLog(rawLoc, 160))
-				_, _ = io.Copy(io.Discard, upstreamResp.Body)
-				renderSellerAmpAuthRecovery(w, r, cfg, sessionToken, activeAcc, currentUser)
-				return
-			}
-			// GET self-path 3xx → ERR_TOO_MANY_REDIRECTS in Chrome (search URL stays
-			// in the address bar). Serve recovery instead of forwarding Location.
-			if sellerAmpSelfPathRedirect(r, rewritten, publicHost) || sellerAmpSameResourceRedirect(r, rewritten, publicHost) {
-				log.Printf("[PROXY] self-path redirect intercepted path=%s status=%d loc=%s", path, upstreamResp.StatusCode, clipLog(rewritten, 160))
+			if isSellerAmpAuthLocation(rawLoc) || isSellerAmpAuthLocation(rewritten) ||
+				sellerAmpSelfPathRedirect(r, rewritten, publicHost) || sellerAmpSameResourceRedirect(r, rewritten, publicHost) {
+				log.Printf("[PROXY] redirect exhausted path=%s status=%d loc=%s", path, upstreamResp.StatusCode, clipLog(rawLoc, 160))
 				_, _ = io.Copy(io.Discard, upstreamResp.Body)
 				renderSellerAmpAuthRecovery(w, r, cfg, sessionToken, activeAcc, currentUser)
 				return
