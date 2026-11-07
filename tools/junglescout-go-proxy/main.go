@@ -2479,8 +2479,9 @@ func hostnameSpoofInner(cfg Config) string {
 `, fakeHostname, fakeHostWithPort, proxyHostname)
 }
 
-// hideProfileMenuItemsScript hides only the listed profile-menu bits and shows
-// the panel username in place of the Jungle Scout account full name.
+// hideProfileMenuItemsScript hides only profile-dropdown rows (settings / logout)
+// and shows the panel username. It must NOT touch the left Catalyst sidebar —
+// climbing generic ButtonWrapper parents previously hid Product Database etc.
 func hideProfileMenuItemsScript(panelUsername string) string {
 	userJS, _ := json.Marshal(strings.TrimSpace(panelUsername))
 	return fmt.Sprintf(`<script>
@@ -2495,29 +2496,47 @@ func hideProfileMenuItemsScript(panelUsername string) string {
   function norm(s) {
     return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   }
+  function inProfileMenu(el) {
+    if (!el || !el.closest) return false;
+    return !!(el.closest('[role="menu"]') ||
+      el.closest('[data-radix-popper-content-wrapper]') ||
+      el.closest('[class*="PopoverContent"]') ||
+      el.closest('[class*="DropdownContent"]') ||
+      el.closest('[class*="ProfileMenu"]') ||
+      el.closest('[class*="UserMenu"]') ||
+      el.closest('[class*="AccountMenu"]'));
+  }
+  function inSidebar(el) {
+    if (!el || !el.closest) return false;
+    return !!(el.closest('nav') ||
+      el.closest('aside') ||
+      el.closest('[class*="Sidebar"]') ||
+      el.closest('[class*="SideNav"]') ||
+      el.closest('[class*="Navigation"]') ||
+      el.closest('[data-testid*="sidebar"]') ||
+      el.closest('[data-testid*="navigation"]'));
+  }
   function hideEl(el) {
     if (!el || (el.dataset && el.dataset.tmHideMenu === '1')) return;
+    if (inSidebar(el) && !inProfileMenu(el)) return;
     el.style.setProperty('display', 'none', 'important');
     el.setAttribute('aria-hidden', 'true');
     if (el.dataset) el.dataset.tmHideMenu = '1';
   }
   function hideMenuRow(el) {
-    if (!el) return;
-    var target = el.closest('[role="menuitem"]') ||
-      el.closest('[class*="ButtonWrapper-sc-1jjq2tp"]') ||
-      el.closest('button') ||
-      el.closest('[class*="ButtonWrapper"]') ||
-      el;
-    // Prefer the outer profile-menu ButtonWrapper so empty padding disappears.
-    var outer = el.closest('[class*="ButtonWrapper-sc-1jjq2tp"]');
-    if (outer) target = outer;
+    if (!el || !inProfileMenu(el)) return;
+    var target = el.closest('[role="menuitem"]') || el;
     hideEl(target);
     var prev = target.previousElementSibling;
     if (prev && prev.getAttribute && prev.getAttribute('role') === 'separator') hideEl(prev);
-    var parent = target.parentElement;
-    if (parent) {
-      var pprev = parent.previousElementSibling;
-      if (pprev && pprev.getAttribute && pprev.getAttribute('role') === 'separator') hideEl(pprev);
+  }
+  function restoreSidebar() {
+    var nodes = document.querySelectorAll('nav [data-tm-hide-menu], aside [data-tm-hide-menu], [class*="Sidebar"] [data-tm-hide-menu], [class*="SideNav"] [data-tm-hide-menu], [class*="Navigation"] [data-tm-hide-menu]');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      el.style.removeProperty('display');
+      el.removeAttribute('aria-hidden');
+      if (el.dataset) delete el.dataset.tmHideMenu;
     }
   }
   function setName(el) {
@@ -2526,7 +2545,6 @@ func hideProfileMenuItemsScript(panelUsername string) string {
     el.textContent = TM_USER;
     if (el.dataset) el.dataset.tmUserSet = TM_USER;
   }
-  // Sagar → SA, Abhishek → AB (first 2 letters of the panel username).
   function initials(name) {
     var s = String(name || '').replace(/[^a-zA-Z0-9]/g, '');
     if (!s) return '';
@@ -2542,23 +2560,31 @@ func hideProfileMenuItemsScript(panelUsername string) string {
   }
   function scan(root) {
     if (!root || !root.querySelectorAll) return;
-    var nodes = root.querySelectorAll('button, [role="menuitem"], [class*="ItemContent"], [class*="ContentWrapper"], [class*="ButtonContent"]');
-    for (var i = 0; i < nodes.length; i++) {
-      var el = nodes[i];
-      var text = norm(el.textContent);
-      if (!text || text.length > 48) continue;
-      if (LABELS[text]) hideMenuRow(el);
+    restoreSidebar();
+    var menus = root.querySelectorAll('[role="menu"], [data-radix-popper-content-wrapper], [class*="PopoverContent"], [class*="DropdownContent"], [class*="ProfileMenu"], [class*="UserMenu"], [class*="AccountMenu"]');
+    if (!menus.length && inProfileMenu(root)) menus = [root];
+    for (var m = 0; m < menus.length; m++) {
+      var menu = menus[m];
+      var nodes = menu.querySelectorAll('button, [role="menuitem"], [class*="ItemContent"], [class*="ButtonContent"]');
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        var text = norm(el.textContent);
+        if (!text || text.length > 48) continue;
+        if (LABELS[text]) hideMenuRow(el);
+      }
+      var emails = menu.querySelectorAll('[class*="Email-sc-"], [class*="Email-"]');
+      for (var e = 0; e < emails.length; e++) {
+        var em = emails[e];
+        if (em.textContent && em.textContent.indexOf('@') !== -1) hideEl(em);
+      }
+      var names = menu.querySelectorAll('[class*="FullName-sc-"], [class*="FullName-"]');
+      for (var n = 0; n < names.length; n++) setName(names[n]);
+      var falls = menu.querySelectorAll('span[class*="Fallback-sc-"], span[class*="Fallback-"]');
+      for (var f = 0; f < falls.length; f++) setInitials(falls[f]);
     }
-    // Hide only the profile email line (class contains Email-).
-    var emails = root.querySelectorAll('[class*="Email-sc-"], [class*="Email-"]');
-    for (var e = 0; e < emails.length; e++) {
-      var em = emails[e];
-      if (em.textContent && em.textContent.indexOf('@') !== -1) hideEl(em);
-    }
-    // Replace Jungle Scout full name with panel username.
+    // Avatar / name chips live in the chrome outside the open menu — rename only.
     var names = root.querySelectorAll('[class*="FullName-sc-"], [class*="FullName-"]');
     for (var n = 0; n < names.length; n++) setName(names[n]);
-    // Avatar fallback letters (e.g. <span class="Fallback-...">JJ</span>) → SA / AB.
     var falls = root.querySelectorAll('span[class*="Fallback-sc-"], span[class*="Fallback-"]');
     for (var f = 0; f < falls.length; f++) setInitials(falls[f]);
   }
@@ -2568,7 +2594,7 @@ func hideProfileMenuItemsScript(panelUsername string) string {
   try {
     new MutationObserver(function(){ run(); }).observe(document.documentElement, { childList: true, subtree: true });
   } catch (e) {}
-  setInterval(run, 1500);
+  setInterval(run, 2000);
 })();
 </script>`, string(userJS))
 }
