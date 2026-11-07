@@ -143,7 +143,7 @@ func TestSessionKeepaliveScriptPatchesNav(t *testing.T) {
 		`tm_device_proof`,
 		`X-Ct-Session`,
 		`X-Device-Proof`,
-		`denyStolen`,
+		`ensureDevice`,
 		`addEventListener("submit"`,
 		`addEventListener("click"`,
 	} {

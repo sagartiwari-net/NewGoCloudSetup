@@ -146,17 +146,12 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 		return nil, err
 	}
 	var username, expires, fingerprint string
-	// Prefer domain match, but fall back to token-only — domain string drift
-	// (trim/case/old host) was leaving valid cookies unrestorable.
+	// Token-only first — multi-tenant hosts (seller.amzpremium…, sllr.upays…) share
+	// one process; filtering by cfg.PublicHost broke restore on reseller domains.
 	// fingerprint holds the device proof so cookie-copy fails after process restart.
-	err = db.QueryRow(`SELECT s.username, s.expires_at, COALESCE(s.fingerprint,'') FROM live_sessions s
-		JOIN websites w ON w.id = s.website_id
-		WHERE s.session_token = ? AND lower(trim(w.domain)) = lower(trim(?))`, token, cfg.PublicHost).Scan(&username, &expires, &fingerprint)
+	err = db.QueryRow(`SELECT username, expires_at, COALESCE(fingerprint,'') FROM live_sessions WHERE session_token = ?`, token).Scan(&username, &expires, &fingerprint)
 	if err != nil {
-		err = db.QueryRow(`SELECT username, expires_at, COALESCE(fingerprint,'') FROM live_sessions WHERE session_token = ?`, token).Scan(&username, &expires, &fingerprint)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	exp, err := time.Parse(time.RFC3339, expires)
 	if err != nil || time.Now().After(exp) {

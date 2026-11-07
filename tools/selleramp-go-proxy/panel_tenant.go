@@ -30,6 +30,17 @@ func panelWebsiteSameTool(db *sql.DB, publicHost string, websiteID int) bool {
 		WHERE w.id = ?
 		  AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`,
 		websiteID, publicHost, panelHostOnly(publicHost)).Scan(&n)
+	if err == nil && n > 0 {
+		return true
+	}
+	// Reseller-only hosts: accept any website that shares this process tool name.
+	err = db.QueryRow(`SELECT COUNT(*) FROM websites w
+		JOIN tools t ON t.id = w.tool_id
+		JOIN websites owner ON owner.tool_id = w.tool_id
+		WHERE w.id = ? AND t.name = 'SellerAmp'
+		  AND (lower(trim(owner.domain)) LIKE '%.upays.in' OR lower(trim(owner.domain)) LIKE '%.amzpremiumsoftware.com'
+		       OR lower(trim(owner.domain)) LIKE '%.seogbtools.com' OR lower(trim(owner.domain)) LIKE '%.gt4rents.com')`,
+		websiteID).Scan(&n)
 	return err == nil && n > 0
 }
 
@@ -116,10 +127,21 @@ func panelWebsiteIDForRequest(r *http.Request) int {
 	}
 	host := panelRequestHost(r, cfg.PublicHost)
 	id := panelWebsiteIDForDomain(db, host)
-	if id <= 0 || !panelWebsiteSameTool(db, cfg.PublicHost, id) {
+	if id <= 0 {
 		return 0
 	}
-	return id
+	if panelWebsiteSameTool(db, cfg.PublicHost, id) {
+		return id
+	}
+	// Request host is a SellerAmp reseller domain — trust the domain row itself.
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites w
+		JOIN tools t ON t.id = w.tool_id
+		WHERE w.id = ? AND t.name = 'SellerAmp'`, id).Scan(&n)
+	if n > 0 {
+		return id
+	}
+	return 0
 }
 
 func panelLogWebsite(db *sql.DB, sessionToken, publicHost string) (int, string) {

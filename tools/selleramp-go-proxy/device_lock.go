@@ -170,8 +170,8 @@ func commitPanelSessionCookie(w http.ResponseWriter, r *http.Request, cfg Config
 }
 
 // sessionKeepaliveScript is injected into SellerAmp HTML (not the heavy device gate).
-// Keeps ?__tm_s= / X-Ct-Session on navigations AND enforces device proof so a
-// copied cookie jar in another Chrome profile cannot use the tool.
+// Keeps ?__tm_s= / X-Ct-Session on navigations. Missing device proof is healed in
+// the background — never call denyStolen on every page (that killed search sessions).
 func sessionKeepaliveScript() string {
 	return `<script data-tm-sess>(function(){
 var KEY=` + fmt.Sprintf("%q", tmSessionStorageKey) + `;
@@ -180,13 +180,25 @@ function tok(){try{return sessionStorage.getItem(KEY)||"";}catch(e){return "";}}
 function proof(){try{return localStorage.getItem(PROOF_KEY)||"";}catch(e){return "";}}
 function fp(){try{return localStorage.getItem("tm_device_fp")||sessionStorage.getItem("tm_device_fp")||"";}catch(e){return "";}}
 function save(t){if(!t)return;try{sessionStorage.setItem(KEY,t);sessionStorage.removeItem("tm_ct_retry");}catch(e){}}
-function denyStolen(){
-  try{document.documentElement.style.visibility="hidden";}catch(e){}
-  var headers={"X-Device-Fp":"missing","X-Device-Proof":"missing"};
-  var t=tok(); if(t) headers["X-Ct-Session"]=t;
-  fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:headers})
-    .catch(function(){})
-    .finally(function(){location.replace("/__tm_access_denied");});
+function mintProof(){
+  try{
+    var p=localStorage.getItem(PROOF_KEY);
+    if(p) return Promise.resolve(p);
+    var b=new Uint8Array(16); crypto.getRandomValues(b);
+    p=Array.from(b).map(function(x){return ("0"+x.toString(16)).slice(-2);}).join("");
+    localStorage.setItem(PROOF_KEY,p);
+    return Promise.resolve(p);
+  }catch(e){return Promise.resolve("");}
+}
+function ensureDevice(){
+  return mintProof().then(function(p){
+    if(!p) return;
+    var f=fp()||"nav";
+    try{localStorage.setItem("tm_device_fp",f);sessionStorage.setItem("tm_device_fp",f);}catch(e){}
+    var headers={"X-Device-Fp":f,"X-Device-Proof":p};
+    var t=tok(); if(t) headers["X-Ct-Session"]=t;
+    return fetch("/api/device-bind",{method:"POST",credentials:"same-origin",headers:headers}).catch(function(){});
+  });
 }
 try{
   var u=new URL(location.href);
@@ -197,8 +209,7 @@ try{
     if(history.replaceState) history.replaceState({},"",u.pathname+u.search+u.hash);
   }
 }catch(e){}
-// Cookie copy into another profile has ct_session but not tm_device_proof.
-if(!proof()){denyStolen();return;}
+ensureDevice();
 function withS(href){
   var t=tok(); if(!t) return href;
   try{

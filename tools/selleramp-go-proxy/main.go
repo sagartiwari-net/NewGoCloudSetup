@@ -1203,7 +1203,7 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 		Footer:  "Your session ended or this browser is not authorized",
 		// Retry the SAME URL with ?__tm_s= from sessionStorage (do not send users home —
 		// that dropped /sas/lookup searches after a dead orphan ct_session).
-		ExtraScript: `<script>(function(){try{var t=sessionStorage.getItem("` + tmSessionStorageKey + `")||"";if(!t||sessionStorage.getItem("tm_ct_retry"))return;sessionStorage.setItem("tm_ct_retry","1");var u=new URL(location.href);u.searchParams.set("__tm_s",t);location.replace(u.pathname+u.search+u.hash);}catch(e){}})();</script>`,
+		ExtraScript: `<script>(function(){try{var t=sessionStorage.getItem("` + tmSessionStorageKey + `")||"";if(!t)return;var u=new URL(location.href);if(u.searchParams.get("__tm_s")===t){sessionStorage.removeItem("tm_ct_retry");return;}if(sessionStorage.getItem("tm_ct_retry"))return;sessionStorage.setItem("tm_ct_retry","1");u.searchParams.set("__tm_s",t);location.replace(u.pathname+u.search+u.hash);}catch(e){}})();</script>`,
 	})
 }
 
@@ -2107,10 +2107,31 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	isStatic := isStaticAssetPath(path)
 	bootTok := strings.TrimSpace(r.URL.Query().Get("__tm_s"))
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
-	if authErr == nil && bootTok != "" {
-		// Live bootstrap from /access boot — commit cookie even if jar previously blocked it.
-		commitPanelSessionCookie(w, r, cfg, bootTok)
-		log.Printf("[PANEL] bootstrap ok user=%s via __tm_s", currentUser)
+	if authErr != nil && bootTok != "" && usesPanelAccountMode(cfg) {
+		// Search navigations often arrive with only ?__tm_s= after the cookie jar
+		// dropped ct_session. Force restore + commit before denying.
+		if sess, ok := loadPanelSessionToken(bootTok); ok && sess != nil {
+			currentUser, authErr = panelSessionUsername(r)
+			if authErr != nil {
+				// Candidate order may have tried a dead jar cookie first in edge cases.
+				currentUser = sess.username
+				authErr = nil
+			}
+		}
+	}
+	if authErr == nil && (bootTok != "" || usesPanelAccountMode(cfg)) {
+		tok := bootTok
+		if tok == "" {
+			if t, _, ok := resolveCtSession(r); ok {
+				tok = t
+			}
+		}
+		if tok != "" {
+			commitPanelSessionCookie(w, r, cfg, tok)
+			if bootTok != "" {
+				log.Printf("[PANEL] bootstrap ok user=%s via __tm_s", currentUser)
+			}
+		}
 	}
 	if authErr != nil && !isStatic {
 		cands := ctSessionCandidates(r)
