@@ -383,6 +383,27 @@ func isDocumentNavigation(r *http.Request) bool {
 	return mode == "" && dest == "" && strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 
+// isChromeExtensionRequest detects SAS extension panel/iframe/background traffic.
+// Those must not trigger cookie_share kills — opening the extension was wiping
+// the live tab session (Access Denied on both).
+func isChromeExtensionRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(r.Header.Get("Origin")), "chrome-extension://") {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(r.Header.Get("Referer")), "chrome-extension://") {
+		return true
+	}
+	dest := strings.ToLower(r.Header.Get("Sec-Fetch-Dest"))
+	site := strings.ToLower(r.Header.Get("Sec-Fetch-Site"))
+	if dest == "iframe" && (site == "cross-site" || site == "none") {
+		return true
+	}
+	return false
+}
+
 // rejectPanelDevice blocks a copied cookie jar. Bound sessions must present the
 // device proof on API/XHR; document HTML is allowed once so the keepalive script
 // can verify localStorage and report cookie_share if proof is missing.
@@ -425,10 +446,29 @@ func rejectPanelDevice(w http.ResponseWriter, r *http.Request, cfg Config) bool 
 		if isDocumentNavigation(r) {
 			return false
 		}
+		if isChromeExtensionRequest(r) {
+			log.Printf("[DEVICE] extension soft-deny (no kill) path=%s user=%s", r.URL.Path, username)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
+			return true
+		}
 		log.Printf("[DEVICE] required path=%s user=%s", r.URL.Path, username)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintf(w, `{"error":"device_required","message":"Open this tool again from your access link."}`)
+		return true
+	}
+	if isChromeExtensionRequest(r) {
+		// Wrong/missing proof from extension must not sign out the browser tab.
+		log.Printf("[DEVICE] extension proof mismatch soft-deny (no kill) path=%s user=%s", r.URL.Path, username)
+		if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
+			renderAccessDeniedPage(w, cfg)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, `{"error":"device_mismatch","message":"Open this tool again from your access link."}`)
+		}
 		return true
 	}
 	recordCookieShare(cfg, r, token)

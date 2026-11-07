@@ -2303,7 +2303,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v ct_candidates=%d tok=%s…",
 			path, r.Host, authErr, currentWebsiteID, hasCt, len(cands), tokPrefix)
 		// Orphan / parent-domain ct_session blocks a fresh /access Set-Cookie.
-		if hasCt && (strings.Contains(authErr.Error(), "session not found") || strings.Contains(authErr.Error(), "session ended") || strings.Contains(authErr.Error(), "missing session")) {
+		// Never clear from the extension iframe — that wiped the live tab session.
+		if hasCt && !isChromeExtensionRequest(r) &&
+			(strings.Contains(authErr.Error(), "session not found") || strings.Contains(authErr.Error(), "session ended") || strings.Contains(authErr.Error(), "missing session")) {
 			clearStaleCtSessionCookies(w, r, cfg)
 		}
 		pushProxyLog(ProxyLogEntry{

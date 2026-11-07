@@ -55,6 +55,13 @@ func setCtSessionCookie(w http.ResponseWriter, r *http.Request, cfg Config, sess
 	if maxAge < 1 {
 		maxAge = 60
 	}
+	secure := cookieSecure(r, cfg)
+	// SameSite=None so the Chrome extension iframe (cross-site) still receives
+	// ct_session. Lax drops the cookie on chrome-extension:// → https embeds.
+	sameSite := http.SameSiteLaxMode
+	if secure {
+		sameSite = http.SameSiteNoneMode
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     ctSessionCookie,
 		Value:    sessionToken,
@@ -62,8 +69,8 @@ func setCtSessionCookie(w http.ResponseWriter, r *http.Request, cfg Config, sess
 		Expires:  expiry,
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   cookieSecure(r, cfg),
-		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+		SameSite: sameSite,
 	})
 }
 
