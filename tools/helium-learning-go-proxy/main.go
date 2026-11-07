@@ -2000,26 +2000,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Set account cookie and user-agent
+	// Use ONLY the premium/account cookie for Kajabi.
+	// Merging the browser jar + leaking X-Forwarded-Host made Kajabi resolve the
+	// reseller domain as a custom site and return "page doesn't exist" on /library.
 	accountCookieStr := parseCookieFromDB(activeAcc.Cookie)
-	clientCookies := stripSensitiveCookies(r.Header.Get("Cookie"), cfg)
-	if accountCookieStr != "" {
-		if clientCookies != "" {
-			clientCookies += "; "
-		}
-		clientCookies += accountCookieStr
-	}
-	// Only send Cookie header to helium10.com domains
+	upstreamReq.Header.Del("Cookie")
 	hostWithoutPort := upstreamURL.Host
 	if h, _, err := net.SplitHostPort(upstreamURL.Host); err == nil {
 		hostWithoutPort = h
 	}
-	if strings.HasSuffix(hostWithoutPort, "helium10.com") {
-		if clientCookies != "" {
-			upstreamReq.Header.Set("Cookie", clientCookies)
-		}
-	} else {
-		upstreamReq.Header.Del("Cookie")
+	if accountCookieStr != "" && strings.HasSuffix(hostWithoutPort, "helium10.com") {
+		upstreamReq.Header.Set("Cookie", accountCookieStr)
 	}
 
 	// ── WebSocket upgrade: hijack and bidirectionally pipe ───────────────────────
@@ -2028,7 +2019,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if ua == "" {
 			ua = cfg.UserAgent
 		}
-		proxyWebSocket(w, r, upstreamURL, clientCookies, ua, cfg, activeAcc.Proxy)
+		proxyWebSocket(w, r, upstreamURL, accountCookieStr, ua, cfg, activeAcc.Proxy)
 		return
 	}
 	ua := activeAcc.UserAgent
@@ -2048,11 +2039,17 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Host = strings.Split(extraClean, "/")[0]
 	}
 
-	// Remove proxy headers
-	upstreamReq.Header.Del("X-Device-Fp")
-	upstreamReq.Header.Del("X-Device-Proof")
-	upstreamReq.Header.Del("X-Forwarded-For")
-	upstreamReq.Header.Del("X-Real-IP")
+	// Strip hop-by-hop + forwarded headers. Kajabi multi-tenant routing uses
+	// X-Forwarded-Host; leaving our public host here → site 404 on /library.
+	for _, name := range []string{
+		"Connection", "Upgrade", "Proxy-Connection", "Keep-Alive", "TE", "Trailer",
+		"Transfer-Encoding", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto",
+		"X-Forwarded-Port", "X-Forwarded-Ssl", "X-Real-IP", "Forwarded",
+		"True-Client-IP", "CF-Connecting-IP", "CF-Ray", "CF-Visitor", "CDN-Loop",
+		"X-Device-Fp", "X-Device-Proof",
+	} {
+		upstreamReq.Header.Del(name)
+	}
 
 	// Rewrite Origin and Referer — prefer config.json values (most reliable).
 	// Falls back to request headers when config is blank (local dev mode).
