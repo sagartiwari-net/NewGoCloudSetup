@@ -39,11 +39,10 @@ func consumeEnterTicket(nonce string) (string, bool) {
 	if nonce == "" {
 		return "", false
 	}
-	raw, ok := enterTickets.Load(nonce)
+	raw, ok := enterTickets.LoadAndDelete(nonce)
 	if !ok {
 		return "", false
 	}
-	enterTickets.Delete(nonce)
 	t := raw.(enterTicket)
 	if time.Now().After(t.expires) {
 		return "", false

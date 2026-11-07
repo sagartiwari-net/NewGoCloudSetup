@@ -43,3 +43,17 @@ func TestSellerAmpSameResourceRedirect(t *testing.T) {
 		t.Fatal("home should not match lookup")
 	}
 }
+
+func TestSellerAmpSelfPathRedirectIgnoresQuery(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/sas/lookup?SasLookup%5Bsearch_term%5D=tempered+glass", nil)
+	r.Host = "seller.amzpremiumsoftware.com"
+	loc := "https://seller.amzpremiumsoftware.com/sas/lookup?SasLookup%5Bsearch_term%5D=other"
+	if !sellerAmpSelfPathRedirect(r, loc, "seller.amzpremiumsoftware.com") {
+		t.Fatal("expected self-path redirect when only query differs")
+	}
+	post := httptest.NewRequest(http.MethodPost, "/sas/lookup", nil)
+	post.Host = "seller.amzpremiumsoftware.com"
+	if sellerAmpSelfPathRedirect(post, loc, "seller.amzpremiumsoftware.com") {
+		t.Fatal("POST PRG self-path should not be intercepted")
+	}
+}

@@ -72,6 +72,7 @@ func shouldLogUpstreamStatus(status int, path string) bool {
 	if status == 401 || status == 403 {
 		return true
 	}
+	// 3xx are logged separately as REDIRECT entries (Location chain for search loops).
 	if status >= 400 && (strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/r/api/")) {
 		return true
 	}
@@ -112,7 +113,7 @@ th{color:#93a4bd;font-weight:600}
 .detail{color:#cbd5e1;word-break:break-word;max-width:420px}
 </style></head><body><div class="wrap">
 <h1>SellerAmp live error logs</h1>
-<p>Shows recent upstream 401/403 and /api/* failures. Auto-refreshes every 3s.</p>
+<p>Shows recent AUTH/BLOCK/REDIRECT/upstream 401/403 failures. Auto-refreshes every 3s. Search ERR_TOO_MANY_REDIRECTS → look for REDIRECT rows with Location.</p>
 <div class="bar">
   <button onclick="loadLogs()">Refresh</button>
   <a class="btn secondary" href="/__logs.json" target="_blank">JSON</a>

@@ -1527,6 +1527,8 @@ func isSellerAmpAuthLocation(loc string) bool {
 	lower := strings.ToLower(loc)
 	// Do NOT match every /r/api/auth/* — NextAuth session checks are normal.
 	return strings.Contains(lower, "/r/api/auth/session/sign-out") ||
+		strings.Contains(lower, "/r/api/auth/signin") ||
+		strings.Contains(lower, "/api/auth/signin") ||
 		strings.Contains(lower, "/site/login") ||
 		strings.Contains(lower, "/site/logout")
 }
@@ -1582,6 +1584,31 @@ func sellerAmpSameResourceRedirect(r *http.Request, loc, publicHost string) bool
 		return false
 	}
 	return u.RawQuery == r.URL.RawQuery
+}
+
+// sellerAmpSelfPathRedirect is true when Location path matches the request path
+// (query may differ). GET self-path 3xx is the usual ERR_TOO_MANY_REDIRECTS on
+// /sas/lookup searches when upstream keeps bouncing the browser.
+func sellerAmpSelfPathRedirect(r *http.Request, loc, publicHost string) bool {
+	if r == nil || strings.TrimSpace(loc) == "" {
+		return false
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	u, err := url.Parse(loc)
+	if err != nil {
+		return false
+	}
+	if u.Host != "" {
+		host := strings.ToLower(panelHostOnly(u.Host))
+		ph := strings.ToLower(panelHostOnly(publicHost))
+		reqHost := strings.ToLower(panelHostOnly(r.Host))
+		if host != ph && host != reqHost && !strings.HasSuffix(host, "."+ph) {
+			return false
+		}
+	}
+	return normalizeSellerAmpPath(r.URL.Path) == normalizeSellerAmpPath(u.Path)
 }
 
 func renderSellerAmpAuthRecovery(w http.ResponseWriter, r *http.Request, cfg Config, sessionToken string, activeAcc ToolAccount, currentUser string) {
@@ -2186,11 +2213,30 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
 	if isBlockedPath(path, cfg) {
 		log.Printf("[BLOCK] User '%s' tried to access blocked path: %s", currentUser, path)
+		pushProxyLog(ProxyLogEntry{
+			Source:  "BLOCK",
+			Level:   "warn",
+			Method:  r.Method,
+			Path:    path,
+			Status:  http.StatusFound,
+			User:    currentUser,
+			Detail:  "blocked path",
+			HasUID:  r.Header.Get("X-UID") != "",
+			HasAPI:  r.Header.Get("X-API-TOKEN") != "",
+			CookieN: countCookieNames(r.Header.Get("Cookie")),
+		})
 		if dbConnected {
 			_, _ = db.Exec(
 				"INSERT INTO ahrefs_violations_logs (website_id, username, client_ip, attempted_path) VALUES (?,?,?,?)",
 				currentWebsiteID, currentUser, realClientIP(r), path,
 			)
+		}
+		// /site/login ↔ /sas/lookup returnUrl loops if we 302 to home and home
+		// (or a later search) sends the browser back through login again.
+		if isSellerAmpAuthLocation(path) {
+			tok, _, _ := resolveCtSession(r)
+			renderSellerAmpAuthRecovery(w, r, cfg, tok, ToolAccount{}, currentUser)
+			return
 		}
 		if cfg.HomePath != "" {
 			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
@@ -2518,15 +2564,34 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			for _, pair := range locationPairs {
 				rewritten = strings.ReplaceAll(rewritten, pair[0], pair[1])
 			}
+			pushProxyLog(ProxyLogEntry{
+				Source:  "REDIRECT",
+				Level:   "warn",
+				Method:  r.Method,
+				Path:    path,
+				Status:  upstreamResp.StatusCode,
+				User:    currentUser,
+				Account: activeAcc.Name,
+				Detail:  "Location: " + clipLog(rewritten, 220),
+				HasUID:  r.Header.Get("X-UID") != "" || upstreamReq.Header.Get("X-UID") != "",
+				HasAPI:  r.Header.Get("X-API-TOKEN") != "" || upstreamReq.Header.Get("X-API-TOKEN") != "",
+				CookieN: countCookieNames(accountCookieStr),
+			})
 			if isSellerAmpAuthLocation(rawLoc) || isSellerAmpAuthLocation(rewritten) {
 				log.Printf("[PROXY] auth redirect intercepted path=%s status=%d loc=%s", path, upstreamResp.StatusCode, clipLog(rawLoc, 160))
 				_, _ = io.Copy(io.Discard, upstreamResp.Body)
 				renderSellerAmpAuthRecovery(w, r, cfg, sessionToken, activeAcc, currentUser)
 				return
 			}
+			// GET self-path 3xx → ERR_TOO_MANY_REDIRECTS in Chrome (search URL stays
+			// in the address bar). Serve recovery instead of forwarding Location.
+			if sellerAmpSelfPathRedirect(r, rewritten, publicHost) || sellerAmpSameResourceRedirect(r, rewritten, publicHost) {
+				log.Printf("[PROXY] self-path redirect intercepted path=%s status=%d loc=%s", path, upstreamResp.StatusCode, clipLog(rewritten, 160))
+				_, _ = io.Copy(io.Discard, upstreamResp.Body)
+				renderSellerAmpAuthRecovery(w, r, cfg, sessionToken, activeAcc, currentUser)
+				return
+			}
 			_ = breakSellerAmpAuthLocation(rewritten, publicScheme, publicHost, cfg)
-			// Do not bounce same-path redirects to home — that made searches look like
-			// a no-op. Auth loops are handled above; PRG/search Locations pass through.
 		}
 	}
 
