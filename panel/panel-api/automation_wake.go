@@ -251,7 +251,8 @@ func (s *server) captureAutomationWake(ctx context.Context, recipe automation.Re
 	if len(tool) == 0 {
 		tool = portal
 	}
-	raw, err := cookiesToJSON(tool)
+	// Use recipe Document when present (Zik needs cookies + localStorage.access hybrid).
+	raw, err := automationAccountBody(recipe, tool)
 	if err != nil || strings.TrimSpace(raw) == "" {
 		s.writeAutomationLog(job, "error", "could not refresh "+strings.TrimSpace(wake.Name), secrets)
 		return ""

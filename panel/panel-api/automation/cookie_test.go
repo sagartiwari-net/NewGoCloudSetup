@@ -33,3 +33,19 @@ func TestCookieArrayStillParsesAfterAUserAgentLine(t *testing.T) {
 		t.Fatalf("cookies %#v", cookies)
 	}
 }
+
+func TestParseStoredCookiesRestoresZikLocalStorageAccess(t *testing.T) {
+	raw := `{
+		"referer":"https://app.zikanalytics.com/dashboard",
+		"includedFormats":["cookies","localStorage"],
+		"cookies":[{"name":"SessionToken","value":"sess","domain":".zikanalytics.com","path":"/"}],
+		"storage":{"localStorage":{"access":"jwt-from-storage"}}
+	}`
+	cookies := ParseStoredCookies(raw)
+	if valueOfCookies(cookies, "SessionToken") != "sess" {
+		t.Fatalf("SessionToken missing: %#v", cookies)
+	}
+	if valueOfCookies(cookies, "access") != "jwt-from-storage" {
+		t.Fatalf("localStorage.access should become cookie access: %#v", cookies)
+	}
+}

@@ -129,12 +129,33 @@ func cookiesFromJSON(raw string) []Cookie {
 	if strings.HasPrefix(raw, "{") {
 		var wrapped struct {
 			Cookies []Cookie `json:"cookies"`
+			Storage struct {
+				LocalStorage map[string]string `json:"localStorage"`
+			} `json:"storage"`
 		}
 		if json.Unmarshal([]byte(raw), &wrapped) == nil && len(wrapped.Cookies) > 0 {
-			return dropEmptyCookies(wrapped.Cookies)
+			out := dropEmptyCookies(wrapped.Cookies)
+			// Zik Document moves JWT into storage.localStorage.access — put it back
+			// as a synthetic cookie so Check/Login round-trips still see "access".
+			if access := strings.TrimSpace(wrapped.Storage.LocalStorage["access"]); access != "" && valueOfCookies(out, "access") == "" {
+				out = append(out, Cookie{
+					Name: "access", Value: access, Domain: "app.zikanalytics.com",
+					HostOnly: true, Path: "/", Session: true,
+				})
+			}
+			return out
 		}
 	}
 	return nil
+}
+
+func valueOfCookies(cookies []Cookie, name string) string {
+	for _, cookie := range cookies {
+		if cookie.Name == name && strings.TrimSpace(cookie.Value) != "" {
+			return cookie.Value
+		}
+	}
+	return ""
 }
 
 func dropEmptyCookies(cookies []Cookie) []Cookie {

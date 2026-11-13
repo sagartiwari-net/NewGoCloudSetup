@@ -2134,8 +2134,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Set account cookie and user-agent using hybrid parser.
 	// Prefer mapped account SessionToken — browser may keep a stale/empty one from /login.
 	accountCookieStr, _ := parseCookiesAndStorage(activeAcc.Cookie)
+	// access JWT is sent as Authorization Bearer only — never as a Cookie
+	// (GoAuto often exports a stale cookie named "access" beside localStorage.access).
+	accountCookieStr = stripNamedCookies(accountCookieStr, "access")
 	clientCookies := stripSensitiveCookies(r.Header.Get("Cookie"), cfg)
-	clientCookies = stripNamedCookies(clientCookies, "SessionToken", "access_token", "refresh_token", "ct_session")
+	clientCookies = stripNamedCookies(clientCookies, "SessionToken", "access_token", "refresh_token", "ct_session", "access")
 	if accountCookieStr != "" {
 		if clientCookies != "" {
 			clientCookies += "; "
@@ -2439,6 +2442,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		earlyInject := ""
 		// Full storage like working zikaanalytics-go-proxy (essential-only strip blanked SPA boot).
 		_, localStorageData := parseCookiesAndStorage(activeAcc.Cookie)
+		if localStorageData == nil {
+			localStorageData = map[string]interface{}{}
+		}
+		// Plain cookie-array writes only have cookie "access" — still seed SPA localStorage.
+		if bearer := zikAuthBearerFromAccount(activeAcc.Cookie); bearer != "" {
+			if _, ok := localStorageData["access"]; !ok {
+				localStorageData["access"] = bearer
+			}
+		}
 		if len(localStorageData) > 0 {
 			lsBytes, err := json.Marshal(localStorageData)
 			if err == nil {
@@ -2470,7 +2482,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		earlyInject += zikSoftNoisy401Script() + zikClientNetDiagScript() +
 			zikLoginWatchScript(cfg) + patcherScript(patchCfg) + zikUsernameLabelScript(currentUser)
 		// Body-dependent widgets go before </body>, never in <head> (document.body is null there).
-		bodyTail := limitWidgetScript(cfg) + limitOverlayScript() + zikDebugButtonScript() +
+		bodyTail := limitWidgetScript(cfg) + limitOverlayScript() +
 			`<script>(function(){try{var i,s=document.querySelectorAll("style[data-tm-device]");for(i=0;i<s.length;i++)s[i].remove();if(document.documentElement)document.documentElement.style.removeProperty("visibility");if(document.body)document.body.style.removeProperty("visibility");if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(function(r){for(i=0;i<(r||[]).length;i++)r[i].unregister();}).catch(function(){});}}catch(e){}})();</script>`
 		bodyBytes = regexp.MustCompile(`(?i)<head[^>]*>`).ReplaceAllFunc(bodyBytes, func(m []byte) []byte {
 			out := make([]byte, 0, len(m)+len(earlyInject))
@@ -2542,8 +2554,8 @@ func main() {
 	mux.HandleFunc("/api/client-diag", withCORS(zikClientDiagHandler))
 	mux.HandleFunc("/__logs", liveLogsPageHandler)
 	mux.HandleFunc("/__logs.json", liveLogsJSONHandler)
-	mux.HandleFunc("/__debug", zikDebugPageHandler)
-	mux.HandleFunc("/__debug.json", zikDebugJSONHandler)
+	mux.HandleFunc("/__debug", http.NotFound)
+	mux.HandleFunc("/__debug.json", http.NotFound)
 
 	// ── Access handler (OTT → session cookie) ────────────────────────────────────
 	mux.HandleFunc("/api/device-bind", deviceBindHandler)

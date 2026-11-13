@@ -51,6 +51,9 @@ func TestLoginStoresAccessAndSession(t *testing.T) {
 	if !strings.Contains(raw, `"access"`) || !strings.Contains(raw, "SessionToken") {
 		t.Fatalf("document missing session fields: %s", raw)
 	}
+	if !strings.Contains(raw, `"includedFormats"`) || !strings.Contains(raw, `"localStorage"`) {
+		t.Fatalf("document should be GoAuto hybrid shape: %s", raw)
+	}
 	if strings.Contains(raw, `"name":"access"`) {
 		t.Fatal("access token should stay in localStorage")
 	}

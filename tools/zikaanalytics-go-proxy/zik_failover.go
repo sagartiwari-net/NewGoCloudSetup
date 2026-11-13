@@ -337,26 +337,53 @@ func zikLoginWatchScript(cfg Config) string {
 }
 
 func zikAuthBearerFromAccount(cookieRaw string) string {
-	_, ls := parseCookiesAndStorage(cookieRaw)
-	if ls == nil {
-		// GoAuto dumps sometimes nest storage under includedFormats-only exports;
-		// also try raw JSON map walk for "access".
-		return zikAccessFromRawJSON(cookieRaw)
-	}
-	if v, ok := ls["access"].(string); ok {
-		return strings.TrimSpace(v)
-	}
-	if raw, ok := ls["access"]; ok {
-		b, err := json.Marshal(raw)
-		if err == nil {
-			var s string
-			if json.Unmarshal(b, &s) == nil {
-				return strings.TrimSpace(s)
+	cookieStr, ls := parseCookiesAndStorage(cookieRaw)
+	// Prefer localStorage.access (GoAuto hybrid / automation Document).
+	if ls != nil {
+		if v, ok := ls["access"].(string); ok {
+			if tok := strings.TrimSpace(v); tok != "" {
+				return tok
+			}
+		}
+		if raw, ok := ls["access"]; ok {
+			b, err := json.Marshal(raw)
+			if err == nil {
+				var s string
+				if json.Unmarshal(b, &s) == nil {
+					if tok := strings.TrimSpace(s); tok != "" {
+						return tok
+					}
+				}
 			}
 		}
 	}
 	if tok := zikAccessFromRawJSON(cookieRaw); tok != "" {
 		return tok
+	}
+	// Plain cookie-array / incomplete automation write: JWT saved as cookie name "access".
+	if tok := cookieHeaderValue(cookieStr, "access"); tok != "" {
+		return tok
+	}
+	return ""
+}
+
+func cookieHeaderValue(cookieHeader, name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if cookieHeader == "" || name == "" {
+		return ""
+	}
+	for _, part := range strings.Split(cookieHeader, ";") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(trimmed, "=")
+		if !ok {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(k)) == name {
+			return strings.TrimSpace(v)
+		}
 	}
 	return ""
 }

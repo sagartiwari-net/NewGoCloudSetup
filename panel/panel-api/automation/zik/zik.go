@@ -106,6 +106,7 @@ func (Recipe) Document(cookies []automation.Cookie) (string, error) {
 	access := valueOf(cookies, "access")
 	kept := make([]automation.Cookie, 0, len(cookies))
 	for _, cookie := range cookies {
+		// access JWT belongs in localStorage (GoAuto hybrid), not the Cookie header.
 		if cookie.Name == "access" || cookie.Value == "" {
 			continue
 		}
@@ -114,9 +115,12 @@ func (Recipe) Document(cookies []automation.Cookie) (string, error) {
 	if access == "" || !hasName(kept, "SessionToken") {
 		return "", automation.ErrNoCookie
 	}
+	// Same shape GoAuto exports: cookies + storage.localStorage.access.
+	// Proxy reads Bearer from localStorage.access; SessionToken stays a real cookie.
 	payload := map[string]any{
-		"referer": "https://app.zikanalytics.com/dashboard",
-		"cookies": kept,
+		"referer":          "https://app.zikanalytics.com/dashboard",
+		"includedFormats":  []string{"cookies", "localStorage"},
+		"cookies":          kept,
 		"storage": map[string]any{
 			"localStorage": map[string]string{
 				"access":             access,
