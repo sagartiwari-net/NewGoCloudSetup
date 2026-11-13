@@ -16,7 +16,8 @@ func TestLoginStoresAccessAndSession(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Unix()
 	payload, _ := json.Marshal(map[string]any{"exp": exp})
 	token := "h." + base64.RawURLEncoding.EncodeToString(payload) + ".s"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Email    string `json:"email"`
 			Password string `json:"password"`
@@ -31,10 +32,23 @@ func TestLoginStoresAccessAndSession(t *testing.T) {
 			"success": true,
 			"result":  map[string]string{"accessToken": token},
 		})
-	}))
+	})
+	mux.HandleFunc("/competitiorResearch/suggestions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"message":"Unauthorized. Please log in again."}`))
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	})
+	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	loginURL = srv.URL
-	t.Cleanup(func() { loginURL = "https://api.zikanalytics.com/auth/login" })
+	loginURL = srv.URL + "/auth/login"
+	probeURL = srv.URL + "/competitiorResearch/suggestions?type=1"
+	t.Cleanup(func() {
+		loginURL = "https://api.zikanalytics.com/auth/login"
+		probeURL = "https://api.zikanalytics.com/competitiorResearch/suggestions?type=1"
+	})
 
 	cookies, err := Recipe{}.Login(context.Background(), "owner@example.com", "secret")
 	if err != nil {
@@ -56,6 +70,27 @@ func TestLoginStoresAccessAndSession(t *testing.T) {
 	}
 	if strings.Contains(raw, `"name":"access"`) {
 		t.Fatal("access token should stay in localStorage")
+	}
+}
+
+func TestCheckRejectsSoftDeadResearchSession(t *testing.T) {
+	exp := time.Now().Add(time.Hour).Unix()
+	payload, _ := json.Marshal(map[string]any{"exp": exp})
+	token := "h." + base64.RawURLEncoding.EncodeToString(payload) + ".s"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"Unauthorized. Please log in again."}`))
+	}))
+	defer srv.Close()
+	probeURL = srv.URL
+	t.Cleanup(func() { probeURL = "https://api.zikanalytics.com/competitiorResearch/suggestions?type=1" })
+
+	ok, _, err := Recipe{}.Check(context.Background(), []automation.Cookie{
+		{Name: "access", Value: token},
+		{Name: "SessionToken", Value: "dead-sess"},
+	})
+	if err != nil || ok {
+		t.Fatalf("soft-dead check ok=%v err=%v", ok, err)
 	}
 }
 

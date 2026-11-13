@@ -19,6 +19,8 @@ const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 
 var (
 	loginURL = "https://api.zikanalytics.com/auth/login"
+	// Research probe — GetSettings/GetStore can still 200 on soft-dead sessions.
+	probeURL = "https://api.zikanalytics.com/competitiorResearch/suggestions?type=1"
 	httpWait = 25 * time.Second
 )
 
@@ -26,13 +28,52 @@ type Recipe struct{}
 
 func (Recipe) PortalHost() string { return "zikanalytics.com" }
 
-func (Recipe) Check(_ context.Context, cookies []automation.Cookie) (bool, []automation.Cookie, error) {
+// Check requires a live research session. JWT exp alone is not enough — soft-dead
+// cookies still load the dashboard (GetSettings 200) while product research returns 401.
+func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []automation.Cookie, error) {
 	token := valueOf(cookies, "access")
 	session := valueOf(cookies, "SessionToken")
 	if token == "" || session == "" || jwtExpired(token) {
 		return false, nil, nil
 	}
+	alive, err := researchAlive(ctx, token, session)
+	if err != nil {
+		// Network blip: keep stored cookies; next run will probe again.
+		return true, cookies, nil
+	}
+	if !alive {
+		return false, nil, nil
+	}
 	return true, cookies, nil
+}
+
+func researchAlive(ctx context.Context, access, session string) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Origin", "https://app.zikanalytics.com")
+	req.Header.Set("Referer", "https://app.zikanalytics.com/dashboard")
+	req.Header.Set("Authorization", "Bearer "+access)
+	req.Header.Set("Cookie", "SessionToken="+session)
+	client := &http.Client{Timeout: httpWait}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return false, nil
+	}
+	lower := strings.ToLower(string(raw))
+	if strings.Contains(lower, "please log in again") ||
+		strings.Contains(lower, "you must be authenticated") {
+		return false, nil
+	}
+	return resp.StatusCode >= 200 && resp.StatusCode < 300, nil
 }
 
 func (Recipe) Login(ctx context.Context, username, password string) ([]automation.Cookie, error) {
