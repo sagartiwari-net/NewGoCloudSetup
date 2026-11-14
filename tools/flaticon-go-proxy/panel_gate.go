@@ -462,6 +462,7 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 
 // isFlaticonSecurityFilterHTML detects Freepik/Flaticon WAF "403 security filter" pages
 // (same family as Magnific — dark volcanic 403 on Hetzner/datacenter IPs).
+// Keep this tight: vague markers like "akamai" appear on normal pages and false-trigger.
 func isFlaticonSecurityFilterHTML(body []byte) bool {
 	if len(body) == 0 {
 		return false
@@ -474,23 +475,22 @@ func isFlaticonSecurityFilterHTML(body []byte) bool {
 	if strings.Contains(lower, "security filter flagged") {
 		return true
 	}
-	if strings.Contains(lower, "you don't have permission to access this page") &&
-		(strings.Contains(lower, "403") || strings.Contains(lower, "back to homepage")) {
-		return true
-	}
 	if strings.Contains(lower, "that request didn't go through") {
 		return true
 	}
-	// Soft challenges / Akamai / CF interstitial — rewrite looks blank after host replace.
-	markers := []string{
-		"just a moment", "checking your browser", "attention required",
-		"cf-browser-verification", "cf-challenge", "akamai", "access denied",
-		"request blocked", "bot detection", "enable javascript and cookies",
+	if strings.Contains(lower, "you don't have permission to access this page") &&
+		(strings.Contains(lower, "aria-label=\"error 403\"") ||
+			strings.Contains(lower, "back to homepage") ||
+			strings.Contains(lower, "error 403")) {
+		return true
 	}
-	for _, m := range markers {
-		if strings.Contains(lower, m) {
-			return true
-		}
+	if strings.Contains(lower, "making sure it's you") {
+		return true
+	}
+	if strings.Contains(lower, "security check") &&
+		(strings.Contains(lower, "just a moment") ||
+			strings.Contains(lower, "keeps your account and your work protected")) {
+		return true
 	}
 	return false
 }
@@ -516,10 +516,10 @@ func flaticonWAFCleanupScript() string {
 
 func flaticonWAFNeedsProxyCard(cfg Config) lightCard {
 	return lightCard{
-		Title:       "Temporarily Unavailable",
-		Heading:     "Temporarily Unavailable",
-		Message:     "Tools is temporarily unavailable. Please try again in a few minutes.",
-		Footer:      "Open this tool again from your access link",
+		Title:   "Temporarily Unavailable",
+		Heading: "Temporarily Unavailable",
+		Message: "Flaticon blocks this server IP. Add a working residential proxy on the Flaticon account (or website), then open again.",
+		Footer:  "Cookie alone is not enough — Freepik requires a residential exit IP",
 		ExtraScript: flaticonWAFCleanupScript(),
 	}
 }
@@ -532,9 +532,9 @@ func flaticonWAFRetryCard(cfg Config) lightCard {
 	return lightCard{
 		Title:   "Switching account",
 		Heading: "Switching account",
-		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
+		Message: "Flaticon WAF still blocked this request. Checking the next account / proxy…",
 		Badge:   "Trying one account at a time",
-		Footer:  "This keeps trying until an account is available",
+		Footer:  "If this keeps looping, the proxy exit is still datacenter — use a fresh residential proxy",
 		Spin:    true,
 		ExtraScript: `<script>(function(){
   var home=` + fmt.Sprintf("%q", home) + `;
@@ -543,7 +543,7 @@ func flaticonWAFRetryCard(cfg Config) lightCard {
     try{sessionStorage.removeItem('tm_fi_waf_retry');}catch(e){}
     var t=document.querySelector('h1'); var m=document.querySelector('.msg');
     if(t) t.textContent='Temporarily Unavailable';
-    if(m) m.textContent='Flaticon is temporarily unavailable. Please try again in a few minutes.';
+    if(m) m.textContent='Flaticon blocked every account proxy. Set a working residential proxy on the account, then retry.';
     return;
   }
   try{sessionStorage.setItem('tm_fi_waf_retry', String(n+1));}catch(e){}

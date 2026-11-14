@@ -1236,11 +1236,18 @@ func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	_ = contentType
 }
 
+// Only rotate bot/CDN cookies from upstream. Never absorb Flaticon auth
+// (FI_TOKEN / FI_REFRESH_TOKEN / GRID) — guest Set-Cookie must not overwrite panel cookies.
 var absorbCookieNames = map[string]bool{
-	"__cf_bm": true, "cf_clearance": true, "ASI": true, "CID": true,
+	"__cf_bm": true, "cf_clearance": true, "_cfuvid": true,
+	"ak_bmsc": true, "bm_sv": true, "bm_s": true,
+	"ASI": true, "CID": true,
 	"CAE": true, "CAZ": true, "CB": true, "CUI": true, "CUL": true, "CAU": true,
-	"user_session": true, "remember_user_token": true, "_piktov3_final_session": true,
-	"_ilovepdf": true, "_csrf-ilovepdf": true, "_identity-ilovepdf": true, "_identity_ulc": true,
+}
+
+var flaticonAuthCookieNames = map[string]bool{
+	"FI_TOKEN": true, "FI_REFRESH_TOKEN": true, "GRID": true,
+	"csrf_flaticon": true, "csrf_accounts": true,
 }
 
 func cookieHeaderToMap(header string) map[string]string {
@@ -1275,17 +1282,28 @@ func mapToCookieHeader(m map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+func scrubAuthFromCookieOverlayLocked() {
+	for k := range flaticonAuthCookieNames {
+		if _, ok := localCookieOverlay[k]; ok {
+			delete(localCookieOverlay, k)
+			log.Printf("[COOKIE] Dropped poisoned overlay auth cookie %s", k)
+		}
+	}
+}
+
 func applyLocalCookieOverlay(base string) string {
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
+	scrubAuthFromCookieOverlayLocked()
 	if len(localCookieOverlay) == 0 {
 		return base
 	}
 	m := cookieHeaderToMap(base)
 	for k, v := range localCookieOverlay {
-		if v != "" {
-			m[k] = v
+		if v == "" || flaticonAuthCookieNames[k] {
+			continue
 		}
+		m[k] = v
 	}
 	return mapToCookieHeader(m)
 }
@@ -1298,6 +1316,7 @@ func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 	}
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
+	scrubAuthFromCookieOverlayLocked()
 	for _, sc := range h.Values("Set-Cookie") {
 		parts := strings.SplitN(sc, ";", 2)
 		if len(parts) == 0 {
@@ -1958,6 +1977,24 @@ func loadProxyFromDB() *url.URL {
 }
 
 func getProxy() *url.URL { return loadProxyFromDB() }
+
+// Account proxy first, then website-level proxy from ahrefs_websites.
+func flaticonEffectiveProxy(acc ToolAccount) string {
+	if p := strings.TrimSpace(acc.Proxy); p != "" {
+		if parseProxyString(p) != nil {
+			return p
+		}
+		log.Printf("[PROXY] account %q proxy string invalid — falling back to website proxy", acc.Name)
+	}
+	_ = getProxy()
+	proxyMu.RLock()
+	defer proxyMu.RUnlock()
+	return strings.TrimSpace(currentProxyStr)
+}
+
+func flaticonHasUsableProxy(acc ToolAccount) bool {
+	return flaticonEffectiveProxy(acc) != ""
+}
 
 // ── PROXY DIALERS ─────────────────────────────────────────────────────────────
 
@@ -3336,12 +3373,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 4. Credit/Limit check — DISABLED (bypass_auth mode) ─────────────────────
 	// Limits are not enforced in standalone/bypass mode.
 
+	effectiveProxy := flaticonEffectiveProxy(activeAcc)
 	// Freepik WAF blocks Hetzner — without a residential proxy, never hit upstream
 	// (403 challenge HTML rewrites to a blank page + device SW refresh loop).
-	if usesPanelAccountMode(cfg) && strings.TrimSpace(activeAcc.Proxy) == "" &&
+	if usesPanelAccountMode(cfg) && effectiveProxy == "" &&
 		isDocumentNavigation(r) && !strings.HasPrefix(path, "/api/") &&
 		!strings.HasPrefix(path, "/cdn-cgi/") && path != "/favicon.ico" {
-		log.Printf("[WAF] skip upstream — account %q has NO proxy (path=%s)", activeAcc.Name, path)
+		log.Printf("[WAF] skip upstream — account %q has NO usable proxy (path=%s)", activeAcc.Name, path)
 		renderFlaticonWAFPage(w, cfg, false)
 		return
 	}
@@ -3495,7 +3533,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		bodyReader = nil
 	}
 	upstreamReq, err := http.NewRequestWithContext(
-		context.WithValue(r.Context(), proxyContextKey, activeAcc.Proxy),
+		context.WithValue(r.Context(), proxyContextKey, effectiveProxy),
 		r.Method, upstreamURLStr, bodyReader,
 	)
 	if err != nil {
@@ -3538,6 +3576,15 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Merging the browser Cookie header caused "400 Request Header Or Cookie Too Large"
 	// on sas.selleramp.com nginx and broke CSRF/session → Unauthorized toasts.
 	accountCookieStr := applyLocalCookieOverlay(parseCookieFromDB(activeAcc.Cookie))
+	if isDocumentNavigation(r) && accountCookieStr != "" {
+		log.Printf("[COOKIE] upstream %s account=%s FI_TOKEN=%v FI_REFRESH_TOKEN=%v GRID=%v proxy=%v cookieNames=%d",
+			path, activeAcc.Name,
+			strings.Contains(accountCookieStr, "FI_TOKEN="),
+			strings.Contains(accountCookieStr, "FI_REFRESH_TOKEN="),
+			strings.Contains(accountCookieStr, "GRID="),
+			effectiveProxy != "",
+			countCookieNames(accountCookieStr))
+	}
 	if strings.EqualFold(upstreamURL.Host, "coda.grammarly.com") {
 		accountCookieStr = mergeNamedBrowserCookies(accountCookieStr, r, "AWSALB", "AWSALBCORS")
 		if alb := albForCodaRequest(path, r.URL.Query().Get("sid")); alb != "" {
@@ -3590,7 +3637,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if ua == "" {
 			ua = cfg.UserAgent
 		}
-		proxyWebSocket(w, r, upstreamURL, accountCookieStr, ua, cfg, activeAcc.Proxy)
+		proxyWebSocket(w, r, upstreamURL, accountCookieStr, ua, cfg, effectiveProxy)
 		return
 	}
 	ua := activeAcc.UserAgent
@@ -3842,11 +3889,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// (looks like a broken page after domain rewrite). Same as Magnific.
 		if isFlaticonSecurityFilterHTML(bodyBytes) ||
 			(upstreamResp.StatusCode == http.StatusForbidden && isFlaticonSecurityFilterHTML(bodyBytes)) {
-			hasProxy := strings.TrimSpace(activeAcc.Proxy) != ""
+			hasProxy := flaticonHasUsableProxy(activeAcc)
 			if hasProxy {
 				log.Printf("[WAF] Flaticon security filter path=%s proxy=set — showing retry page", path)
 			} else {
-				log.Printf("[WAF] Flaticon security filter path=%s — account has NO proxy; showing proxy-required page", path)
+				log.Printf("[WAF] Flaticon security filter path=%s — no usable proxy; showing proxy-required page", path)
 			}
 			for k := range w.Header() {
 				w.Header().Del(k)
