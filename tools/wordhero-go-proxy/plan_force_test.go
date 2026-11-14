@@ -232,6 +232,9 @@ func TestBuildInjectUpsellDismissAndLayoutGuards(t *testing.T) {
 		`a[href="/myaccount"]`,
 		`[role="menu"][aria-label="Account"]`,
 		`[role="menu"][aria-label="API"]`,
+		"wordhero-account-menu-trigger",
+		"lockWordHeroAccountMenu",
+		"blockAccountMenuEvent",
 	}
 	for _, n := range need {
 		if !strings.Contains(s, n) {

@@ -1991,9 +1991,63 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       /* Kill blurred modal backdrop that makes side panels look missing */
       'body:has([data-testid="upgrade-plan-modal"]) [data-testid="upgrade-plan-modal"],',
       '[data-testid="upgrade-plan-modal"]',
-      '{display:none!important}'
+      '{display:none!important}',
+      /* Keep panel username visible; block account dropdown (settings/billing/logout). */
+      '#wordhero-account-menu-trigger,',
+      '#wordhero-account-menu-trigger *',
+      '{pointer-events:none!important;cursor:default!important}',
+      '#wordhero-account-menu-trigger[data-state="open"],',
+      '[data-radix-popper-content-wrapper]:has([data-tm-wh-account-menu]),',
+      '[role="menu"]:has([href*="/settings"]),',
+      '[role="menu"]:has([href*="/billing"]),',
+      '[role="menu"]:has([href*="/account"])',
+      '{display:none!important;visibility:hidden!important;pointer-events:none!important}'
     ].join('');
     (document.head || document.documentElement).appendChild(st);
+  } catch (e) {}
+
+  // Sidebar footer account chip: show name only — never open the menu.
+  function lockWordHeroAccountMenu() {
+    try {
+      var trig = document.getElementById('wordhero-account-menu-trigger');
+      if (trig) {
+        trig.setAttribute('data-tm-account-locked', '1');
+        trig.setAttribute('aria-expanded', 'false');
+        trig.setAttribute('data-state', 'closed');
+        trig.style.setProperty('pointer-events', 'none', 'important');
+        trig.style.setProperty('cursor', 'default', 'important');
+      }
+      document.querySelectorAll('[role="menu"], [data-radix-menu-content], [data-radix-dropdown-menu-content]').forEach(function(menu) {
+        var t = (menu.textContent || '').replace(/\s+/g, ' ');
+        if (!/Log\s*out|Sign\s*out|Billing|Account|Settings|Subscription|Upgrade/i.test(t)) return;
+        menu.style.setProperty('display', 'none', 'important');
+        menu.style.setProperty('visibility', 'hidden', 'important');
+        menu.style.setProperty('pointer-events', 'none', 'important');
+        menu.setAttribute('data-tm-wh-account-menu', '1');
+        var wrap = menu.closest ? menu.closest('[data-radix-popper-content-wrapper]') : null;
+        if (wrap) {
+          wrap.style.setProperty('display', 'none', 'important');
+          wrap.style.setProperty('pointer-events', 'none', 'important');
+        }
+      });
+    } catch (e) {}
+  }
+  function blockAccountMenuEvent(ev) {
+    try {
+      var t = ev.target && ev.target.closest ? ev.target.closest('#wordhero-account-menu-trigger') : null;
+      if (!t) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+      lockWordHeroAccountMenu();
+    } catch (e) {}
+  }
+  ['pointerdown', 'mousedown', 'click', 'keydown', 'touchstart'].forEach(function(type) {
+    document.addEventListener(type, blockAccountMenuEvent, true);
+  });
+  lockWordHeroAccountMenu();
+  try {
+    new MutationObserver(function() { lockWordHeroAccountMenu(); }).observe(document.documentElement, { childList: true, subtree: true });
   } catch (e) {}
 
   var HIDE_LABELS = {
@@ -2277,7 +2331,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       });
     } catch (e) {}
   }
-  function scrubAll() { scrubChrome(); hideWordHeroNav(); scrubUsername(); paintNativeCredits(TM_LIMITS); dismissFeatureToast(); }
+  function scrubAll() { scrubChrome(); hideWordHeroNav(); scrubUsername(); lockWordHeroAccountMenu(); paintNativeCredits(TM_LIMITS); dismissFeatureToast(); }
   var __tmScrubTimer = null;
   function scheduleScrub() {
     if (__tmScrubTimer) return;
