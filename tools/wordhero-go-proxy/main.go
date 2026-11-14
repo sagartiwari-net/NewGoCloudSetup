@@ -592,17 +592,27 @@ func ensureFreshSessionRaw(raw string, accountID int, proxyStr string) (string, 
 		}
 		return raw, fmt.Errorf("refresh_token_already_used (cached)")
 	}
-	if rt == "" {
-		return raw, fmt.Errorf("no refresh_token in session")
-	}
 	exp := jwtExpUnix(token)
 	if token != "" && exp > time.Now().Unix()+300 {
 		return raw, nil
 	}
 
 	c := getConfig()
+	// Without the project anon key we cannot call Supabase refresh. Keep serving
+	// the pasted cookie (browser /auth/v1/token can still refresh via the proxy).
+	// Never treat this as a dead account — that was marking WordHero unavailable.
 	if strings.TrimSpace(c.SupabaseKey) == "" {
-		return raw, fmt.Errorf("supabase_key empty — paste a fresh GoAuto cookie (refresh skipped)")
+		if token != "" {
+			log.Printf("[AUTH] supabase_key empty — using pasted access_token as-is (exp=%d)", exp)
+			return raw, nil
+		}
+		return raw, fmt.Errorf("supabase_key_missing_and_no_access_token")
+	}
+	if rt == "" {
+		if token != "" {
+			return raw, nil
+		}
+		return raw, fmt.Errorf("no refresh_token in session")
 	}
 	body, _ := json.Marshal(map[string]string{"refresh_token": rt})
 	endpoint := strings.TrimRight(c.SupabaseURL, "/") + "/auth/v1/token?grant_type=refresh_token"
@@ -735,6 +745,20 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+func countCookieNames(cookieHeader string) int {
+	n := 0
+	for _, part := range strings.Split(cookieHeader, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if i := strings.IndexByte(part, '='); i > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 func planFromSession(cookieHeader string, ls map[string]string) string {
@@ -1072,6 +1096,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	cookieHdr, ls := parseSession(raw)
 	token := accessTokenFromLS(ls)
+	if token != "" && jwtExpUnix(token) > time.Now().Unix()+60 {
+		// Fresh/valid paste clears sticky "logged_out" from earlier empty-key false positives.
+		if st := ctSessionToken(r); st != "" {
+			gptzeroOutcomeMu.Lock()
+			delete(gptzeroOutcome, st)
+			gptzeroOutcomeMu.Unlock()
+		}
+	}
+	if isDocumentNavigation(r) {
+		hasSB := strings.Contains(cookieHdr, "sb-") && strings.Contains(cookieHdr, "-auth-token=")
+		log.Printf("[COOKIE] account=%s(%d) sb_auth=%v access_token=%v exp=%d cookieNames=%d rawBytes=%d",
+			accountName, accID, hasSB, token != "", jwtExpUnix(token), countCookieNames(cookieHdr), len(raw))
+	}
 	plan := planFromSession(cookieHdr, ls)
 	if accountUA != "" {
 		c.UserAgent = accountUA

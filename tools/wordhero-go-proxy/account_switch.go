@@ -221,6 +221,11 @@ func gptzeroAuthRefreshFailed(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
+	// Soft / config gaps must never rotate accounts.
+	if strings.Contains(msg, "supabase_key") || strings.Contains(msg, "refresh skipped") ||
+		strings.Contains(msg, "missing_and_no_access_token") {
+		return false
+	}
 	return strings.Contains(msg, "refresh") || strings.Contains(msg, "invalid_grant") ||
 		strings.Contains(msg, "already used") || strings.Contains(msg, "http 4") ||
 		strings.Contains(msg, "no refresh_token") || strings.Contains(msg, "empty session")
