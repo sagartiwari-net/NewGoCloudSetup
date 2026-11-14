@@ -1096,6 +1096,25 @@ func mapToCookieHeader(m map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+// overlaySafeNames may rotate globally. Session cookies stay per panel account —
+// absorbing login Set-Cookie prezi-auth=- into a process overlay logs everyone out
+// and causes /dashboard → /auth/required → /login → home redirect loops.
+var overlaySafeNames = map[string]bool{
+	"aws-waf-token": true, "__cf_bm": true, "cf_clearance": true, "_cfuvid": true,
+}
+
+func cookieValueCleared(val string) bool {
+	v := strings.TrimSpace(val)
+	if v == "" || strings.EqualFold(v, "deleted") || v == "-" || v == `""` {
+		return true
+	}
+	// Express/Django often clear with quoted empty.
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' && strings.Trim(v, `"`) == "" {
+		return true
+	}
+	return false
+}
+
 func applyLocalCookieOverlay(base string) string {
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
@@ -1103,10 +1122,15 @@ func applyLocalCookieOverlay(base string) string {
 		return base
 	}
 	m := cookieHeaderToMap(base)
+	panel := usesPanelAccountMode(loadConfig())
 	for k, v := range localCookieOverlay {
-		if v != "" {
-			m[k] = v
+		if v == "" || cookieValueCleared(v) {
+			continue
 		}
+		if panel && !overlaySafeNames[k] {
+			continue
+		}
+		m[k] = v
 	}
 	return mapToCookieHeader(m)
 }
@@ -1114,11 +1138,13 @@ func applyLocalCookieOverlay(base string) string {
 func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 	// Absorb from 2xx and 3xx (Prezi auth/optional refreshes prezi-auth on 302).
 	// Never absorb from challenge/error pages (403 "Just a moment...") — those overwrite good cookies.
-	if statusCode < 200 || statusCode >= 400 {
+	// Skip 202 WAF challenges. Skip cleared session cookies (prezi-auth=-).
+	if statusCode < 200 || statusCode >= 400 || statusCode == http.StatusAccepted {
 		return false
 	}
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
+	panel := usesPanelAccountMode(loadConfig())
 	for _, sc := range h.Values("Set-Cookie") {
 		parts := strings.SplitN(sc, ";", 2)
 		if len(parts) == 0 {
@@ -1131,7 +1157,10 @@ func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 		}
 		name := strings.TrimSpace(nv[:eq])
 		val := strings.TrimSpace(nv[eq+1:])
-		if !absorbCookieNames[name] || val == "" || strings.EqualFold(val, "deleted") {
+		if !absorbCookieNames[name] || cookieValueCleared(val) {
+			continue
+		}
+		if panel && !overlaySafeNames[name] {
 			continue
 		}
 		if localCookieOverlay[name] != val {
@@ -1673,6 +1702,37 @@ func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
 		Footer:  "Open this tool again from your access link",
 	})
+}
+
+func renderSessionExpiredPage(w http.ResponseWriter, cfg Config) {
+	name := strings.TrimSpace(cfg.ToolName)
+	if name == "" {
+		name = "Prezi"
+	}
+	writeLightCard(w, http.StatusOK, lightCard{
+		Title:   name + " session expired",
+		Heading: "Session needs a fresh cookie",
+		Message: name + " logged out upstream. Update the account cookie in the panel, then open this tool again from your access link.",
+		Footer:  "This page stops the login redirect loop",
+	})
+}
+
+// locationPointsToBlockedAuth detects upstream 302s to /login that would bounce
+// off our blocked-path → home redirect and cause ERR_TOO_MANY_REDIRECTS.
+func locationPointsToBlockedAuth(loc string, cfg Config) bool {
+	loc = strings.TrimSpace(loc)
+	if loc == "" {
+		return false
+	}
+	u, err := url.Parse(loc)
+	if err != nil {
+		return false
+	}
+	p := u.Path
+	if p == "" {
+		p = loc
+	}
+	return isBlockedPath(p, cfg)
 }
 
 func renderLimitReachedPage(w http.ResponseWriter, limitType string, cfg Config) {
@@ -3034,6 +3094,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				currentWebsiteID, currentUser, realClientIP(r), path,
 			)
 		}
+		// /login ↔ /dashboard/next ↔ /api/v2/auth/required must not redirect forever.
+		low := strings.ToLower(path)
+		if strings.Contains(low, "login") || strings.Contains(low, "sign-in") ||
+			strings.Contains(low, "signin") || strings.Contains(low, "signup") ||
+			strings.Contains(low, "sign-up") || strings.Contains(low, "register") {
+			renderSessionExpiredPage(w, cfg)
+			return
+		}
 		if cfg.HomePath != "" {
 			http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 		} else {
@@ -3471,6 +3539,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				newLoc := rewriteWoorankHostURL(v, publicBase)
 				for _, pair := range locationPairs {
 					newLoc = strings.ReplaceAll(newLoc, pair[0], pair[1])
+				}
+				if locationPointsToBlockedAuth(newLoc, cfg) {
+					// Upstream sent us to /login. Serving that Location would hit
+					// blocked_paths → HomePath → auth/required → /login again.
+					log.Printf("[PREZI] break login redirect loop from %s → %s", path, newLoc)
+					renderSessionExpiredPage(w, cfg)
+					return
 				}
 				w.Header().Add(k, newLoc)
 			}
