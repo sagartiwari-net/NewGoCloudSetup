@@ -13,11 +13,15 @@ export function SecretTextarea({
   value,
   onChange,
   invalid,
+  disabled,
+  placeholder,
 }: {
   id: string
   value: string
   onChange: (value: string) => void
   invalid?: boolean
+  disabled?: boolean
+  placeholder?: string
 }) {
   const [revealed, setRevealed] = useState(!value)
 
@@ -27,6 +31,7 @@ export function SecretTextarea({
         <Button
           type="button"
           variant="outline"
+          disabled={disabled}
           onClick={() => setRevealed((current) => !current)}
         >
           {revealed ? <EyeOffIcon data-icon="inline-start" /> : <EyeIcon data-icon="inline-start" />}
@@ -35,6 +40,7 @@ export function SecretTextarea({
         <Button
           type="button"
           variant="outline"
+          disabled={disabled}
           onClick={() => {
             if (!value) {
               toast.error("Nothing to copy")
@@ -48,13 +54,14 @@ export function SecretTextarea({
         >
           Copy
         </Button>
-        <Button type="button" variant="outline" onClick={() => onChange("")}>
+        <Button type="button" variant="outline" disabled={disabled} onClick={() => onChange("")}>
           Clear
         </Button>
       </div>
       <Textarea
         id={id}
         value={value}
+        disabled={disabled}
         aria-invalid={invalid || undefined}
         onFocus={() => setRevealed(true)}
         onChange={(event) => onChange(event.target.value)}
@@ -63,7 +70,7 @@ export function SecretTextarea({
           fieldSizing: "fixed",
           WebkitTextSecurity: revealed ? "none" : "disc",
         } as CSSProperties}
-        placeholder="Paste the cookie JSON here"
+        placeholder={placeholder || "Paste the cookie JSON here"}
       />
     </div>
   )

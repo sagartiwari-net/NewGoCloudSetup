@@ -18,7 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { deleteAccount, getAccount, saveAccount } from "@/lib/api/client"
+import { deleteAccount, deleteCookieLink, getAccount, saveAccount } from "@/lib/api/client"
 import type { IngestLog, MappedAccount, ProxyEndpoint, Role, UserAgentProfile, Website } from "@/lib/api/types"
 import { formatTime } from "@/lib/format"
 import { runMutation } from "@/lib/mutate"
@@ -117,24 +117,30 @@ export function AccountEditor({
   useEffect(() => {
     if (!account) return
     let cancel = false
+    setCookieReady(false)
+    setCookieError("")
     getAccount(account.id)
       .then((full) => {
         if (cancel) return
-        if (!full?.cookie) {
-          setCookieError("Cookie could not be loaded")
-          return
+        // Never clobber a cookie the user already typed while the load was slow —
+        // that race made Scite/etc. "updates" silently save the old cookie again.
+        if (!form.getFieldState("cookie").isDirty) {
+          form.setValue("cookie", full?.cookie || "", { shouldDirty: false })
         }
-        form.setValue("cookie", full.cookie)
-        form.setValue("proxy", full.proxy || "")
-        form.setValue("proxy_id", full.proxy_id ? String(full.proxy_id) : "")
-        form.setValue("user_agent", full.user_agent || form.getValues("user_agent"))
-        form.setValue("user_agent_id", full.user_agent_id ? String(full.user_agent_id) : "")
-        form.setValue("automation_task_uid", full.automation_task_uid || "")
-        form.setValue("automation_ingest_key", full.automation_ingest_key || "")
+        form.setValue("proxy", full?.proxy || "")
+        form.setValue("proxy_id", full?.proxy_id ? String(full.proxy_id) : "")
+        form.setValue("user_agent", full?.user_agent || form.getValues("user_agent"))
+        form.setValue("user_agent_id", full?.user_agent_id ? String(full.user_agent_id) : "")
+        form.setValue("automation_task_uid", full?.automation_task_uid || "")
+        form.setValue("automation_ingest_key", full?.automation_ingest_key || "")
+        setCookieError("")
         setCookieReady(true)
       })
       .catch(() => {
-        if (!cancel) setCookieError("Cookie could not be loaded")
+        if (!cancel) {
+          setCookieError("Cookie could not be loaded")
+          setCookieReady(true)
+        }
       })
     return () => {
       cancel = true
@@ -147,9 +153,19 @@ export function AccountEditor({
     if (account && !cookieReady) return
     // Cookie paste after tool failover must revive — never leave logged_out stuck.
     const nextStatus = values.cookie.trim() && values.status !== "inactive" && values.status !== "blocked" ? "active" : values.status
+    const cookieEdited = Boolean(account && form.getFieldState("cookie").isDirty)
     const ok = await runMutation(
-      () =>
-        saveAccount({
+      async () => {
+        // Manual paste must stick: stop "Use from account" sync so a source save
+        // cannot overwrite this Scite/etc. cookie a moment later.
+        if (cookieEdited && account?.id) {
+          try {
+            await deleteCookieLink(account.id)
+          } catch {
+            // Not linked, or operator lacks cookie-link API — save anyway.
+          }
+        }
+        return saveAccount({
           id: account?.id,
           website_id: Number(values.website_id),
           name: values.name,
@@ -164,7 +180,8 @@ export function AccountEditor({
           automation_task_uid: role === "master" ? values.automation_task_uid.trim() : account?.automation_task_uid ?? "",
           automation_ingest_key:
             role === "master" ? values.automation_ingest_key.trim().toLowerCase() : account?.automation_ingest_key ?? "",
-        }),
+        })
+      },
       account ? "Account updated" : "Account saved",
     )
     if (ok) onDone()
@@ -236,11 +253,15 @@ export function AccountEditor({
                     value={field.value}
                     onChange={field.onChange}
                     invalid={Boolean(errors.cookie) || Boolean(cookieError)}
+                    disabled={Boolean(account && !cookieReady)}
+                    placeholder={
+                      account && !cookieReady ? "Loading cookie…" : "Paste the cookie JSON here"
+                    }
                   />
                 )}
               />
               {account && !cookieReady ? (
-                <FieldDescription>{cookieError || "Loading cookie…"}</FieldDescription>
+                <FieldDescription>{cookieError || "Loading cookie… wait, then paste the new export."}</FieldDescription>
               ) : null}
               <FieldError errors={[errors.cookie]} />
             </Field>
@@ -381,7 +402,7 @@ export function AccountEditor({
           </Button>
         ) : <span />}
         <Button type="submit" disabled={form.formState.isSubmitting || Boolean(account && !cookieReady)}>
-          {form.formState.isSubmitting || (account && !cookieReady) ? <Spinner data-icon="inline-start" /> : null}
+          {form.formState.isSubmitting ? <Spinner data-icon="inline-start" /> : null}
           Save account
         </Button>
         </div>
