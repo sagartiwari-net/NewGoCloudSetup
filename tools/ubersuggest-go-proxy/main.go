@@ -1801,7 +1801,7 @@ func main() {
 				bodyStr = string(injectDeviceHTML([]byte(bodyStr)))
 			}
 			if strings.Contains(strings.ToLower(contentType), "text/html") && resp.Request != nil {
-				script := uberLockHostScript + uberAuthCookieScript(panelMemoCookie(resp.Request))
+				script := uberLockHostScript + uberHideAvatarCSS + uberHideAvatarScript + uberAuthCookieScript(panelMemoCookie(resp.Request))
 				if usesPanelAccountMode(cfg) {
 					script += uberGuestWatchScript
 				}

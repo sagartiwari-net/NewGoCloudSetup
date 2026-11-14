@@ -31,6 +31,36 @@ const uberGuestWatchScript = `<script>
 })();
 </script>`
 
+// Hide only the profile avatar dropdown trigger — nothing else in the header.
+const uberHideAvatarCSS = `<style id="tm-uber-hide-avatar">
+[data-testid="nav-avatar-button"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+</style>`
+
+const uberHideAvatarScript = `<script>
+(function () {
+  if (window.__tmUberHideAvatar) return;
+  window.__tmUberHideAvatar = true;
+  function hide() {
+    try {
+      var nodes = document.querySelectorAll('[data-testid="nav-avatar-button"]');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].style.setProperty("display", "none", "important");
+        nodes[i].style.setProperty("visibility", "hidden", "important");
+        nodes[i].style.setProperty("pointer-events", "none", "important");
+      }
+    } catch (e) {}
+  }
+  hide();
+  try {
+    new MutationObserver(hide).observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+})();
+</script>`
+
 // Keep clicks / JS navigations on the proxy host. Upstream HTML/JS still points
 // at ubersuggest.com and app.neilpatel.com after the product rebrand.
 const uberLockHostScript = `<script>
