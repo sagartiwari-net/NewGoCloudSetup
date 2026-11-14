@@ -122,10 +122,10 @@ func TestBustChunkQuerySurvivesFlightSplit(t *testing.T) {
 		t.Fatalf("unbusted query left:\n%s", out)
 	}
 	joined := strings.ReplaceAll(out, `"])</script><script>self.__next_f.push([1,"`, "")
-	if !strings.Contains(joined, "b1262d9a671fb619.js?whhost=2&dpl=dpl_abc") {
+	if !strings.Contains(joined, "b1262d9a671fb619.js?whhost=3&dpl=dpl_abc") {
 		t.Fatalf("split chunk query not joined:\n%s", out)
 	}
-	if strings.Count(out, "page.js?whhost=2&dpl=dpl_abc") != 1 || strings.Count(out, "other.js?whhost=2&dpl=dpl_abc") != 1 {
+	if strings.Count(out, "page.js?whhost=3&dpl=dpl_abc") != 1 || strings.Count(out, "other.js?whhost=3&dpl=dpl_abc") != 1 {
 		t.Fatalf("contiguous urls changed: %s", out)
 	}
 }

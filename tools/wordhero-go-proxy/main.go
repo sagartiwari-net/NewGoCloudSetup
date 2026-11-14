@@ -1469,6 +1469,11 @@ func relaxWordHeroSession(path string, body []byte) []byte {
 func rewriteHostLock(body []byte) []byte {
 	body = bytes.ReplaceAll(body, []byte(`return"wordhero.aivolut.com"`), []byte(`return location.hostname`))
 	body = bytes.ReplaceAll(body, []byte(`return "wordhero.aivolut.com"`), []byte(`return location.hostname`))
+	// Allowlist checks that require *.aivolut.com (proxy host is wh.upays.in).
+	body = bytes.ReplaceAll(body, []byte(`hostname.includes("aivolut.com")`), []byte(`true`))
+	body = bytes.ReplaceAll(body, []byte(`hostname.includes('aivolut.com')`), []byte(`true`))
+	body = bytes.ReplaceAll(body, []byte(`.includes("aivolut.com")`), []byte(`.includes("aivolut.com")||true`))
+	body = bytes.ReplaceAll(body, []byte(`.includes('aivolut.com')`), []byte(`.includes('aivolut.com')||true`))
 	// Root layout joins ['write','human']+'.ai' and location.replace's there before React.
 	body = bytes.ReplaceAll(body,
 		[]byte(`location.replace(o+location.pathname+location.search)`),
@@ -1488,14 +1493,14 @@ func rewriteHostLock(body []byte) []byte {
 // browser joins those tags back into ?dpl=, then loads the page module a
 // second time, and the page stays dehydrated so Tools hover never runs.
 func bustChunkURLs(body []byte) []byte {
-	body = bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=2&dpl="))
+	body = bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=3&dpl="))
 	return bustSplitChunkQuery(body)
 }
 
 func bustSplitChunkQuery(body []byte) []byte {
 	seam := []byte(`"])</script><script>self.__next_f.push([1,"`)
 	const token = "?dpl="
-	const want = "?whhost=2&dpl="
+	const want = "?whhost=3&dpl="
 	var out []byte
 	rest := body
 	for {
@@ -1633,7 +1638,10 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     try {
       var x = new URL(u, REAL_ORIGIN);
       var h = (x.hostname || '').replace(/\.$/, '').toLowerCase();
-      if (h === 'wordhero.aivolut.com' || h === 'www.wordhero.aivolut.com') return REAL_ORIGIN + x.pathname + x.search + x.hash;
+      if (h === 'wordhero.aivolut.com' || h === 'www.wordhero.aivolut.com' ||
+          h === 'wordhero.ai' || h === 'www.wordhero.ai') {
+        return REAL_ORIGIN + x.pathname + x.search + x.hash;
+      }
     } catch (e) {}
     return u;
   }
@@ -1786,9 +1794,9 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       if (!href || href.charAt(0) === '#') return;
       if (isBlocked(href)) { ev.preventDefault(); ev.stopImmediatePropagation(); stayHome(); return; }
       if (whNavHidden(href)) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
-      // Next's client router preventDefault's these and then drops the navigation
-      // (Tools menu: AI Detector, Image Detector, Word Counter, Extension).
-      // A full load of the same path stays on this host.
+      // Next's client router sometimes preventDefault's then drops hard navigations
+      // off-host. Same-path ?tool= soft-nav must stay with the SPA — a full
+      // location.assign left Quick Create dehydrated (card highlight, no tool UI).
       var dest = '';
       try {
         var x = new URL(keepHere(href), REAL_ORIGIN);
@@ -1796,6 +1804,11 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
         dest = x.pathname + x.search + x.hash;
       } catch (e) { return; }
       if (!dest || dest === location.pathname + location.search + location.hash) return;
+      try {
+        var next = new URL(dest, REAL_ORIGIN);
+        var cur = location.pathname || '/';
+        if (next.pathname === cur && (next.search || next.hash)) return;
+      } catch (eSoft) {}
       ev.preventDefault();
       ev.stopImmediatePropagation();
       location.assign(dest);
@@ -1809,13 +1822,21 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
   function patchURL(u) {
     if (typeof u !== 'string') return u;
     if (u.indexOf('cdn.growthbook.io') !== -1) return u;
-    if (u.indexOf('api.wordhero.aivolut.com') !== -1) {
+    // Clone leftover used wordhero.ai — real host is wordhero.aivolut.com.
+    if (u.indexOf('api.wordhero.aivolut.com') !== -1 || u.indexOf('api.wordhero.ai') !== -1) {
+      u = u.replace(/https?:\/\/api\.wordhero\.aivolut\.com/g, O + '/api-proxy');
       u = u.replace(/https?:\/\/api\.wordhero\.ai/g, O + '/api-proxy');
     }
-    u = u.replace(/https?:\/\/wordhero\.ai/g, O);
+    u = u.replace(/https?:\/\/(www\.)?wordhero\.aivolut\.com/g, O);
+    u = u.replace(/https?:\/\/(www\.)?wordhero\.ai/g, O);
     for (var i = 0; i < EXTRA.length; i++) {
       u = u.replace(EXTRA[i][0], O + EXTRA[i][1]);
     }
+    u = u.replace(/https?:\/\/([a-z0-9-]+)\.wordhero\.aivolut\.com/gi, function(m, sub) {
+      var s = (sub || '').toLowerCase();
+      if (s === 'app' || s === 'api' || s === 'cdn' || s === 'auth' || s === 'www') return m;
+      return O + '/extra-cdn-wild/' + sub + '.wordhero.aivolut.com';
+    });
     u = u.replace(/https?:\/\/([a-z0-9-]+)\.wordhero\.ai/gi, function(m, sub) {
       var s = (sub || '').toLowerCase();
       if (s === 'app' || s === 'api' || s === 'cdn' || s === 'auth' || s === 'www') return m;
