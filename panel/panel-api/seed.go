@@ -113,6 +113,7 @@ var localTools = []seedTool{
 	{"ahrefs", "Ahrefs", "5291", "seo", creditsExports},
 	{"quillbot", "QuillBot", "5311", "ai", credits},
 	{"writehuman", "WriteHuman", "5321", "ai", writeHumanLimits},
+	{"wordhero", "WordHero", "5322", "ai", credits},
 	{"pictory", "Pictory", "5331", "video", nil},
 }
 
@@ -176,6 +177,37 @@ func ensureWriteHuman(db *sql.DB) {
 	websiteID, _ := res.LastInsertId()
 	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "WriteHuman", `["writehuman"]`)
 	log.Printf("added WriteHuman website %d at wrth.upays.in", websiteID)
+}
+
+// Existing panel databases are not re-seeded. Insert WordHero once so the
+// Access tool list can open wh.upays.in.
+func ensureWordHero(db *sql.DB) {
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM websites WHERE name='WordHero' OR domain IN ('wh.upays.in', 'wordhero.gt4rents.com', 'wordhero.upays.in', '127.0.0.1:5322')`).Scan(&n)
+	if n > 0 {
+		return
+	}
+	limits, _ := json.Marshal(credits)
+	var toolID int64
+	err := db.QueryRow(`SELECT id FROM tools WHERE name=?`, "WordHero").Scan(&toolID)
+	if err != nil {
+		res, insErr := db.Exec(`INSERT INTO tools (name, category, limits_json) VALUES (?,?,?)`, "WordHero", "ai", string(limits))
+		if insErr != nil {
+			log.Printf("wordhero tool: %v", insErr)
+			return
+		}
+		toolID, _ = res.LastInsertId()
+	}
+	defaults, _ := json.Marshal(map[string]int{"credits": 100})
+	res, err := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
+		VALUES (?,?,?,?,30,?,1,?)`, toolID, "WordHero", "wh.upays.in", "secret_wordhero", string(defaults), "wh")
+	if err != nil {
+		log.Printf("wordhero website: %v", err)
+		return
+	}
+	websiteID, _ := res.LastInsertId()
+	_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, "WordHero", `["wordhero"]`)
+	log.Printf("added WordHero website %d at wh.upays.in (slug wh)", websiteID)
 }
 
 // Existing panel databases are not re-seeded. Insert Pictory once so the

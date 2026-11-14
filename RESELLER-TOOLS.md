@@ -167,6 +167,38 @@ Purana seed kabhi-kabhi reseller ko **owner** websites pe assign karta tha (alag
 
 ---
 
+## WordHero (owner)
+
+| Field | Value |
+|-------|--------|
+| Tool | WordHero |
+| Public host | `wh.upays.in` (keyword **wh**) |
+| Legacy | `wordhero.gt4rents.com` |
+| Port | `5322` |
+| Upstream | `https://wordhero.aivolut.com/dashboard` |
+| Login cookie | GoAuto cookies — `sb-raclhlkqknriixxxbwvv-auth-token` (Supabase) |
+| Access slug | `wh` |
+| Folder | `tools/wordhero-go-proxy` |
+| SQL | `deploy/add-wordhero.sql` |
+| Overlay | `deploy/configs/wordhero.config.overlay.json` |
+
+Reseller model: same port `5322`, alag website row + mapped account (owner cookie share mat karo). Logout → account switch + Analytics logout events (Telegram later). Device fingerprint / cookie-share lock WriteHuman shell jaisa.
+
+Deploy sketch:
+
+```bash
+cd /www/wwwroot/gt4rents.com/_repo && git pull
+cp deploy/nginx-host-port.map.conf /path/to/nginx/include/   # then nginx -t && reload
+./deploy/build-one.sh wordhero && ./deploy/install-systemd-tool.sh wordhero
+./deploy/build-panel.sh && systemctl restart gt4-panel-api
+# optional if seed miss:
+mysql -ugt4rents -p gt4rents < deploy/add-wordhero.sql
+```
+
+DNS: `wh.upays.in` → `65.109.16.196`. aaPanel site → `127.0.0.1:5322`.
+
+---
+
 ## Checklist — naya reseller tool add karte waqt
 
 1. `tools.json` / owner port confirm  

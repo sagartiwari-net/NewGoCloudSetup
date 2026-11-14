@@ -1,0 +1,29 @@
+{
+  "port": "5322",
+  "target_url": "https://wordhero.aivolut.com",
+  "public_host": "wh.upays.in",
+  "public_scheme": "http",
+  "cookie_file": "cookie.txt",
+  "tool_name": "WordHero",
+  "home_path": "/dashboard",
+  "blocked_paths": [
+    "/signup",
+    "/pricing",
+    "/affiliates",
+    "/account",
+    "/settings",
+    "/billing",
+    "/login"
+  ],
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "bypass_auth": false,
+  "session_duration_minutes": 120,
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "extra_domains": [
+    "https://raclhlkqknriixxxbwvv.supabase.co",
+    "https://aivolut.com",
+    "https://www.aivolut.com"
+  ],
+  "supabase_url": "https://raclhlkqknriixxxbwvv.supabase.co",
+  "supabase_key": ""
+}
