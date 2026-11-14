@@ -14,5 +14,6 @@
   "home_path": "/dashboard",
   "tool_name": "WordHero",
   "supabase_url": "https://raclhlkqknriixxxbwvv.supabase.co",
-  "_note": "WordHero (wh.upays.in). Login cookie: sb-raclhlkqknriixxxbwvv-auth-token. Resellers share port 5322 with separate website rows."
+  "_note": "WordHero (wh.upays.in). Login cookie: sb-raclhlkqknriixxxbwvv-auth-token. Resellers share port 5322 with separate website rows.",
+  "supabase_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhY2xobGtxa25yaWl4eHhid3Z2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTI3NTMsImV4cCI6MjEwMDI2ODc1M30.HQaDxsuubY2Y3U7Fj4Kf5gKNxY4wCzqhizJ149vW2BM"
 }

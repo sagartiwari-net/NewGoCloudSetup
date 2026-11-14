@@ -115,6 +115,28 @@ func TestWordHeroBillUsesWordsAndImages(t *testing.T) {
 	}
 }
 
+func TestShouldHardBlockPathSkipsRSC(t *testing.T) {
+	doc, _ := http.NewRequest(http.MethodGet, "https://wh.upays.in/billing", nil)
+	doc.Header.Set("Sec-Fetch-Mode", "navigate")
+	doc.Header.Set("Sec-Fetch-Dest", "document")
+	if !shouldHardBlockPath(doc) {
+		t.Fatal("document nav to blocked path should hard-block")
+	}
+	rsc, _ := http.NewRequest(http.MethodGet, "https://wh.upays.in/billing?_rsc=18t7j", nil)
+	rsc.Header.Set("RSC", "1")
+	rsc.Header.Set("Sec-Fetch-Mode", "cors")
+	rsc.Header.Set("Sec-Fetch-Dest", "empty")
+	if shouldHardBlockPath(rsc) {
+		t.Fatal("RSC prefetch must not hard-block — poisons Next router")
+	}
+	pref, _ := http.NewRequest(http.MethodGet, "https://wh.upays.in/account", nil)
+	pref.Header.Set("Next-Router-Prefetch", "1")
+	pref.Header.Set("Sec-Fetch-Mode", "cors")
+	if shouldHardBlockPath(pref) {
+		t.Fatal("Next prefetch must not hard-block")
+	}
+}
+
 func TestBustChunkQuerySurvivesFlightSplit(t *testing.T) {
 	in := []byte(`<script src="/_next/static/chunks/page.js?dpl=dpl_abc"></script><script>self.__next_f.push([1,"/_next/static/chunks/b1262d9a671fb619.js?d"])</script><script>self.__next_f.push([1,"pl=dpl_abc\",\"/_next/static/chunks/other.js?dpl=dpl_abc"])</script>`)
 	out := string(bustChunkURLs(in))
@@ -122,10 +144,10 @@ func TestBustChunkQuerySurvivesFlightSplit(t *testing.T) {
 		t.Fatalf("unbusted query left:\n%s", out)
 	}
 	joined := strings.ReplaceAll(out, `"])</script><script>self.__next_f.push([1,"`, "")
-	if !strings.Contains(joined, "b1262d9a671fb619.js?whhost=3&dpl=dpl_abc") {
+	if !strings.Contains(joined, "b1262d9a671fb619.js?whhost=7&dpl=dpl_abc") {
 		t.Fatalf("split chunk query not joined:\n%s", out)
 	}
-	if strings.Count(out, "page.js?whhost=3&dpl=dpl_abc") != 1 || strings.Count(out, "other.js?whhost=3&dpl=dpl_abc") != 1 {
+	if strings.Count(out, "page.js?whhost=7&dpl=dpl_abc") != 1 || strings.Count(out, "other.js?whhost=7&dpl=dpl_abc") != 1 {
 		t.Fatalf("contiguous urls changed: %s", out)
 	}
 }
@@ -204,7 +226,8 @@ func TestBuildInjectUpsellDismissAndLayoutGuards(t *testing.T) {
 		"gzUnhideLayout",
 		"Premium (Annual)",
 		"trialSubscriptionUsed",
-		"location.assign(dest)",
+		"bootScrub",
+		"Do NOT wrap Location/history",
 		"whNavHidden",
 		`a[href="/myaccount"]`,
 		`[role="menu"][aria-label="Account"]`,

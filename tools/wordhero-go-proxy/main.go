@@ -985,6 +985,24 @@ func isBlockedPath(path string, blocked []string) bool {
 	return false
 }
 
+func isNextRSCRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.Header.Get("RSC") == "1" || r.Header.Get("Next-Router-Prefetch") != "" ||
+		r.Header.Get("Next-Router-State-Tree") != "" {
+		return true
+	}
+	return r.URL.Query().Get("_rsc") != ""
+}
+
+func shouldHardBlockPath(r *http.Request) bool {
+	if isNextRSCRequest(r) {
+		return false
+	}
+	return isDocumentNavigation(r)
+}
+
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	c := getConfig()
 	path := r.URL.Path
@@ -1033,7 +1051,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if isBlockedPath(path, c.BlockedPaths) {
+	// Only hard-block real document navigations. Next.js RSC/prefetch (?_rsc= /
+	// RSC:1) must reach upstream — a 302 HTML response poisons the client router
+	// and Quick Create stops firing tool=? navigations (no _rsc on click).
+	if isBlockedPath(path, c.BlockedPaths) && shouldHardBlockPath(r) {
 		log.Printf("[BLOCK] user=%s path=%s", panelUser, path)
 		recordBlockedPath(c, r, panelUser)
 		home := c.HomePath
@@ -1320,16 +1341,25 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	pairs := domainPairs(c, publicBase)
 
 	if strings.Contains(ct, "text/html") {
-		body = rewriteBytes(body, pairs)
-		body = rewriteHostLock(body)
-		body = bustChunkURLs(body)
-		inject := buildInject(c, ls, plan, token, publicBase, panelUser)
-		if usesPanelAccountMode(c) && !c.BypassAuth {
-			inject += limitWidgetScript(toolDisplayName(c))
+		if os.Getenv("WORDHERO_NO_REWRITE") != "1" {
+			body = rewriteBytes(body, pairs)
+			body = rewriteHostLock(body)
+			// bustChunkURLs used to force host-lock cache refresh but splits
+			// Next flight script URLs and leaves the page dehydrated. Skip it.
+			if os.Getenv("WORDHERO_BUST_CHUNKS") == "1" {
+				body = bustChunkURLs(body)
+			}
 		}
-		body = injectHead(body, inject)
-		if usesPanelAccountMode(c) && !c.BypassAuth {
-			body = injectDeviceHTML(body)
+		// WORDHERO_MINIMAL_INJECT=1 skips SPA inject while diagnosing hydration.
+		if os.Getenv("WORDHERO_MINIMAL_INJECT") != "1" {
+			inject := buildInject(c, ls, plan, token, publicBase, panelUser)
+			if usesPanelAccountMode(c) && !c.BypassAuth {
+				inject += limitWidgetScript(toolDisplayName(c))
+			}
+			body = injectHead(body, inject)
+			if usesPanelAccountMode(c) && !c.BypassAuth {
+				body = injectDeviceHTML(body)
+			}
 		}
 		// Browser cookies for plan / accessToken4 (JS readable)
 		http.SetCookie(w, &http.Cookie{Name: "plan", Value: plan, Path: "/", MaxAge: 7 * 24 * 3600})
@@ -1353,8 +1383,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 	} else if strings.Contains(ct, "javascript") || strings.Contains(ct, "application/json") ||
 		strings.Contains(ct, "text/css") || strings.Contains(ct, "text/x-component") {
-		body = rewriteBytes(body, pairs)
-		body = rewriteHostLock(body)
+		if os.Getenv("WORDHERO_NO_REWRITE") != "1" {
+			body = rewriteBytes(body, pairs)
+			body = rewriteHostLock(body)
+		}
 		if strings.Contains(ct, "application/json") || strings.Contains(ct, "+json") {
 			body = forceGPTZeroPremiumPlan(path, body)
 			body = relaxWordHeroSession(path, body)
@@ -1389,6 +1421,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func domainPairs(c Config, publicBase string) [][2]string {
+	// Same-origin relative rewrites for the app host. Do NOT rewrite Supabase
+	// project URLs in JS — createClient() requires an absolute http(s) URL;
+	// baking "/extra-cdn-0" threw Invalid URL, killed the page module, and left
+	// Quick Create dehydrated (SSR cards, no React handlers, no _rsc on click).
+	// Fetch still maps supabase → origin+/extra-cdn-N via inject EXTRA.
+	base := strings.TrimRight(strings.TrimSpace(publicBase), "/")
 	var pairs [][2]string
 	add := func(oldHost, newBase string) {
 		pairs = append(pairs,
@@ -1397,19 +1435,32 @@ func domainPairs(c Config, publicBase string) [][2]string {
 		)
 	}
 	t, _ := url.Parse(c.TargetURL)
-	if t != nil && t.Host != "" {
-		add(t.Host, publicBase)
+	if t != nil && t.Host != "" && base != "" {
+		// Absolute → same-origin absolute. Never rewrite to "" — that turns
+		// origin/"https://wordhero…" strings into empty and dehydrates React
+		// (Quick Create SSR cards, no handlers, no ?tool= soft-nav).
+		add(t.Host, base)
 	}
 	for i, extra := range c.ExtraDomains {
 		host := strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		host = strings.Split(host, "/")[0]
+		low := strings.ToLower(host)
 		// NEVER rewrite GrowthBook — /sub SSE hangs boot.
-		if strings.Contains(strings.ToLower(host), "growthbook") {
+		if strings.Contains(low, "growthbook") {
 			continue
 		}
-		add(host, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i))
+		// Keep supabase.co absolute in bundles (see comment above).
+		if strings.Contains(low, "supabase.co") {
+			continue
+		}
+		// Absolute same-origin proxy path (needs scheme+host for URL()).
+		if base != "" {
+			add(host, fmt.Sprintf("%s/extra-cdn-%d", base, i))
+		}
 	}
-	add("api.wordhero.aivolut.com", publicBase+"/api-proxy")
+	if base != "" {
+		add("api.wordhero.aivolut.com", base+"/api-proxy")
+	}
 	// longest first
 	for i := 0; i < len(pairs); i++ {
 		for j := i + 1; j < len(pairs); j++ {
@@ -1470,10 +1521,10 @@ func rewriteHostLock(body []byte) []byte {
 	body = bytes.ReplaceAll(body, []byte(`return"wordhero.aivolut.com"`), []byte(`return location.hostname`))
 	body = bytes.ReplaceAll(body, []byte(`return "wordhero.aivolut.com"`), []byte(`return location.hostname`))
 	// Allowlist checks that require *.aivolut.com (proxy host is wh.upays.in).
+	// Only rewrite the exact hostname.includes form — broad ".includes||true"
+	// rewrites corrupted minified bundles and killed client navigation.
 	body = bytes.ReplaceAll(body, []byte(`hostname.includes("aivolut.com")`), []byte(`true`))
 	body = bytes.ReplaceAll(body, []byte(`hostname.includes('aivolut.com')`), []byte(`true`))
-	body = bytes.ReplaceAll(body, []byte(`.includes("aivolut.com")`), []byte(`.includes("aivolut.com")||true`))
-	body = bytes.ReplaceAll(body, []byte(`.includes('aivolut.com')`), []byte(`.includes('aivolut.com')||true`))
 	// Root layout joins ['write','human']+'.ai' and location.replace's there before React.
 	body = bytes.ReplaceAll(body,
 		[]byte(`location.replace(o+location.pathname+location.search)`),
@@ -1493,14 +1544,14 @@ func rewriteHostLock(body []byte) []byte {
 // browser joins those tags back into ?dpl=, then loads the page module a
 // second time, and the page stays dehydrated so Tools hover never runs.
 func bustChunkURLs(body []byte) []byte {
-	body = bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=3&dpl="))
+	body = bytes.ReplaceAll(body, []byte("?dpl="), []byte("?whhost=7&dpl="))
 	return bustSplitChunkQuery(body)
 }
 
 func bustSplitChunkQuery(body []byte) []byte {
 	seam := []byte(`"])</script><script>self.__next_f.push([1,"`)
 	const token = "?dpl="
-	const want = "?whhost=3&dpl="
+	const want = "?whhost=7&dpl="
 	var out []byte
 	rest := body
 	for {
@@ -1645,37 +1696,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     } catch (e) {}
     return u;
   }
-  function wrapNav(name) {
-    try {
-      var desc = Object.getOwnPropertyDescriptor(Location.prototype, name);
-      var orig = desc && typeof desc.value === 'function' ? desc.value : Location.prototype[name];
-      if (typeof orig !== 'function') return;
-      Object.defineProperty(Location.prototype, name, {
-        configurable: true, writable: true,
-        value: function(u) { return orig.call(this, keepHere(u)); }
-      });
-    } catch (e) {}
-  }
-  wrapNav('replace');
-  wrapNav('assign');
-  try {
-    var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-    if (hrefDesc && hrefDesc.get && hrefDesc.set) {
-      var hrefSet = hrefDesc.set;
-      Object.defineProperty(Location.prototype, 'href', {
-        configurable: true, enumerable: hrefDesc.enumerable,
-        get: hrefDesc.get,
-        set: function(v) { return hrefSet.call(this, keepHere(v)); }
-      });
-    }
-  } catch (e) {}
-  document.addEventListener('click', function(ev) {
-    var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
-    if (!a) return;
-    var href = a.getAttribute('href') || '';
-    var local = keepHere(href);
-    if (local !== href) { ev.preventDefault(); ev.stopImmediatePropagation(); location.href = local; }
-  }, true);
+  // Do NOT wrap Location/history — Next App Router needs the originals for ?tool= soft-nav.
   var TM_USER = %s;
   var PLAN = %s;
   // Restore session
@@ -1696,6 +1717,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       var derived = 'sb-' + String(location.hostname || '127').split('.')[0] + '-auth-token';
       var authJSON = typeof authVal === 'string' ? authVal : JSON.stringify(authVal);
       localStorage.setItem(derived, authJSON);
+      localStorage.setItem('sb-raclhlkqknriixxxbwvv-auth-token', authJSON);
       localStorage.setItem('sb-127-auth-token', authJSON);
       localStorage.setItem('sb-localhost-auth-token', authJSON);
       // supabase-ssr reads this cookie, not localStorage. The name is the
@@ -1758,26 +1780,9 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
   }
   function stayHome() {
     var h = HOME || '/';
-    if ((location.pathname || '/') !== h) history.replaceState(null, '', h);
+    if ((location.pathname || '/') !== h) location.replace(h);
   }
   try {
-    var _push = history.pushState.bind(history);
-    history.pushState = function(s, t, u) {
-      if (typeof u === 'string') u = keepHere(u);
-      if (isBlocked(u)) return _push(s, t, HOME || '/');
-      return _push(s, t, u);
-    };
-    var _rep = history.replaceState.bind(history);
-    history.replaceState = function(s, t, u) {
-      if (typeof u === 'string') u = keepHere(u);
-      if (isBlocked(u)) return _rep(s, t, HOME || '/');
-      return _rep(s, t, u);
-    };
-    var _open = window.open;
-    window.open = function(u, name, specs) {
-      if (typeof u === 'string') u = keepHere(u);
-      return _open.call(window, u, name, specs);
-    };
     document.addEventListener('click', function(ev) {
       var signOut = ev.target && ev.target.closest ? ev.target.closest('button') : null;
       if (signOut && (signOut.textContent || '').replace(/\s+/g, ' ').trim() === 'Sign Out') {
@@ -1792,26 +1797,18 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       if (target && target !== '_self') return;
       var href = a.getAttribute('href') || '';
       if (!href || href.charAt(0) === '#') return;
-      if (isBlocked(href)) { ev.preventDefault(); ev.stopImmediatePropagation(); stayHome(); return; }
-      if (whNavHidden(href)) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
-      // Next's client router sometimes preventDefault's then drops hard navigations
-      // off-host. Same-path ?tool= soft-nav must stay with the SPA — a full
-      // location.assign left Quick Create dehydrated (card highlight, no tool UI).
-      var dest = '';
-      try {
-        var x = new URL(keepHere(href), REAL_ORIGIN);
-        if (x.origin !== REAL_ORIGIN) return;
-        dest = x.pathname + x.search + x.hash;
-      } catch (e) { return; }
-      if (!dest || dest === location.pathname + location.search + location.hash) return;
-      try {
-        var next = new URL(dest, REAL_ORIGIN);
-        var cur = location.pathname || '/';
-        if (next.pathname === cur && (next.search || next.hash)) return;
-      } catch (eSoft) {}
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      location.assign(dest);
+      if (isBlocked(href) || whNavHidden(href)) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        if (isBlocked(href)) stayHome();
+        return;
+      }
+      var local = keepHere(href);
+      if (local !== href) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        location.assign(local);
+      }
     }, true);
     if (isBlocked(location.pathname)) stayHome();
   } catch (e) {}
@@ -1965,10 +1962,7 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
       });
     } catch (e) {}
   }
-  setInterval(function(){ dismissUpsells(); dismissFeatureToast(); }, 1200);
-  try {
-    new MutationObserver(function() { dismissUpsells(); dismissFeatureToast(); }).observe(document.documentElement, { childList: true, subtree: true });
-  } catch (e) {}
+  // Upsell dismiss starts after hydration (see bootScrub) — not on first paint.
 
   // Hide only the listed profile/sidebar/header chrome (keep Scans + main app).
   try {
@@ -2289,14 +2283,20 @@ func buildInject(c Config, ls map[string]string, plan, token, publicBase, panelU
     if (__tmScrubTimer) return;
     __tmScrubTimer = setTimeout(function(){ __tmScrubTimer = null; scrubAll(); }, 900);
   }
-  scrubAll();
-  refreshPanelLimits();
-  // Lighter cadence — heavy MutationObserver+700ms scrub was janking the SPA open.
-  setInterval(scrubAll, 2500);
-  setInterval(refreshPanelLimits, 8000);
-  try {
-    new MutationObserver(function() { scheduleScrub(); }).observe(document.documentElement, { childList: true, subtree: true });
-  } catch (e) {}
+  // Wait for Next hydration before DOM scrubbing — early MutationObserver
+  // rewrites fought React and left Quick Create non-interactive.
+  function bootScrub() {
+    scrubAll();
+    refreshPanelLimits();
+    setInterval(function(){ dismissUpsells(); dismissFeatureToast(); }, 2000);
+    setInterval(scrubAll, 4000);
+    setInterval(refreshPanelLimits, 8000);
+    try {
+      new MutationObserver(function() { scheduleScrub(); dismissUpsells(); dismissFeatureToast(); }).observe(document.documentElement, { childList: true, subtree: true });
+    } catch (e) {}
+  }
+  if (document.readyState === 'complete') setTimeout(bootScrub, 2500);
+  else window.addEventListener('load', function(){ setTimeout(bootScrub, 2500); });
 })();
 </script>`,
 		mustJSON(strings.TrimSpace(panelUsername)),

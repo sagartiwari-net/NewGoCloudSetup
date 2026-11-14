@@ -52,8 +52,10 @@ func panelRequestHost(r *http.Request, publicHost string) string {
 // requestPublicBase is the browser origin for this hit. A second panel website
 // on the same port keeps its own domain. Anything that is not this tool stays
 // on the configured public host.
+// Local origins keep :port (PublicHost / r.Host) — stripping it rewrote
+// Supabase to http://127.0.0.1/extra-cdn-0 and broke auth on local runs.
 func requestPublicBase(r *http.Request, c Config) string {
-	host := panelHostOnly(c.PublicHost)
+	host := strings.TrimSpace(c.PublicHost)
 	scheme := strings.ToLower(strings.TrimSpace(c.PublicScheme))
 	if scheme != "http" && scheme != "https" {
 		scheme = "http"
@@ -62,6 +64,8 @@ func requestPublicBase(r *http.Request, c Config) string {
 		candidate := panelRequestHost(r, c.PublicHost)
 		if candidate != "" && !panelHostIsLocal(candidate) {
 			host = candidate
+		} else if rh := strings.TrimSpace(r.Host); rh != "" && panelHostIsLocal(panelHostOnly(rh)) {
+			host = rh
 		}
 		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
 			proto = strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
@@ -70,6 +74,8 @@ func requestPublicBase(r *http.Request, c Config) string {
 			}
 		} else if r.TLS != nil {
 			scheme = "https"
+		} else if panelHostIsLocal(panelHostOnly(host)) {
+			scheme = "http"
 		}
 	}
 	if host == "" {
