@@ -1,8 +1,8 @@
 {
   "port": "5321",
   "target_url": "https://writehuman.ai",
-  "public_host": "writehuman.gt4rents.com",
-  "public_scheme": "http",
+  "public_host": "wrth.upays.in",
+  "public_scheme": "https",
   "cookie_file": "cookie.txt",
   "tool_name": "WriteHuman",
   "home_path": "/",

@@ -20,6 +20,13 @@ func panelWebsiteIDForDomain(db *sql.DB, host string) int {
 	return id
 }
 
+func panelOwnerDomainMatchSQL() string {
+	return `lower(trim(owner.domain)) IN (
+		lower(trim(?)), lower(trim(?)),
+		'wrth.upays.in', 'writehuman.upays.in', 'writehuman.gt4rents.com'
+	)`
+}
+
 func panelWebsiteSameTool(db *sql.DB, publicHost string, websiteID int) bool {
 	if db == nil || websiteID <= 0 {
 		return false
@@ -28,7 +35,7 @@ func panelWebsiteSameTool(db *sql.DB, publicHost string, websiteID int) bool {
 	err := db.QueryRow(`SELECT COUNT(*) FROM websites w
 		JOIN websites owner ON owner.tool_id = w.tool_id
 		WHERE w.id = ?
-		  AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`,
+		  AND `+panelOwnerDomainMatchSQL(),
 		websiteID, publicHost, panelHostOnly(publicHost)).Scan(&n)
 	return err == nil && n > 0
 }
@@ -47,7 +54,7 @@ func panelHostAllowed(publicHost, reqHost string) bool {
 	err = db.QueryRow(`SELECT COUNT(*) FROM websites w
 		JOIN websites owner ON owner.tool_id = w.tool_id
 		WHERE (lower(trim(w.domain)) = lower(trim(?)) OR lower(trim(w.domain)) = lower(trim(?)))
-		  AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`,
+		  AND `+panelOwnerDomainMatchSQL(),
 		reqHost, reqHost, publicHost, panelHostOnly(publicHost)).Scan(&n)
 	return err == nil && n > 0
 }
@@ -60,7 +67,7 @@ func panelToolDomains(publicHost string) []string {
 	}
 	rows, err := db.Query(`SELECT w.domain FROM websites w
 		JOIN websites owner ON owner.tool_id = w.tool_id
-		WHERE lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?))`,
+		WHERE `+panelOwnerDomainMatchSQL(),
 		publicHost, panelHostOnly(publicHost))
 	if err != nil {
 		return nil
@@ -95,7 +102,7 @@ func panelWebsiteIDForUser(db *sql.DB, publicHost, username string) int {
 			JOIN websites w ON w.id = s.website_id
 			JOIN websites owner ON owner.tool_id = w.tool_id
 			WHERE s.username = ? AND s.expires_at > ?
-			  AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))
+			  AND `+panelOwnerDomainMatchSQL()+`
 			ORDER BY s.id DESC LIMIT 1`,
 			username, now, publicHost, panelHostOnly(publicHost)).Scan(&id)
 		if err == nil && id > 0 {

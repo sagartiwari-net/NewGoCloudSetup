@@ -1,0 +1,17 @@
+{
+  "port": "5321",
+  "public_host": "wrth.upays.in",
+  "public_scheme": "https",
+  "target_url": "https://writehuman.ai",
+  "tool_name": "WriteHuman",
+  "home_path": "/",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "gt4rents",
+  "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
+  "mysql_db": "gt4rents",
+  "_note": "Live host is wrth.upays.in (not writehuman.gt4rents.com). Wrong public_host breaks OTT claim / live_sessions restore → Access Denied after panel button open."
+}

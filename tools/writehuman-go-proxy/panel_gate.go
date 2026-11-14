@@ -155,10 +155,13 @@ func restorePanelSession(token string) (*panelGateSession, error) {
 	}
 	var username, expires string
 	var websiteID int
+	ph := panelHostOnly(cfg.PublicHost)
 	err = db.QueryRow(`SELECT s.username, s.expires_at, s.website_id FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
 		JOIN websites owner ON owner.tool_id = w.tool_id
-		WHERE s.session_token = ? AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`, token, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&username, &expires, &websiteID)
+		WHERE s.session_token = ? AND lower(trim(owner.domain)) IN (
+			lower(trim(?)), lower(trim(?)), 'wrth.upays.in', 'writehuman.upays.in', 'writehuman.gt4rents.com'
+		)`, token, cfg.PublicHost, ph).Scan(&username, &expires, &websiteID)
 	if err != nil {
 		return nil, err
 	}
@@ -184,10 +187,13 @@ func panelLiveSessionExists(sessionToken string) bool {
 		return false
 	}
 	var n int
+	ph := panelHostOnly(cfg.PublicHost)
 	err = db.QueryRow(`SELECT COUNT(*) FROM live_sessions s
 		JOIN websites w ON w.id = s.website_id
 		JOIN websites owner ON owner.tool_id = w.tool_id
-		WHERE s.session_token = ? AND (lower(trim(owner.domain)) = lower(trim(?)) OR lower(trim(owner.domain)) = lower(trim(?)))`, sessionToken, cfg.PublicHost, panelHostOnly(cfg.PublicHost)).Scan(&n)
+		WHERE s.session_token = ? AND lower(trim(owner.domain)) IN (
+			lower(trim(?)), lower(trim(?)), 'wrth.upays.in', 'writehuman.upays.in', 'writehuman.gt4rents.com'
+		)`, sessionToken, cfg.PublicHost, ph).Scan(&n)
 	if err != nil {
 		log.Printf("[PANEL] live session lookup failed: %v", err)
 		return false
@@ -242,12 +248,20 @@ func servePanelAccess(w http.ResponseWriter, r *http.Request, cfg Config) {
 	reqHost := panelRequestHost(r, cfg.PublicHost)
 	var dbUser, productID, clientIP, expiresRaw string
 	var websiteID, durationMin int
-	// Consume OTT only when website domain matches public_host or request Host.
+	// Consume OTT when website domain matches request Host, public_host, or legacy WriteHuman hosts.
+	h1 := panelHostOnly(reqHost)
+	h2 := panelHostOnly(cfg.PublicHost)
+	h3 := "wrth.upays.in"
+	h4 := "writehuman.upays.in"
+	h5 := "writehuman.gt4rents.com"
 	claim, err := db.Exec(`UPDATE access_tokens SET expires_at = '1970-01-01T00:00:00Z' WHERE token = ? AND expires_at > ?
 		AND website_id IN (
-			SELECT id FROM websites WHERE lower(trim(domain)) IN (lower(trim(?)), lower(trim(?)))
+			SELECT id FROM websites WHERE lower(trim(domain)) IN (
+				lower(trim(?)), lower(trim(?)), lower(trim(?)), lower(trim(?)), lower(trim(?)), lower(trim(?)), lower(trim(?))
+			)
 		)`,
-		token, time.Now().UTC().Format(time.RFC3339), reqHost, panelHostOnly(reqHost))
+		token, time.Now().UTC().Format(time.RFC3339),
+		reqHost, h1, h2, panelHostOnly(h2), h3, h4, h5)
 	if err == nil {
 		n, _ := claim.RowsAffected()
 		if n != 1 {
