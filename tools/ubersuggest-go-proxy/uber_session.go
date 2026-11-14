@@ -26,22 +26,39 @@ func uberCookiePairs(header string) map[string]string {
 
 func uberSessionName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "id", "state", "ubs-accounts", "ubs-account-count":
+	case "id", "state", "trnstl", "ubs-accounts", "ubs-account-count":
 		return true
 	default:
 		return false
 	}
 }
 
-func uberNeilDomain(domain string) bool {
+// uberAuthDomain accepts both legacy Neil Patel hosts and the current
+// ubersuggest.com cookie domain. GoAuto exports now use .ubersuggest.com —
+// filtering only neilpatel dropped id/trnstl and left the proxy logged out.
+func uberAuthDomain(domain string) bool {
 	domain = strings.ToLower(strings.TrimSpace(domain))
 	if domain == "" {
 		return true
 	}
-	return strings.Contains(domain, "neilpatel")
+	return strings.Contains(domain, "neilpatel") || strings.Contains(domain, "ubersuggest")
 }
 
-// uberSessionCookieHeader keeps the Neil Patel session cookies.
+func uberDomainScore(domain string) int {
+	d := strings.ToLower(strings.TrimSpace(domain))
+	switch {
+	case d == "ubersuggest.com" || d == "www.ubersuggest.com" || d == "app.neilpatel.com":
+		return 3
+	case strings.HasSuffix(d, ".ubersuggest.com") || d == ".ubersuggest.com":
+		return 2
+	case strings.Contains(d, "neilpatel"):
+		return 1
+	default:
+		return 0
+	}
+}
+
+// uberSessionCookieHeader keeps the Ubersuggest session cookies.
 // A full browser export also contains tracking cookies, and a second cookie
 // with the same name was replacing id/state before they reached the API.
 func uberSessionCookieHeader(raw string) string {
@@ -58,11 +75,11 @@ func uberSessionCookieHeader(raw string) string {
 	best := map[string]panelCookieEntry{}
 	var order []string
 	for _, e := range entries {
-		if e.name == "" || e.value == "" || !uberSessionName(e.name) || !uberNeilDomain(e.domain) {
+		if e.name == "" || e.value == "" || !uberSessionName(e.name) || !uberAuthDomain(e.domain) {
 			continue
 		}
 		prev, ok := best[e.name]
-		if ok && uberNeilDomain(prev.domain) && strings.Contains(strings.ToLower(prev.domain), "neilpatel") && !strings.Contains(strings.ToLower(e.domain), "neilpatel") {
+		if ok && uberDomainScore(prev.domain) > uberDomainScore(e.domain) {
 			continue
 		}
 		if !ok {
@@ -70,8 +87,8 @@ func uberSessionCookieHeader(raw string) string {
 		}
 		best[e.name] = e
 	}
-	// id and state have to be first. The API rejects the session without them.
-	prefer := []string{"id", "state", "ubs-accounts", "ubs-account-count"}
+	// id + state/trnstl first. Newer sessions use trnstl instead of state.
+	prefer := []string{"id", "state", "trnstl", "ubs-accounts", "ubs-account-count"}
 	var parts []string
 	seen := map[string]bool{}
 	for _, name := range prefer {
@@ -144,8 +161,10 @@ func logUberAuthCookies(path, header string) {
 	pairs := uberCookiePairs(header)
 	_, hasID := pairs["id"]
 	_, hasState := pairs["state"]
+	_, hasTrnstl := pairs["trnstl"]
 	_, hasAccounts := pairs["ubs-accounts"]
-	log.Printf("[UBER] upstream %s id=%v(%d) state=%v(%d) ubs-accounts=%v(%d)", path, hasID, len(pairs["id"]), hasState, len(pairs["state"]), hasAccounts, len(pairs["ubs-accounts"]))
+	log.Printf("[UBER] upstream %s id=%v(%d) state=%v(%d) trnstl=%v(%d) ubs-accounts=%v(%d)",
+		path, hasID, len(pairs["id"]), hasState, len(pairs["state"]), hasTrnstl, len(pairs["trnstl"]), hasAccounts, len(pairs["ubs-accounts"]))
 }
 
 // rewriteUpstreamSetCookies keeps session cookies on the proxy host.
@@ -181,7 +200,7 @@ func uberSetCookieLine(name, value, path string) string {
 // logged out unless id and state are on the request.
 func seedUberAuthCookies(resp *http.Response, header string) {
 	pairs := uberCookiePairs(header)
-	for _, name := range []string{"id", "state", "ubs-accounts", "ubs-account-count"} {
+	for _, name := range []string{"id", "state", "trnstl", "ubs-accounts", "ubs-account-count"} {
 		value := uberSafeCookieValue(pairs[name])
 		if value == "" {
 			continue
@@ -196,7 +215,7 @@ func seedUberAuthCookies(resp *http.Response, header string) {
 func uberAuthCookieScript(header string) string {
 	pairs := uberCookiePairs(header)
 	var sets []string
-	for _, name := range []string{"id", "state"} {
+	for _, name := range []string{"id", "state", "trnstl"} {
 		value := pairs[name]
 		if value == "" {
 			continue

@@ -91,7 +91,7 @@ func applyPanelPremiumCookie(r *http.Request, fileCookie string) string {
 	}
 	session := uberSessionCookieHeader(panelCookie)
 	if session == "" {
-		log.Printf("[UBER] account cookie has no usable id/state")
+		log.Printf("[UBER] account cookie has no usable id/state/trnstl (check domain filter)")
 	}
 	*r = *r.WithContext(context.WithValue(r.Context(), panelCookieMemo{}, session))
 	return session
