@@ -2557,18 +2557,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			currentUser = name
-			if acc, ok := peekPanelAccount(sessionToken); ok {
-				activeAcc = acc
-			} else {
-				var panelErr error
-				activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
-				if panelErr != nil {
-					log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
-					renderNoActiveAccountsPage(w, cfg)
-					return
-				}
-				rememberPanelAccount(sessionToken, activeAcc)
+			// Always reload from panel DB so a freshly pasted GoAuto/IndexedDB
+			// cookie is used without waiting for peek cache / a new access link.
+			var panelErr error
+			activeAcc, panelErr = loadPanelSessionAccount(cfg, sessionToken)
+			if panelErr != nil {
+				log.Printf("[PANEL] mapped account unavailable: %v", panelErr)
+				renderNoActiveAccountsPage(w, cfg)
+				return
 			}
+			rememberPanelAccount(sessionToken, activeAcc)
 		}
 	} else if cfg.BypassAuth || !dbConnected {
 		// Detect if connection is actually over HTTPS (behind reverse proxy)
@@ -2594,17 +2592,16 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rawSession := string(data)
-		// Jasper: IndexedDB Firebase dump — no classic Cookie header
-		parsedCookie := ""
-		if isIndexedDBSession(rawSession) {
-			parsedCookie = ""
-		} else {
-			parsedCookie = parseCookieFromDB(rawSession)
+		// Jasper Firebase GoAuto dumps live in IndexedDB — keep the raw JSON on
+		// the account so inject/Bearer can read stsTokenManager (flattening looks empty).
+		accountCookie := rawSession
+		if !isIndexedDBSession(rawSession) {
+			accountCookie = parseCookieFromDB(rawSession)
 		}
 		activeAcc = ToolAccount{
 			ID:        1,
 			Name:      "Local Standalone Account",
-			Cookie:    parsedCookie,
+			Cookie:    accountCookie,
 			UserAgent: cfg.UserAgent,
 			Proxy:     "",
 			ShowLimit: false,
@@ -3062,13 +3059,35 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject auth restore + URL patcher. IndexedDB must run at START of <head>
 		// so Firebase sees the session before Vite modules boot.
+		// Always refresh first — injecting an expired accessToken races the SPA and
+		// shows Jasper login even when refreshToken is still good.
 		sessionRaw := ""
-		if usesPanelAccountMode(cfg) && isIndexedDBSession(activeAcc.Cookie) {
+		if isIndexedDBSession(activeAcc.Cookie) {
 			sessionRaw = activeAcc.Cookie
-		} else {
+			if usesPanelAccountMode(cfg) {
+				refreshed := ensureFreshFirebaseSessionRaw(sessionRaw, "")
+				if refreshed != "" && refreshed != sessionRaw {
+					persistPanelAccountCookie(cfg, activeAcc.ID, refreshed)
+					activeAcc.Cookie = refreshed
+					rememberPanelAccount(sessionToken, activeAcc)
+					sessionRaw = refreshed
+				} else if refreshed != "" {
+					sessionRaw = refreshed
+				}
+			} else {
+				sessionRaw = ensureFreshFirebaseSession(cfg.CookieFile)
+			}
+		} else if !usesPanelAccountMode(cfg) {
 			sessionRaw = ensureFreshFirebaseSession(cfg.CookieFile)
 		}
 		idbInject := buildIndexedDBInjectHTML(sessionRaw)
+		if isIndexedDBSession(sessionRaw) && idbInject == "" {
+			log.Printf("[JASPER] IndexedDB session present but inject empty (parse failed)")
+		} else if tok := extractFirebaseAccessToken(sessionRaw); tok != "" {
+			exp := extractFirebaseExpirationMs(sessionRaw)
+			left := (exp - time.Now().UnixMilli()) / 1000
+			log.Printf("[JASPER] HTML inject Firebase token len=%d expires_in=%ds", len(tok), left)
+		}
 		bodyBytes = gateJasperModules(bodyBytes)
 
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
