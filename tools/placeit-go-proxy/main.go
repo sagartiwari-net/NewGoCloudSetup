@@ -793,9 +793,13 @@ func cookieEntriesToHeader(cookies []browserCookieEntry) string {
 		case strings.HasSuffix(d, "selleramp.com"):
 			score += 1
 		}
+		val := strings.TrimSpace(c.Value)
+		// GoAuto sometimes keeps a trailing %0A (newline) on logged_session.
+		val = strings.TrimSuffix(val, "%0A")
+		val = strings.TrimSuffix(val, "%0a")
 		prev, ok := best[c.Name]
 		if !ok || score >= prev.score {
-			best[c.Name] = scored{value: c.Value, score: score}
+			best[c.Name] = scored{value: val, score: score}
 		}
 	}
 	// Prefer Placeit Rails/CF auth cookies first (hostOnly placeit.net / .placeit.net)
@@ -1043,14 +1047,17 @@ func setProxyCacheHeaders(w http.ResponseWriter, path, contentType string) {
 	_ = contentType
 }
 
+// Only rotate Cloudflare / bot cookies from upstream. Never absorb Placeit auth
+// cookies — a guest homepage Set-Cookie for _session_id was overwriting the
+// panel account session and leaving plct.upays.in stuck on "Log In".
 var absorbCookieNames = map[string]bool{
 	"__cf_bm": true, "cf_clearance": true, "_cfuvid": true,
+	"CookieConsent": true,
+}
+
+var placeitAuthCookieNames = map[string]bool{
 	"logged_session": true, "_session_id": true,
-	"userStatus": true, "subscriptionType": true, "CookieConsent": true,
-	"ASI": true, "CID": true,
-	"CAE": true, "CAZ": true, "CB": true, "CUI": true, "CUL": true, "CAU": true,
-	"user_session": true, "remember_user_token": true, "_piktov3_final_session": true,
-	"_ilovepdf": true, "_csrf-ilovepdf": true, "_identity-ilovepdf": true, "_identity_ulc": true,
+	"userStatus": true, "subscriptionType": true,
 }
 
 func cookieHeaderToMap(header string) map[string]string {
@@ -1085,17 +1092,28 @@ func mapToCookieHeader(m map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+func scrubAuthFromCookieOverlayLocked() {
+	for k := range placeitAuthCookieNames {
+		if _, ok := localCookieOverlay[k]; ok {
+			delete(localCookieOverlay, k)
+			log.Printf("[COOKIE] Dropped poisoned overlay auth cookie %s", k)
+		}
+	}
+}
+
 func applyLocalCookieOverlay(base string) string {
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
+	scrubAuthFromCookieOverlayLocked()
 	if len(localCookieOverlay) == 0 {
 		return base
 	}
 	m := cookieHeaderToMap(base)
 	for k, v := range localCookieOverlay {
-		if v != "" {
-			m[k] = v
+		if v == "" || placeitAuthCookieNames[k] {
+			continue
 		}
+		m[k] = v
 	}
 	return mapToCookieHeader(m)
 }
@@ -1108,6 +1126,7 @@ func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 	}
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
+	scrubAuthFromCookieOverlayLocked()
 	for _, sc := range h.Values("Set-Cookie") {
 		parts := strings.SplitN(sc, ";", 2)
 		if len(parts) == 0 {
@@ -3189,6 +3208,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Merging the browser Cookie header caused "400 Request Header Or Cookie Too Large"
 	// on sas.selleramp.com nginx and broke CSRF/session → Unauthorized toasts.
 	accountCookieStr := applyLocalCookieOverlay(parseCookieFromDB(activeAcc.Cookie))
+	if isDocumentNavigation(r) && accountCookieStr != "" {
+		hasLS := strings.Contains(accountCookieStr, "logged_session=")
+		hasSID := strings.Contains(accountCookieStr, "_session_id=")
+		hasStatus := strings.Contains(accountCookieStr, "userStatus=")
+		log.Printf("[COOKIE] upstream %s account=%s logged_session=%v _session_id=%v userStatus=%v cookieNames=%d",
+			path, activeAcc.Name, hasLS, hasSID, hasStatus, countCookieNames(accountCookieStr))
+	}
 	upstreamReq.Header.Del("Cookie")
 	hostWithoutPort := upstreamURL.Host
 	if h, _, err := net.SplitHostPort(upstreamURL.Host); err == nil {

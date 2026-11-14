@@ -46,6 +46,14 @@ func placeitLooksLoggedOut(path string, body []byte, status int, location string
 	if hits >= 2 {
 		return true, "html:" + hit
 	}
+	// Marketing homepage still shows guest chrome when _session_id is dead/overwritten.
+	hasGuestNav := strings.Contains(low, `>log in<`) || strings.Contains(low, `href="/login"`) ||
+		strings.Contains(low, `href='/login'`) || strings.Contains(low, `free account`)
+	hasMemberNav := strings.Contains(low, `my placeit`) || strings.Contains(low, `username-container`) ||
+		strings.Contains(low, `logout-button`)
+	if hasGuestNav && !hasMemberNav && (p == "/" || p == "" || strings.HasPrefix(p, "/?")) {
+		return true, "html:guest_nav"
+	}
 	return false, ""
 }
 
