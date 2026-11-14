@@ -1757,6 +1757,7 @@ func main() {
 			}
 			if strings.Contains(strings.ToLower(contentType), "text/html") && resp.Request != nil {
 				script := uberAuthCookieScript(panelMemoCookie(resp.Request))
+				script += uberHideAvatarCSS + uberHideAvatarScript
 				if usesPanelAccountMode(cfg) {
 					script += uberGuestWatchScript
 				}

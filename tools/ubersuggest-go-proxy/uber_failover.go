@@ -31,6 +31,42 @@ const uberGuestWatchScript = `<script>
 })();
 </script>`
 
+// Hide profile avatar dropdown so end users cannot open account/billing/logout.
+const uberHideAvatarCSS = `<style id="tm-uber-hide-avatar">
+[data-testid="nav-avatar-button"],
+button#radix-_r_22_[data-testid="nav-avatar-button"],
+button[data-slot="dropdown-menu-trigger"][data-testid="nav-avatar-button"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+</style>`
+
+const uberHideAvatarScript = `<script>
+(function () {
+  if (window.__tmUberHideAvatar) return;
+  window.__tmUberHideAvatar = true;
+  function hide() {
+    try {
+      var nodes = document.querySelectorAll('[data-testid="nav-avatar-button"]');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].style.setProperty("display", "none", "important");
+        nodes[i].style.setProperty("visibility", "hidden", "important");
+        nodes[i].style.setProperty("pointer-events", "none", "important");
+        nodes[i].setAttribute("aria-hidden", "true");
+        nodes[i].setAttribute("tabindex", "-1");
+      }
+    } catch (e) {}
+  }
+  hide();
+  try {
+    var mo = new MutationObserver(function () { hide(); });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+  setInterval(hide, 1500);
+})();
+</script>`
+
 const uberSwitchRetryScript = `<script>
 (function () {
   var n = 0;
