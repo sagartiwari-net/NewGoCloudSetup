@@ -448,9 +448,20 @@ func isBlockedPath(path string) bool {
 		"/account/api-log":               true,
 		"/account/academy":               true,
 		"/academy":                       true,
+		"/ai-grader":                     true,
+		"/content-helper":                true,
+		"/bot-analytics":                 true,
 	}
-
-	return blocked[path]
+	if blocked[path] {
+		return true
+	}
+	// Tool roots with nested routes (host-agnostic — any reseller domain).
+	for _, prefix := range []string{"/ai-grader", "/content-helper", "/bot-analytics"} {
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func isCounted(path string) bool {
@@ -2024,6 +2035,49 @@ func patcherScript() string {
 	return `<script>
 (function() {
     var T = 'app.ahrefs.com', C = 'static-app.ahrefs.com', O = window.location.origin;
+    // Path-only blocks — never hardcode refs.upays.in (resellers share this binary).
+    var TM_BLOCKED_PATHS = [
+        "/account/my-account",
+        "/account/security",
+        "/account/my-notifications",
+        "/account/my-certificates",
+        "/account/settings",
+        "/account/saml-sso",
+        "/account/members/confirmed",
+        "/account/members/pending",
+        "/account/tools-and-permissions",
+        "/account/limits-and-usage/web",
+        "/account/billing/subscriptions",
+        "/account/api-keys",
+        "/account/integrations",
+        "/account/applications",
+        "/account/agency-profile/0",
+        "/account/audit-log",
+        "/account/api-log",
+        "/account/academy",
+        "/academy",
+        "/ai-grader",
+        "/content-helper",
+        "/bot-analytics"
+    ];
+    var TM_HIDDEN_TOOL_PATHS = ["/ai-grader", "/content-helper", "/bot-analytics"];
+    function tmCleanPath(p) {
+        if (typeof p !== 'string') return '';
+        return p.trim().replace(/\/$/, '');
+    }
+    function tmPathBlocked(p) {
+        p = tmCleanPath(p);
+        if (!p) return false;
+        for (var i = 0; i < TM_BLOCKED_PATHS.length; i++) {
+            var b = TM_BLOCKED_PATHS[i];
+            if (p === b || p.indexOf(b + '/') === 0) return true;
+        }
+        return false;
+    }
+    function tmHrefPath(href) {
+        if (!href) return '';
+        try { return tmCleanPath(new URL(href, O).pathname); } catch (e) { return tmCleanPath(href); }
+    }
     function keepLocal(u) {
         if (typeof u !== 'string') return u;
         return u
@@ -2106,7 +2160,13 @@ func patcherScript() string {
         } catch(err) {
             return;
         }
-        var inTool = /^\/(site-audit|site-explorer|keywords-explorer|content-explorer|content-helper|competitive-analysis|rank-tracker|web-analytics|brand-radar)(\/|$)/.test(window.location.pathname);
+        if (tmPathBlocked(parsed.pathname)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.location.href = O + '/site-explorer';
+            return;
+        }
+        var inTool = /^\/(site-audit|site-explorer|keywords-explorer|content-explorer|competitive-analysis|rank-tracker|web-analytics|brand-radar)(\/|$)/.test(window.location.pathname);
         if (inTool && parsed.pathname === '/') {
             e.preventDefault();
             return;
@@ -2143,46 +2203,10 @@ func patcherScript() string {
                 .replace('http://www.ahrefs.com', O)
                 .replace('https://ahrefs.com', O)
                 .replace('http://ahrefs.com', O);
-            // Block restricted paths client-side
-            var pathToCheck = url;
-            try {
-                var parsedUrl = new URL(url, O);
-                pathToCheck = parsedUrl.pathname;
-            } catch(e) {
-                try {
-                    var parsedUrl = new URL(url, window.location.origin);
-                    pathToCheck = parsedUrl.pathname;
-                } catch(err) {}
-            }
-            if (typeof pathToCheck === 'string') {
-                var cleanPath = pathToCheck.trim().replace(/\/$/, '');
-                var blockedList = [
-                    "/account/my-account",
-                    "/account/security",
-                    "/account/my-notifications",
-                    "/account/my-certificates",
-                    "/account/settings",
-                    "/account/saml-sso",
-                    "/account/members/confirmed",
-                    "/account/members/pending",
-                    "/account/tools-and-permissions",
-                    "/account/limits-and-usage/web",
-                    "/account/billing/subscriptions",
-                    "/account/api-keys",
-                    "/account/integrations",
-                    "/account/applications",
-                    "/account/agency-profile/0",
-                    "/account/audit-log",
-                    "/account/api-log",
-                    "/account/academy",
-                    "/academy"
-                ];
-                for (var i = 0; i < blockedList.length; i++) {
-                    if (cleanPath === blockedList[i] || cleanPath.startsWith(blockedList[i] + '/')) {
-                        window.location.href = O + '/site-explorer';
-                        return;
-                    }
-                }
+            // Block restricted paths client-side (path-only; reseller-safe)
+            if (tmPathBlocked(tmHrefPath(url))) {
+                window.location.href = O + '/site-explorer';
+                return;
             }
 
             if (url.includes(T)) {
@@ -2191,7 +2215,7 @@ func patcherScript() string {
             var parsed;
             try { parsed = new URL(url, O); } catch(e) {}
             if (parsed && parsed.origin === O) {
-                var inTool = /^\/(site-audit|site-explorer|keywords-explorer|content-explorer|content-helper|competitive-analysis|rank-tracker|web-analytics|brand-radar)(\/|$)/.test(window.location.pathname);
+                var inTool = /^\/(site-audit|site-explorer|keywords-explorer|content-explorer|competitive-analysis|rank-tracker|web-analytics|brand-radar)(\/|$)/.test(window.location.pathname);
                 if (inTool && parsed.pathname === '/') {
                     return _push(state, title, window.location.href);
                 }
@@ -2215,46 +2239,10 @@ func patcherScript() string {
                 .replace('http://www.ahrefs.com', O)
                 .replace('https://ahrefs.com', O)
                 .replace('http://ahrefs.com', O);
-            // Block restricted paths client-side
-            var pathToCheck = url;
-            try {
-                var parsedUrl = new URL(url, O);
-                pathToCheck = parsedUrl.pathname;
-            } catch(e) {
-                try {
-                    var parsedUrl = new URL(url, window.location.origin);
-                    pathToCheck = parsedUrl.pathname;
-                } catch(err) {}
-            }
-            if (typeof pathToCheck === 'string') {
-                var cleanPath = pathToCheck.trim().replace(/\/$/, '');
-                var blockedList = [
-                    "/account/my-account",
-                    "/account/security",
-                    "/account/my-notifications",
-                    "/account/my-certificates",
-                    "/account/settings",
-                    "/account/saml-sso",
-                    "/account/members/confirmed",
-                    "/account/members/pending",
-                    "/account/tools-and-permissions",
-                    "/account/limits-and-usage/web",
-                    "/account/billing/subscriptions",
-                    "/account/api-keys",
-                    "/account/integrations",
-                    "/account/applications",
-                    "/account/agency-profile/0",
-                    "/account/audit-log",
-                    "/account/api-log",
-                    "/account/academy",
-                    "/academy"
-                ];
-                for (var i = 0; i < blockedList.length; i++) {
-                    if (cleanPath === blockedList[i] || cleanPath.startsWith(blockedList[i] + '/')) {
-                        window.location.href = O + '/site-explorer';
-                        return;
-                    }
-                }
+            // Block restricted paths client-side (path-only; reseller-safe)
+            if (tmPathBlocked(tmHrefPath(url))) {
+                window.location.href = O + '/site-explorer';
+                return;
             }
 
             if (url.includes(T)) {
@@ -2263,7 +2251,7 @@ func patcherScript() string {
             var parsed;
             try { parsed = new URL(url, O); } catch(e) {}
             if (parsed && parsed.origin === O) {
-                var inTool = /^\/(site-audit|site-explorer|keywords-explorer|content-explorer|content-helper|competitive-analysis|rank-tracker|web-analytics|brand-radar)(\/|$)/.test(window.location.pathname);
+                var inTool = /^\/(site-audit|site-explorer|keywords-explorer|content-explorer|competitive-analysis|rank-tracker|web-analytics|brand-radar)(\/|$)/.test(window.location.pathname);
                 if (inTool && parsed.pathname === '/') {
                     return _replace(state, title, window.location.href);
                 }
@@ -2638,39 +2626,31 @@ func patcherScript() string {
     }
 
     function checkBlockedURL() {
-        var p = window.location.pathname;
-        if (typeof p === 'string') {
-            p = p.trim().replace(/\/$/, '');
-            var blockedList = [
-                "/account/my-account",
-                "/account/security",
-                "/account/my-notifications",
-                "/account/my-certificates",
-                "/account/settings",
-                "/account/saml-sso",
-                "/account/members/confirmed",
-                "/account/members/pending",
-                "/account/tools-and-permissions",
-                "/account/limits-and-usage/web",
-                "/account/billing/subscriptions",
-                "/account/api-keys",
-                "/account/integrations",
-                "/account/applications",
-                "/account/agency-profile/0",
-                "/account/audit-log",
-                "/account/api-log",
-                "/account/academy",
-                "/academy"
-            ];
-            for (var i = 0; i < blockedList.length; i++) {
-                if (p === blockedList[i] || p.startsWith(blockedList[i] + '/')) {
-                    window.location.href = O + '/site-explorer';
-                    break;
-                }
-            }
+        if (tmPathBlocked(window.location.pathname)) {
+            window.location.href = O + '/site-explorer';
         }
     }
     setInterval(checkBlockedURL, 150);
+
+    function hideBlockedToolNav() {
+        var links = document.querySelectorAll('a[href]');
+        for (var i = 0; i < links.length; i++) {
+            var a = links[i];
+            var path = tmHrefPath(a.getAttribute('href'));
+            var hide = false;
+            for (var j = 0; j < TM_HIDDEN_TOOL_PATHS.length; j++) {
+                var b = TM_HIDDEN_TOOL_PATHS[j];
+                if (path === b || path.indexOf(b + '/') === 0) { hide = true; break; }
+            }
+            if (!hide) continue;
+            a.style.setProperty('display', 'none', 'important');
+            a.style.setProperty('pointer-events', 'none', 'important');
+            var row = a.closest ? (a.closest('[class*="menuItem"]') || a.closest('li') || a.parentElement) : a.parentElement;
+            if (row && row !== document.body) {
+                row.style.setProperty('display', 'none', 'important');
+            }
+        }
+    }
 
     function hideAhrefsAgent() {
         var launcher = document.getElementById('ahrefs-agent-launcher');
@@ -2745,6 +2725,7 @@ func patcherScript() string {
         hideAhrefsAgent();
         hideLookerSettings();
         hideMoreMenu();
+        hideBlockedToolNav();
         applyPanelUsername();
 
         mutations.forEach(function(mutation) {
@@ -2777,10 +2758,12 @@ func patcherScript() string {
     hideAhrefsAgent();
     hideLookerSettings();
     hideMoreMenu();
+    hideBlockedToolNav();
     applyPanelUsername();
-    setInterval(function() { hideAhrefsAgent(); hideLookerSettings(); hideMoreMenu(); applyPanelUsername(); }, 500);
+    setInterval(function() { hideAhrefsAgent(); hideLookerSettings(); hideMoreMenu(); hideBlockedToolNav(); applyPanelUsername(); }, 500);
 
     function hideRestrictedElements() {
+        hideBlockedToolNav();
         // Replace workspace names with user's own username
         if (window.TM_USERNAME) applyPanelUsername();
 
@@ -3067,7 +3050,6 @@ func ahrefsStayOnTool(r *http.Request) string {
 		strings.HasPrefix(u.Path, "/site-explorer"),
 		strings.HasPrefix(u.Path, "/keywords-explorer"),
 		strings.HasPrefix(u.Path, "/content-explorer"),
-		strings.HasPrefix(u.Path, "/content-helper"),
 		strings.HasPrefix(u.Path, "/competitive-analysis"),
 		strings.HasPrefix(u.Path, "/rank-tracker"),
 		strings.HasPrefix(u.Path, "/web-analytics"),
@@ -3157,9 +3139,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[DB] Failed to log blocked access attempt for user '%s': %v", currentUser, errLog)
 			}
 		}
-		safeRedirect := cfg.PublicScheme + "://" + cfg.PublicHost + "/site-explorer"
-		log.Printf("[BLOCK] 🚫 Blocked user '%s' (IP: %s) from restricted path: %s — Redirecting to %s", currentUser, clientIP, r.URL.RequestURI(), safeRedirect)
-		http.Redirect(w, r, safeRedirect, http.StatusFound)
+		// Relative redirect keeps reseller hosts (refs.seogbtools.com, etc.) on their own domain.
+		log.Printf("[BLOCK] Blocked user '%s' (IP: %s) from restricted path: %s — Redirecting to /site-explorer", currentUser, clientIP, r.URL.RequestURI())
+		http.Redirect(w, r, "/site-explorer", http.StatusFound)
 		return
 	}
 
