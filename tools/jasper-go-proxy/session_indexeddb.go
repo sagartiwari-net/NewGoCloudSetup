@@ -294,16 +294,32 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
   var IDB_DUMP = ` + idbJS + `;
   var ACCESS_TOKEN = ` + string(tokenJS) + `;
   var TOKEN_TAG = ` + string(tokenTagJS) + `;
+  function deleteDb(name) {
+    return new Promise(function(resolve) {
+      try {
+        var req = indexedDB.deleteDatabase(name);
+        var done = function(){ resolve(); };
+        req.onsuccess = done; req.onerror = done; req.onblocked = done;
+      } catch (e) { resolve(); }
+    });
+  }
   function openStore(dbName, storeName, keyPath) {
     return new Promise(function(resolve, reject) {
-      var timer = setTimeout(function(){ reject(new Error('idb timeout')); }, 2000);
+      var timer = setTimeout(function(){ reject(new Error('idb timeout')); }, 5000);
       function done(err, db) {
         clearTimeout(timer);
         if (err) reject(err); else resolve(db);
       }
-      var req = indexedDB.open(dbName);
+      var req = indexedDB.open(dbName, 1);
       req.onblocked = function(){ done(new Error('blocked')); };
       req.onerror = function(){ done(req.error || new Error('open failed')); };
+      req.onupgradeneeded = function(e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains(storeName)) {
+          if (keyPath) db.createObjectStore(storeName, { keyPath: keyPath });
+          else db.createObjectStore(storeName, { autoIncrement: true });
+        }
+      };
       req.onsuccess = function() {
         var db = req.result;
         if (db.objectStoreNames.contains(storeName)) {
@@ -335,19 +351,31 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
       tx.onerror = function(){ reject(tx.error); };
     });
   }
+  function readHasAuth(db, storeName) {
+    return new Promise(function(resolve) {
+      try {
+        var tx = db.transaction(storeName, 'readonly');
+        var req = tx.objectStore(storeName).getAll();
+        req.onsuccess = function() {
+          var rows = req.result || [];
+          resolve(rows.some(function(r){ return r && r.value && r.value.stsTokenManager && r.value.stsTokenManager.accessToken; }));
+        };
+        req.onerror = function(){ resolve(false); };
+      } catch (e) { resolve(false); }
+    });
+  }
   window.__TM_IDB_READY = (async function(){
     try {
       if (ACCESS_TOKEN) {
         try { window.__TM_FIREBASE_ACCESS_TOKEN = ACCESS_TOKEN; } catch (e) {}
       }
-      // Re-inject when access token rotates (stale sessionStorage caused "Something went wrong")
-      try {
-        if (TOKEN_TAG && sessionStorage.getItem('__tm_jasper_idb') === TOKEN_TAG) {
-          console.log('[Jasper] IndexedDB already warm');
-          return;
-        }
-      } catch (e) {}
       var dbs = IDB_DUMP || {};
+      // Wipe then rewrite — avoids schema mismatch / "warm" skip with empty auth.
+      for (var wipeName in dbs) {
+        if (Object.prototype.hasOwnProperty.call(dbs, wipeName)) {
+          await deleteDb(wipeName);
+        }
+      }
       var jobs = [];
       for (var dbName in dbs) {
         if (!Object.prototype.hasOwnProperty.call(dbs, dbName)) continue;
@@ -358,7 +386,14 @@ func buildIndexedDBInjectHTML(sessionRaw string) string {
             var keyPath = null;
             if (rows.length && rows[0] && rows[0].fbase_key != null) keyPath = 'fbase_key';
             jobs.push(openStore(dbName, storeName, keyPath).then(function(db){
-              return putAll(db, storeName, rows).then(function(){ try { db.close(); } catch (e) {} });
+              return putAll(db, storeName, rows).then(function(){
+                return readHasAuth(db, storeName).then(function(ok){
+                  try { db.close(); } catch (e) {}
+                  if (storeName === 'firebaseLocalStorage' && !ok) {
+                    throw new Error('firebase auth row missing after put');
+                  }
+                });
+              });
             }));
           })(dbName, storeName, stores[storeName] || []);
         }
@@ -392,7 +427,7 @@ func gateJasperModules(html []byte) []byte {
   try {
     var ready = window.__TM_IDB_READY;
     if (ready && ready.then) {
-      await Promise.race([ready, new Promise(function(r){ setTimeout(r, 2500); })]);
+      await Promise.race([ready, new Promise(function(r){ setTimeout(r, 8000); })]);
     }
   } catch (e) {}
   var s = document.createElement('script');

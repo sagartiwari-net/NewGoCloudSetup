@@ -2472,9 +2472,13 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── 1. Authenticate user (require ct_session cookie) ─────────────────────────
-	isFavicon := strings.Contains(strings.ToLower(path), "favicon")
+	// PWA/browser may fetch manifest without cookies — don't kill the session noise.
+	isPublicAsset := strings.Contains(strings.ToLower(path), "favicon") ||
+		path == "/manifest.json" ||
+		path == "/robots.txt" ||
+		strings.HasPrefix(path, "/.well-known/")
 	currentUser, authErr := getAuthenticatedUser(r, cfg)
-	if authErr != nil && !isFavicon {
+	if authErr != nil && !isPublicAsset {
 		_, hasSess := r.Cookie("ct_session")
 		log.Printf("[AUTH] ❌ denied path=%s host=%s err=%v website_id=%d has_ct_session=%v",
 			path, r.Host, authErr, currentWebsiteID, hasSess == nil)
@@ -2500,8 +2504,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if isFavicon && authErr != nil {
-		currentUser = "guest_favicon"
+	if isPublicAsset && authErr != nil {
+		currentUser = "guest_public"
 	}
 
 	// ── 2. Check blocked paths ────────────────────────────────────────────────────
