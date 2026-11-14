@@ -31,39 +31,60 @@ const uberGuestWatchScript = `<script>
 })();
 </script>`
 
-// Hide profile avatar dropdown so end users cannot open account/billing/logout.
-const uberHideAvatarCSS = `<style id="tm-uber-hide-avatar">
-[data-testid="nav-avatar-button"],
-button#radix-_r_22_[data-testid="nav-avatar-button"],
-button[data-slot="dropdown-menu-trigger"][data-testid="nav-avatar-button"] {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
-</style>`
-
-const uberHideAvatarScript = `<script>
+// Keep clicks / JS navigations on the proxy host. Upstream HTML/JS still points
+// at ubersuggest.com and app.neilpatel.com after the product rebrand.
+const uberLockHostScript = `<script>
 (function () {
-  if (window.__tmUberHideAvatar) return;
-  window.__tmUberHideAvatar = true;
-  function hide() {
+  if (window.__tmUberLockHost) return;
+  window.__tmUberLockHost = true;
+  var hosts = {
+    "ubersuggest.com": 1,
+    "www.ubersuggest.com": 1,
+    "app.neilpatel.com": 1,
+    "neilpatel.com": 1,
+    "www.neilpatel.com": 1
+  };
+  function rewriteURL(u) {
     try {
-      var nodes = document.querySelectorAll('[data-testid="nav-avatar-button"]');
-      for (var i = 0; i < nodes.length; i++) {
-        nodes[i].style.setProperty("display", "none", "important");
-        nodes[i].style.setProperty("visibility", "hidden", "important");
-        nodes[i].style.setProperty("pointer-events", "none", "important");
-        nodes[i].setAttribute("aria-hidden", "true");
-        nodes[i].setAttribute("tabindex", "-1");
-      }
-    } catch (e) {}
+      if (!u || typeof u !== "string") return u;
+      if (u.charAt(0) === "/" && u.charAt(1) !== "/") return u;
+      var a = document.createElement("a");
+      a.href = u;
+      var h = (a.hostname || "").toLowerCase();
+      if (!hosts[h]) return u;
+      return location.origin + a.pathname + a.search + a.hash;
+    } catch (e) { return u; }
   }
-  hide();
+  document.addEventListener("click", function (ev) {
+    var t = ev.target;
+    while (t && t.tagName !== "A") t = t.parentNode;
+    if (!t || !t.href) return;
+    var next = rewriteURL(t.href);
+    if (next === t.href) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    location.assign(next);
+  }, true);
   try {
-    var mo = new MutationObserver(function () { hide(); });
-    mo.observe(document.documentElement, { childList: true, subtree: true });
+    var desc = Object.getOwnPropertyDescriptor(Location.prototype, "href") ||
+      Object.getOwnPropertyDescriptor(window.location, "href");
+    if (desc && desc.set) {
+      Object.defineProperty(window.location, "href", {
+        configurable: true,
+        get: function () { return desc.get.call(window.location); },
+        set: function (v) { desc.set.call(window.location, rewriteURL(String(v))); }
+      });
+    }
   } catch (e) {}
-  setInterval(hide, 1500);
+  var _assign = window.location.assign.bind(window.location);
+  var _replace = window.location.replace.bind(window.location);
+  window.location.assign = function (v) { return _assign(rewriteURL(String(v))); };
+  window.location.replace = function (v) { return _replace(rewriteURL(String(v))); };
+  var _open = window.open;
+  window.open = function (u, n, f) {
+    if (typeof u === "string") u = rewriteURL(u);
+    return _open.call(window, u, n, f);
+  };
 })();
 </script>`
 

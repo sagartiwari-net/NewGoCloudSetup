@@ -799,10 +799,62 @@ func renderSessionRefreshHTML(cfg Config) string {
 </html>`
 }
 
+// uberUpstreamHosts are origins that must stay on the proxy. After the rebrand,
+// app.neilpatel.com redirects / Location / HTML to ubersuggest.com — without
+// rewriting that host the browser leaves brsg.upays.in for the official site.
+func uberUpstreamHosts(targetHost string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(h string) {
+		h = strings.ToLower(strings.TrimSpace(h))
+		h = strings.TrimPrefix(h, "https://")
+		h = strings.TrimPrefix(h, "http://")
+		h = strings.Split(h, "/")[0]
+		if h == "" || seen[h] {
+			return
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	add(targetHost)
+	add("ubersuggest.com")
+	add("www.ubersuggest.com")
+	add("app.neilpatel.com")
+	add("neilpatel.com")
+	add("www.neilpatel.com")
+	return out
+}
+
+func rewriteUberHosts(bodyStr, proxySchemeHost, proxyHost string, hosts []string) string {
+	escProxy := strings.ReplaceAll(proxySchemeHost, "/", `\/`)
+	for _, host := range hosts {
+		bodyStr = strings.ReplaceAll(bodyStr, "https://"+host, proxySchemeHost)
+		bodyStr = strings.ReplaceAll(bodyStr, "http://"+host, proxySchemeHost)
+		bodyStr = strings.ReplaceAll(bodyStr, `https:\/\/`+host, escProxy)
+		bodyStr = strings.ReplaceAll(bodyStr, `http:\/\/`+host, escProxy)
+		bodyStr = strings.ReplaceAll(bodyStr, "//"+host, "//"+proxyHost)
+		bodyStr = strings.ReplaceAll(bodyStr, `\/\/`+host, `\/\/`+proxyHost)
+	}
+	return bodyStr
+}
+
+func rewriteUberLocation(loc, proxyScheme, proxyHost, targetHost string) string {
+	proxyBase := proxyScheme + "://" + proxyHost
+	for _, host := range uberUpstreamHosts(targetHost) {
+		loc = strings.ReplaceAll(loc, "https://"+host, proxyBase)
+		loc = strings.ReplaceAll(loc, "http://"+host, proxyBase)
+		loc = strings.ReplaceAll(loc, "//"+host, "//"+proxyHost)
+	}
+	return loc
+}
+
 // applyExtraDomainRewrites rewrites additional domains from config to the proxy host
 func applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost string, cfg Config) string {
 	for _, domain := range cfg.ExtraRewriteDomains {
 		domain = strings.TrimSpace(domain)
+		domain = strings.TrimPrefix(domain, "https://")
+		domain = strings.TrimPrefix(domain, "http://")
+		domain = strings.Split(domain, "/")[0]
 		if domain == "" {
 			continue
 		}
@@ -810,7 +862,6 @@ func applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost string, cfg Co
 		bodyStr = strings.ReplaceAll(bodyStr, "http://"+domain, proxySchemeHost)
 		bodyStr = strings.ReplaceAll(bodyStr, "//"+domain, "//"+proxyHost)
 		bodyStr = strings.ReplaceAll(bodyStr, `\/`+domain+`\/`, `\/`+proxyHost+`\/`)
-		bodyStr = strings.ReplaceAll(bodyStr, "/"+domain, "/"+proxyHost)
 	}
 	return bodyStr
 }
@@ -915,13 +966,7 @@ func readProxyBody(resp *http.Response) (plain []byte, wasGzip bool, err error) 
 
 // rewriteFlightHosts rewrites only complete origin tokens inside a Next.js flight body.
 func rewriteFlightHosts(body, targetHost, proxySchemeHost, proxyHost string) string {
-	escProxy := strings.ReplaceAll(proxySchemeHost, "/", `\/`)
-	body = strings.ReplaceAll(body, "https://"+targetHost, proxySchemeHost)
-	body = strings.ReplaceAll(body, "http://"+targetHost, proxySchemeHost)
-	body = strings.ReplaceAll(body, `https:\/\/`+targetHost, escProxy)
-	body = strings.ReplaceAll(body, `http:\/\/`+targetHost, escProxy)
-	body = strings.ReplaceAll(body, "//"+targetHost, "//"+proxyHost)
-	return body
+	return rewriteUberHosts(body, proxySchemeHost, proxyHost, uberUpstreamHosts(targetHost))
 }
 
 // rewriteProxyResponseHeaders rewrites target host references in response headers (CORS, etc.)
@@ -1421,9 +1466,11 @@ func main() {
 				return nil
 			}
 
-			replacedLoc := strings.ReplaceAll(loc, cfg.TargetURL, proxyScheme+"://"+proxyHost)
-			replacedLoc = strings.ReplaceAll(replacedLoc, "https://"+targetHost, proxyScheme+"://"+proxyHost)
-			replacedLoc = strings.ReplaceAll(replacedLoc, "http://"+targetHost, proxyScheme+"://"+proxyHost)
+			replacedLoc := rewriteUberLocation(loc, proxyScheme, proxyHost, targetHost)
+			replacedLoc = strings.ReplaceAll(replacedLoc, cfg.TargetURL, proxyScheme+"://"+proxyHost)
+			if replacedLoc != loc {
+				log.Printf("[UBER] rewrite Location %q → %q", loc, replacedLoc)
+			}
 			resp.Header.Set("Location", replacedLoc)
 		}
 
@@ -1465,18 +1512,16 @@ func main() {
 				}
 			}
 			proxySchemeHost := proxyScheme + "://" + proxyHost
+			uberHosts := uberUpstreamHosts(targetHost)
 			isFlight := strings.Contains(strings.ToLower(contentType), "text/x-component")
 			if isFlight {
 				// Flight rows are length-sensitive text. The bare "/host" replace
 				// and a second gzip pass make Next throw and the page shows the error screen.
 				bodyStr = rewriteFlightHosts(bodyStr, targetHost, proxySchemeHost, proxyHost)
+				bodyStr = rewriteUberHosts(bodyStr, proxySchemeHost, proxyHost, uberHosts)
 			} else {
 				bodyStr = strings.ReplaceAll(bodyStr, cfg.TargetURL, proxySchemeHost)
-				bodyStr = strings.ReplaceAll(bodyStr, "https://"+targetHost, proxySchemeHost)
-				bodyStr = strings.ReplaceAll(bodyStr, "http://"+targetHost, proxySchemeHost)
-				bodyStr = strings.ReplaceAll(bodyStr, "//"+targetHost, "//"+proxyHost)
-				bodyStr = strings.ReplaceAll(bodyStr, `\/`+targetHost+`\/`, `\/`+proxyHost+`\/`)
-				bodyStr = strings.ReplaceAll(bodyStr, `/`+targetHost, `/`+proxyHost)
+				bodyStr = rewriteUberHosts(bodyStr, proxySchemeHost, proxyHost, uberHosts)
 				bodyStr = applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost, cfg)
 				bodyStr = applyDomainPathMap(bodyStr, proxySchemeHost, proxyWsOrigin(proxyScheme, proxyHost), cfg)
 			}
@@ -1756,8 +1801,7 @@ func main() {
 				bodyStr = string(injectDeviceHTML([]byte(bodyStr)))
 			}
 			if strings.Contains(strings.ToLower(contentType), "text/html") && resp.Request != nil {
-				script := uberAuthCookieScript(panelMemoCookie(resp.Request))
-				script += uberHideAvatarCSS + uberHideAvatarScript
+				script := uberLockHostScript + uberAuthCookieScript(panelMemoCookie(resp.Request))
 				if usesPanelAccountMode(cfg) {
 					script += uberGuestWatchScript
 				}

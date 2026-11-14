@@ -10,9 +10,14 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
+  "target_url": "https://ubersuggest.com",
+  "home_path": "/en/analyze/dashboard",
   "extra_rewrite_domains": [
-    "https://ubersuggest.com",
-    "https://www.ubersuggest.com"
+    "ubersuggest.com",
+    "www.ubersuggest.com",
+    "app.neilpatel.com",
+    "neilpatel.com",
+    "www.neilpatel.com"
   ],
-  "_note": "Session cookies now live on .ubersuggest.com; rewrite both hosts onto proxy"
+  "_note": "Upstream redirects neilpatel → ubersuggest.com; rewrite Location/HTML onto brsg.upays.in"
 }

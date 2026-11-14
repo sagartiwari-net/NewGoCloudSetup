@@ -1,6 +1,7 @@
 {
   "port": "8793",
-  "target_url": "https://app.neilpatel.com",
+  "target_url": "https://ubersuggest.com",
+  "home_path": "/en/analyze/dashboard",
   "cookie_path": "cookie.txt",
   "public_host": "lhuber1.1clkaccess.store",
   "public_scheme": "https",

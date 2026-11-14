@@ -1,6 +1,7 @@
 {
   "port": "5281",
-  "target_url": "https://app.neilpatel.com",
+  "target_url": "https://ubersuggest.com",
+  "home_path": "/en/analyze/dashboard",
   "cookie_path": "cookie.txt",
   "public_host": "127.0.0.1:5281",
   "public_scheme": "http",
@@ -54,6 +55,5 @@
       "replace": "ToolsMandi"
     }
   ],
-  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db",
-  "home_path": "/"
+  "panel_db": "/Users/sagartiwari/Desktop/oneclickgo/pending-tools/panel-api/data/panel.db"
 }
