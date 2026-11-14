@@ -43,7 +43,6 @@
   "mysql_db": "toolsmandirefct",
   "replacements": [
     { "search": "Neil Patel", "replace": "ToolsMandi" },
-    { "search": "neilpatel.com", "replace": "toolsmandi.com" },
     { "search": "Ubersuggest by NP Digital", "replace": "ToolsMandi" }
   ]
 }

@@ -61,8 +61,8 @@ const uberHideAvatarScript = `<script>
 })();
 </script>`
 
-// Keep clicks / JS navigations on the proxy host. Upstream HTML/JS still points
-// at ubersuggest.com and app.neilpatel.com after the product rebrand.
+// Keep anchor clicks on the proxy host. Do NOT patch location.href/assign/replace —
+// Next.js App Router crashes with "Oops, an error occurred" when those are overridden.
 const uberLockHostScript = `<script>
 (function () {
   if (window.__tmUberLockHost) return;
@@ -93,28 +93,8 @@ const uberLockHostScript = `<script>
     if (next === t.href) return;
     ev.preventDefault();
     ev.stopPropagation();
-    location.assign(next);
+    window.location.href = next;
   }, true);
-  try {
-    var desc = Object.getOwnPropertyDescriptor(Location.prototype, "href") ||
-      Object.getOwnPropertyDescriptor(window.location, "href");
-    if (desc && desc.set) {
-      Object.defineProperty(window.location, "href", {
-        configurable: true,
-        get: function () { return desc.get.call(window.location); },
-        set: function (v) { desc.set.call(window.location, rewriteURL(String(v))); }
-      });
-    }
-  } catch (e) {}
-  var _assign = window.location.assign.bind(window.location);
-  var _replace = window.location.replace.bind(window.location);
-  window.location.assign = function (v) { return _assign(rewriteURL(String(v))); };
-  window.location.replace = function (v) { return _replace(rewriteURL(String(v))); };
-  var _open = window.open;
-  window.open = function (u, n, f) {
-    if (typeof u === "string") u = rewriteURL(u);
-    return _open.call(window, u, n, f);
-  };
 })();
 </script>`
 

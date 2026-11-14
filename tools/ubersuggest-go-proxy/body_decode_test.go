@@ -59,13 +59,21 @@ func TestReadProxyBodyPlainLabeledGzip(t *testing.T) {
 	}
 }
 
-func TestRewriteFlightHostsSkipsBareSlash(t *testing.T) {
-	in := `href":"https://app.neilpatel.com/en" "/app.neilpatel.com-token"`
-	got := rewriteFlightHosts(in, "app.neilpatel.com", "https://ubersuggest.gt4rents.com", "ubersuggest.gt4rents.com")
-	if !strings.Contains(got, "https://ubersuggest.gt4rents.com/en") {
-		t.Fatalf("origin not rewritten: %s", got)
+func TestRewriteFlightHostsIsNoop(t *testing.T) {
+	in := `12:https://app.neilpatel.com/en`
+	got := rewriteFlightHosts(in, "app.neilpatel.com", "https://brsg.upays.in", "brsg.upays.in")
+	if got != in {
+		t.Fatalf("flight must stay exact, got %q", got)
 	}
-	if !strings.Contains(got, "/app.neilpatel.com-token") {
-		t.Fatalf("bare token was rewritten: %s", got)
+}
+
+func TestRewriteUberHostsOutsideScripts(t *testing.T) {
+	in := `<a href="https://ubersuggest.com/en">x</a><script>12:https://ubersuggest.com/en</script>`
+	got := rewriteUberHostsOutsideScripts(in, "https://brsg.upays.in", "brsg.upays.in", uberUpstreamHosts("ubersuggest.com"))
+	if !strings.Contains(got, `href="https://brsg.upays.in/en"`) {
+		t.Fatalf("markup not rewritten: %s", got)
+	}
+	if !strings.Contains(got, `12:https://ubersuggest.com/en`) {
+		t.Fatalf("script body was rewritten: %s", got)
 	}
 }

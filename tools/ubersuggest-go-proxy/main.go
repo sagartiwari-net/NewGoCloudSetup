@@ -838,6 +838,40 @@ func rewriteUberHosts(bodyStr, proxySchemeHost, proxyHost string, hosts []string
 	return bodyStr
 }
 
+// mapOutsideScripts transforms HTML markup but leaves <script> bodies alone —
+// Next.js embeds length-prefixed RSC there and host rewrites crash the app.
+func mapOutsideScripts(html string, fn func(string) string) string {
+	lower := strings.ToLower(html)
+	var b strings.Builder
+	b.Grow(len(html))
+	i := 0
+	for i < len(html) {
+		start := strings.Index(lower[i:], "<script")
+		if start < 0 {
+			b.WriteString(fn(html[i:]))
+			break
+		}
+		start += i
+		b.WriteString(fn(html[i:start]))
+		rest := lower[start:]
+		endRel := strings.Index(rest, "</script>")
+		if endRel < 0 {
+			b.WriteString(html[start:])
+			break
+		}
+		end := start + endRel + len("</script>")
+		b.WriteString(html[start:end])
+		i = end
+	}
+	return b.String()
+}
+
+func rewriteUberHostsOutsideScripts(html, proxySchemeHost, proxyHost string, hosts []string) string {
+	return mapOutsideScripts(html, func(chunk string) string {
+		return rewriteUberHosts(chunk, proxySchemeHost, proxyHost, hosts)
+	})
+}
+
 func rewriteUberLocation(loc, proxyScheme, proxyHost, targetHost string) string {
 	proxyBase := proxyScheme + "://" + proxyHost
 	for _, host := range uberUpstreamHosts(targetHost) {
@@ -966,7 +1000,12 @@ func readProxyBody(resp *http.Response) (plain []byte, wasGzip bool, err error) 
 
 // rewriteFlightHosts rewrites only complete origin tokens inside a Next.js flight body.
 func rewriteFlightHosts(body, targetHost, proxySchemeHost, proxyHost string) string {
-	return rewriteUberHosts(body, proxySchemeHost, proxyHost, uberUpstreamHosts(targetHost))
+	// Intentionally no-op for length-prefixed RSC. Origin leaks are handled by
+	// Location rewrite + click lock; mutating flight text crashes Next.js.
+	_ = targetHost
+	_ = proxySchemeHost
+	_ = proxyHost
+	return body
 }
 
 // rewriteProxyResponseHeaders rewrites target host references in response headers (CORS, etc.)
@@ -1509,31 +1548,44 @@ func main() {
 					log.Printf("[UBER] get_token 403 — %s", uberRejectReason(bodyStr))
 				} else if strings.Contains(bodyStr, "unlogged") {
 					log.Printf("[UBER] get_token returned an unlogged token — id/state were not accepted")
+				} else {
+					snip := bodyStr
+					if len(snip) > 180 {
+						snip = snip[:180]
+					}
+					log.Printf("[UBER] get_token ok status=%d body=%q", resp.StatusCode, snip)
 				}
 			}
 			proxySchemeHost := proxyScheme + "://" + proxyHost
 			uberHosts := uberUpstreamHosts(targetHost)
-			isFlight := strings.Contains(strings.ToLower(contentType), "text/x-component")
-			if isFlight {
-				// Flight rows are length-sensitive text. The bare "/host" replace
-				// and a second gzip pass make Next throw and the page shows the error screen.
-				bodyStr = rewriteFlightHosts(bodyStr, targetHost, proxySchemeHost, proxyHost)
-				bodyStr = rewriteUberHosts(bodyStr, proxySchemeHost, proxyHost, uberHosts)
+			ctLower := strings.ToLower(contentType)
+			isFlight := strings.Contains(ctLower, "text/x-component")
+			isJSON := strings.Contains(ctLower, "application/json") || strings.Contains(ctLower, "+json")
+			isHTML := strings.Contains(ctLower, "text/html")
+			// Flight/RSC is length-prefixed — host rewrites change byte lengths and
+			// Next shows "Oops, an error occurred". JSON (get_token) must stay exact.
+			if isFlight || isJSON {
+				// leave body unchanged
+			} else if isHTML {
+				bodyStr = mapOutsideScripts(bodyStr, func(chunk string) string {
+					chunk = strings.ReplaceAll(chunk, cfg.TargetURL, proxySchemeHost)
+					chunk = rewriteUberHosts(chunk, proxySchemeHost, proxyHost, uberHosts)
+					chunk = applyExtraDomainRewrites(chunk, proxySchemeHost, proxyHost, cfg)
+					chunk = applyDomainPathMap(chunk, proxySchemeHost, proxyWsOrigin(proxyScheme, proxyHost), cfg)
+					for _, repl := range cfg.Replacements {
+						if repl.Search == "" || strings.EqualFold(repl.Search, "neilpatel.com") {
+							continue
+						}
+						chunk = strings.ReplaceAll(chunk, repl.Search, repl.Replace)
+					}
+					return chunk
+				})
 			} else {
+				// JS/CSS text: rewrite absolute app origins onto the proxy.
 				bodyStr = strings.ReplaceAll(bodyStr, cfg.TargetURL, proxySchemeHost)
 				bodyStr = rewriteUberHosts(bodyStr, proxySchemeHost, proxyHost, uberHosts)
 				bodyStr = applyExtraDomainRewrites(bodyStr, proxySchemeHost, proxyHost, cfg)
 				bodyStr = applyDomainPathMap(bodyStr, proxySchemeHost, proxyWsOrigin(proxyScheme, proxyHost), cfg)
-			}
-
-			// Branding replacements rewrite neilpatel.com inside RSC and JSON and the page crashes.
-			// Keep them on HTML only. API and flight data stay as the app sent them.
-			if strings.Contains(strings.ToLower(contentType), "text/html") {
-				for _, repl := range cfg.Replacements {
-					if repl.Search != "" {
-						bodyStr = strings.ReplaceAll(bodyStr, repl.Search, repl.Replace)
-					}
-				}
 			}
 			bodyStr = normalizeProxyWebSocketURLs(bodyStr, targetHost, proxyHost, proxyScheme)
 
