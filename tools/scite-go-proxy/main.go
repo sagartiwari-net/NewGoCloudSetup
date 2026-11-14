@@ -1136,6 +1136,13 @@ func mapToCookieHeader(m map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+// overlaySafeNames may rotate globally. Session cookies must stay per panel account —
+// absorbing a logged-out / WAF connect.sid into the process overlay logged every user out.
+var overlaySafeNames = map[string]bool{
+	"aws-waf-token": true, "visid_incap_3349841": true, "cookieConsent": true,
+	"__cf_bm": true, "cf_clearance": true,
+}
+
 func applyLocalCookieOverlay(base string) string {
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
@@ -1143,22 +1150,29 @@ func applyLocalCookieOverlay(base string) string {
 		return base
 	}
 	m := cookieHeaderToMap(base)
+	panel := usesPanelAccountMode(loadConfig())
 	for k, v := range localCookieOverlay {
-		if v != "" {
-			m[k] = v
+		if v == "" {
+			continue
 		}
+		if panel && !overlaySafeNames[k] {
+			continue
+		}
+		m[k] = v
 	}
 	return mapToCookieHeader(m)
 }
 
 func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 	// Absorb from 2xx and 3xx (Scite auth/optional refreshes scite-auth on 302).
-	// Never absorb from challenge/error pages (403 "Just a moment...") — those overwrite good cookies.
-	if statusCode < 200 || statusCode >= 400 {
+	// Never absorb from challenge/error pages — 202 AWS WAF and 403 "Just a moment..."
+	// overwrite a good GoAuto connect.sid and the assistant shows Log In.
+	if statusCode < 200 || statusCode >= 400 || statusCode == http.StatusAccepted {
 		return false
 	}
 	localCookieMu.Lock()
 	defer localCookieMu.Unlock()
+	panel := usesPanelAccountMode(loadConfig())
 	for _, sc := range h.Values("Set-Cookie") {
 		parts := strings.SplitN(sc, ";", 2)
 		if len(parts) == 0 {
@@ -1172,6 +1186,9 @@ func absorbUpstreamSetCookies(h http.Header, statusCode int) (changed bool) {
 		name := strings.TrimSpace(nv[:eq])
 		val := strings.TrimSpace(nv[eq+1:])
 		if !absorbCookieNames[name] || val == "" || strings.EqualFold(val, "deleted") {
+			continue
+		}
+		if panel && !overlaySafeNames[name] {
 			continue
 		}
 		if localCookieOverlay[name] != val {
@@ -3435,9 +3452,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if accountCookieStr != "" && cookieSuffix != "" && strings.HasSuffix(hostWithoutPort, cookieSuffix) {
-		// Browser just solved AWS WAF on this host. The panel copy is tied to
-		// another IP and CloudFront answers 401 / "max challenge attempts".
-		accountCookieStr = preferBrowserCookie(accountCookieStr, r.Header.Get("Cookie"), "aws-waf-token")
+		// Only fill a missing aws-waf-token from the browser. Replacing a good
+		// GoAuto token with the proxy-host WAF cookie makes scite.ai treat the
+		// session as logged out (header shows Log In / Start Free Trial).
+		if !strings.Contains(accountCookieStr, "aws-waf-token=") {
+			accountCookieStr = preferBrowserCookie(accountCookieStr, r.Header.Get("Cookie"), "aws-waf-token")
+		}
 		upstreamReq.Header.Set("Cookie", accountCookieStr)
 	}
 
