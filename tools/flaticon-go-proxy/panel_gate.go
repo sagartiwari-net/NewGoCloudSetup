@@ -460,9 +460,9 @@ func renderProxyProblem(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"error":"proxy_unavailable","message":"Contact to Admin/Provider to fix it ASAP"}`)
 }
 
-// isFlaticonSecurityFilterHTML detects Freepik/Flaticon WAF "403 security filter" pages
-// (same family as Magnific — dark volcanic 403 on Hetzner/datacenter IPs).
-// Keep this tight: vague markers like "akamai" appear on normal pages and false-trigger.
+// isFlaticonSecurityFilterHTML detects Freepik/Flaticon WAF pages:
+// hard 403 "security filter flagged", and soft interstitial
+// "Security check" / "Just a quick check" / "making sure it's you".
 func isFlaticonSecurityFilterHTML(body []byte) bool {
 	if len(body) == 0 {
 		return false
@@ -487,12 +487,78 @@ func isFlaticonSecurityFilterHTML(body []byte) bool {
 	if strings.Contains(lower, "making sure it's you") {
 		return true
 	}
+	if strings.Contains(lower, "just a quick check") {
+		return true
+	}
 	if strings.Contains(lower, "security check") &&
 		(strings.Contains(lower, "just a moment") ||
-			strings.Contains(lower, "keeps your account and your work protected")) {
+			strings.Contains(lower, "keeps your account and your work protected") ||
+			strings.Contains(lower, "just a quick check")) {
 		return true
 	}
 	return false
+}
+
+// flaticonSecurityCheckWatchHTML is a client fallback when Freepik paints the
+// soft "Security check" interstitial after a normal HTML shell (server never
+// sees the copy). Without this the challenge auto-refreshes forever.
+func flaticonSecurityCheckWatchHTML(hasProxy bool) string {
+	heading := "Temporarily Unavailable"
+	msg := "Flaticon blocks this server IP. Add a working residential proxy on the Flaticon account (or website), then open again."
+	need := 3 // ~6s
+	if hasProxy {
+		heading = "Still blocked"
+		msg = "Flaticon WAF still blocked this request. The proxy exit may still be datacenter — use a fresh residential proxy, then open again."
+		need = 6 // ~12s — allow a soft check a short window to pass
+	}
+	return `<script data-tm-fi-sec>(function(){
+  var hits=0;
+  var done=false;
+  var need=` + fmt.Sprintf("%d", need) + `;
+  function stuck(){
+    var t=(document.body&&(document.body.innerText||document.body.textContent))||'';
+    if(!t) return false;
+    return /making sure it's you/i.test(t) ||
+      /just a quick check/i.test(t) ||
+      (/Security check/i.test(t) && (/Just a moment/i.test(t) || /keeps your account/i.test(t)));
+  }
+  function cleanup(){
+    try { if (window.__tmWatch) clearInterval(window.__tmWatch); } catch (e) {}
+    try {
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        });
+      }
+    } catch (e) {}
+  }
+  function show(){
+    if(done) return;
+    done=true;
+    cleanup();
+    try{
+      var html=document.documentElement;
+      html.style.cssText='visibility:visible;background:#eef3f8;margin:0';
+      while(html.firstChild) html.removeChild(html.firstChild);
+      var body=document.createElement('body');
+      body.style.cssText='min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;margin:0;background:#eef3f8;color:#0f172a;font-family:system-ui,sans-serif';
+      var card=document.createElement('div');
+      card.style.cssText='width:min(440px,100%);background:#fff;border-radius:28px;box-shadow:0 24px 60px rgba(15,23,42,.08);padding:48px 36px;text-align:center';
+      var h1=document.createElement('h1');
+      h1.textContent=` + fmt.Sprintf("%q", heading) + `;
+      h1.style.cssText='font-size:28px;margin:0 0 12px;font-weight:800';
+      var p=document.createElement('p');
+      p.textContent=` + fmt.Sprintf("%q", msg) + `;
+      p.style.cssText='color:#64748b;font-size:15px;margin:0;line-height:1.55';
+      card.appendChild(h1); card.appendChild(p); body.appendChild(card); html.appendChild(body);
+    }catch(e){}
+  }
+  setInterval(function(){
+    if(done) return;
+    if(stuck()){ hits++; if(hits>=need) show(); }
+    else hits=0;
+  }, 2000);
+})();</script>`
 }
 
 func flaticonWAFCleanupScript() string {

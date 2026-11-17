@@ -3885,15 +3885,14 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logUpstream(bodyBytes)
 
-		// Freepik/Flaticon WAF "security filter" 403 on Hetzner — never passthrough
-		// (looks like a broken page after domain rewrite). Same as Magnific.
+		// Freepik/Flaticon WAF — never passthrough (rewrite + device SW = refresh loop).
+		hasProxy := flaticonHasUsableProxy(activeAcc)
 		if isFlaticonSecurityFilterHTML(bodyBytes) ||
-			(upstreamResp.StatusCode == http.StatusForbidden && isFlaticonSecurityFilterHTML(bodyBytes)) {
-			hasProxy := flaticonHasUsableProxy(activeAcc)
+			(isDocumentNavigation(r) && upstreamResp.StatusCode == http.StatusForbidden) {
 			if hasProxy {
-				log.Printf("[WAF] Flaticon security filter path=%s proxy=set — showing retry page", path)
+				log.Printf("[WAF] Flaticon security filter path=%s status=%d proxy=set — showing retry page", path, upstreamResp.StatusCode)
 			} else {
-				log.Printf("[WAF] Flaticon security filter path=%s — no usable proxy; showing proxy-required page", path)
+				log.Printf("[WAF] Flaticon security filter path=%s status=%d — no usable proxy; showing proxy-required page", path, upstreamResp.StatusCode)
 			}
 			for k := range w.Header() {
 				w.Header().Del(k)
@@ -3927,6 +3926,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Inject our patcher script before </head> (no limit widgets)
 		injectStr := patcherScript(cfg) + buildTextReplaceInjectHTML(cfg)
+		if usesPanelAccountMode(cfg) {
+			// Soft "Security check" is often painted by JS after a normal shell —
+			// server detector misses it and Freepik keeps refreshing forever.
+			injectStr += flaticonSecurityCheckWatchHTML(hasProxy)
+		}
 		if strings.TrimSpace(cfg.InjectCSS) != "" {
 			injectStr += "<style>" + cfg.InjectCSS + "</style>"
 			// Keep header nav hidden even after Next.js client navigations/re-renders
