@@ -1,0 +1,17 @@
+[Unit]
+Description=NoxTools cookie keepalive (PHPSESSID warmer only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/www/wwwroot/gt4rents.com/_keepalive/noxtools
+ExecStart=/www/wwwroot/gt4rents.com/_keepalive/noxtools/nox-cookie-keepalive
+Restart=always
+RestartSec=30
+Environment=NOX_COOKIE_FILE=cookie.json
+Environment=NOX_WARM_URL=https://noxtools.com/secure/member
+Environment=NOX_INTERVAL=15m
+
+[Install]
+WantedBy=multi-user.target

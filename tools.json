@@ -810,13 +810,6 @@
       "fqdn": "kwi.upays.in"
     },
     {
-      "tool": "noxtools-home",
-      "folder": "noxtools-go-proxy",
-      "subdomain": "noxh",
-      "port": 6309,
-      "fqdn": "noxh.upays.in"
-    },
-    {
       "tool": "shsm1",
       "folder": "recloud/seoshop/shsm1",
       "subdomain": "shsm1",
