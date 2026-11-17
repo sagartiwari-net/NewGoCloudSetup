@@ -803,6 +803,20 @@
       "fqdn": "amzcenv.upays.in"
     },
     {
+      "tool": "keywordinsights",
+      "folder": "keywordinsights-go-proxy",
+      "subdomain": "kwi",
+      "port": 6308,
+      "fqdn": "kwi.upays.in"
+    },
+    {
+      "tool": "noxtools-home",
+      "folder": "noxtools-go-proxy",
+      "subdomain": "noxh",
+      "port": 6309,
+      "fqdn": "noxh.upays.in"
+    },
+    {
       "tool": "shsm1",
       "folder": "recloud/seoshop/shsm1",
       "subdomain": "shsm1",

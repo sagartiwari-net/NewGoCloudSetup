@@ -1,0 +1,26 @@
+[
+  {
+    "domain": ".noxtools.com",
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "amember_nr",
+    "path": "/",
+    "sameSite": null,
+    "secure": true,
+    "session": true,
+    "storeId": null,
+    "value": "febbc74bc2c9407a3228826abfa275e9"
+  },
+  {
+    "domain": ".noxtools.com",
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "PHPSESSID",
+    "path": "/",
+    "sameSite": null,
+    "secure": true,
+    "session": true,
+    "storeId": null,
+    "value": "er9j6jf4h586opeqjk2oon3pcm"
+  }
+]
