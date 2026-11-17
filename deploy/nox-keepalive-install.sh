@@ -19,14 +19,17 @@ else
   echo "    keeping existing ${DEST}/cookie.json"
 fi
 
-echo "==> systemd unit"
+echo "==> systemd unit + restart (pick up new binary)"
 cp -f "${SRC}/nox-cookie-keepalive.service" /etc/systemd/system/nox-cookie-keepalive.service
 systemctl daemon-reload
-systemctl enable --now nox-cookie-keepalive.service
+systemctl enable nox-cookie-keepalive.service
+systemctl restart nox-cookie-keepalive.service
 
 echo "==> one-shot status"
+sleep 1
 systemctl --no-pager --full status nox-cookie-keepalive.service | head -20
 journalctl -u nox-cookie-keepalive -n 30 --no-pager || true
 echo
 echo "Done. No tool/port added. Cookie file: ${DEST}/cookie.json"
 echo "Logs: journalctl -u nox-cookie-keepalive -f"
+echo "Expect log line: session_ok (not bare status=200)"
