@@ -48,9 +48,11 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 	if _, ok := rewriteSetCookie("PHPSESSID=secret; Path=/; Secure", "ft01.amztoolsconsultant.com", "https://amzcft.gt4rents.com"); ok {
 		t.Fatal("upstream session cookie must not reach the browser")
 	}
-	got, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "ft01.amztoolsconsultant.com", "https://amzcft.gt4rents.com")
-	if !ok || !strings.Contains(got, "Domain=amzcft.gt4rents.com") || strings.Contains(got, "semrush.com") {
-		t.Fatal("sidebar cookie domain was not rewritten")
+	if _, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "ft01.amztoolsconsultant.com", "https://amzcft.gt4rents.com"); ok {
+		t.Fatal("upstream cookies must stay in the proxy jar, not the browser")
+	}
+	if _, ok := rewriteSetCookie("AWSALB=huge; Path=/", "ft01.amztoolsconsultant.com", "https://amzcft.upays.in"); ok {
+		t.Fatal("balancer cookies must not reach the browser")
 	}
 }
 
@@ -162,13 +164,16 @@ func TestLogoutPath(t *testing.T) {
 
 func TestBrowserSessionCookiesAreForwarded(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://amzcft.gt4rents.com/gateway/experimentation/properties", nil)
-	req.Header.Set("Cookie", "ct_session=panel-session; grauth=from-browser; csrf_token=tok")
+	req.Header.Set("Cookie", "ct_session=panel-session; PHPSESSID=poison; grauth=from-browser; csrf_token=tok; AWSALB=huge")
 	got := cookiesForUpstream(ToolAccount{Cookie: "PHPSESSID=session"}, req)
-	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=from-browser") || !strings.Contains(got, "csrf_token=tok") {
+	if !strings.Contains(got, "PHPSESSID=session") || strings.Contains(got, "PHPSESSID=poison") {
+		t.Fatalf("panel PHPSESSID must win over browser: %s", got)
+	}
+	if !strings.Contains(got, "grauth=from-browser") || !strings.Contains(got, "csrf_token=tok") {
 		t.Fatalf("browser session cookies were dropped: %s", got)
 	}
-	if strings.Contains(got, "ct_session") || strings.Contains(got, "panel-session") {
-		t.Fatalf("panel session leaked upstream: %s", got)
+	if strings.Contains(got, "ct_session") || strings.Contains(got, "panel-session") || strings.Contains(got, "AWSALB") {
+		t.Fatalf("panel/balancer cookies leaked upstream: %s", got)
 	}
 }
 

@@ -1,0 +1,31 @@
+{
+  "port": "5221",
+  "public_host": "hlml.upays.in",
+  "public_scheme": "https",
+  "target_url": "https://learning.helium10.com",
+  "cdn_url": "https://learning.helium10.com",
+  "tool_name": "Helium Learning",
+  "home_path": "/library",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 120,
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "gt4rents",
+  "mysql_db": "gt4rents",
+  "sensitive_cookies": ["_kjb_session", "_csrf_token"],
+  "blocked_paths": ["/settings/account", "/logout", "/users/sign_out"],
+  "blocked_prefixes": ["/settings/account", "/logout", "/users/sign_out"],
+  "extra_cdn_domains": [
+    "https://app.kajabi.com",
+    "https://kajabi-storefronts-production.kajabi-cdn.com",
+    "https://kajabi-products.s3.amazonaws.com",
+    "https://embed.kajabi.com",
+    "https://communities.kajabi.com",
+    "https://members.helium10.com",
+    "https://www.helium10.com"
+  ],
+  "disable_export_tracking": true,
+  "cloudflare_bypass": true
+}

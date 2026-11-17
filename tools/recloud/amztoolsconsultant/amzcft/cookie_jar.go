@@ -12,16 +12,31 @@ const maxCookieHops = 6
 var derivedCookies sync.Map
 
 func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
-	base := strings.TrimSpace(acc.Cookie)
+	// Panel PHPSESSID is the member session. Browser/Set-Cookie overlays must not
+	// replace it, or LiteSpeed bounces to protect/login and the browser accumulates
+	// huge AWS/CF cookies until nginx answers plain "400 Bad Request".
+	panel := strings.TrimSpace(acc.Cookie)
+	derived := ""
 	if acc.ID != 0 {
 		if extra, ok := derivedCookies.Load(acc.ID); ok {
-			base = mergeCookieHeaders(extra.(string), base)
+			derived = extra.(string)
 		}
 	}
-	if r == nil {
-		return base
+	browser := ""
+	if r != nil {
+		browser = browserCookiesForUpstream(r)
 	}
-	return mergeCookieHeaders(base, browserCookiesForUpstream(r))
+	merged := mergeCookieHeaders(browser, derived)
+	return keepPanelSession(mergeCookieHeaders(merged, panel), panel)
+}
+
+func keepPanelSession(jar, panel string) string {
+	_, vals := parseCookieHeader(panel)
+	session := vals["PHPSESSID"]
+	if session == "" {
+		return jar
+	}
+	return mergeCookieHeaders(jar, "PHPSESSID="+session)
 }
 
 func browserCookiesForUpstream(r *http.Request) string {
@@ -141,7 +156,12 @@ func serializeCookies(order []string, vals map[string]string) string {
 
 func dropUpstreamCookie(name string) bool {
 	switch strings.ToLower(name) {
-	case "ct_session":
+	case "ct_session", "tm_device_fp", "tm_device_proof":
+		return true
+	}
+	// AWS/CF balancers blow up the Cookie header when rewritten onto our public host.
+	n := strings.ToLower(name)
+	if strings.HasPrefix(n, "awsalb") || strings.HasPrefix(n, "__cf") || n == "_cfuvid" {
 		return true
 	}
 	return false

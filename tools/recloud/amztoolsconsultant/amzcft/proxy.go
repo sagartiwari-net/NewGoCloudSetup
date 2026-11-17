@@ -412,31 +412,11 @@ func copyResponseHeaders(dst, src http.Header, upstreamHost, origin string) {
 }
 
 func rewriteSetCookie(raw, upstreamHost, origin string) (string, bool) {
-	parts := strings.Split(raw, ";")
-	if len(parts) == 0 {
-		return "", false
-	}
-	name := strings.TrimSpace(strings.SplitN(parts[0], "=", 2)[0])
-	switch strings.ToLower(name) {
-	case "phpsessid", "ct_session":
-		return "", false
-	}
-	host := origin
-	if i := strings.Index(host, "://"); i >= 0 {
-		host = host[i+3:]
-	}
-	if i := strings.Index(host, ":"); i >= 0 {
-		host = host[:i]
-	}
-	out := []string{parts[0]}
-	for _, part := range parts[1:] {
-		p := strings.TrimSpace(part)
-		if len(p) >= 7 && strings.EqualFold(p[:7], "domain=") {
-			out = append(out, "Domain="+host)
-			continue
-		}
-		out = append(out, part)
-	}
+	// Keep upstream cookies only in the in-memory jar (absorbSetCookies).
+	// Rewriting them onto amzcft.* fills the browser Cookie header until nginx
+	// returns a blank "400 Bad Request" before the Go proxy runs.
+	_ = raw
 	_ = upstreamHost
-	return strings.Join(out, ";"), true
+	_ = origin
+	return "", false
 }

@@ -1,7 +1,11 @@
 {
   "port": "5221",
   "public_host": "hlml.upays.in",
-  "public_scheme": "http",
+  "public_scheme": "https",
+  "target_url": "https://learning.helium10.com",
+  "cdn_url": "https://learning.helium10.com",
+  "tool_name": "Helium Learning",
+  "home_path": "/library",
   "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
   "local_test_mode": false,
   "bypass_auth": false,
@@ -10,5 +14,5 @@
   "mysql_user": "gt4rents",
   "mysql_password": "${GT4RENTS_MYSQL_PASSWORD}",
   "mysql_db": "gt4rents",
-  "_note": "First draft overlay \u2014 merge with tool-specific fields from config.json on server"
+  "_note": "Live host is hlml.upays.in (also hlml.seogbtools.com / heliumlearning.* on same port). Do not keep hellearn.1clkaccess.store from old production templates."
 }

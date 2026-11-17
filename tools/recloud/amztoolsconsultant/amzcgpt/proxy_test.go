@@ -48,9 +48,8 @@ func TestSetCookieDropsUpstreamSession(t *testing.T) {
 	if _, ok := rewriteSetCookie("PHPSESSID=secret; Path=/; Secure", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com"); ok {
 		t.Fatal("upstream session cookie must not reach the browser")
 	}
-	got, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com")
-	if !ok || !strings.Contains(got, "Domain=amzccg.gt4rents.com") || strings.Contains(got, "semrush.com") {
-		t.Fatal("sidebar cookie domain was not rewritten")
+	if _, ok := rewriteSetCookie("snav_last_sidebar_tk=toolkit_seo; Domain=.semrush.com; Path=/", "cg02.amztoolsconsultant.com", "https://amzccg.gt4rents.com"); ok {
+		t.Fatal("upstream cookies must stay in the proxy jar, not the browser")
 	}
 }
 
