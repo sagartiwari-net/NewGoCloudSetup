@@ -19,6 +19,7 @@ import (
 	"panel-api/automation/azad"
 	"panel-api/automation/erank"
 	"panel-api/automation/markhor"
+	"panel-api/automation/noxtools"
 	"panel-api/automation/toolbaazar"
 	"panel-api/automation/zik"
 	"sort"
@@ -60,6 +61,7 @@ var (
 		"ahrefs":             ahrefs.Recipe{},
 		"zikaanalytics":      zik.Recipe{},
 		"erank":              erank.Recipe{},
+		"noxtools":           noxtools.Recipe{},
 	}
 	automationProviderNames = map[string]string{
 		"markhor": "Markhor", "azad": "Azad", "toolbaazar": "Toolbaazar",
@@ -67,6 +69,7 @@ var (
 		"ahrefs":             "Ahrefs",
 		"zikaanalytics":      "ZikAnalytics",
 		"erank":              "eRank",
+		"noxtools":           "NoxTools",
 	}
 	automationCredLocks sync.Map
 	automationKeyWarn   sync.Once

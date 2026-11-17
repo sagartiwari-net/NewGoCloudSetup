@@ -115,22 +115,41 @@ func runOnce(cookieFile, warmURL, ua string) error {
 	resp.Body.Close()
 
 	merged := mergeCookies(cookies, jar.Cookies(u), resp.Cookies())
+	landed := ""
+	if resp.Request != nil && resp.Request.URL != nil {
+		landed = resp.Request.URL.String()
+	}
+	if err := assertNoxSessionAlive(resp.StatusCode, landed, body); err != nil {
+		// Do not overwrite a good cookie file with a dead/login response.
+		return err
+	}
 	if err := saveCookies(cookieFile, merged); err != nil {
 		return err
 	}
+	log.Printf("session_ok status=%d bytes=%d landed=%s php=%s", resp.StatusCode, len(body), landed, short(merged, "PHPSESSID"))
+	return nil
+}
 
+func assertNoxSessionAlive(status int, landed string, body []byte) error {
 	low := strings.ToLower(string(body))
-	loc := strings.ToLower(resp.Header.Get("Location"))
-	if resp.StatusCode >= 300 && resp.StatusCode < 400 && (strings.Contains(loc, "login") || strings.Contains(loc, "signin")) {
-		return fmt.Errorf("redirected to login status=%d loc=%s", resp.StatusCode, loc)
+	loc := strings.ToLower(landed)
+	if status >= 400 {
+		return fmt.Errorf("HTTP %d", status)
 	}
-	if strings.Contains(low, "name=\"amember_login\"") || strings.Contains(low, "id=\"amember_login\"") {
-		return fmt.Errorf("login form seen status=%d — cookie likely dead", resp.StatusCode)
+	if strings.Contains(loc, "/login") || strings.Contains(loc, "signin") {
+		return fmt.Errorf("LOGGED_OUT landed_on_login status=%d loc=%s", status, landed)
 	}
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	if strings.Contains(low, "name=\"amember_login\"") || strings.Contains(low, "id=\"amember_login\"") ||
+		(strings.Contains(low, "amember_login") && strings.Contains(low, "amember_pass")) {
+		return fmt.Errorf("LOGGED_OUT login_form status=%d bytes=%d", status, len(body))
 	}
-	log.Printf("status=%d bytes=%d php=%s", resp.StatusCode, len(body), short(merged, "PHPSESSID"))
+	// Require a positive member-area signal. Plain 200 is not enough (homepage also 200).
+	ok := strings.Contains(low, "member-main-subscriptions") ||
+		strings.Contains(low, "/secure/member/payment-history") ||
+		(strings.Contains(loc, "/secure/member") && (strings.Contains(low, "/logout") || strings.Contains(low, ">logout<")))
+	if !ok {
+		return fmt.Errorf("LOGGED_OUT missing_member_markers status=%d bytes=%d loc=%s", status, len(body), landed)
+	}
 	return nil
 }
 
