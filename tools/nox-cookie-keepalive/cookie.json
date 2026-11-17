@@ -1,0 +1,22 @@
+[
+  {
+    "domain": ".noxtools.com",
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "amember_nr",
+    "path": "/",
+    "secure": true,
+    "session": true,
+    "value": "febbc74bc2c9407a3228826abfa275e9"
+  },
+  {
+    "domain": ".noxtools.com",
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "PHPSESSID",
+    "path": "/",
+    "secure": true,
+    "session": true,
+    "value": "er9j6jf4h586opeqjk2oon3pcm"
+  }
+]
