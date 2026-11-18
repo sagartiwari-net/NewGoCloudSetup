@@ -354,8 +354,8 @@ func ensureAmzToolsConsultantJobs(db *sql.DB) {
 		err := db.QueryRow(`SELECT id FROM automation_jobs WHERE credential_id=? AND target_website_id=? AND COALESCE(job_kind,'tool')='tool' ORDER BY id LIMIT 1`,
 			credID, websiteID).Scan(&jobID)
 		if err == nil && jobID > 0 {
-			_, _ = db.Exec(`UPDATE automation_jobs SET name=?, interval_minutes=?, enabled=1, updated_at=? WHERE id=?`,
-				name, interval, now, jobID)
+			_, _ = db.Exec(`UPDATE automation_jobs SET name=?, enabled=1, updated_at=? WHERE id=?`,
+				name, now, jobID)
 			return
 		}
 		next := time.Now().UTC().Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
@@ -422,8 +422,9 @@ func ensureNoxtoolsJobs(db *sql.DB) {
 			log.Printf("[automation] added NoxTools Home session job")
 		}
 	} else {
-		_, _ = db.Exec(`UPDATE automation_jobs SET name=?, enabled=1, interval_minutes=?, updated_at=? WHERE id=?`,
-			"NoxTools Home", interval, now, sessionID)
+		// Keep the user's interval — do not reset on every ensureAutomationTables call.
+		_, _ = db.Exec(`UPDATE automation_jobs SET name=?, enabled=1, updated_at=? WHERE id=?`,
+			"NoxTools Home", now, sessionID)
 	}
 
 	recloudID := func(prefix string) int {
@@ -444,8 +445,8 @@ func ensureNoxtoolsJobs(db *sql.DB) {
 		err := db.QueryRow(`SELECT id FROM automation_jobs WHERE credential_id=? AND target_website_id=? AND COALESCE(job_kind,'tool')='tool' ORDER BY id LIMIT 1`,
 			credID, websiteID).Scan(&jobID)
 		if err == nil && jobID > 0 {
-			_, _ = db.Exec(`UPDATE automation_jobs SET name=?, interval_minutes=?, enabled=1, updated_at=? WHERE id=?`,
-				name, interval, now, jobID)
+			_, _ = db.Exec(`UPDATE automation_jobs SET name=?, enabled=1, updated_at=? WHERE id=?`,
+				name, now, jobID)
 			return
 		}
 		if _, err := db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
