@@ -113,9 +113,9 @@ func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reas
 	_, _ = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
 		websiteID, username, acc.Name, nextName, reason, ip, now)
 	log.Printf("[LB] logout recorded account=%s user=%s reason=%s", acc.Name, username, reason)
-	// Mark account logged_out when session died and nothing else to switch to — future automation picks this up.
-	if reason == "session_expired" && !switched && acc.ID > 0 {
-		_, _ = db.Exec(`UPDATE accounts SET status='logged_out' WHERE id=?`, acc.ID)
-	}
+	// Do NOT mark the account logged_out here. That flips the tool to
+	// Temporarily Unavailable (no retry). Keep status active so the browser
+	// stays on "Signing you in" and reloads every 3s while automation
+	// refreshes the cookie (and Shared-cookies followers).
 	return switched, nextName
 }

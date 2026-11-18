@@ -653,7 +653,8 @@ func renderLoggedOutPage(w http.ResponseWriter, cfg Config) {
 }
 
 func loggedOutRefreshScript() string {
-	return `<script>(function(){var k="oneclickgo-relogin",n=0;try{n=Number(sessionStorage.getItem(k)||"0")}catch(e){}if(n>=8)return;try{sessionStorage.setItem(k,String(n+1))}catch(e){}setTimeout(function(){location.reload()},n===0?3000:4000)})();</script>`
+	// Fixed 3s between tries. Cap retries while automation refreshes the cookie.
+	return `<script>(function(){var k="oneclickgo-relogin",n=0;try{n=Number(sessionStorage.getItem(k)||"0")}catch(e){}if(!Number.isFinite(n)||n<0)n=0;if(n>=40)return;try{sessionStorage.setItem(k,String(n+1))}catch(e){}setTimeout(function(){location.reload()},3000)})();</script>`
 }
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
@@ -667,10 +668,12 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Temporarily Unavailable",
-		Heading: "Temporarily Unavailable",
-		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
-		Footer:  "Open this tool again from your access link",
+		Title:       "Temporarily Unavailable",
+		Heading:     "Temporarily Unavailable",
+		Message:     "Tools is temporarily unavailable. Please try again in a few minutes.",
+		Footer:      "This page checks again every 3 seconds",
+		Spin:        true,
+		ExtraScript: loggedOutRefreshScript(),
 	})
 }
 
