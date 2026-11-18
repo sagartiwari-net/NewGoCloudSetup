@@ -39,6 +39,12 @@ if [[ -f "${SRC}/export-tool.js" ]]; then
   echo "Copied export-tool.js → ${OUTDIR}/export-tool.js"
 fi
 
+# Recloud cookie seed (importCookieFile only fills EMPTY account cookies; panel Recloud updates stay per-site).
+if [[ -f "${SRC}/cookie.json" ]]; then
+  cp "${SRC}/cookie.json" "${OUTDIR}/cookie.json"
+  echo "Copied cookie.json → ${OUTDIR}/cookie.json"
+fi
+
 # Chrome extension templates (Helium10 / JungleScout / etc.) must sit next to ./app
 # so /extension.zip can bake a zip at runtime.
 if [[ -d "${SRC}/extension" ]]; then

@@ -1,0 +1,12 @@
+{
+  "port": "6315",
+  "public_host": "localhost:6315",
+  "public_scheme": "http",
+  "target_url": "https://siteaudit1.semrush.com.in",
+  "home_path": "/siteaudit/",
+  "tool_name": "NoxTools Site Audit 1",
+  "panel_db": "",
+  "local_test_mode": true,
+  "bypass_auth": true,
+  "session_duration_minutes": 30
+}

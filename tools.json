@@ -810,6 +810,62 @@
       "fqdn": "kwi.upays.in"
     },
     {
+      "tool": "nxsm1",
+      "folder": "recloud/noxtools/nxsm1",
+      "subdomain": "nxsm1",
+      "port": 6310,
+      "fqdn": "nxsm1.upays.in"
+    },
+    {
+      "tool": "nxsm2",
+      "folder": "recloud/noxtools/nxsm2",
+      "subdomain": "nxsm2",
+      "port": 6311,
+      "fqdn": "nxsm2.upays.in"
+    },
+    {
+      "tool": "nxsm3",
+      "folder": "recloud/noxtools/nxsm3",
+      "subdomain": "nxsm3",
+      "port": 6312,
+      "fqdn": "nxsm3.upays.in"
+    },
+    {
+      "tool": "nxsm4",
+      "folder": "recloud/noxtools/nxsm4",
+      "subdomain": "nxsm4",
+      "port": 6313,
+      "fqdn": "nxsm4.upays.in"
+    },
+    {
+      "tool": "nxsm5",
+      "folder": "recloud/noxtools/nxsm5",
+      "subdomain": "nxsm5",
+      "port": 6314,
+      "fqdn": "nxsm5.upays.in"
+    },
+    {
+      "tool": "nxaud1",
+      "folder": "recloud/noxtools/nxaud1",
+      "subdomain": "nxaud1",
+      "port": 6315,
+      "fqdn": "nxaud1.upays.in"
+    },
+    {
+      "tool": "nxaud2",
+      "folder": "recloud/noxtools/nxaud2",
+      "subdomain": "nxaud2",
+      "port": 6316,
+      "fqdn": "nxaud2.upays.in"
+    },
+    {
+      "tool": "nxaud3",
+      "folder": "recloud/noxtools/nxaud3",
+      "subdomain": "nxaud3",
+      "port": 6317,
+      "fqdn": "nxaud3.upays.in"
+    },
+    {
       "tool": "shsm1",
       "folder": "recloud/seoshop/shsm1",
       "subdomain": "shsm1",
