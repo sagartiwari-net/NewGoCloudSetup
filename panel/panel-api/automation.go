@@ -255,6 +255,7 @@ func ensureAutomationTables(db *sql.DB) {
 		}
 	}
 	ensureAmzToolsConsultantJobs(db)
+	ensureNoxtoolsJobs(db)
 	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) == "" {
 		return
 	}
@@ -388,6 +389,75 @@ func ensureAmzToolsConsultantJobs(db *sql.DB) {
 		}
 		log.Printf("[automation] shared AmzToolsConsultant cookie: %s account %d ← Shared source %d", prefix, accountID, diamondAccountID)
 	}
+}
+
+// ensureNoxtoolsJobs seeds Azad-style jobs for the NoxTools credential:
+//   1) session/homepage — keeps Storage PHPSESSID warm (login when dead)
+//   2) Semrush 1 → nxsm1
+//   3) Site Audit 1 → nxaud1
+// Credential must already exist (created in the panel UI). Jobs are idempotent.
+func ensureNoxtoolsJobs(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	var credID int
+	if db.QueryRow(`SELECT id FROM automation_credentials WHERE provider='noxtools' ORDER BY id LIMIT 1`).Scan(&credID) != nil || credID <= 0 {
+		return
+	}
+	interval := 20
+	var homeInterval int
+	if db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE credential_id=? AND job_kind='session' ORDER BY id LIMIT 1`, credID).Scan(&homeInterval) == nil && homeInterval >= 5 {
+		interval = homeInterval
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	next := time.Now().UTC().Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
+
+	var sessionID int
+	if db.QueryRow(`SELECT id FROM automation_jobs WHERE credential_id=? AND job_kind='session' ORDER BY id LIMIT 1`, credID).Scan(&sessionID) != nil || sessionID <= 0 {
+		if _, err := db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
+			VALUES (?,?,?,0,0,?,1,1,?,'','','',?,?, 'session')`,
+			"NoxTools Home", "noxtools", credID, interval, next, now, now); err != nil {
+			log.Printf("[automation] noxtools home job: %v", err)
+		} else {
+			log.Printf("[automation] added NoxTools Home session job")
+		}
+	} else {
+		_, _ = db.Exec(`UPDATE automation_jobs SET name=?, enabled=1, interval_minutes=?, updated_at=? WHERE id=?`,
+			"NoxTools Home", interval, now, sessionID)
+	}
+
+	recloudID := func(prefix string) int {
+		var id int
+		_ = db.QueryRow(`SELECT id FROM websites
+			WHERE kind='recloud' AND (lower(domain)=lower(?) OR lower(domain)=lower(?))
+			ORDER BY CASE WHEN domain LIKE '%.upays.in' THEN 0 ELSE 1 END, id LIMIT 1`,
+			prefix+".upays.in", prefix+".gt4rents.com").Scan(&id)
+		return id
+	}
+	ensureTool := func(name, prefix string) {
+		websiteID := recloudID(prefix)
+		if websiteID <= 0 {
+			log.Printf("[automation] noxtools job %s skipped; website %s.* missing", name, prefix)
+			return
+		}
+		var jobID int
+		err := db.QueryRow(`SELECT id FROM automation_jobs WHERE credential_id=? AND target_website_id=? AND COALESCE(job_kind,'tool')='tool' ORDER BY id LIMIT 1`,
+			credID, websiteID).Scan(&jobID)
+		if err == nil && jobID > 0 {
+			_, _ = db.Exec(`UPDATE automation_jobs SET name=?, interval_minutes=?, enabled=1, updated_at=? WHERE id=?`,
+				name, interval, now, jobID)
+			return
+		}
+		if _, err := db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
+			VALUES (?,?,?,?,0,?,1,0,?,'','','',?,?, 'tool')`,
+			name, "noxtools", credID, websiteID, interval, next, now, now); err != nil {
+			log.Printf("[automation] noxtools job %s: %v", name, err)
+			return
+		}
+		log.Printf("[automation] added NoxTools job %s → website %d", name, websiteID)
+	}
+	ensureTool("NoxTools Semrush 1", "nxsm1")
+	ensureTool("NoxTools Site Audit 1", "nxaud1")
 }
 
 func automationPublicReason(err error) string {
@@ -648,6 +718,23 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 	}
 	log.Printf("[automation] job %d capture %s", job.ID, automation.Where(site.Upstream))
 	tool, err := recipe.Capture(ctx, portal, site.Upstream)
+	if (err != nil && (errors.Is(err, errAutomationLoginPage) || errors.Is(err, automation.ErrLoginPage))) || len(tool) == 0 {
+		// Storage looked fine but the tool gate bounced — refresh homepage session once, then retry.
+		log.Printf("[automation] job %d tool needs fresh homepage session", job.ID)
+		s.writeAutomationLog(job, "info", "tool login page; refreshing homepage session", secrets)
+		refreshed, loginErr := s.loginForAutomationJob(ctx, recipe, job, username, password, secrets)
+		if loginErr != nil {
+			if err != nil {
+				s.failAutomation(job, err, secrets)
+			} else {
+				s.failAutomation(job, errAutomationLoginPage, secrets)
+			}
+			return
+		}
+		portal = refreshed
+		secrets = append(secrets, cookieValues(portal)...)
+		tool, err = recipe.Capture(ctx, portal, site.Upstream)
+	}
 	if err != nil {
 		s.failAutomation(job, err, secrets)
 		return
@@ -735,24 +822,31 @@ func upstreamHost(raw string) string {
 }
 
 func (s *server) loginForAutomationJob(ctx context.Context, recipe automation.Recipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {
-	if job.Kind != "session" && job.Provider == "amztoolsconsultant" && !s.amzKeepaJob(job) {
+	// Prefer the dedicated homepage/session job when Storage is dead, same as Azad/AMZ:
+	// that job refreshes Storage, then the tool job continues with the new cookie.
+	if job.Kind != "session" && (job.Provider == "noxtools" || job.Provider == "azad" || (job.Provider == "amztoolsconsultant" && !s.amzKeepaJob(job))) {
 		log.Printf("[automation] job %d cookie expired, running the homepage job", job.ID)
 		if err := s.runAmzHomepage(ctx, job.CredentialID); err != nil {
-			return nil, err
+			if job.Provider == "amztoolsconsultant" {
+				return nil, err
+			}
+			// No homepage job yet — fall through to a direct Login into Storage.
+			log.Printf("[automation] job %d homepage job unavailable; logging in directly", job.ID)
+		} else {
+			s.writeAutomationLog(job, "info", "homepage logged in", secrets)
+			portal := s.readAutomationCookies(job.CredentialID)
+			valid, updated, err := recipe.Check(ctx, portal)
+			if err != nil {
+				return nil, err
+			}
+			if !valid {
+				return nil, errAutomationLoginPage
+			}
+			if len(updated) > 0 {
+				portal = updated
+			}
+			return portal, nil
 		}
-		s.writeAutomationLog(job, "info", "homepage logged in", secrets)
-		portal := s.readAutomationCookies(job.CredentialID)
-		valid, updated, err := recipe.Check(ctx, portal)
-		if err != nil {
-			return nil, err
-		}
-		if !valid {
-			return nil, errAutomationLoginPage
-		}
-		if len(updated) > 0 {
-			portal = updated
-		}
-		return portal, nil
 	}
 	log.Printf("[automation] job %d logging in", job.ID)
 	return s.automationLogin(ctx, recipe, job, username, password, secrets)
