@@ -18,24 +18,23 @@ export TOOL_PUBLIC_SCHEME="${TOOL_PUBLIC_SCHEME:-https}"
 
 TOOLS=(nxsm1 nxsm2 nxsm3 nxsm4 nxsm5 nxaud1 nxaud2 nxaud3)
 
-echo "== nginx map =="
+echo "== nginx map (live copy — repo file alone does not fix 404) =="
 MAP_SRC="${ROOT}/deploy/nginx-host-port.map.conf"
-MAP_DST="/www/server/panel/vhost/nginx/extension/nginx-host-port.map.conf"
 if [[ -f "${MAP_SRC}" ]]; then
-  # Common aaPanel include locations — copy if a known dest exists, else print hint.
   for dest in \
+    /www/server/panel/vhost/nginx/gt4rents-host-port.map.conf \
     /www/server/panel/vhost/nginx/extension/nginx-host-port.map.conf \
-    /www/server/nginx/conf/nginx-host-port.map.conf \
-    /etc/nginx/nginx-host-port.map.conf
+    /www/server/nginx/conf/nginx-host-port.map.conf
   do
-    if [[ -f "${dest}" ]] || [[ -d "$(dirname "${dest}")" && -f "${MAP_DST}" ]]; then
-      :
+    dir="$(dirname "${dest}")"
+    if [[ -f "${dest}" ]] || [[ -d "${dir}" ]]; then
+      mkdir -p "${dir}"
+      cp -f "${MAP_SRC}" "${dest}"
+      echo "copied map → ${dest}"
     fi
   done
-  # Prefer updating whatever currently includes the map from _repo
-  if [[ -f /www/wwwroot/gt4rents.com/_repo/deploy/nginx-host-port.map.conf ]]; then
-    echo "map is in repo; ensure nginx includes this file, then: nginx -t && nginx -s reload"
-  fi
+else
+  echo "WARN: missing ${MAP_SRC}"
 fi
 
 echo "== MySQL panel rows =="
