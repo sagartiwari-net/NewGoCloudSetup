@@ -27,14 +27,16 @@ const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 
 var (
 	baseURL     = "https://noxtools.com"
-	loginURL    = "https://noxtools.com/login"
+	loginURL    = "https://noxtools.com/secure/login"
 	memberURL   = "https://noxtools.com/secure/member"
-	semrushPage = "https://noxtools.com/secure/page/semrush"
-	httpWait    = 30 * time.Second
+	semrushPage    = "https://noxtools.com/secure/page/semrush"
+	semrushGateway = "https://semrush.noxtools.com"
+	httpWait       = 30 * time.Second
 )
 
 var (
-	anchorRE = regexp.MustCompile(`(?i)<a\b([^>]*)>`)
+	anchorRE  = regexp.MustCompile(`(?i)<a\b([^>]*)>`)
+	attemptRE = regexp.MustCompile(`(?i)name=["']login_attempt_id["'][^>]*value=["']([^"']+)["']|value=["']([^"']+)["'][^>]*name=["']login_attempt_id["']`)
 )
 
 type Recipe struct{}
@@ -62,27 +64,29 @@ func targetFor(upstreamURL string) (captureTarget, error) {
 	}
 
 	if n, ok := semrushServerN(host); ok {
+		gwHost := hostOf(semrushGateway)
 		return captureTarget{
 			kind:           "semrush",
 			pageURL:        semrushPage,
-			proxyHost:      "semrush.noxtools.com",
+			proxyHost:      gwHost,
 			serverN:        n,
 			cookieDomain:   "." + host,
 			finalHost:      host,
-			fallbackLaunch: "https://semrush.noxtools.com/server" + strconv.Itoa(n) + ".php",
+			fallbackLaunch: strings.TrimRight(semrushGateway, "/") + "/server" + strconv.Itoa(n) + ".php",
 		}, nil
 	}
 	if n, ok := siteauditServerN(host); ok {
 		// Site Audit buttons live on the same Semrush product page:
-		// <a class="nt-sem-btn nt-sem-btn-audit" href="https://semrush.noxtools.com/siteaudit1.php">
+		// <a class="nt-sem-btn nt-sem-btn-audit" href="…/siteaudit1.php">
+		gwHost := hostOf(semrushGateway)
 		return captureTarget{
 			kind:           "siteaudit",
 			pageURL:        semrushPage,
-			proxyHost:      "semrush.noxtools.com",
+			proxyHost:      gwHost,
 			serverN:        n,
 			cookieDomain:   "." + host,
 			finalHost:      host,
-			fallbackLaunch: "https://semrush.noxtools.com/siteaudit" + strconv.Itoa(n) + ".php",
+			fallbackLaunch: strings.TrimRight(semrushGateway, "/") + "/siteaudit" + strconv.Itoa(n) + ".php",
 		}, nil
 	}
 	return captureTarget{}, automation.ErrUpstream
@@ -122,7 +126,7 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 	if len(cookies) == 0 {
 		return false, nil, nil
 	}
-	client, jar, _, err := newClient()
+	client, jar, _, err := newClient(nil)
 	if err != nil {
 		return false, nil, automation.ErrTimeout
 	}
@@ -142,16 +146,28 @@ func (Recipe) Check(ctx context.Context, cookies []automation.Cookie) (bool, []a
 }
 
 func (Recipe) Login(ctx context.Context, username, password string) ([]automation.Cookie, error) {
-	client, jar, _, err := newClient()
+	client, jar, _, err := newClient(nil)
 	if err != nil {
 		return nil, automation.ErrTimeout
 	}
-	if _, _, err = get(ctx, client, loginURL, baseURL); err != nil {
+	html, _, err := get(ctx, client, loginURL, baseURL)
+	if err != nil {
 		return nil, err
 	}
 	form := url.Values{}
 	form.Set("amember_login", username)
 	form.Set("amember_pass", password)
+	form.Set("remember_login", "1")
+	if match := attemptRE.FindStringSubmatch(html); len(match) > 0 {
+		attemptID := match[1]
+		if attemptID == "" && len(match) > 2 {
+			attemptID = match[2]
+		}
+		if attemptID != "" {
+			form.Set("login_attempt_id", attemptID)
+		}
+	}
+	form.Set("amember_redirect_url", memberURL)
 	body, landed, err := post(ctx, client, loginURL, form)
 	if err != nil {
 		return nil, err
@@ -179,48 +195,74 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	if err != nil {
 		return nil, err
 	}
-	client, jar, record, err := newClient()
+	var jar *cookiejar.Jar
+	client, jar, record, err := newClient(func() bool {
+		return jarHasToolCookies(jar, target)
+	})
 	if err != nil {
 		return nil, automation.ErrTimeout
 	}
 	seedPortal(jar, portal, target.proxyHost)
 
-	page, landed, err := get(ctx, client, target.pageURL, memberURL)
-	if err != nil {
-		return nil, err
-	}
-	if showsLogin(page, landed) {
-		return nil, automation.At(automation.ErrLoginPage, landed)
-	}
-
-	launch := extractServerLaunch(page, target)
-	if launch == "" {
-		launch = target.fallbackLaunch
-	}
+	// Known Server/SiteAudit URLs are stable — hit them first (faster than loading the big product HTML).
+	launch := target.fallbackLaunch
 	log.Printf("[automation] noxtools %s open %s", target.kind, automation.Where(launch))
-	page, landed, err = get(ctx, client, launch, target.pageURL)
+	page, landed, err := get(ctx, client, launch, memberURL)
 	if err != nil {
 		return nil, err
 	}
 	if showsLogin(page, landed) {
 		return nil, automation.At(automation.ErrLoginPage, landed)
 	}
+	if noAccess(page, landed) {
+		return nil, automation.At(automation.ErrDenied, landed)
+	}
 
-	// Only hop onto the final tool home when still on a Nox gateway host.
-	// Avoids re-opening the real upstream when serverN.php already redirected there.
-	landedHost := strings.ToLower(hostOf(landed))
-	if landedHost == strings.ToLower(target.proxyHost) || strings.Contains(landedHost, "noxtools.com") {
-		home := "https://" + target.finalHost + "/"
-		if target.kind == "semrush" {
-			home = "https://" + target.finalHost + "/analytics/overview/?searchType=domain"
-		} else {
-			home = "https://" + target.finalHost + "/siteaudit/"
-		}
-		page, landed, err = get(ctx, client, home, landed)
+	// If the direct launch did not yield tool cookies, scrape the product page for the live href.
+	if !jarHasToolCookies(jar, target) {
+		product, productURL, err := get(ctx, client, target.pageURL, memberURL)
 		if err != nil {
 			return nil, err
 		}
-		_ = page
+		if showsLogin(product, productURL) {
+			return nil, automation.At(automation.ErrLoginPage, productURL)
+		}
+		if noAccess(product, productURL) {
+			return nil, automation.At(automation.ErrDenied, productURL)
+		}
+		if href := extractServerLaunch(product, target); href != "" && !strings.EqualFold(href, launch) {
+			log.Printf("[automation] noxtools %s retry %s", target.kind, automation.Where(href))
+			page, landed, err = get(ctx, client, href, productURL)
+			if err != nil {
+				return nil, err
+			}
+			if showsLogin(page, landed) {
+				return nil, automation.At(automation.ErrLoginPage, landed)
+			}
+			if noAccess(page, landed) {
+				return nil, automation.At(automation.ErrDenied, landed)
+			}
+		}
+	}
+	_ = page
+
+	// Only hop onto the final tool home when still on a Nox gateway host
+	// and we do not already have the tool cookies from redirects.
+	if !jarHasToolCookies(jar, target) {
+		landedHost := strings.ToLower(hostOf(landed))
+		if landedHost == strings.ToLower(target.proxyHost) || strings.Contains(landedHost, "noxtools.com") {
+			home := "https://" + target.finalHost + "/"
+			if target.kind == "semrush" {
+				home = "https://" + target.finalHost + "/analytics/overview/?searchType=domain"
+			} else {
+				home = "https://" + target.finalHost + "/siteaudit/"
+			}
+			page, landed, err = get(ctx, client, home, landed)
+			if err != nil {
+				return nil, err
+			}
+			_ = page
+		}
 	}
 
 	tool := mapToolCookies(jar, record, landed, target)
@@ -230,6 +272,29 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		return nil, automation.At(automation.ErrNoCookie, landed)
 	}
 	return fresh, nil
+}
+
+func jarHasToolCookies(jar *cookiejar.Jar, target captureTarget) bool {
+	if jar == nil || target.finalHost == "" {
+		return false
+	}
+	u, err := url.Parse("https://" + target.finalHost + "/")
+	if err != nil {
+		return false
+	}
+	haveProxy, haveUxx := false, false
+	for _, c := range jar.Cookies(u) {
+		switch strings.ToLower(c.Name) {
+		case "proxy_token":
+			haveProxy = c.Value != ""
+		case "uxx":
+			haveUxx = c.Value != ""
+		}
+	}
+	if target.kind == "siteaudit" {
+		return haveProxy
+	}
+	return haveProxy && haveUxx
 }
 
 func extractServerLaunch(page string, target captureTarget) string {
@@ -295,11 +360,15 @@ func absolute(href string) string {
 }
 
 func showsLogin(page, pageURL string) bool {
+	path := strings.ToLower(pathOf(pageURL))
+	// aMember protect rewrite is a soft gate, not the password form.
+	if strings.Contains(path, "/protect/new-rewrite") {
+		return false
+	}
 	if !portalPage(pageURL) {
 		return false
 	}
 	lower := strings.ToLower(page)
-	path := strings.ToLower(pathOf(pageURL))
 	if strings.Contains(path, "/login") {
 		return true
 	}
@@ -337,6 +406,15 @@ func rejected(page string) bool {
 	return strings.Contains(lower, "user name or password is incorrect") ||
 		strings.Contains(lower, "invalid username or password") ||
 		strings.Contains(lower, "authentication failed")
+}
+
+func noAccess(page, pageURL string) bool {
+	path := strings.ToLower(pathOf(pageURL))
+	if strings.Contains(path, "/no-access") {
+		return true
+	}
+	lower := strings.ToLower(page)
+	return strings.Contains(lower, "no access") && strings.Contains(lower, "subscription")
 }
 
 func portalPage(pageURL string) bool {
@@ -521,7 +599,7 @@ func sameSiteLabel(mode http.SameSite) *string {
 	return &label
 }
 
-func newClient() (*http.Client, *cookiejar.Jar, *cookieRecord, error) {
+func newClient(stopWhen func() bool) (*http.Client, *cookiejar.Jar, *cookieRecord, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, nil, nil, err
@@ -544,6 +622,10 @@ func newClient() (*http.Client, *cookiejar.Jar, *cookieRecord, error) {
 		}),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			log.Printf("[automation] noxtools redirect %s -> %s (%d)", automation.Where(requestURL(via[len(via)-1])), automation.Where(requestURL(req)), len(via))
+			if stopWhen != nil && stopWhen() {
+				log.Printf("[automation] noxtools stop redirects; tool cookies ready")
+				return http.ErrUseLastResponse
+			}
 			if len(via) >= 15 {
 				return automation.At(automation.ErrLoginPage, requestURL(req))
 			}
@@ -613,7 +695,9 @@ func get(ctx context.Context, client *http.Client, rawURL, referer string) (stri
 		return "", "", automation.ErrUpstream
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	// Product/tool pages can be large; we only need links or Set-Cookie.
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+	_, _ = io.Copy(io.Discard, resp.Body)
 	landed := rawURL
 	if resp.Request != nil && resp.Request.URL != nil {
 		landed = resp.Request.URL.String()

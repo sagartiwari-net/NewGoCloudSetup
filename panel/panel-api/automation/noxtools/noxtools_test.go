@@ -86,13 +86,14 @@ func TestNoxtoolsSemrush1Capture(t *testing.T) {
 	}))
 	defer portal.Close()
 
-	prevBase, prevLogin, prevMember, prevSem := baseURL, loginURL, memberURL, semrushPage
+	prevBase, prevLogin, prevMember, prevSem, prevGW := baseURL, loginURL, memberURL, semrushPage, semrushGateway
 	baseURL = portal.URL
-	loginURL = portal.URL + "/login"
+	loginURL = portal.URL + "/secure/login"
 	memberURL = portal.URL + "/secure/member"
 	semrushPage = portal.URL + "/secure/page/semrush"
+	semrushGateway = toolLaunch.URL
 	t.Cleanup(func() {
-		baseURL, loginURL, memberURL, semrushPage = prevBase, prevLogin, prevMember, prevSem
+		baseURL, loginURL, memberURL, semrushPage, semrushGateway = prevBase, prevLogin, prevMember, prevSem, prevGW
 	})
 
 	cookies, err := Recipe{}.Capture(context.Background(), []automation.Cookie{{
@@ -146,12 +147,13 @@ func TestNoxtoolsSiteaudit1Capture(t *testing.T) {
 	}))
 	defer portal.Close()
 
-	prevBase, prevMember, prevSem := baseURL, memberURL, semrushPage
+	prevBase, prevMember, prevSem, prevGW := baseURL, memberURL, semrushPage, semrushGateway
 	baseURL = portal.URL
 	memberURL = portal.URL + "/secure/member"
 	semrushPage = portal.URL + "/secure/page/semrush"
+	semrushGateway = toolLaunch.URL
 	t.Cleanup(func() {
-		baseURL, memberURL, semrushPage = prevBase, prevMember, prevSem
+		baseURL, memberURL, semrushPage, semrushGateway = prevBase, prevMember, prevSem, prevGW
 	})
 
 	cookies, err := Recipe{}.Capture(context.Background(), []automation.Cookie{{
