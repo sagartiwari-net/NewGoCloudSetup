@@ -1,0 +1,15 @@
+[
+    {
+        "domain": ".siteaudit2.semrush.com.in",
+        "expirationDate": 1826539284.548242,
+        "hostOnly": false,
+        "httpOnly": true,
+        "name": "proxy_token",
+        "path": "/",
+        "sameSite": null,
+        "secure": true,
+        "session": false,
+        "storeId": null,
+        "value": "ad2808e7a235dcc026f494174ae83850"
+    }
+]

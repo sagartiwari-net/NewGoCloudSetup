@@ -1,5 +1,12 @@
 cdn-cache/
-nxsm?
-nxaud?
-noxsm1
 *.exe
+# Built binaries only (do not ignore the tool source directories).
+nxsm1/nxsm1
+nxsm2/nxsm2
+nxsm3/nxsm3
+nxsm4/nxsm4
+nxsm5/nxsm5
+nxaud1/nxaud1
+nxaud2/nxaud2
+nxaud3/nxaud3
+noxsm1/noxsm1

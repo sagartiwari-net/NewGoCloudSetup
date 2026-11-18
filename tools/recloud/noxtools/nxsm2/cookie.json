@@ -1,0 +1,41 @@
+[
+  {
+    "domain": ".2.semrush.com.in",
+    "expirationDate": 1826538094.523779,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "uxx",
+    "path": "/",
+    "sameSite": "lax",
+    "secure": true,
+    "session": false,
+    "storeId": null,
+    "value": "k0cy4JuLvK3H37WcEoPn72tyIa692v3iiPviFuBBTyZZPHac_jow7EdNwM2RSg"
+  },
+  {
+    "domain": ".2.semrush.com.in",
+    "expirationDate": 1826538091.565826,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "proxy_token",
+    "path": "/",
+    "sameSite": null,
+    "secure": true,
+    "session": false,
+    "storeId": null,
+    "value": "0bd36b1c9872bf00ce039ff6612b53fd"
+  },
+  {
+    "domain": "2.semrush.com.in",
+    "expirationDate": 1826538099,
+    "hostOnly": true,
+    "httpOnly": false,
+    "name": "snav_last_sidebar_tk",
+    "path": "/",
+    "sameSite": null,
+    "secure": false,
+    "session": false,
+    "storeId": null,
+    "value": "toolkit_seo"
+  }
+]
