@@ -30,13 +30,11 @@ var (
 	loginURL    = "https://noxtools.com/login"
 	memberURL   = "https://noxtools.com/secure/member"
 	semrushPage = "https://noxtools.com/secure/page/semrush"
-	auditPage   = "https://noxtools.com/secure/page/siteaudit"
 	httpWait    = 30 * time.Second
 )
 
 var (
-	anchorRE     = regexp.MustCompile(`(?i)<a\b([^>]*)>`)
-	serverPathRE = regexp.MustCompile(`(?i)/server(\d+)\.php`)
+	anchorRE = regexp.MustCompile(`(?i)<a\b([^>]*)>`)
 )
 
 type Recipe struct{}
@@ -75,14 +73,16 @@ func targetFor(upstreamURL string) (captureTarget, error) {
 		}, nil
 	}
 	if n, ok := siteauditServerN(host); ok {
+		// Site Audit buttons live on the same Semrush product page:
+		// <a class="nt-sem-btn nt-sem-btn-audit" href="https://semrush.noxtools.com/siteaudit1.php">
 		return captureTarget{
 			kind:           "siteaudit",
-			pageURL:        auditPage,
-			proxyHost:      "siteaudit.noxtools.com",
+			pageURL:        semrushPage,
+			proxyHost:      "semrush.noxtools.com",
 			serverN:        n,
 			cookieDomain:   "." + host,
 			finalHost:      host,
-			fallbackLaunch: "https://siteaudit.noxtools.com/server" + strconv.Itoa(n) + ".php",
+			fallbackLaunch: "https://semrush.noxtools.com/siteaudit" + strconv.Itoa(n) + ".php",
 		}, nil
 	}
 	return captureTarget{}, automation.ErrUpstream
@@ -233,7 +233,7 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 }
 
 func extractServerLaunch(page string, target captureTarget) string {
-	wantPath := "/server" + strconv.Itoa(target.serverN) + ".php"
+	wantPath := launchPath(target)
 	var fallback string
 	for _, tag := range anchorRE.FindAllStringSubmatch(page, -1) {
 		if len(tag) < 2 {
@@ -249,19 +249,29 @@ func extractServerLaunch(page string, target captureTarget) string {
 		class := strings.ToLower(attr(attrs, "class"))
 		hostOK := strings.Contains(lower, strings.ToLower(target.proxyHost)) ||
 			strings.Contains(lower, strings.ToLower(target.finalHost))
-		pathOK := strings.Contains(lower, wantPath) || serverPathRE.MatchString(lower)
-		btnOK := strings.Contains(class, "nt-sem-btn") || strings.Contains(class, "nt-")
-		if hostOK && strings.Contains(lower, wantPath) {
+		pathOK := strings.Contains(lower, wantPath)
+		btnOK := strings.Contains(class, "nt-sem-btn")
+		if target.kind == "siteaudit" {
+			btnOK = btnOK && strings.Contains(class, "nt-sem-btn-audit")
+		} else if strings.Contains(class, "nt-sem-btn-audit") {
+			btnOK = false
+		}
+		if hostOK && pathOK {
 			return abs
 		}
 		if (btnOK || hostOK) && pathOK && fallback == "" {
 			fallback = abs
 		}
-		if hostOK && strings.Contains(lower, "server"+strconv.Itoa(target.serverN)) && fallback == "" {
-			fallback = abs
-		}
 	}
 	return fallback
+}
+
+func launchPath(target captureTarget) string {
+	n := strconv.Itoa(target.serverN)
+	if target.kind == "siteaudit" {
+		return "/siteaudit" + n + ".php"
+	}
+	return "/server" + n + ".php"
 }
 
 func attr(tag, name string) string {

@@ -42,11 +42,17 @@ func TestExtractServerLaunchPrefersServer1Button(t *testing.T) {
 	html := `
 <a class="nt-sem-btn" href="https://semrush.noxtools.com/server2.php">Server 2</a>
 <a class="nt-sem-btn" href="https://semrush.noxtools.com/server1.php" rel="noopener noreferrer" target="_blank">Server 1</a>
+<a class="nt-sem-btn nt-sem-btn-audit" href="https://semrush.noxtools.com/siteaudit1.php">Site Audit 1</a>
 `
-	target := captureTarget{proxyHost: "semrush.noxtools.com", serverN: 1, finalHost: "1.semrush.com.in"}
+	target := captureTarget{kind: "semrush", proxyHost: "semrush.noxtools.com", serverN: 1, finalHost: "1.semrush.com.in"}
 	got := extractServerLaunch(html, target)
 	if !strings.Contains(got, "server1.php") {
 		t.Fatalf("launch = %s", got)
+	}
+	audit := captureTarget{kind: "siteaudit", proxyHost: "semrush.noxtools.com", serverN: 1, finalHost: "siteaudit1.semrush.com.in"}
+	got = extractServerLaunch(html, audit)
+	if !strings.Contains(got, "siteaudit1.php") {
+		t.Fatalf("audit launch = %s", got)
 	}
 }
 
@@ -118,6 +124,10 @@ func TestNoxtoolsSiteaudit1Capture(t *testing.T) {
 	defer toolFinal.Close()
 
 	toolLaunch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/siteaudit1.php") {
+			http.NotFound(w, r)
+			return
+		}
 		http.SetCookie(w, &http.Cookie{Name: "proxy_token", Value: "aud-proxy", Path: "/", HttpOnly: true})
 		http.Redirect(w, r, toolFinal.URL+"/siteaudit/", http.StatusFound)
 	}))
@@ -128,20 +138,20 @@ func TestNoxtoolsSiteaudit1Capture(t *testing.T) {
 			_, _ = w.Write([]byte(`<input name="amember_login"><input name="amember_pass">`))
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/secure/page/siteaudit") {
-			_, _ = w.Write([]byte(`<a class="nt-sem-btn" href="` + toolLaunch.URL + `/server1.php">Server 1</a>`))
+		if strings.HasPrefix(r.URL.Path, "/secure/page/semrush") {
+			_, _ = w.Write([]byte(`<a class="nt-sem-btn nt-sem-btn-audit" href="` + toolLaunch.URL + `/siteaudit1.php">Site Audit 1</a>`))
 			return
 		}
 		_, _ = w.Write([]byte(`<div id="member-main-subscriptions"></div>`))
 	}))
 	defer portal.Close()
 
-	prevBase, prevMember, prevAudit := baseURL, memberURL, auditPage
+	prevBase, prevMember, prevSem := baseURL, memberURL, semrushPage
 	baseURL = portal.URL
 	memberURL = portal.URL + "/secure/member"
-	auditPage = portal.URL + "/secure/page/siteaudit"
+	semrushPage = portal.URL + "/secure/page/semrush"
 	t.Cleanup(func() {
-		baseURL, memberURL, auditPage = prevBase, prevMember, prevAudit
+		baseURL, memberURL, semrushPage = prevBase, prevMember, prevSem
 	})
 
 	cookies, err := Recipe{}.Capture(context.Background(), []automation.Cookie{{
