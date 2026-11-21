@@ -974,10 +974,19 @@ func panelSettingInt(db *sql.DB, key string, fallback int) int {
 }
 
 type envatoLimitView struct {
-	show  bool
-	limit int
-	used  int
-	label string
+	show      bool
+	limit     int
+	used      int
+	label     string
+	key       string
+	resetDays int
+}
+
+type envatoMeterDef struct {
+	key       string
+	label     string
+	resetDays int
+	limit     int
 }
 
 func creditLocation() *time.Location {
@@ -1033,21 +1042,100 @@ func envatoSessionUsername(r *http.Request) string {
 	return sess.username
 }
 
+func envatoResolveMeterDef(db *sql.DB, websiteID int) (envatoMeterDef, bool) {
+	def := envatoMeterDef{key: "download", label: "Download Limit", resetDays: 1, limit: 10}
+	if db == nil || websiteID == 0 {
+		return def, false
+	}
+	var toolRaw, siteRaw string
+	_ = db.QueryRow(`SELECT COALESCE(t.limits_json, '[]'), COALESCE(w.default_limits_json, '{}')
+		FROM websites w JOIN tools t ON t.id=w.tool_id WHERE w.id=?`, websiteID).Scan(&toolRaw, &siteRaw)
+	type limitDefJSON struct {
+		Key       string `json:"key"`
+		Label     string `json:"label"`
+		ResetDays int    `json:"reset_days"`
+	}
+	var defs []limitDefJSON
+	_ = json.Unmarshal([]byte(toolRaw), &defs)
+	defaults := map[string]int{}
+	_ = json.Unmarshal([]byte(siteRaw), &defaults)
+
+	pick := limitDefJSON{}
+	for _, d := range defs {
+		k := strings.ToLower(strings.TrimSpace(d.Key))
+		l := strings.ToLower(strings.TrimSpace(d.Label))
+		if strings.Contains(k, "download") || strings.Contains(l, "download") {
+			pick = d
+			break
+		}
+	}
+	if pick.Key == "" && len(defs) > 0 {
+		pick = defs[0]
+	}
+	if pick.Key == "" {
+		if _, ok := defaults["download"]; ok {
+			pick.Key, pick.Label, pick.ResetDays = "download", "Download Limit", 1
+		} else if _, ok := defaults["credits"]; ok {
+			pick.Key, pick.Label, pick.ResetDays = "credits", "Credits", 1
+		}
+	}
+	if pick.Key != "" {
+		def.key = pick.Key
+		if strings.TrimSpace(pick.Label) != "" {
+			def.label = strings.TrimSpace(pick.Label)
+		}
+		if pick.ResetDays > 0 {
+			def.resetDays = pick.ResetDays
+		}
+	}
+	if n, ok := defaults[def.key]; ok {
+		def.limit = n
+		return def, true
+	}
+	if n, ok := defaults["download"]; ok {
+		def.limit = n
+		return def, true
+	}
+	if n, ok := defaults["credits"]; ok {
+		def.limit = n
+		return def, true
+	}
+	return def, false
+}
+
+func envatoAliasMeterKeys(canonical string) []string {
+	seen := map[string]bool{canonical: true}
+	out := []string{canonical}
+	for _, k := range []string{"download", "downloads", "download_limit", "credits"} {
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 func envatoPanelLimitView(username string) envatoLimitView {
-	view := envatoLimitView{show: true, limit: 10, label: "Downloads"}
+	view := envatoLimitView{show: true, limit: 10, label: "Download Limit", key: "download", resetDays: 1}
 	cfg := loadConfig()
 	db, err := openEnvatoPanel()
 	if err != nil {
 		return view
 	}
-	var websiteID, showLimit, accountID int
-	var rawLimits string
-	websiteID = envatoWebsiteIDForUser(db, username, cfg.PublicHost)
-	err = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}') FROM websites WHERE id=?`, websiteID).Scan(&rawLimits)
-	if err != nil {
+	websiteID := envatoWebsiteIDForUser(db, username, cfg.PublicHost)
+	if websiteID == 0 {
 		return view
 	}
+	def, hasDefault := envatoResolveMeterDef(db, websiteID)
+	view.key = def.key
+	view.label = def.label
+	view.resetDays = def.resetDays
+	if hasDefault {
+		view.limit = def.limit
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
+	var showLimit, accountID int
 	_ = db.QueryRow(`SELECT assigned_account_id FROM live_sessions WHERE website_id=? AND username=? AND expires_at>? ORDER BY id DESC LIMIT 1`, websiteID, username, now).Scan(&accountID)
 	if accountID > 0 {
 		_ = db.QueryRow(`SELECT COALESCE(show_limit, 0) FROM accounts WHERE id=?`, accountID).Scan(&showLimit)
@@ -1061,41 +1149,52 @@ func envatoPanelLimitView(username string) envatoLimitView {
 	case "hide":
 		view.show = false
 	}
-	limits := map[string]int{}
-	_ = json.Unmarshal([]byte(rawLimits), &limits)
-	key := "download"
-	if n, ok := limits["download"]; ok {
-		view.limit = n
-	} else if n, ok := limits["credits"]; ok {
-		view.limit = n
-		key = "credits"
-		view.label = "Credits"
-	}
-	resetDays := 1
+
 	var userID, meterID, meterLimit, meterUsed, days, custom int
 	var expire string
 	err = db.QueryRow(`SELECT u.id, COALESCE(u.custom_limit_expire_at, ''),
 		COALESCE(m.id, 0), COALESCE(m."limit", 0), COALESCE(m.used, 0), COALESCE(m.reset_days, 1), COALESCE(m.is_custom, 0)
 		FROM panel_users u
-		LEFT JOIN user_meters m ON m.user_id = u.id AND m.key = ?
-		WHERE u.website_id = ? AND u.username = ?`, key, websiteID, username).Scan(&userID, &expire, &meterID, &meterLimit, &meterUsed, &days, &custom)
+		LEFT JOIN user_meters m ON m.user_id = u.id AND m."key" = ?
+		WHERE u.website_id = ? AND u.username = ?`, view.key, websiteID, username).Scan(&userID, &expire, &meterID, &meterLimit, &meterUsed, &days, &custom)
 	if err == nil {
 		view.used = meterUsed
 		if days > 0 {
-			resetDays = days
+			view.resetDays = days
 		}
-		if meterID > 0 {
+		customActive := custom == 1
+		if expire != "" && creditExpirePassed(expire) {
+			customActive = false
+		}
+		if meterID > 0 && customActive {
+			view.limit = meterLimit
+		} else if !hasDefault && meterID > 0 {
 			view.limit = meterLimit
 		}
 	}
-	_ = resetDays
+
+	// usage_events win for the current reset window (includes older aliased keys).
+	start := creditPeriodStart(view.resetDays).UTC().Format(time.RFC3339)
+	aliases := envatoAliasMeterKeys(view.key)
+	placeholders := make([]string, len(aliases))
+	args := make([]interface{}, 0, 3+len(aliases))
+	args = append(args, websiteID, username)
+	for i, k := range aliases {
+		placeholders[i] = "?"
+		args = append(args, k)
+	}
+	args = append(args, start)
+	var eventUsed int
+	q := `SELECT COALESCE(SUM(amount), 0) FROM usage_events WHERE website_id=? AND username=? AND limit_key IN (` + strings.Join(placeholders, ",") + `) AND timestamp>=?`
+	if err := db.QueryRow(q, args...).Scan(&eventUsed); err == nil && eventUsed > view.used {
+		view.used = eventUsed
+	}
 	return view
 }
 
 var (
 	envatoDownloadMu  sync.Mutex
 	envatoRecentFiles = map[string]time.Time{}
-	envatoRecentItems = map[string]time.Time{}
 )
 
 func isEnvatoLicensePath(path string) bool {
@@ -1427,9 +1526,105 @@ func isJunkDownloadLabel(name string) bool {
 	return false
 }
 
+// envatoRefererSlug returns a human title slug from the Elements item page referer
+// (e.g. man-plays-guitar-in-low-light-setting) — never a bare category.
+func envatoRefererSlug(referer string) string {
+	parsed, err := url.Parse(strings.TrimSpace(referer))
+	if err != nil || parsed == nil {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for i := len(parts) - 1; i >= 0; i-- {
+		seg := strings.TrimSpace(parts[i])
+		if seg == "" {
+			continue
+		}
+		lower := strings.ToLower(seg)
+		if isJunkDownloadLabel(lower) {
+			continue
+		}
+		// UUID / short opaque ids are not useful display names.
+		if len(lower) >= 32 && !strings.Contains(lower, "-") {
+			continue
+		}
+		if strings.Count(lower, "-") >= 2 && len(lower) >= 12 {
+			return seg
+		}
+	}
+	return ""
+}
+
+func envatoIsBillableLabel(displayName, dedupeKey string) bool {
+	if isChargeableEnvatoFileName(displayName) {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(displayName), "item:") {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(dedupeKey), "item:") && !isJunkDownloadLabel(displayName) && displayName != "" {
+		return true
+	}
+	return false
+}
+
+func envatoCleanupOrphanMeters(db *sql.DB, userID int, keepKey, keepLabel string, used, limit, resetDays int) {
+	if db == nil || userID == 0 || keepKey == "" {
+		return
+	}
+	if resetDays < 1 {
+		resetDays = 1
+	}
+	rows, err := db.Query(`SELECT id, "key", label, used FROM user_meters WHERE user_id=? AND is_custom=0`, userID)
+	if err != nil {
+		return
+	}
+	type orphan struct {
+		id   int
+		key  string
+		used int
+	}
+	var drop []orphan
+	mergedUsed := used
+	for rows.Next() {
+		var id, u int
+		var key, label string
+		if rows.Scan(&id, &key, &label, &u) != nil {
+			continue
+		}
+		if key == keepKey {
+			continue
+		}
+		lk := strings.ToLower(key)
+		ll := strings.ToLower(label)
+		if lk == "download" || lk == "downloads" || lk == "download_limit" || lk == "credits" ||
+			strings.Contains(ll, "download") || strings.Contains(ll, "credit") {
+			drop = append(drop, orphan{id: id, key: key, used: u})
+			if u > mergedUsed {
+				mergedUsed = u
+			}
+		}
+	}
+	rows.Close()
+	for _, o := range drop {
+		_, _ = db.Exec(`DELETE FROM user_meters WHERE id=?`, o.id)
+		log.Printf("[DOWNLOAD] removed orphan meter user_id=%d key=%s", userID, o.key)
+	}
+	res, err := db.Exec(`UPDATE user_meters SET used=?, "limit"=?, label=?, reset_days=? WHERE user_id=? AND "key"=? AND is_custom=0`,
+		mergedUsed, limit, keepLabel, resetDays, userID, keepKey)
+	changed := int64(0)
+	if err == nil && res != nil {
+		changed, _ = res.RowsAffected()
+	}
+	if changed == 0 {
+		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
+			userID, keepKey, keepLabel, resetDays, mergedUsed, limit)
+	}
+}
+
 // recordEnvatoDownload bills one successful Elements download.
 // displayName is shown in the panel; dedupeKey (item:uuid or file name) prevents double-count
 // between /download.data and the CDN file follow-up.
+// Distinct items downloaded seconds apart each count — only same-item/file is deduped (60s).
 func recordEnvatoDownload(username, displayName, dedupeKey string) {
 	username = strings.TrimSpace(username)
 	displayName = strings.TrimSpace(displayName)
@@ -1453,11 +1648,10 @@ func recordEnvatoDownload(username, displayName, dedupeKey string) {
 		log.Printf("[DOWNLOAD] skip empty label user=%s", username)
 		return
 	}
-	// Still reject bare category slugs with no item:/extension.
 	if isJunkDownloadLabel(displayName) {
 		return
 	}
-	if !isChargeableEnvatoFileName(displayName) && !strings.HasPrefix(strings.ToLower(displayName), "item:") {
+	if !envatoIsBillableLabel(displayName, dedupeKey) {
 		log.Printf("[DOWNLOAD] skip non-file label user=%s name=%q", username, displayName)
 		return
 	}
@@ -1469,10 +1663,19 @@ func recordEnvatoDownload(username, displayName, dedupeKey string) {
 	if err != nil {
 		return
 	}
-	var websiteID int
-	websiteID = envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	websiteID := envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
 	if websiteID == 0 {
 		return
+	}
+	view := envatoPanelLimitView(username)
+	if view.key == "" {
+		view.key = "download"
+	}
+	if view.label == "" {
+		view.label = "Download Limit"
+	}
+	if view.resetDays < 1 {
+		view.resetDays = 1
 	}
 	now := time.Now().UTC()
 	fileKey := username + "\n" + strings.ToLower(displayName)
@@ -1480,11 +1683,21 @@ func recordEnvatoDownload(username, displayName, dedupeKey string) {
 
 	// Same item/file within 60s → one credit (covers license JSON + CDN file).
 	if last, ok := envatoRecentFiles[dedupeMem]; ok && time.Since(last) < 60*time.Second {
-		// Upgrade placeholder item: row to a real filename when it arrives.
-		if isChargeableEnvatoFileName(displayName) && strings.HasPrefix(strings.ToLower(dedupeKey), "item:") {
+		betterName := isChargeableEnvatoFileName(displayName) ||
+			(!isJunkDownloadLabel(displayName) && !strings.HasPrefix(strings.ToLower(displayName), "item:"))
+		if betterName && strings.HasPrefix(strings.ToLower(dedupeKey), "item:") {
+			aliases := envatoAliasMeterKeys(view.key)
+			ph := make([]string, len(aliases))
+			args := make([]interface{}, 0, 2+len(aliases)+1)
+			args = append(args, websiteID, username)
+			for i, k := range aliases {
+				ph[i] = "?"
+				args = append(args, k)
+			}
+			args = append(args, dedupeKey)
 			var rowID int
-			_ = db.QueryRow(`SELECT id FROM usage_events WHERE website_id=? AND username=? AND limit_key='download'
-				AND target_path=? ORDER BY timestamp DESC LIMIT 1`, websiteID, username, dedupeKey).Scan(&rowID)
+			_ = db.QueryRow(`SELECT id FROM usage_events WHERE website_id=? AND username=? AND limit_key IN (`+strings.Join(ph, ",")+`)
+				AND target_path=? ORDER BY timestamp DESC LIMIT 1`, args...).Scan(&rowID)
 			if rowID > 0 {
 				_, _ = db.Exec(`UPDATE usage_events SET target_path=? WHERE id=?`, displayName, rowID)
 				log.Printf("[DOWNLOAD] renamed item→file user=%s file=%s", username, displayName)
@@ -1496,24 +1709,14 @@ func recordEnvatoDownload(username, displayName, dedupeKey string) {
 	if last, ok := envatoRecentFiles[fileKey]; ok && time.Since(last) < 60*time.Second {
 		return
 	}
-	if last, ok := envatoRecentItems[username]; ok && time.Since(last) < 10*time.Second {
-		var recentSame int
-		_ = db.QueryRow(`SELECT COUNT(*) FROM usage_events WHERE website_id=? AND username=? AND limit_key='download' AND timestamp>=?`,
-			websiteID, username, now.Add(-10*time.Second).Format(time.RFC3339)).Scan(&recentSame)
-		if recentSame > 0 {
-			envatoRecentFiles[fileKey] = now
-			envatoRecentFiles[dedupeMem] = now
-			return
-		}
-	}
 
-	view := envatoPanelLimitView(username)
 	if view.limit >= 0 && view.used >= view.limit {
+		log.Printf("[DOWNLOAD] blocked over limit user=%s used=%d limit=%d", username, view.used, view.limit)
 		return
 	}
 	var recent int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM usage_events WHERE website_id=? AND username=? AND limit_key='download' AND target_path=? AND timestamp>=?`,
-		websiteID, username, displayName, now.Add(-60*time.Second).Format(time.RFC3339)).Scan(&recent)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM usage_events WHERE website_id=? AND username=? AND limit_key=? AND target_path=? AND timestamp>=?`,
+		websiteID, username, view.key, displayName, now.Add(-60*time.Second).Format(time.RFC3339)).Scan(&recent)
 	if recent > 0 {
 		envatoRecentFiles[fileKey] = now
 		envatoRecentFiles[dedupeMem] = now
@@ -1521,16 +1724,15 @@ func recordEnvatoDownload(username, displayName, dedupeKey string) {
 	}
 	_, err = db.Exec(`INSERT INTO usage_events (website_id, username, limit_key, limit_label, reset_days, action, target_path, amount, timestamp)
 		VALUES (?,?,?,?,?,?,?,?,?)`,
-		websiteID, username, "download", "Downloads", 1, "Download", displayName, 1, now.Format(time.RFC3339))
+		websiteID, username, view.key, view.label, view.resetDays, "Download", displayName, 1, now.Format(time.RFC3339))
 	if err != nil {
 		log.Printf("[DOWNLOAD] log failed user=%s file=%s: %v", username, displayName, err)
 		return
 	}
 	envatoRecentFiles[fileKey] = now
 	envatoRecentFiles[dedupeMem] = now
-	envatoRecentItems[username] = now
 	used := bumpEnvatoMeter(username, view)
-	log.Printf("[DOWNLOAD] saved user=%s file=%s dedupe=%s used=%d limit=%d", username, displayName, dedupeKey, used, view.limit)
+	log.Printf("[DOWNLOAD] saved user=%s file=%s dedupe=%s key=%s used=%d limit=%d", username, displayName, dedupeKey, view.key, used, view.limit)
 }
 
 func bumpEnvatoMeter(username string, view envatoLimitView) int {
@@ -1538,11 +1740,23 @@ func bumpEnvatoMeter(username string, view envatoLimitView) int {
 	if err != nil {
 		return view.used + 1
 	}
-	var websiteID, userID int
-	websiteID = envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	websiteID := envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
 	if websiteID == 0 {
 		return view.used + 1
 	}
+	key := view.key
+	if key == "" {
+		key = "download"
+	}
+	label := view.label
+	if label == "" {
+		label = "Download Limit"
+	}
+	resetDays := view.resetDays
+	if resetDays < 1 {
+		resetDays = 1
+	}
+	var userID int
 	err = db.QueryRow(`SELECT id FROM panel_users WHERE website_id=? AND username=?`, websiteID, username).Scan(&userID)
 	if err != nil {
 		res, insertErr := db.Exec(`INSERT INTO panel_users (website_id, username, status, custom_limit_expire_at) VALUES (?,?,?,NULL)`, websiteID, username, "active")
@@ -1552,18 +1766,24 @@ func bumpEnvatoMeter(username string, view envatoLimitView) int {
 		id, _ := res.LastInsertId()
 		userID = int(id)
 	}
-	res, err := db.Exec(`UPDATE user_meters SET used = used + 1 WHERE user_id=? AND "key"='download'`, userID)
+	envatoCleanupOrphanMeters(db, userID, key, label, view.used, view.limit, resetDays)
+	res, err := db.Exec(`UPDATE user_meters SET used = used + 1, label=?, reset_days=?, "limit"=CASE WHEN is_custom=1 THEN "limit" ELSE ? END WHERE user_id=? AND "key"=?`,
+		label, resetDays, view.limit, userID, key)
 	changed := int64(0)
 	if err == nil && res != nil {
 		changed, _ = res.RowsAffected()
 	}
+	nextUsed := view.used + 1
 	if err != nil || changed == 0 {
 		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
-			userID, "download", view.label, 1, view.used+1, view.limit)
-		return view.used + 1
+			userID, key, label, resetDays, nextUsed, view.limit)
+		return nextUsed
 	}
 	var used int
-	_ = db.QueryRow(`SELECT used FROM user_meters WHERE user_id=? AND "key"='download'`, userID).Scan(&used)
+	_ = db.QueryRow(`SELECT used FROM user_meters WHERE user_id=? AND "key"=?`, userID, key).Scan(&used)
+	if used < nextUsed {
+		return nextUsed
+	}
 	return used
 }
 
@@ -1575,10 +1795,21 @@ func syncEnvatoPanelUser(username string, view envatoLimitView) {
 	if err != nil {
 		return
 	}
-	var websiteID int
-	websiteID = envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
+	websiteID := envatoWebsiteIDForUser(db, username, loadConfig().PublicHost)
 	if websiteID == 0 {
 		return
+	}
+	key := view.key
+	if key == "" {
+		key = "download"
+	}
+	label := view.label
+	if label == "" {
+		label = "Download Limit"
+	}
+	resetDays := view.resetDays
+	if resetDays < 1 {
+		resetDays = 1
 	}
 	var userID int
 	err = db.QueryRow(`SELECT id FROM panel_users WHERE website_id=? AND username=?`, websiteID, username).Scan(&userID)
@@ -1590,24 +1821,13 @@ func syncEnvatoPanelUser(username string, view envatoLimitView) {
 		id, _ := res.LastInsertId()
 		userID = int(id)
 	}
-	limit := view.limit
-	if limit < 0 {
-		limit = 10
-	}
-	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM user_meters WHERE user_id=? AND "key"='download'`, userID).Scan(&n)
-	if n == 0 {
-		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
-			userID, "download", "Download", 1, view.used, limit)
-		return
-	}
-	_, _ = db.Exec(`UPDATE user_meters SET used=?, "limit"=?, label='Download' WHERE user_id=? AND "key"='download' AND is_custom=0`, view.used, limit, userID)
+	envatoCleanupOrphanMeters(db, userID, key, label, view.used, view.limit, resetDays)
 }
 
 func envatoLimitWidgetScript() string {
 	return `<script data-tm-credits="1">
 (function() {
-    var CREDIT_LABEL = 'Downloads';
+    var CREDIT_LABEL = 'Download Limit';
     var open = false;
     var latest = null;
     function removeDock(){

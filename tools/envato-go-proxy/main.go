@@ -1572,6 +1572,7 @@ func handleUserLimits(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		view := envatoPanelLimitView(username)
+		syncEnvatoPanelUser(username, view)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"show_limit":   view.show,
 			"username":     username,
@@ -2262,12 +2263,16 @@ func main() {
 							name = jsonName
 						}
 					}
+					slug := envatoRefererSlug(referer)
 					dedupe := chargeName
 					if dedupe == "" {
 						dedupe = downloadIdentityKey(resp.Request)
 					}
 					if dedupe == "" {
 						dedupe = name
+					}
+					if dedupe == "" {
+						dedupe = slug
 					}
 
 					// Bill on successful /download.data (license JSON) OR real CDN file bytes.
@@ -2276,6 +2281,9 @@ func main() {
 					previewCDN := envatoPreviewHost(reqHost) || envatoPreviewPath(reqPath)
 					if licenseHit {
 						display := name
+						if display == "" {
+							display = slug
+						}
 						if display == "" {
 							display = chargeName
 						}
