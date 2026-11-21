@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Patch aaPanel prideseotools.com vhost for Method A (wildcard + $tool_port).
-# Keeps existing SSL / listen 443 cert lines. Apex @ DNS optional (homepage elsewhere OK).
-# DNS grey A required: * → 65.109.16.196
+# Keeps SSL cert lines. Apex @ DNS optional.
 set -euo pipefail
 
 REPO="${REPO:-/www/wwwroot/gt4rents.com/_repo}"
@@ -11,17 +10,14 @@ VHOST="/www/server/panel/vhost/nginx/prideseotools.com.conf"
 REWRITE="/www/server/panel/vhost/rewrite/prideseotools.com.conf"
 
 if [[ ! -f "$VHOST" ]]; then
-  echo "ERROR: missing $VHOST — create aaPanel site prideseotools.com first"
+  echo "ERROR: missing $VHOST"
   exit 1
 fi
 
 cp -a "$VHOST" "${VHOST}.bak-pride-$(date +%Y%m%d%H%M%S)"
 touch "$REWRITE"
-
-if [[ -f "$MAP_SRC" ]]; then
-  cp "$MAP_SRC" "$MAP_DST"
-  echo "OK map → $MAP_DST"
-fi
+cp "$MAP_SRC" "$MAP_DST"
+echo "OK map → $MAP_DST"
 
 python3 - "$VHOST" <<'PY'
 import pathlib, re, sys
@@ -29,8 +25,7 @@ import pathlib, re, sys
 path = pathlib.Path(sys.argv[1])
 txt = path.read_text()
 
-# Every server_name → wildcard + apex
-txt2, n = re.subn(
+txt, n = re.subn(
     r"(?m)^(\s*)server_name\s+[^;]+;",
     r"\1server_name *.prideseotools.com prideseotools.com;",
     txt,
@@ -57,68 +52,85 @@ PROXY = """    location /
         proxy_buffers 8 256k;
         proxy_busy_buffers_size 512k;
         proxy_temp_file_write_size 512k;
-    }"""
+    }
+"""
 
-# Match location / { ... } with nested braces depth tracking
-def replace_root_locations(src: str) -> str:
-    out = []
-    i = 0
-    replaced = 0
-    while i < len(src):
-        m = re.match(r"(?m)^(\s*)location\s+/\s*\{", src[i:])
-        if not m:
-            out.append(src[i])
-            i += 1
+def find_blocks(src: str, pattern: str):
+    """Yield (start, end) of location blocks matching pattern prefix before {."""
+    for m in re.finditer(pattern, src):
+        brace = src.find("{", m.end() - 1)
+        if brace < 0:
             continue
-        # start of location /
-        start = i + m.start()
-        brace_at = i + m.end() - 1  # position of '{'
         depth = 0
-        j = brace_at
+        j = brace
         while j < len(src):
             if src[j] == "{":
                 depth += 1
             elif src[j] == "}":
                 depth -= 1
                 if depth == 0:
-                    j += 1
+                    yield m.start(), j + 1
                     break
             j += 1
-        out.append(PROXY)
-        if not out[-1].endswith("\n"):
-            out.append("\n")
-        i = j
-        replaced += 1
-    print(f"location / replacements: {replaced}")
-    return "".join(out)
 
-if "proxy_pass http://127.0.0.1:$tool_port" in txt2 and "location /" in txt2:
-    # still rewrite root locations so headers match template
-    txt2 = replace_root_locations(txt2)
+# Remove ALL root location / blocks (exact / only), then insert one PROXY
+spans = list(find_blocks(src := txt, r"(?m)^[ \t]*location[ \t]+/[ \t]*\{"))
+# also match location / without space before {
+if not spans:
+    spans = list(find_blocks(txt, r"(?m)^[ \t]*location[ \t]+/\{"))
+
+print(f"found location / blocks: {len(spans)}")
+# delete from end so indexes stay valid
+for start, end in sorted(spans, reverse=True):
+    txt = txt[:start] + txt[end:]
+
+# Comment out enable-php includes (Go tools — no PHP)
+txt = re.sub(
+    r"(?m)^(\s*)include\s+enable-php[^;]*;",
+    r"\1#include enable-php-00.conf;",
+    txt,
+)
+
+if "proxy_pass http://127.0.0.1:$tool_port" not in txt:
+    inserted = False
+    # Prefer after REWRITE include
+    m = re.search(r"(?m)^[ \t]*include\s+/www/server/panel/vhost/rewrite/prideseotools\.com\.conf\s*;", txt)
+    if m:
+        txt = txt[: m.end()] + "\n\n" + PROXY + txt[m.end() :]
+        inserted = True
+    if not inserted:
+        m = re.search(r"(?m)^[ \t]*access_log\s+", txt)
+        if m:
+            txt = txt[: m.start()] + PROXY + "\n" + txt[m.start() :]
+            inserted = True
+    if not inserted:
+        # before last closing brace of file
+        idx = txt.rfind("}")
+        txt = txt[:idx] + "\n" + PROXY + "\n" + txt[idx:]
+        inserted = True
+    print(f"proxy inserted: {inserted}")
 else:
-    txt2 = replace_root_locations(txt2)
+    print("proxy already present")
 
-# Buffers once after first root line if missing
-if "client_header_buffer_size" not in txt2:
-    txt2 = re.sub(
+if "client_header_buffer_size" not in txt:
+    txt = re.sub(
         r"(?m)^(\s*)root\s+[^;]+;",
         r"\1root /www/wwwroot/gt4rents.com;\n\n\1client_max_body_size 100m;\n\1client_header_buffer_size 256k;\n\1large_client_header_buffers 8 256k;",
-        txt2,
+        txt,
         count=1,
     )
 
-path.write_text(txt2)
+path.write_text(txt)
 print("PATCHED:", path)
+print("proxy_ok:", "proxy_pass http://127.0.0.1:$tool_port" in txt)
 PY
 
 echo "== nginx -t && reload =="
 nginx -t
 nginx -s reload
 
-echo "== key lines =="
-grep -nE 'server_name|proxy_pass|tool_port|listen |ssl_certificate ' "$VHOST" | head -40
-echo "== map =="
-grep prideseotools "$MAP_DST" || true
-echo "== local Host test (HTTP) =="
-curl -sI -H 'Host: refs.prideseotools.com' http://127.0.0.1/ | head -8 || true
-echo "DONE. Padlock needs wildcard LE (DNS) later; routing/config is set."
+echo "== verify =="
+grep -nE 'server_name|location /|proxy_pass|tool_port' "$VHOST" | head -40
+echo "== must be Go/tool response (NOT static html length ~58k) =="
+curl -sI -H 'Host: refs.prideseotools.com' http://127.0.0.1/ | head -12
+curl -s -H 'Host: refs.prideseotools.com' http://127.0.0.1/ | head -c 200; echo
