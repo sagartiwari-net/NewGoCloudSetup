@@ -163,7 +163,7 @@ Restart panel-api after deploy. Interval copies Home (default 22 min).
 | Panel username | `Tanveer` |
 | Domain | `prideseotools.com` |
 | Prefix | `pd` + tool short (e.g. Ahrefs → `pdrefs`) |
-| How added | **Method B + C + D** — aaPanel site `refs.prideseotools.com`; `ensurePrideSeoToolsAhrefs`; `deploy/add-prideseotools-ahrefs.sql` |
+| How added | **Method A + C + D** — aaPanel site `prideseotools.com` / `*.prideseotools.com` + `deploy/nginx-prideseotools.server.conf` + host-port map; `ensurePrideSeoToolsAhrefs`; `deploy/add-prideseotools-ahrefs.sql` |
 | Product | `["prideseotools"]` (aMember pe asli id badlo) |
 | Accounts | SQL/seed **does not** insert cookies — panel se map karo |
 
@@ -171,7 +171,9 @@ Restart panel-api after deploy. Interval copies Home (default 22 min).
 |------------|-----|-------------|------|--------|
 | Tanveer Ahrefs | `https://refs.prideseotools.com` | `pdrefs` | 5291 | Ahrefs / `refs.upays.in` |
 
-DNS grey A: `refs` → `65.109.16.196`. Future tools: same short sub as upays (`smrs`, `envt`, …) + slug `pd` + short (`pdsmrs`, `pdenvt`).
+DNS grey A: `@` and/or `*` (and `refs`) → `65.109.16.196`.  
+Nginx: paste `deploy/nginx-prideseotools.server.conf` into aaPanel **Conf** for `prideseotools.com` — keep existing SSL/443 block; set `server_name *.prideseotools.com prideseotools.com` and `location /` → `$tool_port` proxy.  
+Future tools: same short sub as upays (`smrs`, `envt`, …) + slug `pd` + short (`pdsmrs`, `pdenvt`) + map line.
 
 ---
 
