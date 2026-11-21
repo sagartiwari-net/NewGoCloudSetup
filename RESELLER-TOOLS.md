@@ -156,6 +156,25 @@ Restart panel-api after deploy. Interval copies Home (default 22 min).
 
 ---
 
+## 5b. Tanveer / PrideSeoTools (`prideseotools.com`)
+
+| Field | Value |
+|-------|--------|
+| Panel username | `Tanveer` |
+| Domain | `prideseotools.com` |
+| Prefix | `pd` + tool short (e.g. Ahrefs → `pdrefs`) |
+| How added | **Method B + C + D** — aaPanel site `refs.prideseotools.com`; `ensurePrideSeoToolsAhrefs`; `deploy/add-prideseotools-ahrefs.sql` |
+| Product | `["prideseotools"]` (aMember pe asli id badlo) |
+| Accounts | SQL/seed **does not** insert cookies — panel se map karo |
+
+| Panel name | URL | Access slug | Port | Shares |
+|------------|-----|-------------|------|--------|
+| Tanveer Ahrefs | `https://refs.prideseotools.com` | `pdrefs` | 5291 | Ahrefs / `refs.upays.in` |
+
+DNS grey A: `refs` → `65.109.16.196`. Future tools: same short sub as upays (`smrs`, `envt`, …) + slug `pd` + short (`pdsmrs`, `pdenvt`).
+
+---
+
 ## 6. SemrushToolz / AmzPremiumToolz (legacy shared rows)
 
 Purana seed kabhi-kabhi reseller ko **owner** websites pe assign karta tha (alag domain se pehle). Ab preferred: alag friend domain (upar sections).

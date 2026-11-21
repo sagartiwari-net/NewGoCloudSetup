@@ -315,6 +315,7 @@ func ensureResellers(db *sql.DB) {
 		{"SemrushToolz", []string{"SemrushToolz"}, []string{"Semrush", "ChatGPT", "Envato", "Ubersuggest", "Helium 10"}},
 		{"SeoGroupBuy", []string{"SeoGroupBuy 1", "SeoGroupBuy 2"}, []string{"Semrush"}},
 		{"AmzPremiumToolz", []string{"AmzPremiumToolz"}, []string{"Helium 10", "ChatGPT", "Claude AI"}},
+		{"Tanveer", []string{"Tanveer 1"}, nil},
 	}
 	var semrushID int
 	_ = db.QueryRow(`SELECT w.id FROM websites w JOIN tools t ON t.id=w.tool_id WHERE w.domain=?`, "127.0.0.1:5141").Scan(&semrushID)
@@ -424,6 +425,71 @@ func ensureToolWalySites(db *sql.DB) {
 		if len(destIDs) > 0 {
 			attachRoute(db, int(websiteID), destIDs)
 		}
+	}
+}
+
+// PrideSeoTools (Tanveer) Ahrefs shares the Ahrefs process. Button name pdrefs.
+func ensurePrideSeoToolsAhrefs(db *sql.DB) {
+	const domain = "refs.prideseotools.com"
+	const slug = "pdrefs"
+	const name = "Tanveer Ahrefs"
+	var toolID int64
+	if db.QueryRow(`SELECT id FROM tools WHERE name=?`, "Ahrefs").Scan(&toolID) != nil || toolID <= 0 {
+		log.Printf("PrideSeoTools Ahrefs: tool row missing")
+		return
+	}
+	limits := "{}"
+	sessionMinutes := 30
+	_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}'), COALESCE(session_duration, 30) FROM websites WHERE lower(trim(domain)) IN ('refs.upays.in', 'refs.gt4rents.com') ORDER BY CASE WHEN domain LIKE '%.upays.in' THEN 0 ELSE 1 END LIMIT 1`).Scan(&limits, &sessionMinutes)
+	if strings.TrimSpace(limits) == "" {
+		limits = "{}"
+	}
+	if sessionMinutes < 1 {
+		sessionMinutes = 30
+	}
+	var websiteID int64
+	var currentSlug string
+	err := db.QueryRow(`SELECT id, COALESCE(access_slug, '') FROM websites WHERE lower(trim(domain))=lower(trim(?))`, domain).Scan(&websiteID, &currentSlug)
+	if err != nil {
+		var taken int
+		if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=?`, slug).Scan(&taken) == nil {
+			log.Printf("PrideSeoTools Ahrefs: button name %s is already used by website %d", slug, taken)
+			return
+		}
+		res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
+			VALUES (?,?,?,?,?,?,1,?)`, toolID, name, domain, "secret_refs_prideseotools_com", sessionMinutes, limits, slug)
+		if insErr != nil {
+			log.Printf("PrideSeoTools Ahrefs website: %v", insErr)
+			return
+		}
+		websiteID, _ = res.LastInsertId()
+		_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, name, `["prideseotools"]`)
+		log.Printf("added %s website %d at %s", name, websiteID, domain)
+	} else if strings.TrimSpace(currentSlug) == "" {
+		var taken int
+		if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=? AND id<>?`, slug, websiteID).Scan(&taken) != nil {
+			_, _ = db.Exec(`UPDATE websites SET access_slug=?, name=? WHERE id=?`, slug, name, websiteID)
+		}
+	}
+	var opID int64
+	if db.QueryRow(`SELECT id FROM operators WHERE username=?`, "Tanveer").Scan(&opID) != nil || opID <= 0 {
+		log.Printf("PrideSeoTools Ahrefs: reseller Tanveer missing; website not assigned")
+		return
+	}
+	_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
+	var destIDs []int
+	rows, err := db.Query(`SELECT id FROM telegram_destinations WHERE reseller_id=? AND enabled=1`, opID)
+	if err == nil {
+		for rows.Next() {
+			var id int
+			if rows.Scan(&id) == nil {
+				destIDs = append(destIDs, id)
+			}
+		}
+		rows.Close()
+	}
+	if len(destIDs) > 0 {
+		attachRoute(db, int(websiteID), destIDs)
 	}
 }
 
