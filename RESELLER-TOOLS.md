@@ -171,9 +171,20 @@ Restart panel-api after deploy. Interval copies Home (default 22 min).
 |------------|-----|-------------|------|--------|
 | Tanveer Ahrefs | `https://refs.prideseotools.com` | `pdrefs` | 5291 | Ahrefs / `refs.upays.in` |
 
-DNS grey A: `@` and/or `*` (and `refs`) → `65.109.16.196`.  
-Nginx: paste `deploy/nginx-prideseotools.server.conf` into aaPanel **Conf** for `prideseotools.com` — keep existing SSL/443 block; set `server_name *.prideseotools.com prideseotools.com` and `location /` → `$tool_port` proxy.  
-Future tools: same short sub as upays (`smrs`, `envt`, …) + slug `pd` + short (`pdsmrs`, `pdenvt`) + map line.
+**Method A scale (kal naya tool = no new aaPanel site):**
+
+1. Cloudflare DNS grey: `@` + `*` A → `65.109.16.196` (same as `upays.in` / `seogbtools.com`)
+2. One aaPanel site primary = `prideseotools.com` (never `*.…` as primary)
+3. Conf: `server_name *.prideseotools.com prideseotools.com;` + `location /` → `$tool_port` (`deploy/nginx-prideseotools.server.conf`)
+4. **Wildcard SSL** (setup.md §4d / DOMAIN-MIGRATE Phase 3) — HTTP-01 wildcard nahi chalega:
+   - Site SSL → Let’s Encrypt
+   - Domains: `prideseotools.com` **and** `*.prideseotools.com`
+   - Verify: **DNS** + Cloudflare API token (Zone DNS Edit) — manual TXT bhi OK
+   - Apply → Force HTTPS → Auto Renew
+   - Cloudflare SSL/TLS → **Full**
+5. Naya tool baad mein: sirf map line + panel/SQL row (`pd` + short). **Naya aaPanel site mat banao.**
+
+Nginx: paste `deploy/nginx-prideseotools.server.conf` into aaPanel **Conf**; keep SSL/443 cert lines.
 
 ---
 
