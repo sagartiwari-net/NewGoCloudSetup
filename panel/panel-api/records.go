@@ -279,10 +279,15 @@ func (s *server) userJSON(id int) map[string]any {
 	rows, err := s.db.Query(`SELECT "key", label, reset_days, used, "limit", is_custom FROM user_meters WHERE user_id=? ORDER BY id`, id)
 	meters := []any{}
 	if err == nil {
+		seen := map[string]bool{}
 		for rows.Next() {
 			var reset, used, limit, custom int
 			var key, label string
 			_ = rows.Scan(&key, &label, &reset, &used, &limit, &custom)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
 			meters = append(meters, map[string]any{
 				"key": key, "label": label, "reset_days": reset, "used": used, "limit": limit, "is_custom": custom == 1,
 			})

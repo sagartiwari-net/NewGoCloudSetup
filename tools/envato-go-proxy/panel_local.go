@@ -1578,44 +1578,59 @@ func envatoCleanupOrphanMeters(db *sql.DB, userID int, keepKey, keepLabel string
 	if err != nil {
 		return
 	}
-	type orphan struct {
-		id   int
-		key  string
-		used int
+	type row struct {
+		id    int
+		key   string
+		label string
+		used  int
 	}
-	var drop []orphan
+	var keepRows []row
+	var dropIDs []int
 	mergedUsed := used
 	for rows.Next() {
-		var id, u int
-		var key, label string
-		if rows.Scan(&id, &key, &label, &u) != nil {
+		var r row
+		if rows.Scan(&r.id, &r.key, &r.label, &r.used) != nil {
 			continue
 		}
-		if key == keepKey {
+		if r.key == keepKey {
+			keepRows = append(keepRows, r)
+			if r.used > mergedUsed {
+				mergedUsed = r.used
+			}
 			continue
 		}
-		lk := strings.ToLower(key)
-		ll := strings.ToLower(label)
+		lk := strings.ToLower(r.key)
+		ll := strings.ToLower(r.label)
 		if lk == "download" || lk == "downloads" || lk == "download_limit" || lk == "credits" ||
 			strings.Contains(ll, "download") || strings.Contains(ll, "credit") {
-			drop = append(drop, orphan{id: id, key: key, used: u})
-			if u > mergedUsed {
-				mergedUsed = u
+			dropIDs = append(dropIDs, r.id)
+			if r.used > mergedUsed {
+				mergedUsed = r.used
 			}
 		}
 	}
 	rows.Close()
-	for _, o := range drop {
-		_, _ = db.Exec(`DELETE FROM user_meters WHERE id=?`, o.id)
-		log.Printf("[DOWNLOAD] removed orphan meter user_id=%d key=%s", userID, o.key)
+
+	// One row per key — keep the oldest id, drop duplicate Download Limit rows.
+	keepID := 0
+	if len(keepRows) > 0 {
+		keepID = keepRows[0].id
+		for _, r := range keepRows[1:] {
+			dropIDs = append(dropIDs, r.id)
+		}
 	}
-	res, err := db.Exec(`UPDATE user_meters SET used=?, "limit"=?, label=?, reset_days=? WHERE user_id=? AND "key"=? AND is_custom=0`,
-		mergedUsed, limit, keepLabel, resetDays, userID, keepKey)
-	changed := int64(0)
-	if err == nil && res != nil {
-		changed, _ = res.RowsAffected()
+	for _, id := range dropIDs {
+		_, _ = db.Exec(`DELETE FROM user_meters WHERE id=?`, id)
+		log.Printf("[DOWNLOAD] removed duplicate/orphan meter user_id=%d id=%d", userID, id)
 	}
-	if changed == 0 {
+	if keepID > 0 {
+		_, _ = db.Exec(`UPDATE user_meters SET used=?, "limit"=?, label=?, reset_days=? WHERE id=?`,
+			mergedUsed, limit, keepLabel, resetDays, keepID)
+		return
+	}
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM user_meters WHERE user_id=? AND "key"=?`, userID, keepKey).Scan(&n)
+	if n == 0 {
 		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 			userID, keepKey, keepLabel, resetDays, mergedUsed, limit)
 	}
@@ -1767,24 +1782,17 @@ func bumpEnvatoMeter(username string, view envatoLimitView) int {
 		userID = int(id)
 	}
 	envatoCleanupOrphanMeters(db, userID, key, label, view.used, view.limit, resetDays)
-	res, err := db.Exec(`UPDATE user_meters SET used = used + 1, label=?, reset_days=?, "limit"=CASE WHEN is_custom=1 THEN "limit" ELSE ? END WHERE user_id=? AND "key"=?`,
-		label, resetDays, view.limit, userID, key)
-	changed := int64(0)
-	if err == nil && res != nil {
-		changed, _ = res.RowsAffected()
-	}
 	nextUsed := view.used + 1
-	if err != nil || changed == 0 {
+	var meterID int
+	_ = db.QueryRow(`SELECT id FROM user_meters WHERE user_id=? AND "key"=? ORDER BY id ASC LIMIT 1`, userID, key).Scan(&meterID)
+	if meterID == 0 {
 		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
 			userID, key, label, resetDays, nextUsed, view.limit)
 		return nextUsed
 	}
-	var used int
-	_ = db.QueryRow(`SELECT used FROM user_meters WHERE user_id=? AND "key"=?`, userID, key).Scan(&used)
-	if used < nextUsed {
-		return nextUsed
-	}
-	return used
+	_, _ = db.Exec(`UPDATE user_meters SET used=?, label=?, reset_days=?, "limit"=CASE WHEN is_custom=1 THEN "limit" ELSE ? END WHERE id=?`,
+		nextUsed, label, resetDays, view.limit, meterID)
+	return nextUsed
 }
 
 func syncEnvatoPanelUser(username string, view envatoLimitView) {

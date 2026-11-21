@@ -173,6 +173,49 @@ func ensureUserMeterColumns(db *sql.DB) {
 	} else {
 		log.Printf("[DB] added user_meters.period_start for limit resets")
 	}
+	ensureUserMetersUnique(db)
+}
+
+// ensureUserMetersUnique collapses duplicate (user_id, key) rows then adds a
+// unique index so Envato-style "Download Limit 3/2 · … ×6" cannot come back.
+func ensureUserMetersUnique(db *sql.DB) {
+	rows, err := db.Query(`SELECT user_id, "key", COUNT(*), MAX(used), MIN(id) FROM user_meters GROUP BY user_id, "key" HAVING COUNT(*) > 1`)
+	if err != nil {
+		log.Printf("[DB] user_meters dedupe query: %v", err)
+	} else {
+		type dup struct {
+			userID, maxUsed, keepID int
+			key                     string
+		}
+		var list []dup
+		for rows.Next() {
+			var d dup
+			var n int
+			if rows.Scan(&d.userID, &d.key, &n, &d.maxUsed, &d.keepID) != nil {
+				continue
+			}
+			list = append(list, d)
+		}
+		rows.Close()
+		for _, d := range list {
+			_, _ = db.Exec(`UPDATE user_meters SET used=? WHERE id=?`, d.maxUsed, d.keepID)
+			res, delErr := db.Exec(`DELETE FROM user_meters WHERE user_id=? AND "key"=? AND id<>?`, d.userID, d.key, d.keepID)
+			if delErr != nil {
+				log.Printf("[DB] user_meters dedupe delete user=%d key=%s: %v", d.userID, d.key, delErr)
+				continue
+			}
+			removed, _ := res.RowsAffected()
+			if removed > 0 {
+				log.Printf("[DB] user_meters deduped user=%d key=%s removed=%d keep_id=%d used=%d", d.userID, d.key, removed, d.keepID, d.maxUsed)
+			}
+		}
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX idx_user_meters_user_key ON user_meters (user_id, "key")`); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "duplicate") && !strings.Contains(msg, "exists") && !strings.Contains(msg, "already") {
+			log.Printf("[DB] user_meters unique index: %v", err)
+		}
+	}
 }
 
 func ensureCatalogOwners(db *sql.DB) {
