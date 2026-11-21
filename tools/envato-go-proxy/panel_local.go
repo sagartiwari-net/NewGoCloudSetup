@@ -1173,22 +1173,9 @@ func envatoPanelLimitView(username string) envatoLimitView {
 		}
 	}
 
-	// usage_events win for the current reset window (includes older aliased keys).
-	start := creditPeriodStart(view.resetDays).UTC().Format(time.RFC3339)
-	aliases := envatoAliasMeterKeys(view.key)
-	placeholders := make([]string, len(aliases))
-	args := make([]interface{}, 0, 3+len(aliases))
-	args = append(args, websiteID, username)
-	for i, k := range aliases {
-		placeholders[i] = "?"
-		args = append(args, k)
-	}
-	args = append(args, start)
-	var eventUsed int
-	q := `SELECT COALESCE(SUM(amount), 0) FROM usage_events WHERE website_id=? AND username=? AND limit_key IN (` + strings.Join(placeholders, ",") + `) AND timestamp>=?`
-	if err := db.QueryRow(q, args...).Scan(&eventUsed); err == nil && eventUsed > view.used {
-		view.used = eventUsed
-	}
+	// Trust user_meters.used. Do not raise used from usage_events here — that
+	// fought panel Reset (meters→0 while old events still summed to 3).
+	// Logs still come from usage_events; daily rollover is panel maintenance.
 	return view
 }
 

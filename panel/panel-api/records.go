@@ -800,7 +800,20 @@ func (s *server) resetUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 403, "You cannot manage this website")
 		return
 	}
-	_, _ = s.db.Exec(`UPDATE user_meters SET used=0 WHERE user_id=?`, id)
+	var username string
+	if err := s.db.QueryRow(`SELECT username FROM panel_users WHERE id=?`, id).Scan(&username); err != nil || strings.TrimSpace(username) == "" {
+		writeErr(w, 404, "User not found")
+		return
+	}
+	// Zero meters AND clear this period's usage_events. Tools (Envato) and
+	// maintenance recount from events — leaving logs behind brings used back.
+	fresh := periodStartIST(1, time.Now()).UTC().Format(time.RFC3339)
+	_, _ = s.db.Exec(`UPDATE user_meters SET used=0, period_start=? WHERE user_id=?`, fresh, id)
+	if _, err := s.db.Exec(`DELETE FROM usage_events WHERE website_id=? AND username=?`, websiteID, username); err != nil {
+		log.Printf("[reset] usage_events clear user_id=%d: %v", id, err)
+		writeErr(w, 500, "Could not clear usage logs")
+		return
+	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 

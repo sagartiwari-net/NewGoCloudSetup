@@ -174,6 +174,164 @@ func ensureUserMeterColumns(db *sql.DB) {
 		log.Printf("[DB] added user_meters.period_start for limit resets")
 	}
 	ensureUserMetersUnique(db)
+	ensureCollapseOrphanDownloadMeters(db)
+}
+
+// ensureCollapseOrphanDownloadMeters merges leftover Envato-style meters
+// (Downloads / download / download_limit) into the tool's current download
+// definition only. Ahrefs credits/exports and other keys are left alone.
+func ensureCollapseOrphanDownloadMeters(db *sql.DB) {
+	rows, err := db.Query(`SELECT w.id, COALESCE(t.limits_json, '[]'), COALESCE(w.default_limits_json, '{}')
+		FROM websites w JOIN tools t ON t.id=w.tool_id`)
+	if err != nil {
+		return
+	}
+	type siteDef struct {
+		id      int
+		key     string
+		label   string
+		reset   int
+		limit   int
+		hasDown bool
+	}
+	type limitDefJSON struct {
+		Key       string `json:"key"`
+		Label     string `json:"label"`
+		ResetDays int    `json:"reset_days"`
+	}
+	var sites []siteDef
+	for rows.Next() {
+		var id int
+		var toolRaw, siteRaw string
+		if rows.Scan(&id, &toolRaw, &siteRaw) != nil {
+			continue
+		}
+		var defs []limitDefJSON
+		_ = json.Unmarshal([]byte(toolRaw), &defs)
+		defaults := map[string]int{}
+		_ = json.Unmarshal([]byte(siteRaw), &defaults)
+		pick := limitDefJSON{}
+		for _, d := range defs {
+			k := strings.ToLower(strings.TrimSpace(d.Key))
+			l := strings.ToLower(strings.TrimSpace(d.Label))
+			if strings.Contains(k, "download") || strings.Contains(l, "download") {
+				pick = d
+				break
+			}
+		}
+		if pick.Key == "" {
+			continue
+		}
+		limit := -1
+		if n, ok := defaults[pick.Key]; ok {
+			limit = n
+		}
+		reset := pick.ResetDays
+		if reset < 1 {
+			reset = 1
+		}
+		label := strings.TrimSpace(pick.Label)
+		if label == "" {
+			label = "Download Limit"
+		}
+		sites = append(sites, siteDef{id: id, key: pick.Key, label: label, reset: reset, limit: limit, hasDown: true})
+	}
+	rows.Close()
+
+	aliases := map[string]bool{"download": true, "downloads": true, "download_limit": true}
+	for _, site := range sites {
+		if !site.hasDown {
+			continue
+		}
+		users, err := db.Query(`SELECT id FROM panel_users WHERE website_id=?`, site.id)
+		if err != nil {
+			continue
+		}
+		var userIDs []int
+		for users.Next() {
+			var uid int
+			if users.Scan(&uid) == nil {
+				userIDs = append(userIDs, uid)
+			}
+		}
+		users.Close()
+		for _, uid := range userIDs {
+			meters, mErr := db.Query(`SELECT id, "key", label, used, "limit", is_custom FROM user_meters WHERE user_id=?`, uid)
+			if mErr != nil {
+				continue
+			}
+			type mrow struct {
+				id, used, limit, custom int
+				key, label              string
+			}
+			var list []mrow
+			for meters.Next() {
+				var m mrow
+				if meters.Scan(&m.id, &m.key, &m.label, &m.used, &m.limit, &m.custom) == nil {
+					list = append(list, m)
+				}
+			}
+			meters.Close()
+			keepID := 0
+			keepUsed := 0
+			keepCustom := 0
+			var drop []int
+			for _, m := range list {
+				lk := strings.ToLower(m.key)
+				ll := strings.ToLower(m.label)
+				isDown := aliases[lk] || strings.Contains(ll, "download")
+				if m.key == site.key {
+					if keepID == 0 || m.id < keepID {
+						if keepID > 0 {
+							drop = append(drop, keepID)
+						}
+						keepID = m.id
+						keepUsed = m.used
+						keepCustom = m.custom
+					} else {
+						drop = append(drop, m.id)
+						if m.used > keepUsed {
+							keepUsed = m.used
+						}
+					}
+					continue
+				}
+				if !isDown {
+					continue
+				}
+				// Orphan download-shaped meter not in the tool catalog for this site.
+				drop = append(drop, m.id)
+				if m.used > keepUsed {
+					keepUsed = m.used
+				}
+			}
+			if keepID == 0 && len(drop) > 0 {
+				limit := site.limit
+				if limit < -1 {
+					limit = -1
+				}
+				res, insErr := db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
+					uid, site.key, site.label, site.reset, keepUsed, limit)
+				if insErr == nil {
+					id, _ := res.LastInsertId()
+					keepID = int(id)
+				}
+			}
+			if keepID > 0 {
+				if keepCustom == 1 {
+					_, _ = db.Exec(`UPDATE user_meters SET used=?, label=?, reset_days=? WHERE id=?`, keepUsed, site.label, site.reset, keepID)
+				} else {
+					_, _ = db.Exec(`UPDATE user_meters SET used=?, label=?, reset_days=?, "limit"=? WHERE id=?`, keepUsed, site.label, site.reset, site.limit, keepID)
+				}
+			}
+			for _, id := range drop {
+				if id == keepID {
+					continue
+				}
+				_, _ = db.Exec(`DELETE FROM user_meters WHERE id=?`, id)
+			}
+		}
+	}
 }
 
 // ensureUserMetersUnique collapses duplicate (user_id, key) rows then adds a
