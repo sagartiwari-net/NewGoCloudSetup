@@ -153,6 +153,10 @@ Restart panel-api after deploy. Interval copies Home (default 22 min).
 | Panel name | URL | Access slug | Port | Shares |
 |------------|-----|-------------|------|--------|
 | T4 Toolz Ahrefs | `https://ah2.t4toolz.com` | `t4refs` | 5291 | Ahrefs / `refs.upays.in` |
+| T4 Toolz ChatGPT | `https://cgpt.t4toolz.com` | `t4cgpt` | 5151 | ChatGPT / `cgpt.upays.in` |
+| T4 Toolz Claude AI | `https://clud.t4toolz.com` | `t4clud` | 5171 | Claude / `clud.upays.in` |
+
+SQL: `deploy/add-t4toolz-cgpt-clud.sql` · seed: `ensureT4ToolzCgptClud`. Map lines `cgpt.t4toolz.com` / `clud.t4toolz.com`. No new aaPanel site when `*` DNS + wildcard vhost already exist.
 
 ---
 

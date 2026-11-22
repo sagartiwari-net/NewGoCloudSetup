@@ -546,6 +546,69 @@ func ensureT4ToolzAhrefs(db *sql.DB) {
 	_, _ = db.Exec(`UPDATE websites SET access_slug=? WHERE id=?`, slug, websiteID)
 }
 
+// T4 Toolz ChatGPT + Claude share cgpt/clud ports; separate cookies + buttons t4cgpt / t4clud.
+func ensureT4ToolzCgptClud(db *sql.DB) {
+	type site struct {
+		tool, name, domain, owner, slug, secret string
+	}
+	sites := []site{
+		{"ChatGPT", "T4 Toolz ChatGPT", "cgpt.t4toolz.com", "cgpt.upays.in", "t4cgpt", "secret_cgpt_t4toolz_com"},
+		{"Claude AI", "T4 Toolz Claude AI", "clud.t4toolz.com", "clud.upays.in", "t4clud", "secret_clud_t4toolz_com"},
+	}
+	var ownerWebsiteID int64
+	_ = db.QueryRow(`SELECT id FROM websites WHERE lower(trim(domain))=lower(trim(?))`, "ah2.t4toolz.com").Scan(&ownerWebsiteID)
+	var opIDs []int64
+	if ownerWebsiteID > 0 {
+		rows, err := db.Query(`SELECT operator_id FROM operator_websites WHERE website_id=?`, ownerWebsiteID)
+		if err == nil {
+			for rows.Next() {
+				var id int64
+				if rows.Scan(&id) == nil {
+					opIDs = append(opIDs, id)
+				}
+			}
+			rows.Close()
+		}
+	}
+	for _, site := range sites {
+		var toolID int64
+		if db.QueryRow(`SELECT id FROM tools WHERE name=?`, site.tool).Scan(&toolID) != nil || toolID <= 0 {
+			log.Printf("T4 Toolz %s: tool row missing", site.tool)
+			continue
+		}
+		limits := "{}"
+		sessionMinutes := 30
+		_ = db.QueryRow(`SELECT COALESCE(default_limits_json, '{}'), COALESCE(session_duration, 30) FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.owner).Scan(&limits, &sessionMinutes)
+		if strings.TrimSpace(limits) == "" {
+			limits = "{}"
+		}
+		if sessionMinutes < 1 {
+			sessionMinutes = 30
+		}
+		var websiteID int64
+		err := db.QueryRow(`SELECT id FROM websites WHERE lower(trim(domain))=lower(trim(?))`, site.domain).Scan(&websiteID)
+		if err != nil {
+			var taken int
+			if db.QueryRow(`SELECT id FROM websites WHERE lower(access_slug)=?`, site.slug).Scan(&taken) == nil {
+				log.Printf("T4 Toolz %s: button name %s already used by website %d", site.tool, site.slug, taken)
+				continue
+			}
+			res, insErr := db.Exec(`INSERT INTO websites (tool_id, name, domain, secret_key, session_duration, default_limits_json, session_security_enabled, access_slug)
+				VALUES (?,?,?,?,?,?,1,?)`, toolID, site.name, site.domain, site.secret, sessionMinutes, limits, site.slug)
+			if insErr != nil {
+				log.Printf("T4 Toolz website %s: %v", site.domain, insErr)
+				continue
+			}
+			websiteID, _ = res.LastInsertId()
+			_, _ = db.Exec(`INSERT INTO products (website_id, product_name, product_ids_json) VALUES (?,?,?)`, websiteID, site.name, `["t4toolz"]`)
+			log.Printf("added %s website %d at %s", site.name, websiteID, site.domain)
+		}
+		for _, opID := range opIDs {
+			_, _ = db.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, opID, websiteID)
+		}
+	}
+}
+
 // SeoGroupBuy extra Semrush/ChatGPT hosts share smrs/cgpt ports; separate buttons + product 5.
 func ensureSeoGroupBuyExtraSites(db *sql.DB) {
 	type site struct {
