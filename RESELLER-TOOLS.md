@@ -158,6 +158,16 @@ Restart panel-api after deploy. Interval copies Home (default 22 min).
 
 SQL: `deploy/add-t4toolz-cgpt-clud.sql` · seed: `ensureT4ToolzCgptClud`. Map lines `cgpt.t4toolz.com` / `clud.t4toolz.com`. No new aaPanel site when `*` DNS + wildcard vhost already exist.
 
+**Nginx 404 on cgpt/clud (DB+map OK):** map alone is not enough — `t4toolz.com.conf` must proxy `$tool_port` (Method A). ah2 may be a separate hardcoded site; cgpt/clud need the wildcard vhost.
+
+```bash
+cd /www/wwwroot/gt4rents.com/_repo
+git pull origin main
+chmod +x deploy/fix-t4toolz-nginx.sh
+./deploy/fix-t4toolz-nginx.sh
+# expect Access Denied / tool HTML — not nginx "404 Not Found"
+```
+
 ---
 
 ## 5b. Tanveer / PrideSeoTools (`prideseotools.com`)
