@@ -56,10 +56,14 @@ def brace_end(src, i):
     raise SystemExit("unbalanced brace")
 
 def find_servers(src):
-    # aaPanel: "server\n{" OR "server {"
-    for m in re.finditer(r"(?m)^[ \t]*server[ \t]*(?:\{|\n[ \t]*\{)", src):
+    # aaPanel often uses "server\n{" — match "server" then nearest "{" with only whitespace between
+    for m in re.finditer(r"(?m)^[ \t]*server\b", src):
         open_b = src.find("{", m.start())
-        yield m.start(), brace_end(src, open_b)
+        if open_b < 0:
+            continue
+        mid = src[m.end() : open_b]
+        if re.match(r"^[ \t\r\n]*$", mid):
+            yield m.start(), brace_end(src, open_b)
 
 txt, n = re.subn(
     r"(?m)^(\s*)server_name\s+[^;]+;",
