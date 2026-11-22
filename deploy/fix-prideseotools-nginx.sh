@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Patch aaPanel prideseotools.com vhost for Method A (wildcard + $tool_port).
+# CRITICAL: aaPanel's location ~ \.(js|css) steals /cdn/*.css from the proxy → unstyled Ahrefs.
 # Keeps SSL cert lines. Apex @ DNS optional.
 set -euo pipefail
 
@@ -55,36 +56,63 @@ PROXY = """    location /
     }
 """
 
+def brace_block_end(src: str, open_brace_idx: int) -> int:
+    depth = 0
+    j = open_brace_idx
+    while j < len(src):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    raise SystemExit("unbalanced brace")
+
 def find_blocks(src: str, pattern: str):
-    """Yield (start, end) of location blocks matching pattern prefix before {."""
     for m in re.finditer(pattern, src):
-        brace = src.find("{", m.end() - 1)
-        if brace < 0:
+        open_b = src.find("{", m.start())
+        if open_b < 0:
             continue
-        depth = 0
-        j = brace
-        while j < len(src):
-            if src[j] == "{":
-                depth += 1
-            elif src[j] == "}":
-                depth -= 1
-                if depth == 0:
-                    yield m.start(), j + 1
-                    break
-            j += 1
+        yield m.start(), brace_block_end(src, open_b)
 
-# Remove ALL root location / blocks (exact / only), then insert one PROXY
-spans = list(find_blocks(src := txt, r"(?m)^[ \t]*location[ \t]+/[ \t]*\{"))
-# also match location / without space before {
-if not spans:
-    spans = list(find_blocks(txt, r"(?m)^[ \t]*location[ \t]+/\{"))
+# Remove exact location / (brace same line OR next line)
+for pat in (
+    r"(?m)^[ \t]*location[ \t]+/[ \t]*\{",
+    r"(?m)^[ \t]*location[ \t]+/[ \t]*\n[ \t]*\{",
+):
+    spans = list(find_blocks(txt, pat))
+    print(f"strip location / via {pat!r}: {len(spans)}")
+    for start, end in sorted(spans, reverse=True):
+        txt = txt[:start] + txt[end:]
 
-print(f"found location / blocks: {len(spans)}")
-# delete from end so indexes stay valid
-for start, end in sorted(spans, reverse=True):
-    txt = txt[:start] + txt[end:]
+# Remove aaPanel static asset regex locations — they steal /cdn/*.css|js from Go proxy
+static_pats = [
+    r"(?m)^[ \t]*location[ \t]+~[ \t]+.*\.(js\|css).*$",
+    r"(?m)^[ \t]*location[ \t]+~[ \t]+.*\.(gif\|jpg\|jpeg\|png\|bmp\|swf).*$",
+    r"(?m)^[ \t]*location[ \t]+~[ \t]+\.\*\.\(js\|css\)\?\$",
+    r"(?m)^[ \t]*location[ \t]+~\s+\.\*\\\.\(js\|css\)\?\$",
+]
+# Broader: any location ~ line that mentions js|css or common static exts, then its { block
+changed = True
+removed_static = 0
+while changed:
+    changed = False
+    for m in re.finditer(r"(?m)^[ \t]*location[ \t]+~[^\n]*$", txt):
+        line = m.group(0)
+        if not re.search(r"js|css|woff|gif|jpg|png|bmp|swf|webp|svg", line, re.I):
+            continue
+        open_b = txt.find("{", m.start())
+        if open_b < 0:
+            continue
+        end = brace_block_end(txt, open_b)
+        print("removing static location:", line.strip())
+        txt = txt[: m.start()] + txt[end:]
+        removed_static += 1
+        changed = True
+        break
+print(f"removed static regex locations: {removed_static}")
 
-# Comment out enable-php includes (Go tools — no PHP)
 txt = re.sub(
     r"(?m)^(\s*)include\s+enable-php[^;]*;",
     r"\1#include enable-php-00.conf;",
@@ -93,7 +121,6 @@ txt = re.sub(
 
 if "proxy_pass http://127.0.0.1:$tool_port" not in txt:
     inserted = False
-    # Prefer after REWRITE include
     m = re.search(r"(?m)^[ \t]*include\s+/www/server/panel/vhost/rewrite/prideseotools\.com\.conf\s*;", txt)
     if m:
         txt = txt[: m.end()] + "\n\n" + PROXY + txt[m.end() :]
@@ -104,7 +131,6 @@ if "proxy_pass http://127.0.0.1:$tool_port" not in txt:
             txt = txt[: m.start()] + PROXY + "\n" + txt[m.start() :]
             inserted = True
     if not inserted:
-        # before last closing brace of file
         idx = txt.rfind("}")
         txt = txt[:idx] + "\n" + PROXY + "\n" + txt[idx:]
         inserted = True
@@ -123,14 +149,17 @@ if "client_header_buffer_size" not in txt:
 path.write_text(txt)
 print("PATCHED:", path)
 print("proxy_ok:", "proxy_pass http://127.0.0.1:$tool_port" in txt)
+print("remaining js|css location ~ :", bool(re.search(r"(?m)location\s+~[^\n]*(js\|css|css\|js)", txt)))
 PY
 
 echo "== nginx -t && reload =="
 nginx -t
 nginx -s reload
 
-echo "== verify =="
-grep -nE 'server_name|location /|proxy_pass|tool_port' "$VHOST" | head -40
-echo "== must be Go/tool response (NOT static html length ~58k) =="
-curl -sI -H 'Host: refs.prideseotools.com' http://127.0.0.1/ | head -12
-curl -s -H 'Host: refs.prideseotools.com' http://127.0.0.1/ | head -c 200; echo
+echo "== verify locations =="
+grep -nE 'location|proxy_pass|tool_port|js\|css' "$VHOST" | head -50
+
+echo "== CDN must be text/css (not text/html 404) =="
+curl -skI -H 'Host: refs.prideseotools.com' --resolve refs.prideseotools.com:443:127.0.0.1 \
+  "https://refs.prideseotools.com/cdn/assets/css/fonts.css" | head -12
+curl -skI "https://refs.upays.in/cdn/assets/css/fonts.css" | head -8
