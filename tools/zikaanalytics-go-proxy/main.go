@@ -221,6 +221,9 @@ func loadConfig() Config {
 	if cfg.HomePath == "" {
 		cfg.HomePath = defaultConfig.HomePath
 	}
+	if len(cfg.ExtraCDNDomains) == 0 {
+		cfg.ExtraCDNDomains = []string{"api.zikanalytics.com"}
+	}
 
 	currentConfig = cfg
 	configModTime = info.ModTime()
@@ -1497,19 +1500,21 @@ func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
 	var pairs [][2]string
-	// Extra API hosts first (api.*), then app/CDN — order matters when hosts overlap.
+	// Extra API hosts first (api.*). Use same-origin relative paths so scheme mismatches
+	// (http rewrite on https page) cannot mixed-content-block product research.
 	for i, extra := range cfg.ExtraCDNDomains {
 		extra = strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		extra = strings.Split(extra, "/")[0]
 		if extra == "" {
 			continue
 		}
-		pairs = append(pairs, [2]string{"https://" + extra, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)})
-		pairs = append(pairs, [2]string{"http://" + extra, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)})
+		rel := fmt.Sprintf("/extra-cdn-%d", i)
+		pairs = append(pairs, [2]string{"https://" + extra, rel})
+		pairs = append(pairs, [2]string{"http://" + extra, rel})
 	}
 	if cdnParsed != nil && cdnParsed.Host != "" {
-		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
-		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
+		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, "/cdn-proxy"})
+		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, "/cdn-proxy"})
 	}
 	if targetParsed != nil && targetParsed.Host != "" {
 		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})

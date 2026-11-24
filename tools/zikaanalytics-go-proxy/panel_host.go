@@ -61,9 +61,20 @@ func tenantPublicHost(r *http.Request, cfg Config) string {
 	return fallback
 }
 
-// requestPublicScheme prefers the edge proto so reseller HTTPS pages do not get http:// asset rewrites.
-// Production tool hosts must not fall back to config public_scheme=http (mixed content kills fetch).
+// requestPublicScheme prefers https for live tool hosts.
+// aaPanel/CF sometimes forward X-Forwarded-Proto=http even when the browser is on https;
+// absolute http://api rewrites then die as mixed-content (net::ERR_FAILED, provisional headers).
 func requestPublicScheme(r *http.Request, cfg Config) string {
+	host := ""
+	if r != nil {
+		host = panelRequestHost(r, cfg.PublicHost)
+	}
+	if host == "" {
+		host = panelHostOnly(cfg.PublicHost)
+	}
+	if !panelHostIsLocal(host) {
+		return "https"
+	}
 	if r != nil {
 		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
 			proto = strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
@@ -74,16 +85,6 @@ func requestPublicScheme(r *http.Request, cfg Config) string {
 		if r.TLS != nil {
 			return "https"
 		}
-	}
-	host := ""
-	if r != nil {
-		host = panelRequestHost(r, cfg.PublicHost)
-	}
-	if host == "" {
-		host = panelHostOnly(cfg.PublicHost)
-	}
-	if !panelHostIsLocal(host) {
-		return "https"
 	}
 	scheme := strings.ToLower(strings.TrimSpace(cfg.PublicScheme))
 	if scheme == "http" || scheme == "https" {

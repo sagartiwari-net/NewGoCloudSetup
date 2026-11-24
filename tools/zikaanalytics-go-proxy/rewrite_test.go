@@ -10,7 +10,7 @@ func TestBuildDomainReplacementsUsesRequestHost(t *testing.T) {
 	cfg := Config{
 		TargetURL:       "https://app.zikanalytics.com",
 		CDNURL:          "https://app.zikanalytics.com",
-		PublicHost:      "ziknl.upays.in",
+		PublicHost:      "zknl.upays.in",
 		PublicScheme:    "https",
 		ExtraCDNDomains: []string{"api.zikanalytics.com"},
 	}
@@ -22,17 +22,17 @@ func TestBuildDomainReplacementsUsesRequestHost(t *testing.T) {
 	for _, p := range pairs {
 		if p[0] == "https://api.zikanalytics.com" {
 			gotAPI = true
-			if p[1] != resellerBase+"/extra-cdn-0" {
-				t.Fatalf("api rewrite = %q", p[1])
+			if p[1] != "/extra-cdn-0" {
+				t.Fatalf("api rewrite = %q (want relative /extra-cdn-0)", p[1])
 			}
 		}
-		if p[0] == "https://ziknl.upays.in" {
+		if p[0] == "https://zknl.upays.in" {
 			gotOwner = true
 			if p[1] != resellerBase {
 				t.Fatalf("owner rewrite = %q", p[1])
 			}
 		}
-		if strings.Contains(p[1], "ziknl.upays.in") {
+		if strings.Contains(p[1], "zknl.upays.in") && !strings.HasPrefix(p[0], "https://zknl") && !strings.HasPrefix(p[0], "http://zknl") {
 			t.Fatalf("rewrite still points at owner host: %#v", p)
 		}
 	}
@@ -42,7 +42,7 @@ func TestBuildDomainReplacementsUsesRequestHost(t *testing.T) {
 }
 
 func TestRequestPublicBaseUsesForwardedHost(t *testing.T) {
-	cfg := Config{PublicHost: "ziknl.upays.in", PublicScheme: "http"}
+	cfg := Config{PublicHost: "zknl.upays.in", PublicScheme: "http"}
 	r := httptest.NewRequest("GET", "https://ignored/", nil)
 	r.Host = "ignored.example"
 	r.Header.Set("X-Forwarded-Host", "zik.amzpremiumsoftware.com")
@@ -54,12 +54,23 @@ func TestRequestPublicBaseUsesForwardedHost(t *testing.T) {
 }
 
 func TestRequestPublicBaseForcesHTTPSWithoutForwardedProto(t *testing.T) {
-	cfg := Config{PublicHost: "ziknl.upays.in", PublicScheme: "http"}
+	cfg := Config{PublicHost: "zknl.upays.in", PublicScheme: "http"}
 	r := httptest.NewRequest("GET", "/", nil)
-	r.Host = "ziknl.upays.in"
+	r.Host = "zknl.upays.in"
 	got := requestPublicBase(r, cfg)
-	if got != "https://ziknl.upays.in" {
+	if got != "https://zknl.upays.in" {
 		t.Fatalf("public base = %q (http config must not leak onto live hosts)", got)
+	}
+}
+
+func TestRequestPublicBaseIgnoresHTTPForwardedProtoOnLiveHost(t *testing.T) {
+	cfg := Config{PublicHost: "zknl.upays.in", PublicScheme: "http"}
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Host = "zik.amzpremiumsoftware.com"
+	r.Header.Set("X-Forwarded-Proto", "http")
+	got := requestPublicBase(r, cfg)
+	if got != "https://zik.amzpremiumsoftware.com" {
+		t.Fatalf("public base = %q (X-Forwarded-Proto=http must not create mixed-content rewrites)", got)
 	}
 }
 
@@ -67,13 +78,13 @@ func TestPatcherRewritesOwnerAndAPI(t *testing.T) {
 	cfg := Config{
 		TargetURL:       "https://app.zikanalytics.com",
 		CDNURL:          "https://app.zikanalytics.com",
-		PublicHost:      "ziknl.upays.in",
+		PublicHost:      "zknl.upays.in",
 		ExtraCDNDomains: []string{"api.zikanalytics.com"},
 		HomePath:        "/dashboard",
 	}
 	js := patcherScript(cfg)
 	for _, want := range []string{
-		`OWNER = "ziknl.upays.in"`,
+		`OWNER = "zknl.upays.in"`,
 		`api.zikanalytics.com`,
 		`/extra-cdn-0`,
 		`mapProxyUrl`,
