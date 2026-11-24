@@ -53,6 +53,16 @@ func TestRequestPublicBaseUsesForwardedHost(t *testing.T) {
 	}
 }
 
+func TestRequestPublicBaseForcesHTTPSWithoutForwardedProto(t *testing.T) {
+	cfg := Config{PublicHost: "ziknl.upays.in", PublicScheme: "http"}
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Host = "ziknl.upays.in"
+	got := requestPublicBase(r, cfg)
+	if got != "https://ziknl.upays.in" {
+		t.Fatalf("public base = %q (http config must not leak onto live hosts)", got)
+	}
+}
+
 func TestPatcherRewritesOwnerAndAPI(t *testing.T) {
 	cfg := Config{
 		TargetURL:       "https://app.zikanalytics.com",

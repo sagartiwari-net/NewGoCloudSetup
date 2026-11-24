@@ -62,6 +62,7 @@ func tenantPublicHost(r *http.Request, cfg Config) string {
 }
 
 // requestPublicScheme prefers the edge proto so reseller HTTPS pages do not get http:// asset rewrites.
+// Production tool hosts must not fall back to config public_scheme=http (mixed content kills fetch).
 func requestPublicScheme(r *http.Request, cfg Config) string {
 	if r != nil {
 		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
@@ -73,6 +74,16 @@ func requestPublicScheme(r *http.Request, cfg Config) string {
 		if r.TLS != nil {
 			return "https"
 		}
+	}
+	host := ""
+	if r != nil {
+		host = panelRequestHost(r, cfg.PublicHost)
+	}
+	if host == "" {
+		host = panelHostOnly(cfg.PublicHost)
+	}
+	if !panelHostIsLocal(host) {
+		return "https"
 	}
 	scheme := strings.ToLower(strings.TrimSpace(cfg.PublicScheme))
 	if scheme == "http" || scheme == "https" {

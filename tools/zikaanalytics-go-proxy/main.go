@@ -1484,20 +1484,20 @@ var httpClient = buildChromeHTTPClient()
 func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
 	publicBase = strings.TrimRight(strings.TrimSpace(publicBase), "/")
 	if publicBase == "" {
-		publicBase = fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
+		scheme := strings.ToLower(strings.TrimSpace(cfg.PublicScheme))
+		if scheme != "http" && scheme != "https" {
+			scheme = "https"
+		}
+		publicBase = fmt.Sprintf("%s://%s", scheme, cfg.PublicHost)
+	}
+	// Avoid http:// absolute API URLs on https pages (browser mixed-content block).
+	if strings.HasPrefix(publicBase, "http://") && !strings.Contains(publicBase, "127.0.0.1") && !strings.Contains(publicBase, "localhost") {
+		publicBase = "https://" + strings.TrimPrefix(publicBase, "http://")
 	}
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
 	var pairs [][2]string
-	if targetParsed != nil && targetParsed.Host != "" {
-		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})
-		pairs = append(pairs, [2]string{"http://" + targetParsed.Host, publicBase})
-		pairs = append(pairs, [2]string{"//" + targetParsed.Host, strings.TrimPrefix(strings.TrimPrefix(publicBase, "https:"), "http:")})
-	}
-	if cdnParsed != nil && cdnParsed.Host != "" {
-		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
-		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
-	}
+	// Extra API hosts first (api.*), then app/CDN — order matters when hosts overlap.
 	for i, extra := range cfg.ExtraCDNDomains {
 		extra = strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		extra = strings.Split(extra, "/")[0]
@@ -1506,7 +1506,14 @@ func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
 		}
 		pairs = append(pairs, [2]string{"https://" + extra, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)})
 		pairs = append(pairs, [2]string{"http://" + extra, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)})
-		pairs = append(pairs, [2]string{"//" + extra, fmt.Sprintf("//%s/extra-cdn-%d", strings.TrimPrefix(strings.TrimPrefix(publicBase, "https://"), "http://"), i)})
+	}
+	if cdnParsed != nil && cdnParsed.Host != "" {
+		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
+		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
+	}
+	if targetParsed != nil && targetParsed.Host != "" {
+		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})
+		pairs = append(pairs, [2]string{"http://" + targetParsed.Host, publicBase})
 	}
 	// If JS was previously baked with the owner public_host, retarget it to this request host.
 	ownerHost := panelHostOnly(cfg.PublicHost)
@@ -1514,7 +1521,6 @@ func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
 	if ownerHost != "" && reqHost != "" && !strings.EqualFold(ownerHost, reqHost) {
 		pairs = append(pairs, [2]string{"https://" + ownerHost, publicBase})
 		pairs = append(pairs, [2]string{"http://" + ownerHost, publicBase})
-		pairs = append(pairs, [2]string{"//" + ownerHost, "//" + reqHost})
 	}
 	return pairs
 }
@@ -1596,11 +1602,9 @@ func patcherScript(cfg Config) string {
             var e = EXTRAS[i];
             if (!e || !e.h) continue;
             u = u.replace('https://'+e.h, O+e.p).replace('http://'+e.h, O+e.p);
-            u = u.replace('//'+e.h, O.replace(/^https?:/,'')+e.p);
         }
         if (OWNER) {
             u = u.replace('https://'+OWNER, O).replace('http://'+OWNER, O);
-            u = u.replace('//'+OWNER, O.replace(/^https?:/,''));
         }
         return u;
     }
@@ -1647,13 +1651,10 @@ func patcherScript(cfg Config) string {
         return xo.apply(this, arguments);
     };
 
-    // ── Fetch patch ──
+    // ── Fetch patch (string URLs only — recreating Request can drop POST bodies) ──
     var fo = window.fetch;
     window.fetch = function(inp, init) {
         if (typeof inp === 'string') { inp = mapProxyUrl(inp); }
-        else if (inp && typeof Request !== 'undefined' && inp instanceof Request) {
-            try { inp = new Request(mapProxyUrl(inp.url), inp); } catch (e) {}
-        }
         return fo(inp, init);
     };
 
@@ -2545,9 +2546,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── 10. For JSON/JS/CSS/binary: rewrite and stream ────────────────────────────
-	isRewritable := strings.Contains(contentType, "javascript") || strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/css")
-	if isRewritable {
+	// ── 10. For JS/CSS: rewrite hosts. Skip JSON on /extra-cdn-* (API payloads). ──
+	isAPIProxy := isExtraCDN || strings.HasPrefix(path, "/extra-cdn-")
+	isJSOrCSS := strings.Contains(contentType, "javascript") || strings.Contains(contentType, "text/css")
+	isJSON := strings.Contains(contentType, "application/json")
+	if isJSOrCSS || (isJSON && !isAPIProxy) {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
 			pairs := buildDomainReplacements(cfg, requestPublicBase(r, cfg))
