@@ -540,11 +540,40 @@ type automationSite struct {
 }
 
 func (s *server) pollAutomation() {
+	// Restart / crash can leave running=1 forever — claim then silently skips (no logs, Run now dead).
+	s.clearStuckAutomationJobs(0)
 	for {
+		s.clearStuckAutomationJobs(automationJobTimeout + 30*time.Second)
 		s.drainAutomationSignals()
 		s.runDueAutomationJobs()
 		s.startQueuedAutomation()
 		time.Sleep(2 * time.Second)
+	}
+}
+
+// clearStuckAutomationJobs resets jobs left with running=1 after a crash or hung run.
+// maxAge=0 clears every stuck row (startup). Otherwise only rows whose updated_at is older than maxAge.
+func (s *server) clearStuckAutomationJobs(maxAge time.Duration) {
+	s.ensureAutomationTables()
+	if maxAge <= 0 {
+		res, err := s.db.Exec(`UPDATE automation_jobs SET running=0, run_cause='', updated_at=? WHERE running=1`,
+			time.Now().UTC().Format(time.RFC3339))
+		if err != nil {
+			return
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			log.Printf("[automation] cleared %d stuck running job(s) on startup", n)
+		}
+		return
+	}
+	cutoff := time.Now().UTC().Add(-maxAge).Format(time.RFC3339)
+	res, err := s.db.Exec(`UPDATE automation_jobs SET running=0, run_cause='', updated_at=?
+		WHERE running=1 AND updated_at<>'' AND updated_at<?`, time.Now().UTC().Format(time.RFC3339), cutoff)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[automation] cleared %d stuck running job(s) older than %s", n, maxAge)
 	}
 }
 
@@ -1734,7 +1763,9 @@ func (s *server) runAutomationJobNow(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "Enable the job first")
 		return
 	}
-	if _, err := s.db.Exec(`UPDATE automation_jobs SET run_requested=1 WHERE id=?`, id); err != nil {
+	// Manual Run now must unblock a stuck running=1 from a prior crash/hang.
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET running=0, run_cause='', run_requested=1, updated_at=? WHERE id=?`,
+		time.Now().UTC().Format(time.RFC3339), id); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
