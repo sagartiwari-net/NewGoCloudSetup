@@ -2577,22 +2577,30 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── 10. For JS/CSS: rewrite hosts. Skip JSON on /extra-cdn-* (API payloads). ──
+	// ── 10. JS/CSS: decompress + host rewrite. API JSON: decompress only. ─────────
+	// Headers above always drop Content-Encoding (legacy rewrite path). If we skip
+	// decompress for gzip JSON, the browser gets binary with no encoding → parse
+	// error → "Something went wrong" while Network still shows 200.
 	isAPIProxy := isExtraCDN || strings.HasPrefix(path, "/extra-cdn-")
 	isJSOrCSS := strings.Contains(contentType, "javascript") || strings.Contains(contentType, "text/css")
 	isJSON := strings.Contains(contentType, "application/json")
-	if isJSOrCSS || (isJSON && !isAPIProxy) {
+	if isJSOrCSS || isJSON {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
-			pairs := buildDomainReplacements(cfg, requestPublicBase(r, cfg))
-			bodyBytes = rewriteBody(bodyBytes, pairs)
+			if isJSOrCSS || !isAPIProxy {
+				pairs := buildDomainReplacements(cfg, requestPublicBase(r, cfg))
+				bodyBytes = rewriteBody(bodyBytes, pairs)
+			}
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
 			return
 		}
 	}
 
-	// ── 11. Pass through everything else ─────────────────────────────────────────
+	// ── 11. Pass through — keep Content-Encoding (we did not decompress). ─────────
+	if enc := upstreamResp.Header.Get("Content-Encoding"); enc != "" {
+		w.Header().Set("Content-Encoding", enc)
+	}
 	w.WriteHeader(upstreamResp.StatusCode)
 	io.Copy(w, upstreamResp.Body)
 }
