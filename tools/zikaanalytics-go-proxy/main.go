@@ -1500,21 +1500,21 @@ func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
 	var pairs [][2]string
-	// Extra API hosts first (api.*). Use same-origin relative paths so scheme mismatches
-	// (http rewrite on https page) cannot mixed-content-block product research.
+	// Extra API hosts first (api.*). Keep absolute https://<this-host>/extra-cdn-N —
+	// relative "/extra-cdn-N" breaks Zik's `new URL(apiBase)` and search never fires.
 	for i, extra := range cfg.ExtraCDNDomains {
 		extra = strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		extra = strings.Split(extra, "/")[0]
 		if extra == "" {
 			continue
 		}
-		rel := fmt.Sprintf("/extra-cdn-%d", i)
-		pairs = append(pairs, [2]string{"https://" + extra, rel})
-		pairs = append(pairs, [2]string{"http://" + extra, rel})
+		abs := fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)
+		pairs = append(pairs, [2]string{"https://" + extra, abs})
+		pairs = append(pairs, [2]string{"http://" + extra, abs})
 	}
 	if cdnParsed != nil && cdnParsed.Host != "" {
-		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, "/cdn-proxy"})
-		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, "/cdn-proxy"})
+		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
+		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
 	}
 	if targetParsed != nil && targetParsed.Host != "" {
 		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})
@@ -1613,6 +1613,28 @@ func patcherScript(cfg Config) string {
         }
         return u;
     }
+    function remapFetchInput(inp, init) {
+        if (typeof inp === 'string') return { inp: mapProxyUrl(inp), init: init };
+        if (typeof URL !== 'undefined' && inp instanceof URL) return { inp: mapProxyUrl(inp.href), init: init };
+        if (typeof Request !== 'undefined' && inp instanceof Request) {
+            var mapped = mapProxyUrl(inp.url);
+            if (mapped === inp.url) return { inp: inp, init: init };
+            // Prefer string URL + copied init so POST bodies in init survive.
+            // new Request(url, request) can drop bodies on Chromium → upstream 415.
+            var next = init ? Object.assign({}, init) : {};
+            if (!next.method) next.method = inp.method;
+            if (!next.headers) next.headers = inp.headers;
+            if (next.credentials === undefined) next.credentials = inp.credentials;
+            if (next.mode === undefined && inp.mode && inp.mode !== 'navigate') next.mode = inp.mode;
+            if (next.body !== undefined || inp.method === 'GET' || inp.method === 'HEAD') {
+                return { inp: mapped, init: next };
+            }
+            try { return { inp: new Request(mapped, inp), init: init }; } catch (e) {
+                return { inp: mapped, init: next };
+            }
+        }
+        return { inp: inp, init: init };
+    }
 
     // ── Watchdog: Auto-rotate account on session drop ──
     var watchdogDone = false;
@@ -1656,11 +1678,11 @@ func patcherScript(cfg Config) string {
         return xo.apply(this, arguments);
     };
 
-    // ── Fetch patch (string URLs only — recreating Request can drop POST bodies) ──
+    // ── Fetch patch (string/URL/Request — avoid body-dropping Request rebuild) ──
     var fo = window.fetch;
     window.fetch = function(inp, init) {
-        if (typeof inp === 'string') { inp = mapProxyUrl(inp); }
-        return fo(inp, init);
+        var mapped = remapFetchInput(inp, init);
+        return fo.call(this, mapped.inp, mapped.init);
     };
 
     // ── Block restricted paths / SPA query tabs ──
@@ -2398,6 +2420,10 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		} // Will be recalculated
 		if kLower == "transfer-encoding" {
+			continue
+		}
+		// Drop upstream CORS — browser talks same-origin to us; api.* ACAO breaks fetches.
+		if strings.HasPrefix(kLower, "access-control-") {
 			continue
 		}
 		if kLower == "set-cookie" {

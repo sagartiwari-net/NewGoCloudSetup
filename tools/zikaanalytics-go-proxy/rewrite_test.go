@@ -22,8 +22,8 @@ func TestBuildDomainReplacementsUsesRequestHost(t *testing.T) {
 	for _, p := range pairs {
 		if p[0] == "https://api.zikanalytics.com" {
 			gotAPI = true
-			if p[1] != "/extra-cdn-0" {
-				t.Fatalf("api rewrite = %q (want relative /extra-cdn-0)", p[1])
+			if p[1] != resellerBase+"/extra-cdn-0" {
+				t.Fatalf("api rewrite = %q", p[1])
 			}
 		}
 		if p[0] == "https://zknl.upays.in" {
@@ -32,7 +32,7 @@ func TestBuildDomainReplacementsUsesRequestHost(t *testing.T) {
 				t.Fatalf("owner rewrite = %q", p[1])
 			}
 		}
-		if strings.Contains(p[1], "zknl.upays.in") && !strings.HasPrefix(p[0], "https://zknl") && !strings.HasPrefix(p[0], "http://zknl") {
+		if strings.Contains(p[1], "zknl.upays.in") {
 			t.Fatalf("rewrite still points at owner host: %#v", p)
 		}
 	}
