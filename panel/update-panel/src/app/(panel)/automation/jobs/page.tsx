@@ -28,6 +28,7 @@ import {
   listAutomationJobs,
   runAutomationJob,
   saveAutomationJob,
+  unstickAutomationJobs,
 } from "@/lib/api/client"
 import type { AutomationJob, AutomationOptions, AutomationWebsite } from "@/lib/api/types"
 import { formatIst } from "@/lib/format"
@@ -86,10 +87,12 @@ export default function AutomationJobsPage() {
   const [pendingDelete, setPendingDelete] = useState<AutomationJob | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [running, setRunning] = useState<number | null>(null)
+  const [unsticking, setUnsticking] = useState(false)
   const [selected, setSelected] = useState<number[]>([])
   const [bulkPending, setBulkPending] = useState(false)
   const [intervalOpen, setIntervalOpen] = useState(false)
   const rows = data?.jobs.items ?? []
+  const stuckCount = rows.filter((row) => row.running).length
   const options = data?.options
   const pageIds = rows.map((row) => row.id)
   const allChecked = pageIds.length > 0 && pageIds.every((id) => selected.includes(id))
@@ -158,9 +161,12 @@ export default function AutomationJobsPage() {
       cell: (row) => (
         <div className="flex min-w-0 flex-col gap-1">
           <span>{row.last_run_at ? formatIst(row.last_run_at) : "—"}</span>
-          {row.last_result ? (
-            <Badge variant={row.last_result === "ok" ? "fresh" : "destructive"}>{row.last_result}</Badge>
-          ) : null}
+          <div className="flex flex-wrap gap-1">
+            {row.running ? <Badge variant="destructive">stuck / running</Badge> : null}
+            {row.last_result ? (
+              <Badge variant={row.last_result === "ok" ? "fresh" : "destructive"}>{row.last_result}</Badge>
+            ) : null}
+          </div>
         </div>
       ),
       sortValue: (row) => row.last_run_at,
@@ -210,6 +216,31 @@ export default function AutomationJobsPage() {
         description="Each job checks one saved session and writes the tool cookie onto the website you pick."
         action={
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={unsticking}
+              onClick={() => {
+                setUnsticking(true)
+                void (async () => {
+                  try {
+                    const result = await unstickAutomationJobs()
+                    toast.success(
+                      result.cleared > 0
+                        ? `Cleared ${result.cleared} stuck job${result.cleared === 1 ? "" : "s"}`
+                        : "No stuck jobs",
+                    )
+                    reload()
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : "Something went wrong")
+                  } finally {
+                    setUnsticking(false)
+                  }
+                })()
+              }}
+            >
+              {unsticking ? <Spinner data-icon="inline-start" /> : null}
+              Unstick{stuckCount > 0 ? ` (${stuckCount})` : ""}
+            </Button>
             <Button
               variant="outline"
               disabled={selected.length === 0 || bulkPending}

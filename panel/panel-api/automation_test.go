@@ -1070,3 +1070,34 @@ func TestBulkAutomationJobs(t *testing.T) {
 		t.Fatalf("second enabled=%d interval=%d", enabled, minutes)
 	}
 }
+
+func TestUnstickAutomationJobs(t *testing.T) {
+	s, mux := openAutomationTestDB(t)
+	cred := insertAutomationCredential(t, s, "portal-secret")
+	var websiteID int
+	if err := s.db.QueryRow(`SELECT id FROM websites WHERE kind='recloud'`).Scan(&websiteID); err != nil {
+		t.Fatal(err)
+	}
+	jobID := insertAutomationJob(t, s, "Stuck Zik", cred, websiteID, 0)
+	if _, err := s.db.Exec(`UPDATE automation_jobs SET running=1 WHERE id=?`, jobID); err != nil {
+		t.Fatal(err)
+	}
+	res := callAuth(t, mux, http.MethodPost, "/api/automation/jobs/unstick", "", "recloud-test")
+	if res.Code != 200 {
+		t.Fatalf("unstick status %d body %s", res.Code, res.Body.String())
+	}
+	if !bytes.Contains(res.Body.Bytes(), []byte(`"cleared":1`)) {
+		t.Fatalf("unstick body %s", res.Body.String())
+	}
+	var running int
+	if err := s.db.QueryRow(`SELECT running FROM automation_jobs WHERE id=?`, jobID).Scan(&running); err != nil {
+		t.Fatal(err)
+	}
+	if running != 0 {
+		t.Fatalf("running still %d", running)
+	}
+	list := callAuth(t, mux, http.MethodGet, "/api/automation/jobs?page=1&pageSize=20", "", "recloud-test")
+	if list.Code != 200 || !bytes.Contains(list.Body.Bytes(), []byte(`"running":false`)) {
+		t.Fatalf("list status %d body %s", list.Code, list.Body.String())
+	}
+}

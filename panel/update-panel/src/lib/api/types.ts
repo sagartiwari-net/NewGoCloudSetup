@@ -103,6 +103,7 @@ export type AutomationJob = {
   wake_website_ids: number[]
   interval_minutes: number
   enabled: boolean
+  running?: boolean
   last_run_at: string
   last_result: "" | "ok" | "failed"
   last_reason: string

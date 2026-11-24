@@ -782,6 +782,10 @@ export async function runAutomationJob(id: number): Promise<Ok> {
   return { status: "ok" }
 }
 
+export async function unstickAutomationJobs(): Promise<{ status: string; cleared: number }> {
+  return api("/api/automation/jobs/unstick", { method: "POST" })
+}
+
 export async function listAutomationLogs(query: {
   page: number
   pageSize: number

@@ -1507,7 +1507,7 @@ func (s *server) listAutomationJobs(w http.ResponseWriter, r *http.Request) {
 	qargs := append(append([]any{}, args...), size, (page-1)*size)
 	rows, err := s.db.Query(`SELECT j.id, j.name, j.provider, j.credential_id, COALESCE(c.name, ''),
 		j.target_website_id, COALESCE(w.name, ''), COALESCE(w.domain, ''), j.target_account_id, COALESCE(a.name, ''),
-		j.interval_minutes, j.enabled, COALESCE(j.job_kind, 'tool'), j.last_run_at, j.last_result, j.last_reason, j.next_run_at `+from+where+
+		j.interval_minutes, j.enabled, COALESCE(j.job_kind, 'tool'), COALESCE(j.running, 0), j.last_run_at, j.last_result, j.last_reason, j.next_run_at `+from+where+
 		` ORDER BY j.name LIMIT ? OFFSET ?`, qargs...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
@@ -1516,10 +1516,10 @@ func (s *server) listAutomationJobs(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	items := []any{}
 	for rows.Next() {
-		var id, credID, websiteID, accountID, interval, enabled int
+		var id, credID, websiteID, accountID, interval, enabled, runningFlag int
 		var name, provider, credName, siteName, domain, accountName, kind, lastRun, lastResult, lastReason, nextRun string
 		if rows.Scan(&id, &name, &provider, &credID, &credName, &websiteID, &siteName, &domain, &accountID, &accountName,
-			&interval, &enabled, &kind, &lastRun, &lastResult, &lastReason, &nextRun) != nil {
+			&interval, &enabled, &kind, &runningFlag, &lastRun, &lastResult, &lastReason, &nextRun) != nil {
 			continue
 		}
 		if kind != "session" {
@@ -1537,6 +1537,7 @@ func (s *server) listAutomationJobs(w http.ResponseWriter, r *http.Request) {
 			"target_account_id": accountID, "target_account_name": accountName,
 			"wake_website_ids": s.automationWakeIDs(id),
 			"interval_minutes": interval, "enabled": enabled == 1,
+			"running":     runningFlag == 1,
 			"last_run_at": lastRun, "last_result": lastResult, "last_reason": lastReason, "next_run_at": nextRun,
 		})
 	}
@@ -1771,6 +1772,23 @@ func (s *server) runAutomationJobNow(w http.ResponseWriter, r *http.Request) {
 	}
 	go s.runDueAutomationJobs()
 	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+// unstickAutomationJobs clears every stuck running=1 flag (crash leftover) so jobs can run again.
+func (s *server) unstickAutomationJobs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.master(w, r); !ok {
+		return
+	}
+	s.ensureAutomationTables()
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.Exec(`UPDATE automation_jobs SET running=0, run_cause='', updated_at=? WHERE running=1`, now)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	n, _ := res.RowsAffected()
+	log.Printf("[automation] unstick button cleared %d stuck running job(s)", n)
+	writeJSON(w, 200, map[string]any{"status": "ok", "cleared": n})
 }
 
 func (s *server) listAutomationLogs(w http.ResponseWriter, r *http.Request) {
