@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -58,4 +59,34 @@ func tenantPublicHost(r *http.Request, cfg Config) string {
 		return candidate
 	}
 	return fallback
+}
+
+// requestPublicScheme prefers the edge proto so reseller HTTPS pages do not get http:// asset rewrites.
+func requestPublicScheme(r *http.Request, cfg Config) string {
+	if r != nil {
+		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+			proto = strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
+			if proto == "http" || proto == "https" {
+				return proto
+			}
+		}
+		if r.TLS != nil {
+			return "https"
+		}
+	}
+	scheme := strings.ToLower(strings.TrimSpace(cfg.PublicScheme))
+	if scheme == "http" || scheme == "https" {
+		return scheme
+	}
+	return "https"
+}
+
+// requestPublicBase is https://<this-request-host> for HTML/JS rewrites.
+// Using cfg.PublicHost alone rewrote reseller pages to ziknl.upays.in → CORS on api calls.
+func requestPublicBase(r *http.Request, cfg Config) string {
+	host := tenantPublicHost(r, cfg)
+	if host == "" {
+		host = strings.TrimSpace(cfg.PublicHost)
+	}
+	return fmt.Sprintf("%s://%s", requestPublicScheme(r, cfg), host)
 }

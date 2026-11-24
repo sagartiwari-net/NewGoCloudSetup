@@ -1479,25 +1479,42 @@ var httpClient = buildChromeHTTPClient()
 
 // ── URL REWRITING HELPERS ─────────────────────────────────────────────────────
 
-// buildDomainReplacements creates a list of old→new domain pairs for HTML rewriting.
-func buildDomainReplacements(cfg Config) [][2]string {
+// buildDomainReplacements creates a list of old→new domain pairs for HTML/JS rewriting.
+// publicBase must be the current request host (reseller or owner), never a hardcoded sibling domain.
+func buildDomainReplacements(cfg Config, publicBase string) [][2]string {
+	publicBase = strings.TrimRight(strings.TrimSpace(publicBase), "/")
+	if publicBase == "" {
+		publicBase = fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
+	}
 	targetParsed, _ := url.Parse(cfg.TargetURL)
 	cdnParsed, _ := url.Parse(cfg.CDNURL)
-	publicBase := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
 	var pairs [][2]string
-	if targetParsed != nil {
+	if targetParsed != nil && targetParsed.Host != "" {
 		pairs = append(pairs, [2]string{"https://" + targetParsed.Host, publicBase})
 		pairs = append(pairs, [2]string{"http://" + targetParsed.Host, publicBase})
+		pairs = append(pairs, [2]string{"//" + targetParsed.Host, strings.TrimPrefix(strings.TrimPrefix(publicBase, "https:"), "http:")})
 	}
-	if cdnParsed != nil {
+	if cdnParsed != nil && cdnParsed.Host != "" {
 		pairs = append(pairs, [2]string{"https://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
 		pairs = append(pairs, [2]string{"http://" + cdnParsed.Host, publicBase + "/cdn-proxy"})
 	}
 	for i, extra := range cfg.ExtraCDNDomains {
 		extra = strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
 		extra = strings.Split(extra, "/")[0]
+		if extra == "" {
+			continue
+		}
 		pairs = append(pairs, [2]string{"https://" + extra, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)})
 		pairs = append(pairs, [2]string{"http://" + extra, fmt.Sprintf("%s/extra-cdn-%d", publicBase, i)})
+		pairs = append(pairs, [2]string{"//" + extra, fmt.Sprintf("//%s/extra-cdn-%d", strings.TrimPrefix(strings.TrimPrefix(publicBase, "https://"), "http://"), i)})
+	}
+	// If JS was previously baked with the owner public_host, retarget it to this request host.
+	ownerHost := panelHostOnly(cfg.PublicHost)
+	reqHost := panelHostOnly(strings.TrimPrefix(strings.TrimPrefix(publicBase, "https://"), "http://"))
+	if ownerHost != "" && reqHost != "" && !strings.EqualFold(ownerHost, reqHost) {
+		pairs = append(pairs, [2]string{"https://" + ownerHost, publicBase})
+		pairs = append(pairs, [2]string{"http://" + ownerHost, publicBase})
+		pairs = append(pairs, [2]string{"//" + ownerHost, "//" + reqHost})
 	}
 	return pairs
 }
@@ -1540,6 +1557,22 @@ func patcherScript(cfg Config) string {
 		homePath = "/dashboard"
 	}
 
+	ownerHost := panelHostOnly(cfg.PublicHost)
+	var extrasJS strings.Builder
+	extrasJS.WriteString("[")
+	for i, extra := range cfg.ExtraCDNDomains {
+		extra = strings.TrimPrefix(strings.TrimPrefix(extra, "https://"), "http://")
+		extra = strings.Split(extra, "/")[0]
+		if extra == "" {
+			continue
+		}
+		if extrasJS.Len() > 1 {
+			extrasJS.WriteString(",")
+		}
+		extrasJS.WriteString(fmt.Sprintf("{h:%q,p:%q}", extra, fmt.Sprintf("/extra-cdn-%d", i)))
+	}
+	extrasJS.WriteString("]")
+
 	// Build watchdog triggers
 	var triggerChecks strings.Builder
 	for _, trigger := range cfg.WatchdogTriggers {
@@ -1549,9 +1582,28 @@ func patcherScript(cfg Config) string {
 	return fmt.Sprintf(`<script>
 (function() {
     var T = '%s', C = '%s', O = window.location.origin;
+    var OWNER = %q;
+    var EXTRAS = %s;
     var HOME = '%s';
     var BLOCKED = [%s];
     var BLOCKED_ROUTES = [%s];
+
+    function mapProxyUrl(u) {
+        if (typeof u !== 'string') return u;
+        u = u.replace('https://'+T, O).replace('http://'+T, O);
+        if (C) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
+        for (var i = 0; i < EXTRAS.length; i++) {
+            var e = EXTRAS[i];
+            if (!e || !e.h) continue;
+            u = u.replace('https://'+e.h, O+e.p).replace('http://'+e.h, O+e.p);
+            u = u.replace('//'+e.h, O.replace(/^https?:/,'')+e.p);
+        }
+        if (OWNER) {
+            u = u.replace('https://'+OWNER, O).replace('http://'+OWNER, O);
+            u = u.replace('//'+OWNER, O.replace(/^https?:/,''));
+        }
+        return u;
+    }
 
     // ── Watchdog: Auto-rotate account on session drop ──
     var watchdogDone = false;
@@ -1581,7 +1633,7 @@ func patcherScript(cfg Config) string {
     // ── Link rewriter ──
     function rewriteLinks() {
         document.querySelectorAll('a[href*="'+T+'"]').forEach(function(a) {
-            var h = a.href.replace('https://'+T, O).replace('http://'+T, O);
+            var h = mapProxyUrl(a.href);
             if (a.href !== h) a.href = h;
         });
     }
@@ -1591,19 +1643,16 @@ func patcherScript(cfg Config) string {
     // ── XHR patch ──
     var xo = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(m, u) {
-        if (typeof u === 'string') {
-            u = u.replace('https://'+T, O).replace('http://'+T, O);
-            if (C) u = u.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
-        }
+        if (typeof u === 'string') { u = mapProxyUrl(u); }
         return xo.apply(this, arguments);
     };
 
     // ── Fetch patch ──
     var fo = window.fetch;
     window.fetch = function(inp, init) {
-        if (typeof inp === 'string') {
-            inp = inp.replace('https://'+T, O).replace('http://'+T, O);
-            if (C) inp = inp.replace('https://'+C, O+'/cdn-proxy').replace('http://'+C, O+'/cdn-proxy');
+        if (typeof inp === 'string') { inp = mapProxyUrl(inp); }
+        else if (inp && typeof Request !== 'undefined' && inp instanceof Request) {
+            try { inp = new Request(mapProxyUrl(inp.url), inp); } catch (e) {}
         }
         return fo(inp, init);
     };
@@ -1701,7 +1750,8 @@ func patcherScript(cfg Config) string {
     setInterval(hideAccountSettings, 150);
 })();
 </script>`,
-		targetHost, cdnHost, homePath, blockedListJS.String(), blockedRoutesJS.String(), triggerChecks.String(),
+		targetHost, cdnHost, ownerHost, extrasJS.String(), homePath, blockedListJS.String(), blockedRoutesJS.String(),
+		triggerChecks.String(),
 		func() string {
 			if len(cfg.WatchdogTriggers) > 0 {
 				return "true"
@@ -2207,31 +2257,24 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	upstreamReq.Header.Del("X-Forwarded-For")
 	upstreamReq.Header.Del("X-Real-IP")
 
-	// Dynamically rewrite Origin and Referer
-	publicBase := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
-	targetBase := cfg.TargetURL
+	// Upstream must see Zik's origin — never the reseller host (CORS/auth).
+	publicBase := requestPublicBase(r, cfg)
+	ownerBase := fmt.Sprintf("%s://%s", cfg.PublicScheme, cfg.PublicHost)
+	targetBase := strings.TrimRight(cfg.TargetURL, "/")
 
-	origOrigin := r.Header.Get("Origin")
+	upstreamReq.Header.Set("Origin", targetBase)
+
 	origReferer := r.Header.Get("Referer")
-
-	if origOrigin != "" {
-		newOrigin := strings.ReplaceAll(origOrigin, publicBase, targetBase)
-		u, err := url.Parse(newOrigin)
-		if err == nil {
-			newOrigin = u.Scheme + "://" + u.Host
-		}
-		upstreamReq.Header.Set("Origin", newOrigin)
-	} else {
-		upstreamReq.Header.Set("Origin", targetBase)
-	}
-
 	if origReferer != "" {
-		newReferer := strings.ReplaceAll(origReferer, publicBase, targetBase)
-		for i := 0; i < 10; i++ {
-			prefix := fmt.Sprintf("/extra-cdn-%d/", i)
-			if strings.Contains(newReferer, prefix) {
-				newReferer = strings.ReplaceAll(newReferer, prefix, "/")
+		newReferer := origReferer
+		for _, from := range []string{publicBase, ownerBase, "https://" + panelHostOnly(cfg.PublicHost), "http://" + panelHostOnly(cfg.PublicHost)} {
+			if from != "" && from != "https://" && from != "http://" {
+				newReferer = strings.ReplaceAll(newReferer, from, targetBase)
 			}
+		}
+		for i := 0; i < len(cfg.ExtraCDNDomains)+2; i++ {
+			prefix := fmt.Sprintf("/extra-cdn-%d/", i)
+			newReferer = strings.ReplaceAll(newReferer, prefix, "/")
 		}
 		upstreamReq.Header.Set("Referer", newReferer)
 	} else {
@@ -2372,7 +2415,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if kLower == "location" {
 			for _, v := range vv {
 				nv := v
-				pairs := buildDomainReplacements(cfg)
+				pairs := buildDomainReplacements(cfg, requestPublicBase(r, cfg))
 				for _, p := range pairs {
 					nv = strings.ReplaceAll(nv, p[0], p[1])
 				}
@@ -2426,8 +2469,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Rewrite domain references
-		pairs := buildDomainReplacements(cfg)
+		// Rewrite domain references onto THIS request host (reseller-safe)
+		pairs := buildDomainReplacements(cfg, requestPublicBase(r, cfg))
 		bodyBytes = rewriteBody(bodyBytes, pairs)
 
 		// Remove CSP header (prevents our injected scripts)
@@ -2507,7 +2550,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if isRewritable {
 		bodyBytes, err := decompressBody(upstreamResp)
 		if err == nil {
-			pairs := buildDomainReplacements(cfg)
+			pairs := buildDomainReplacements(cfg, requestPublicBase(r, cfg))
 			bodyBytes = rewriteBody(bodyBytes, pairs)
 			w.WriteHeader(upstreamResp.StatusCode)
 			w.Write(bodyBytes)
