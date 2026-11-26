@@ -169,13 +169,6 @@ func locationIsLogin(loc string) bool {
 	return isLoginPath(u.Path)
 }
 
-func responseLooksLoggedOut(status int, location string, body []byte) bool {
-	if status >= 300 && status < 400 && locationIsLogin(location) {
-		return true
-	}
-	return bodyLooksLoggedOut(body)
-}
-
 func upstreamURL(base *url.URL, requestURI string) string {
 	u := *base
 	rel, err := url.Parse(requestURI)
@@ -330,15 +323,17 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
 			payload = rewriteText(payload, base.Host, origin)
 		}
-		loggedOut := attempts > 1 && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload)
+		loggedOut := isDocumentNavigation(r) && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload)
 		if loggedOut && attempt < attempts {
-			log.Printf("[UP] session not in yet, try %d/%d", attempt, attempts)
+			log.Printf("[UP] session not in yet, try %d/%d status=%d", attempt, attempts, resp.StatusCode)
 			continue
 		}
 		if loggedOut {
 			token := sessionTokenFromRequest(r)
-			switched, _ := noteLogout(cfg, r, acc, token, "logout")
-			if switched && cfg.HomePath != "" {
+			switched, _ := noteLogout(cfg, r, acc, token, "session_expired")
+			homePathOnly := strings.SplitN(strings.TrimSpace(cfg.HomePath), "?", 2)[0]
+			// Home "/" would just loop; stay on Updating tools + countdown.
+			if switched && homePathOnly != "" && homePathOnly != "/" && !strings.EqualFold(homePathOnly, r.URL.Path) {
 				http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 				return
 			}

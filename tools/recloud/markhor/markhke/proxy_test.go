@@ -207,6 +207,37 @@ func TestLoginRedirectNotFollowedOntoKeHost(t *testing.T) {
 	if strings.Contains(rr.Body.String(), "Not Found") {
 		t.Fatalf("flask 404 leaked: %s", rr.Body.String())
 	}
+	if !strings.Contains(rr.Body.String(), "Updating tools") || !strings.Contains(rr.Body.String(), "tm-countdown") {
+		t.Fatalf("expected Updating tools countdown, got: %s", rr.Body.String())
+	}
+}
+
+func TestUpstream404ShowsUpdatingTools(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`<!doctype html><html lang=en><title>404 Not Found</title><h1>Not Found</h1><p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>`))
+	}))
+	defer upstream.Close()
+
+	oldWait := loginRetryWait
+	loginRetryWait = 0
+	t.Cleanup(func() { loginRetryWait = oldWait })
+
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/", PublicHost: "markhke.gt4rents.com", PublicScheme: "http", ToolName: "Markhor Keyword Everywhere"}
+	req := httptest.NewRequest(http.MethodGet, "http://markhke.gt4rents.com/", nil)
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Host = "markhke.gt4rents.com"
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{ID: 8, Cookie: "proxy_token=abc"})
+	if strings.Contains(rr.Body.String(), "The requested URL was not found") {
+		t.Fatalf("upstream 404 leaked: %s", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Updating tools") || !strings.Contains(rr.Body.String(), "tm-countdown") {
+		t.Fatalf("expected Updating tools countdown, got: %s", rr.Body.String())
+	}
 }
 
 func TestProxyTokenGoesUpstream(t *testing.T) {

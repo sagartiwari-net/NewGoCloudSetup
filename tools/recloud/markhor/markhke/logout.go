@@ -29,7 +29,20 @@ func bodyLooksLoggedOut(body []byte) bool {
 	return strings.Contains(text, "session expired") ||
 		strings.Contains(text, "access again from dashboard") ||
 		strings.Contains(text, "this section is restricted") ||
+		strings.Contains(text, "the requested url was not found on the server") ||
+		strings.Contains(text, "login | markhor") ||
+		(strings.Contains(text, "markhor seo tools") && strings.Contains(text, "password")) ||
 		(strings.Contains(text, "member login") && strings.Contains(text, "forgot password"))
+}
+
+func responseLooksLoggedOut(status int, location string, body []byte) bool {
+	if status == http.StatusNotFound {
+		return true
+	}
+	if status >= 300 && status < 400 && locationIsLogin(location) {
+		return true
+	}
+	return bodyLooksLoggedOut(body)
 }
 
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {
@@ -37,6 +50,7 @@ func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reas
 		return false, ""
 	}
 	if acc.ID > 0 {
+		clearDerivedCookies(acc)
 		if prev, ok := logoutSeen.Load(acc.ID); ok {
 			if time.Since(prev.(time.Time)) < 2*time.Minute {
 				return false, ""
@@ -87,8 +101,7 @@ func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reas
 	_, _ = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
 		websiteID, username, acc.Name, nextName, reason, ip, now)
 	log.Printf("[LB] logout recorded account=%s user=%s reason=%s", acc.Name, username, reason)
-	if reason == "session_expired" && !switched {
-		_, _ = db.Exec(`UPDATE accounts SET status='logged_out' WHERE id=?`, acc.ID)
-	}
+	// Keep status active so the browser stays on "Updating tools" and reloads
+	// while automation refreshes the cookie (Telegram + logout_events already fired).
 	return switched, nextName
 }
