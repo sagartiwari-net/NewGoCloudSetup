@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -549,6 +550,27 @@ func ahrefsMeterView(username, key string, fallbackLimit, resetDays int) (ahrefs
 	return ahrefsMeterViewOnHost(username, loadConfig().PublicHost, key, fallbackLimit, resetDays)
 }
 
+// ahrefsPreferredPanelUserID picks one panel_users row when duplicates exist.
+// Prefer custom expiry / is_custom meters / show visibility, then newest id.
+func ahrefsPreferredPanelUserID(db *sql.DB, websiteID int, username string) int {
+	if db == nil || websiteID == 0 || username == "" {
+		return 0
+	}
+	var userID int
+	err := db.QueryRow(`SELECT u.id FROM panel_users u
+		WHERE u.website_id=? AND u.username=?
+		ORDER BY
+			CASE WHEN COALESCE(u.custom_limit_expire_at,'') <> '' THEN 1 ELSE 0 END DESC,
+			CASE WHEN EXISTS (SELECT 1 FROM user_meters m WHERE m.user_id=u.id AND m.is_custom=1) THEN 1 ELSE 0 END DESC,
+			CASE WHEN LOWER(COALESCE(u.limit_visibility,''))='show' THEN 1 ELSE 0 END DESC,
+			u.id DESC
+		LIMIT 1`, websiteID, username).Scan(&userID)
+	if err != nil {
+		return 0
+	}
+	return userID
+}
+
 func ahrefsMeterViewOnHost(username, requestHost, key string, fallbackLimit, resetDays int) (ahrefsMeter, int, bool) {
 	view := ahrefsMeter{limit: fallbackLimit}
 	_ = resetDays
@@ -571,16 +593,16 @@ func ahrefsMeterViewOnHost(username, requestHost, key string, fallbackLimit, res
 	if n, ok := limits[key]; ok {
 		view.limit = n
 	}
-	var userID, meterID, meterLimit, meterUsed, custom int
-	err = db.QueryRow(`SELECT u.id, COALESCE(m.id, 0), COALESCE(m."limit", 0), COALESCE(m.used, 0), COALESCE(m.is_custom, 0)
-		FROM panel_users u
-		LEFT JOIN user_meters m ON m.user_id = u.id AND m.key = ?
-		WHERE u.website_id = ? AND u.username = ?`, key, websiteID, username).Scan(&userID, &meterID, &meterLimit, &meterUsed, &custom)
-	if err == nil {
+	userID := ahrefsPreferredPanelUserID(db, websiteID, username)
+	if userID == 0 {
+		return view, websiteID, true
+	}
+	var meterID, meterLimit, meterUsed, custom int
+	err = db.QueryRow(`SELECT COALESCE(m.id, 0), COALESCE(m."limit", 0), COALESCE(m.used, 0), COALESCE(m.is_custom, 0)
+		FROM user_meters m WHERE m.user_id=? AND m."key"=?`, userID, key).Scan(&meterID, &meterLimit, &meterUsed, &custom)
+	if err == nil && meterID > 0 {
 		view.used = meterUsed
-		if meterID > 0 {
-			view.limit = meterLimit
-		}
+		view.limit = meterLimit
 	}
 	return view, websiteID, true
 }
@@ -615,9 +637,8 @@ func ahrefsSaveUsageOnHost(username, requestHost string, hit ahrefsLimitHit) {
 		log.Printf("[LIMITS] usage insert failed user=%s action=%s: %v", username, hit.action, err)
 		return
 	}
-	var userID int
-	err = db.QueryRow(`SELECT id FROM panel_users WHERE website_id=? AND username=?`, websiteID, username).Scan(&userID)
-	if err != nil {
+	userID := ahrefsPreferredPanelUserID(db, websiteID, username)
+	if userID == 0 {
 		res, insertErr := db.Exec(`INSERT INTO panel_users (website_id, username, status, custom_limit_expire_at) VALUES (?,?,?,NULL)`, websiteID, username, "active")
 		if insertErr != nil {
 			return
@@ -625,15 +646,28 @@ func ahrefsSaveUsageOnHost(username, requestHost string, hit ahrefsLimitHit) {
 		id, _ := res.LastInsertId()
 		userID = int(id)
 	}
-	res, err := db.Exec(`UPDATE user_meters SET used = used + ? WHERE user_id=? AND "key"=?`, hit.amount, userID, hit.key)
+	// Atomic cap: refuse increment that would exceed a positive limit (race-safe).
+	res, err := db.Exec(`UPDATE user_meters SET used = used + ? WHERE user_id=? AND "key"=? AND ("limit" < 0 OR used + ? <= "limit")`,
+		hit.amount, userID, hit.key, hit.amount)
 	changed := int64(0)
 	if err == nil && res != nil {
 		changed, _ = res.RowsAffected()
 	}
 	if err != nil || changed == 0 {
+		var exists int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM user_meters WHERE user_id=? AND "key"=?`, userID, hit.key).Scan(&exists)
+		if exists > 0 {
+			log.Printf("[LIMITS] skip over-cap %s +%d user=%s", hit.key, hit.amount, username)
+			return
+		}
 		view, _, _ := ahrefsMeterViewOnHost(username, requestHost, hit.key, 0, hit.reset)
+		next := view.used + hit.amount
+		if view.limit > 0 && next > view.limit {
+			log.Printf("[LIMITS] skip over-cap insert %s +%d user=%s limit=%d", hit.key, hit.amount, username, view.limit)
+			return
+		}
 		_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,0)`,
-			userID, hit.key, hit.label, hit.reset, view.used+hit.amount, view.limit)
+			userID, hit.key, hit.label, hit.reset, next, view.limit)
 	}
 	log.Printf("[LIMITS] %s +%d user=%s action=%s", hit.key, hit.amount, username, hit.action)
 	if hit.key == "credits" && !hit.isExport {

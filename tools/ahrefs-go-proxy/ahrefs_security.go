@@ -65,8 +65,13 @@ func serveAhrefsPanelAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var status string
-	_ = db.QueryRow(`SELECT status FROM panel_users WHERE website_id=? AND username=?`,
-		ahrefsWebsiteID(db, host), user).Scan(&status)
+	siteID := ahrefsWebsiteID(db, host)
+	if uid := ahrefsPreferredPanelUserID(db, siteID, user); uid > 0 {
+		_ = db.QueryRow(`SELECT status FROM panel_users WHERE id=?`, uid).Scan(&status)
+	} else {
+		_ = db.QueryRow(`SELECT status FROM panel_users WHERE website_id=? AND username=? ORDER BY id DESC LIMIT 1`,
+			siteID, user).Scan(&status)
+	}
 	if status == "suspended" {
 		renderAhrefsDenied(w)
 		return
@@ -122,9 +127,8 @@ func recordAhrefsLogin(db *sql.DB, websiteID int, username, sessionToken, client
 	if websiteID == 0 {
 		return
 	}
-	var userID int
-	err := db.QueryRow(`SELECT id FROM panel_users WHERE website_id=? AND username=?`, websiteID, username).Scan(&userID)
-	if err != nil {
+	userID := ahrefsPreferredPanelUserID(db, websiteID, username)
+	if userID == 0 {
 		res, insertErr := db.Exec(`INSERT INTO panel_users (website_id, username, status, custom_limit_expire_at) VALUES (?,?,?,NULL)`, websiteID, username, "active")
 		if insertErr == nil {
 			id, _ := res.LastInsertId()
@@ -134,13 +138,12 @@ func recordAhrefsLogin(db *sql.DB, websiteID int, username, sessionToken, client
 	_ = userID
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = db.Exec(`DELETE FROM live_sessions WHERE username=? AND website_id=?`, username, websiteID)
-	_, err = db.Exec(`INSERT INTO live_sessions (website_id, session_token, username, client_ip, fingerprint, expires_at, created_at, assigned_account_id)
-		VALUES (?,?,?,?,?,?,?,?)`, websiteID, sessionToken, username, clientIP, "", expires.UTC().Format(time.RFC3339), now, 0)
-	if err != nil {
+	if _, err := db.Exec(`INSERT INTO live_sessions (website_id, session_token, username, client_ip, fingerprint, expires_at, created_at, assigned_account_id)
+		VALUES (?,?,?,?,?,?,?,?)`, websiteID, sessionToken, username, clientIP, "", expires.UTC().Format(time.RFC3339), now, 0); err != nil {
 		log.Printf("[PANEL] live session insert failed: %v", err)
 		return
 	}
-	if _, err = db.Exec(`INSERT INTO login_events (website_id, username, client_ip, user_agent, logged_in_at) VALUES (?,?,?,?,?)`,
+	if _, err := db.Exec(`INSERT INTO login_events (website_id, username, client_ip, user_agent, logged_in_at) VALUES (?,?,?,?,?)`,
 		websiteID, username, clientIP, userAgent, now); err != nil {
 		log.Printf("[PANEL] login event insert failed: %v", err)
 	}

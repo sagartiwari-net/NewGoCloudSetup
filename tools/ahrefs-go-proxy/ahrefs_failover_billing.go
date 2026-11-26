@@ -162,8 +162,8 @@ func ahrefsRefundMeterCredits(username string, websiteID, amount int) bool {
 	if err != nil {
 		return false
 	}
-	var userID int
-	if err := dbPanel.QueryRow(`SELECT id FROM panel_users WHERE website_id=? AND username=?`, websiteID, username).Scan(&userID); err != nil || userID == 0 {
+	userID := ahrefsPreferredPanelUserID(dbPanel, websiteID, username)
+	if userID == 0 {
 		return false
 	}
 	res, err := dbPanel.Exec(`UPDATE user_meters SET used = CASE WHEN used >= ? THEN used - ? ELSE 0 END WHERE user_id=? AND "key"='credits'`, amount, amount, userID)

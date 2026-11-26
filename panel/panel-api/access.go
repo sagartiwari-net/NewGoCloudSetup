@@ -144,7 +144,9 @@ func (s *server) productMapped(websiteID int, productID string) bool {
 
 func (s *server) userBlock(websiteID int, username string) string {
 	var status string
-	err := s.db.QueryRow(`SELECT status FROM panel_users WHERE website_id=? AND username=?`, websiteID, username).Scan(&status)
+	// Prefer suspended if any duplicate row is suspended.
+	err := s.db.QueryRow(`SELECT status FROM panel_users WHERE website_id=? AND username=?
+		ORDER BY CASE WHEN status='suspended' THEN 0 ELSE 1 END, id DESC LIMIT 1`, websiteID, username).Scan(&status)
 	if err != nil {
 		return ""
 	}

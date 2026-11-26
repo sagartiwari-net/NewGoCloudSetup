@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS panel_users (
   custom_limit_expire_at TEXT,
   limit_visibility TEXT NOT NULL DEFAULT ''
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_panel_users_site_user ON panel_users (website_id, username);
 
 CREATE TABLE IF NOT EXISTS user_meters (
   id INTEGER PRIMARY KEY,

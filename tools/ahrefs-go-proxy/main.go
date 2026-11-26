@@ -1341,7 +1341,7 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		token = cookie.Value
 	}
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"show_limit":   ahrefsLimitVisible(username, token),
+		"show_limit":   ahrefsLimitVisible(username, token, reqHost),
 		"username":     username,
 		"credit_limit": credits.limit,
 		"credit_used":  credits.used,
@@ -1350,7 +1350,7 @@ func userLimitsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func ahrefsLimitVisible(username, sessionToken string) bool {
+func ahrefsLimitVisible(username, sessionToken, requestHost string) bool {
 	db, err := openAhrefsPanel()
 	if err != nil || username == "" {
 		return false
@@ -1360,13 +1360,21 @@ func ahrefsLimitVisible(username, sessionToken string) bool {
 		_ = db.QueryRow(`SELECT website_id FROM live_sessions WHERE session_token=?`, sessionToken).Scan(&websiteID)
 	}
 	if websiteID == 0 {
+		websiteID = ahrefsWebsiteIDForUser(db, username, requestHost)
+	}
+	if websiteID == 0 {
 		websiteID = ahrefsWebsiteID(db, loadConfig().PublicHost)
 	}
 	if websiteID == 0 {
 		return false
 	}
 	var mode string
-	_ = db.QueryRow(`SELECT COALESCE(limit_visibility, '') FROM panel_users WHERE website_id=? AND username=?`, websiteID, username).Scan(&mode)
+	userID := ahrefsPreferredPanelUserID(db, websiteID, username)
+	if userID > 0 {
+		_ = db.QueryRow(`SELECT COALESCE(limit_visibility, '') FROM panel_users WHERE id=?`, userID).Scan(&mode)
+	} else {
+		_ = db.QueryRow(`SELECT COALESCE(limit_visibility, '') FROM panel_users WHERE website_id=? AND username=? ORDER BY id DESC LIMIT 1`, websiteID, username).Scan(&mode)
+	}
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "show":
 		return true

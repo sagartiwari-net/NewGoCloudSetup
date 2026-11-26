@@ -178,7 +178,133 @@ func ensureUserMeterColumns(db *sql.DB) {
 		log.Printf("[DB] added user_meters.period_start for limit resets")
 	}
 	ensureUserMetersUnique(db)
+	ensurePanelUsersUnique(db)
 	ensureCollapseOrphanDownloadMeters(db)
+}
+
+// ensurePanelUsersUnique merges duplicate (website_id, username) rows then adds a
+// unique index. Duplicate rows made custom Ahrefs limits lose to auto default rows.
+func ensurePanelUsersUnique(db *sql.DB) {
+	rows, err := db.Query(`SELECT website_id, username, COUNT(*), MIN(id) FROM panel_users GROUP BY website_id, username HAVING COUNT(*) > 1`)
+	if err != nil {
+		log.Printf("[DB] panel_users dedupe query: %v", err)
+	} else {
+		type dup struct {
+			websiteID, keepID int
+			username          string
+		}
+		var list []dup
+		for rows.Next() {
+			var d dup
+			var n int
+			if rows.Scan(&d.websiteID, &d.username, &n, &d.keepID) != nil {
+				continue
+			}
+			list = append(list, d)
+		}
+		rows.Close()
+		for _, d := range list {
+			keepID := d.keepID
+			// Prefer a custom/expiry/show row over the auto-created default shell.
+			var preferred int
+			_ = db.QueryRow(`SELECT u.id FROM panel_users u
+				WHERE u.website_id=? AND u.username=?
+				ORDER BY
+					CASE WHEN COALESCE(u.custom_limit_expire_at,'') <> '' THEN 1 ELSE 0 END DESC,
+					CASE WHEN EXISTS (SELECT 1 FROM user_meters m WHERE m.user_id=u.id AND m.is_custom=1) THEN 1 ELSE 0 END DESC,
+					CASE WHEN LOWER(COALESCE(u.limit_visibility,''))='show' THEN 1 ELSE 0 END DESC,
+					u.id DESC
+				LIMIT 1`, d.websiteID, d.username).Scan(&preferred)
+			if preferred > 0 {
+				keepID = preferred
+			}
+			// Max used + best custom limit per key across all duplicate user ids.
+			type meterMerge struct {
+				used, limit, custom, reset int
+				label                      string
+			}
+			merged := map[string]meterMerge{}
+			mRows, mErr := db.Query(`SELECT m."key", m.used, m."limit", m.is_custom, m.label, m.reset_days
+				FROM user_meters m JOIN panel_users u ON u.id=m.user_id
+				WHERE u.website_id=? AND u.username=?`, d.websiteID, d.username)
+			if mErr == nil {
+				for mRows.Next() {
+					var key, label string
+					var used, limit, custom, reset int
+					if mRows.Scan(&key, &used, &limit, &custom, &label, &reset) != nil {
+						continue
+					}
+					cur, ok := merged[key]
+					if !ok {
+						merged[key] = meterMerge{used: used, limit: limit, custom: custom, reset: reset, label: label}
+						continue
+					}
+					if used > cur.used {
+						cur.used = used
+					}
+					if custom == 1 && (cur.custom == 0 || keepID > 0) {
+						cur.limit, cur.custom, cur.label, cur.reset = limit, 1, label, reset
+					}
+					if cur.label == "" {
+						cur.label = label
+					}
+					if cur.reset == 0 {
+						cur.reset = reset
+					}
+					merged[key] = cur
+				}
+				mRows.Close()
+			}
+			// Prefer limits already on the kept (custom) row when both sides are custom.
+			keepRows, kErr := db.Query(`SELECT "key", used, "limit", is_custom, label, reset_days FROM user_meters WHERE user_id=?`, keepID)
+			if kErr == nil {
+				for keepRows.Next() {
+					var key, label string
+					var used, limit, custom, reset int
+					if keepRows.Scan(&key, &used, &limit, &custom, &label, &reset) != nil {
+						continue
+					}
+					cur := merged[key]
+					if used > cur.used {
+						cur.used = used
+					}
+					if custom == 1 {
+						cur.limit, cur.custom, cur.label, cur.reset = limit, 1, label, reset
+					}
+					merged[key] = cur
+				}
+				keepRows.Close()
+			}
+			_, _ = db.Exec(`DELETE FROM user_meters WHERE user_id IN (SELECT id FROM panel_users WHERE website_id=? AND username=?)`, d.websiteID, d.username)
+			for key, m := range merged {
+				if m.label == "" {
+					m.label = key
+				}
+				if m.reset <= 0 {
+					m.reset = 1
+				}
+				_, _ = db.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,?)`,
+					keepID, key, m.label, m.reset, m.used, m.limit, m.custom)
+			}
+			res, delErr := db.Exec(`DELETE FROM panel_users WHERE website_id=? AND username=? AND id<>?`, d.websiteID, d.username, keepID)
+			removed := int64(0)
+			if delErr == nil && res != nil {
+				removed, _ = res.RowsAffected()
+			}
+			log.Printf("[DB] panel_users deduped site=%d user=%s keep_id=%d removed=%d", d.websiteID, d.username, keepID, removed)
+		}
+	}
+	mysql := strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) != ""
+	stmt := `CREATE UNIQUE INDEX idx_panel_users_site_user ON panel_users (website_id, username)`
+	if mysql {
+		stmt = `CREATE UNIQUE INDEX idx_panel_users_site_user ON panel_users (website_id, username(64))`
+	}
+	if _, err := db.Exec(stmt); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "duplicate") && !strings.Contains(msg, "exists") && !strings.Contains(msg, "already") {
+			log.Printf("[DB] panel_users unique index: %v", err)
+		}
+	}
 }
 
 // ensureCollapseOrphanDownloadMeters merges leftover Envato-style meters

@@ -677,9 +677,16 @@ func (s *server) saveUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	userID := body.ID
+	username := strings.TrimSpace(body.Username)
+	if userID == 0 {
+		// Upsert by (website_id, username) — New limit must not create a second row
+		// while Ahrefs auto-login already inserted a default panel_users row.
+		_ = tx.QueryRow(`SELECT id FROM panel_users WHERE website_id=? AND username=? ORDER BY id LIMIT 1`,
+			body.Website, username).Scan(&userID)
+	}
 	if userID == 0 {
 		res, err := tx.Exec(`INSERT INTO panel_users (website_id, username, status, custom_limit_expire_at, limit_visibility) VALUES (?,?,?,?,?)`,
-			body.Website, strings.TrimSpace(body.Username), body.Status, expire, visibility)
+			body.Website, username, body.Status, expire, visibility)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -688,12 +695,11 @@ func (s *server) saveUser(w http.ResponseWriter, r *http.Request) {
 		userID = int(id)
 	} else {
 		_, err = tx.Exec(`UPDATE panel_users SET website_id=?, username=?, status=?, custom_limit_expire_at=?, limit_visibility=? WHERE id=?`,
-			body.Website, strings.TrimSpace(body.Username), body.Status, expire, visibility, userID)
+			body.Website, username, body.Status, expire, visibility, userID)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
 		}
-		_, _ = tx.Exec(`DELETE FROM user_meters WHERE user_id=?`, userID)
 	}
 	labels := map[string]struct {
 		Label string
@@ -709,6 +715,25 @@ func (s *server) saveUser(w http.ResponseWriter, r *http.Request) {
 			Days  int
 		}{def.Label, def.ResetDays}
 	}
+	// Max used across this user + any duplicate sibling rows (auto-login vs New limit).
+	prevUsed := map[string]int{}
+	if urows, uerr := tx.Query(`SELECT m."key", m.used FROM user_meters m
+		JOIN panel_users u ON u.id=m.user_id
+		WHERE u.website_id=? AND u.username=?`, body.Website, username); uerr == nil {
+		for urows.Next() {
+			var k string
+			var u int
+			if urows.Scan(&k, &u) == nil && u > prevUsed[k] {
+				prevUsed[k] = u
+			}
+		}
+		urows.Close()
+	}
+	// Keep one panel_users row; drop siblings + all meters for this username on the site.
+	_, _ = tx.Exec(`DELETE FROM user_meters WHERE user_id IN (SELECT id FROM panel_users WHERE website_id=? AND username=?)`,
+		body.Website, username)
+	_, _ = tx.Exec(`DELETE FROM panel_users WHERE website_id=? AND username=? AND id<>?`,
+		body.Website, username, userID)
 	for _, meter := range body.Meters {
 		meta := labels[meter.Key]
 		if meta.Label == "" {
@@ -719,8 +744,12 @@ func (s *server) saveUser(w http.ResponseWriter, r *http.Request) {
 		if meter.Limit != defaults[meter.Key] || expire != nil {
 			custom = 1
 		}
+		used := meter.Used
+		if prev := prevUsed[meter.Key]; prev > used {
+			used = prev
+		}
 		_, _ = tx.Exec(`INSERT INTO user_meters (user_id, "key", label, reset_days, used, "limit", is_custom) VALUES (?,?,?,?,?,?,?)`,
-			userID, meter.Key, meta.Label, meta.Days, meter.Used, meter.Limit, custom)
+			userID, meter.Key, meta.Label, meta.Days, used, meter.Limit, custom)
 	}
 	if err := tx.Commit(); err != nil {
 		writeErr(w, 500, err.Error())
