@@ -642,16 +642,18 @@ func liveUpstream(cfg Config) string {
 
 func renderLoggedOutPage(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusForbidden, lightCard{
-		Title:       "Logged out",
-		Heading:     "Signing you in",
-		Message:     "Tools signed out. Signing you in again.",
-		Footer:      "This page checks again in a few seconds",
+		Title:       "Updating tools",
+		Heading:     "Updating tools",
+		Message:     "Tools signed out. Updating tools — retrying automatically.",
+		Footer:      "Refreshing when the countdown reaches 0",
+		Spin:        true,
+		Countdown:   true,
 		ExtraScript: loggedOutRefreshScript(),
 	})
 }
 
 func loggedOutRefreshScript() string {
-	return `<script>(function(){var k="oneclickgo-relogin",n=0;try{n=Number(sessionStorage.getItem(k)||"0")}catch(e){}if(n>=8)return;try{sessionStorage.setItem(k,String(n+1))}catch(e){}setTimeout(function(){location.reload()},n===0?3000:4000)})();</script>`
+	return `<script>(function(){var k="oneclickgo-relogin",n=0;try{n=Number(sessionStorage.getItem(k)||"0")}catch(e){}if(!Number.isFinite(n)||n<0)n=0;if(n>=40)return;try{sessionStorage.setItem(k,String(n+1))}catch(e){}var left=3;var el=document.getElementById("tm-countdown");var label=document.getElementById("tm-countdown-label");function paint(){if(el)el.textContent=String(left);if(label)label.textContent=left<=0?"Refreshing now…":"Updating tools in "+left+" sec";}paint();var t=setInterval(function(){left-=1;if(left<=0){clearInterval(t);paint();location.reload();return;}paint();},1000);})();</script>`
 }
 
 func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
@@ -665,10 +667,25 @@ func renderAccessDeniedPage(w http.ResponseWriter, cfg Config) {
 
 func renderNoActiveAccountsPage(w http.ResponseWriter, cfg Config) {
 	writeLightCard(w, http.StatusServiceUnavailable, lightCard{
-		Title:   "Temporarily Unavailable",
-		Heading: "Temporarily Unavailable",
-		Message: "Tools is temporarily unavailable. Please try again in a few minutes.",
-		Footer:  "Open this tool again from your access link",
+		Title:       "Updating tools",
+		Heading:     "Updating tools",
+		Message:     "Tools is refreshing. Please wait — retrying automatically.",
+		Footer:      "Refreshing when the countdown reaches 0",
+		Spin:        true,
+		Countdown:   true,
+		ExtraScript: loggedOutRefreshScript(),
+	})
+}
+
+func renderUpstreamUnavailablePage(w http.ResponseWriter, cfg Config) {
+	writeLightCard(w, http.StatusBadGateway, lightCard{
+		Title:       "Updating tools",
+		Heading:     "Updating tools",
+		Message:     "Tools is temporarily unreachable. Retrying automatically.",
+		Footer:      "Refreshing when the countdown reaches 0",
+		Spin:        true,
+		Countdown:   true,
+		ExtraScript: loggedOutRefreshScript(),
 	})
 }
 
@@ -695,6 +712,7 @@ type lightCard struct {
 	Badge       string
 	Footer      string
 	Spin        bool
+	Countdown   bool
 	ExtraScript string
 }
 
@@ -710,6 +728,10 @@ func writeLightCard(w http.ResponseWriter, status int, card lightCard) {
 	footer := ""
 	if card.Footer != "" {
 		footer = `<p class="foot">` + html.EscapeString(card.Footer) + `</p>`
+	}
+	countdown := ""
+	if card.Countdown {
+		countdown = `<div class="count-wrap"><div class="count" id="tm-countdown">3</div><p class="count-label" id="tm-countdown-label">Updating tools in 3 sec</p></div>`
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -733,6 +755,9 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 .pill { margin:22px auto 0;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid #e6ebf2;border-radius:999px;color:#334155;font-size:14px;background:#fff; }
 .dot { width:14px;height:14px;border-radius:50%%;border:2px solid #dbe4f0;border-top-color:#3b82f6;animation:spin .8s linear infinite; }
 .foot { margin-top:18px;color:#94a3b8;font-size:13px; }
+.count-wrap { margin-top:22px; }
+.count { font-size:42px;font-weight:800;letter-spacing:-.04em;color:#2563eb;line-height:1; }
+.count-label { margin-top:8px;color:#64748b;font-size:14px;font-weight:600; }
 @keyframes spin { to { transform:rotate(360deg); } }
 </style>
 </head>
@@ -743,10 +768,11 @@ h1 { font-size:28px;line-height:1.2;font-weight:800;letter-spacing:-.03em;margin
 <p class="msg">%s</p>
 %s
 %s
+%s
 </div>
 %s
 </body>
-</html>`, html.EscapeString(card.Title), spinClass, html.EscapeString(card.Heading), card.Message, badge, footer, card.ExtraScript)
+</html>`, html.EscapeString(card.Title), spinClass, html.EscapeString(card.Heading), card.Message, badge, countdown, footer, card.ExtraScript)
 }
 
 func noteAccessPattern(db *sql.DB, websiteID int, username, clientIP, userAgent string) {

@@ -192,7 +192,7 @@ func upstreamURL(base *url.URL, requestURI string) string {
 func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount) {
 	base, err := url.Parse(liveUpstream(cfg))
 	if err != nil || base.Host == "" {
-		http.Error(w, "Upstream URL is not configured", http.StatusBadGateway)
+		renderUpstreamUnavailablePage(w, cfg)
 		return
 	}
 	origin := publicOrigin(r, cfg)
@@ -237,10 +237,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			}
 		}
 		jar := cookiesForUpstream(acc, r)
-		// Portal cookies alone often show Markhor "signed out" on sm01 until
-		// the server hits /member/ from the same IP and absorbs SSO Set-Cookie.
+		// Portal cookies alone often show Markhor "signed out" on sm02 until
+		// the server hits /member/ + tool host from the same IP and absorbs SSO.
 		if r.Method == http.MethodGet && isDocumentNavigation(r) {
-			jar = warmMarkhorPortalSSO(r, jar)
+			jar = warmMarkhorPortalSSO(r, jar, base.Scheme+"://"+base.Host)
 			rememberUpstreamCookies(acc, jar)
 		}
 		var resp *http.Response
@@ -264,7 +264,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			}
 			upReq, err := http.NewRequestWithContext(r.Context(), method, upstreamURL(base, requestURI), body)
 			if err != nil {
-				http.Error(w, "Bad gateway", http.StatusBadGateway)
+				renderUpstreamUnavailablePage(w, cfg)
 				return
 			}
 			if bare {
@@ -320,7 +320,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			}
 			if markhorHTMLSessionEnded(payload) && !warmedRetry && r.Method == http.MethodGet && isDocumentNavigation(r) {
 				warmedRetry = true
-				jar = warmMarkhorPortalSSO(r, jar)
+				jar = warmMarkhorPortalSSO(r, jar, base.Scheme+"://"+base.Host)
 				rememberUpstreamCookies(acc, jar)
 				requestURI = originalURI
 				hop = -1
@@ -342,15 +342,16 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
 			payload = rewriteText(payload, base.Host, origin)
 		}
-		loggedOut := attempts > 1 && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload)
+		loggedOut := isDocumentNavigation(r) && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload)
 		if loggedOut && attempt < attempts {
 			log.Printf("[UP] session not in yet, try %d/%d", attempt, attempts)
 			continue
 		}
 		if loggedOut {
 			token := sessionTokenFromRequest(r)
-			switched, _ := noteLogout(cfg, r, acc, token, "logout")
-			if switched && cfg.HomePath != "" {
+			switched, _ := noteLogout(cfg, r, acc, token, "session_expired")
+			homePathOnly := strings.SplitN(strings.TrimSpace(cfg.HomePath), "?", 2)[0]
+			if switched && homePathOnly != "" && homePathOnly != "/" && !strings.EqualFold(homePathOnly, r.URL.Path) {
 				http.Redirect(w, r, cfg.HomePath, http.StatusFound)
 				return
 			}
@@ -383,6 +384,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		return
 	}
 	log.Printf("[UP] %s %s: %v", r.Method, r.URL.Path, lastErr)
+	if isDocumentNavigation(r) {
+		renderUpstreamUnavailablePage(w, cfg)
+		return
+	}
 	http.Error(w, "Upstream unavailable", http.StatusBadGateway)
 }
 
@@ -422,34 +427,54 @@ func markhorHTMLSessionEnded(body []byte) bool {
 		strings.Contains(text, "this request could not be completed")
 }
 
-func warmMarkhorPortalSSO(r *http.Request, jar string) string {
+func warmMarkhorPortalSSO(r *http.Request, jar, toolOrigin string) string {
 	if strings.TrimSpace(jar) == "" {
 		return jar
 	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, "https://markhorseotool.com/member/", nil)
+	jar = markhorWarmGET(r, jar, "https://markhorseotool.com/member/", "markhorseotool.com", "")
+	toolOrigin = strings.TrimRight(strings.TrimSpace(toolOrigin), "/")
+	if toolOrigin != "" {
+		jar = markhorWarmGET(r, jar, toolOrigin+"/", "", "https://markhorseotool.com/member/")
+	}
+	return jar
+}
+
+func markhorWarmGET(r *http.Request, jar, rawURL, host, referer string) string {
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, rawURL, nil)
 	if err != nil {
 		return jar
 	}
 	setBareUpstreamHeaders(req, r)
-	req.Host = "markhorseotool.com"
-	req.Header.Set("Host", "markhorseotool.com")
+	if host == "" {
+		if u, err := url.Parse(rawURL); err == nil {
+			host = u.Host
+		}
+	}
+	if host != "" {
+		req.Host = host
+		req.Header.Set("Host", host)
+	}
 	req.Header.Set("Cookie", jar)
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 	}
 	resp, err := upstreamClient.Do(req)
 	if err != nil {
-		log.Printf("[UP] markhor portal warm-up failed: %v", err)
+		log.Printf("[UP] markhor warm-up %s failed: %v", rawURL, err)
 		return jar
 	}
 	payload, _ := readUpstreamBody(resp)
 	resp.Body.Close()
 	jar = absorbSetCookies(jar, resp.Header)
-	if markhorHTMLSessionEnded(payload) || (len(payload) > 0 && strings.Contains(strings.ToLower(string(payload)), "member login")) {
-		log.Printf("[UP] markhor portal warm-up still signed out (%d bytes)", len(payload))
+	lower := strings.ToLower(string(payload))
+	if markhorHTMLSessionEnded(payload) || strings.Contains(lower, "member login") {
+		log.Printf("[UP] markhor warm-up %s still signed out (%d bytes)", rawURL, len(payload))
 	} else {
-		log.Printf("[UP] markhor portal warm-up ok (%d bytes)", len(payload))
+		log.Printf("[UP] markhor warm-up %s ok (%d bytes)", rawURL, len(payload))
 	}
 	return jar
 }

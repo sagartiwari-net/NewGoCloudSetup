@@ -40,6 +40,7 @@ func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reas
 		return false, ""
 	}
 	if acc.ID > 0 {
+		derivedCookies.Delete(acc.ID)
 		if prev, ok := logoutSeen.Load(acc.ID); ok {
 			if time.Since(prev.(time.Time)) < 2*time.Minute {
 				return false, ""
@@ -90,8 +91,7 @@ func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reas
 	_, _ = db.Exec(`INSERT INTO logout_events (website_id, username, account_name, next_account_name, reason, client_ip, created_at) VALUES (?,?,?,?,?,?,?)`,
 		websiteID, username, acc.Name, nextName, reason, ip, now)
 	log.Printf("[LB] logout recorded account=%s user=%s reason=%s", acc.Name, username, reason)
-	if reason == "session_expired" && !switched {
-		_, _ = db.Exec(`UPDATE accounts SET status='logged_out' WHERE id=?`, acc.ID)
-	}
+	// Keep status active so the browser stays on "Updating tools" and reloads
+	// while automation refreshes the cookie (Telegram + logout_events already fired).
 	return switched, nextName
 }

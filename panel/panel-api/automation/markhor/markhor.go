@@ -108,6 +108,21 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		return nil, automation.ErrTimeout
 	}
 	seedMarkhorPortal(jar, portal)
+	// Warm portal SSO from this server IP before opening the tool host.
+	memberHTML, memberLanded, err := markhorGet(ctx, client, markhorMemberURL, "")
+	if err != nil {
+		if errors.Is(err, automation.ErrLoginPage) {
+			return nil, err
+		}
+		return nil, markhorTransportErr(ctx, err)
+	}
+	if markhorShowsLogin(memberHTML, memberLanded) {
+		return nil, automation.At(automation.ErrLoginPage, memberLanded)
+	}
+	toolRoot := parsed.Scheme + "://" + parsed.Host + "/"
+	if _, _, err := markhorGet(ctx, client, toolRoot, markhorMemberURL); err != nil && !errors.Is(err, automation.ErrLoginPage) {
+		return nil, markhorTransportErr(ctx, err)
+	}
 	html, landed, err := markhorGet(ctx, client, upstreamURL, markhorMemberURL)
 	if err != nil {
 		if errors.Is(err, automation.ErrLoginPage) {
@@ -127,12 +142,17 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 	}
 	live := markhorExportCookies(jar, record, []string{
 		"https://" + host + "/",
-		"https://markhorseotool.com/",
+		markhorBaseURL + "/",
+		markhorMemberURL,
 	})
 	log.Printf("[automation] markhor capture page=%s cookies=%s new=%t", automation.Where(landed), automation.Names(live), markhorAddedCookie(portal, live))
 	if !markhorAddedCookie(portal, live) {
 		if len(portal) == 0 {
 			return nil, automation.At(automation.ErrNoCookie, landed)
+		}
+		// Tool page loaded with existing portal cookies — still persist widened portal+tool jar.
+		if len(live) > 0 {
+			return live, nil
 		}
 		return storedMarkhorCookies(portal), nil
 	}
