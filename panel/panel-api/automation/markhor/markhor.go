@@ -115,7 +115,7 @@ func (Recipe) Capture(ctx context.Context, portal []automation.Cookie, upstreamU
 		}
 		return nil, markhorTransportErr(ctx, err)
 	}
-	if markhorShowsLogin(html, landed) {
+	if markhorShowsLogin(html, landed) || markhorToolSessionEnded(html) {
 		return nil, automation.At(automation.ErrLoginPage, landed)
 	}
 	if markhorShowsDenied(html) {
@@ -265,7 +265,7 @@ func storedMarkhorCookies(cookies []automation.Cookie) []automation.Cookie {
 
 func markhorPortalDefaults(cookie automation.Cookie) automation.Cookie {
 	switch strings.ToLower(cookie.Name) {
-	case "phpsessid", "mht_session":
+	case "phpsessid", "mht_session", "mh_bp":
 	default:
 		return cookie
 	}
@@ -448,11 +448,11 @@ func markhorShowsLogin(html, pageURL string) bool {
 		host = strings.ToLower(parsed.Hostname())
 		path = strings.ToLower(parsed.EscapedPath())
 	}
-	// sm01 and the other tools serve their own app. Their HTML can mention a login field.
-	if host != "" && host != "markhorseotool.com" && host != "www.markhorseotool.com" {
-		return false
-	}
 	lower := strings.ToLower(html)
+	// Tool hosts (sm01/sm02) can show Markhor's own signed-out shell.
+	if host != "" && host != "markhorseotool.com" && host != "www.markhorseotool.com" {
+		return markhorToolSessionEnded(html)
+	}
 	if strings.Contains(lower, "logout") || strings.Contains(lower, "my tools") {
 		return false
 	}
@@ -483,6 +483,14 @@ func markhorShowsDenied(html string) bool {
 		return false
 	}
 	return strings.Contains(lower, "active subscription") || strings.Contains(lower, "do not have an active")
+}
+
+func markhorToolSessionEnded(html string) bool {
+	lower := strings.ToLower(html)
+	return strings.Contains(lower, "you have been signed out") ||
+		strings.Contains(lower, "markhor session has ended") ||
+		strings.Contains(lower, "access refused") ||
+		strings.Contains(lower, "this request could not be completed")
 }
 
 func seedMarkhorPortal(jar *cookiejar.Jar, cookies []automation.Cookie) {

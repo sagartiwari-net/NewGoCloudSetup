@@ -30,7 +30,9 @@ func bodyLooksLoggedOut(body []byte) bool {
 		strings.Contains(text, "access again from dashboard") ||
 		strings.Contains(text, "this section is restricted") ||
 		strings.Contains(text, "access refused") ||
-		strings.Contains(text, "this request could not be completed")
+		strings.Contains(text, "this request could not be completed") ||
+		strings.Contains(text, "you have been signed out") ||
+		strings.Contains(text, "markhor session has ended")
 }
 
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {

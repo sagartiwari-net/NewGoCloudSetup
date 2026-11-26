@@ -19,6 +19,9 @@ func TestPageSignals(t *testing.T) {
 	if markhorShowsLogin(`<input name="username"><input name="password"> Domain Overview`, "https://sm01.markhorseotool.com/analytics/overview/") {
 		t.Fatal("semrush tool page was treated as the portal login")
 	}
+	if !markhorShowsLogin(`<h1>You have been signed out</h1><p>Your Markhor session has ended. Please log in again.</p>`, "https://sm01.markhorseotool.com/analytics/overview/") {
+		t.Fatal("markhor signed-out tool page must fail capture")
+	}
 	if markhorShowsLogin(`<a href="/logout">Logout</a><input name="password">`, "https://markhorseotool.com/member/") {
 		t.Fatal("member page with logout was treated as logged out")
 	}
