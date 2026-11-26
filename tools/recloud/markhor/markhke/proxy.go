@@ -241,6 +241,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			}
 		}
 		jar := cookiesForUpstream(acc, r)
+		slimRetried := false
 		var resp *http.Response
 		var payload []byte
 		var ct string
@@ -295,6 +296,16 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				resp = nil
 				break
 			}
+			// Upstream Node default header limit is 16KiB. Our derived jar can blow
+			// that; clear it and retry once with the panel cookie only.
+			if resp.StatusCode == http.StatusRequestHeaderFieldsTooLarge && !slimRetried {
+				slimRetried = true
+				clearDerivedCookies(acc)
+				jar = panelCookieOnly(acc)
+				log.Printf("[UP] upstream 431 — retry panel-only cookie len=%d", len(jar))
+				hop--
+				continue
+			}
 			jar = absorbSetCookies(jar, resp.Header)
 			rememberUpstreamCookies(acc, jar)
 			next, ok := sameSiteRequestURI(resp.Header.Get("Location"), base.Host, origin)
@@ -331,7 +342,8 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			http.Redirect(w, r, requestURI, http.StatusFound)
 			return
 		}
-		if isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {
+		// Never inject into upstream error pages (e.g. Node 431 header-too-large).
+		if resp.StatusCode < 400 && isDocumentNavigation(r) && strings.Contains(strings.ToLower(ct), "text/html") {
 			viewer := ""
 			if name, err := panelSessionUsername(r); err == nil {
 				viewer = name

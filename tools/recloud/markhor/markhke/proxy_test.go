@@ -144,6 +144,77 @@ func TestBrowserSessionCookiesAreForwarded(t *testing.T) {
 	}
 }
 
+func TestUpstreamCookieStaysUnderNodeLimit(t *testing.T) {
+	// Build a panel jar that would exceed Node's 16KiB default if sent whole.
+	var b strings.Builder
+	for i := 0; i < 40; i++ {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		b.WriteString("k")
+		b.WriteString(strings.Repeat("x", 3))
+		b.WriteByte(byte('a' + (i % 26)))
+		b.WriteByte('=')
+		b.WriteString(strings.Repeat("v", 500))
+	}
+	raw := b.String()
+	if len(raw) < maxUpstreamCookieBytes {
+		t.Fatalf("test fixture too small: %d", len(raw))
+	}
+	got := cookiesForUpstream(ToolAccount{ID: 9, Cookie: raw}, nil)
+	if len(got) > maxUpstreamCookieBytes {
+		t.Fatalf("upstream cookie %d exceeds budget %d", len(got), maxUpstreamCookieBytes)
+	}
+	if !strings.Contains(got, "kxxxa=") {
+		snippet := got
+		if len(snippet) > 80 {
+			snippet = snippet[:80]
+		}
+		t.Fatalf("expected panel cookies to be kept preferentially: %s", snippet)
+	}
+}
+
+func TestUpstream431RetriesPanelOnly(t *testing.T) {
+	var hits int
+	var lastCookie string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		lastCookie = r.Header.Get("Cookie")
+		if hits == 1 {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusRequestHeaderFieldsTooLarge)
+			_, _ = w.Write([]byte(`<html><head><title>Request Header Fields Too Large</title></head><body>Error parsing headers: 'limit request headers fields size'</body></html>`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<html><body>ke ready</body></html>`))
+	}))
+	defer upstream.Close()
+
+	// Pre-seed a bloated derived jar so the first attempt is fat.
+	derivedCookies.Store(42, "junk="+strings.Repeat("z", 8000))
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/", PublicHost: "markhke.gt4rents.com", PublicScheme: "http", ToolName: "Markhor Keyword Everywhere"}
+	req := httptest.NewRequest(http.MethodGet, "http://markhke.gt4rents.com/", nil)
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Host = "markhke.gt4rents.com"
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{ID: 42, Cookie: "PHPSESSID=fresh"})
+	if hits < 2 {
+		t.Fatalf("expected 431 retry, hits=%d", hits)
+	}
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "Request Header Fields Too Large") || strings.Contains(rr.Body.String(), "limit request headers") {
+		t.Fatal("431 page was shown to the browser")
+	}
+	if !strings.Contains(lastCookie, "PHPSESSID=fresh") || strings.Contains(lastCookie, "junk=") {
+		t.Fatalf("retry cookie should be panel-only: %s", lastCookie)
+	}
+}
+
 func TestSessionCookieFollowsUpstream(t *testing.T) {
 	got := absorbSetCookies("PHPSESSID=session", http.Header{"Set-Cookie": []string{"grauth=fresh; Path=/; Secure", "csrf_token=tok; Path=/"}})
 	if !strings.Contains(got, "PHPSESSID=session") || !strings.Contains(got, "grauth=fresh") || !strings.Contains(got, "csrf_token=tok") {

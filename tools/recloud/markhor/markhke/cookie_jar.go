@@ -10,13 +10,17 @@ import (
 const maxCookieHops = 6
 
 // Oversized values rewritten onto the public host make Chrome's Cookie header
-// bigger than nginx large_client_header_buffers (400 Request Header Fields Too Large).
+// bigger than nginx large_client_header_buffers.
 const maxBrowserCookieValueLen = 2048
+
+// ke.markhorseotool.com is Node — default max-http-header-size is 16KiB. Over that
+// it returns 431 "Error parsing headers: 'limit request headers fields size'".
+const maxUpstreamCookieBytes = 12 * 1024
 
 var derivedCookies sync.Map
 
 func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
-	// Panel cookie wins. Browser/derived overlays must not replace the saved session.
+	// Panel cookie wins. Derived/browser may add missing names only within budget.
 	panel := strings.TrimSpace(acc.Cookie)
 	derived := ""
 	if acc.ID != 0 {
@@ -28,27 +32,56 @@ func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
 	if r != nil {
 		browser = browserCookiesForUpstream(r)
 	}
-	merged := mergeCookieHeaders(browser, derived)
-	return mergeCookieHeaders(merged, panel)
+	order, vals := parseCookieHeaderRaw(panel)
+	order, vals = applyCookieHeaderKeepNew(order, vals, derived)
+	order, vals = applyCookieHeaderKeepNew(order, vals, browser)
+	return fitCookieBudget(order, vals, maxUpstreamCookieBytes)
+}
+
+func panelCookieOnly(acc ToolAccount) string {
+	order, vals := parseCookieHeaderRaw(strings.TrimSpace(acc.Cookie))
+	return fitCookieBudget(order, vals, maxUpstreamCookieBytes)
+}
+
+func clearDerivedCookies(acc ToolAccount) {
+	if acc.ID == 0 {
+		return
+	}
+	derivedCookies.Delete(acc.ID)
 }
 
 func browserCookiesForUpstream(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
-	order, vals := parseCookieHeader(r.Header.Get("Cookie"))
-	return serializeCookies(order, vals)
+	order, vals := parseCookieHeaderRaw(r.Header.Get("Cookie"))
+	// Never forward our gate cookie; drop obvious analytics junk from the browser.
+	outOrder := make([]string, 0, len(order))
+	outVals := map[string]string{}
+	for _, name := range order {
+		if dropUpstreamCookie(name) || dropJunkCookie(name) {
+			continue
+		}
+		value := vals[name]
+		if value == "" || len(value) > maxBrowserCookieValueLen {
+			continue
+		}
+		outOrder = append(outOrder, name)
+		outVals[name] = value
+	}
+	return serializeCookies(outOrder, outVals)
 }
 
 func rememberUpstreamCookies(acc ToolAccount, merged string) {
 	if acc.ID == 0 {
 		return
 	}
-	derivedCookies.Store(acc.ID, strings.TrimSpace(merged))
+	order, vals := parseCookieHeaderRaw(merged)
+	derivedCookies.Store(acc.ID, fitCookieBudget(order, vals, maxUpstreamCookieBytes))
 }
 
 func mergeCookieHeaders(base, overlay string) string {
-	order, vals := parseCookieHeader(base)
+	order, vals := parseCookieHeaderRaw(base)
 	order, vals = applyCookieHeader(order, vals, overlay)
 	return serializeCookies(order, vals)
 }
@@ -57,14 +90,14 @@ func absorbSetCookies(existing string, header http.Header) string {
 	if header == nil {
 		return existing
 	}
-	order, vals := parseCookieHeader(existing)
+	order, vals := parseCookieHeaderRaw(existing)
 	for _, raw := range header.Values("Set-Cookie") {
 		order, vals = applySetCookie(order, vals, raw)
 	}
-	return serializeCookies(order, vals)
+	return fitCookieBudget(order, vals, maxUpstreamCookieBytes)
 }
 
-func parseCookieHeader(header string) ([]string, map[string]string) {
+func parseCookieHeaderRaw(header string) ([]string, map[string]string) {
 	order := []string{}
 	vals := map[string]string{}
 	for _, part := range strings.Split(header, ";") {
@@ -78,10 +111,6 @@ func parseCookieHeader(header string) ([]string, map[string]string) {
 		if name == "" || dropUpstreamCookie(name) {
 			continue
 		}
-		// Keep huge values out of the upstream jar and out of further Set-Cookie churn.
-		if len(value) > maxBrowserCookieValueLen {
-			continue
-		}
 		if _, ok := vals[name]; !ok {
 			order = append(order, name)
 		}
@@ -91,11 +120,24 @@ func parseCookieHeader(header string) ([]string, map[string]string) {
 }
 
 func applyCookieHeader(order []string, vals map[string]string, header string) ([]string, map[string]string) {
-	addOrder, addVals := parseCookieHeader(header)
+	addOrder, addVals := parseCookieHeaderRaw(header)
 	for _, name := range addOrder {
 		if _, ok := vals[name]; !ok {
 			order = append(order, name)
 		}
+		vals[name] = addVals[name]
+	}
+	return order, vals
+}
+
+// applyCookieHeaderKeepNew only fills names that are not already present (panel wins).
+func applyCookieHeaderKeepNew(order []string, vals map[string]string, header string) ([]string, map[string]string) {
+	addOrder, addVals := parseCookieHeaderRaw(header)
+	for _, name := range addOrder {
+		if _, ok := vals[name]; ok {
+			continue
+		}
+		order = append(order, name)
 		vals[name] = addVals[name]
 	}
 	return order, vals
@@ -109,7 +151,7 @@ func applySetCookie(order []string, vals map[string]string, raw string) ([]strin
 	name, value, _ := strings.Cut(parts[0], "=")
 	name = strings.TrimSpace(name)
 	value = strings.TrimSpace(value)
-	if name == "" || dropUpstreamCookie(name) {
+	if name == "" || dropUpstreamCookie(name) || dropJunkCookie(name) {
 		return order, vals
 	}
 	if setCookieExpired(parts[1:]) {
@@ -121,9 +163,6 @@ func applySetCookie(order []string, vals map[string]string, raw string) ([]strin
 			}
 		}
 		return next, vals
-	}
-	if len(value) > maxBrowserCookieValueLen {
-		return order, vals
 	}
 	if _, ok := vals[name]; !ok {
 		order = append(order, name)
@@ -155,9 +194,53 @@ func serializeCookies(order []string, vals map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+func fitCookieBudget(order []string, vals map[string]string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return serializeCookies(order, vals)
+	}
+	parts := make([]string, 0, len(order))
+	n := 0
+	for _, name := range order {
+		value, ok := vals[name]
+		if !ok || value == "" {
+			continue
+		}
+		part := name + "=" + value
+		add := len(part)
+		if len(parts) > 0 {
+			add += 2 // "; "
+		}
+		if n+add > maxBytes {
+			continue
+		}
+		parts = append(parts, part)
+		n += add
+	}
+	return strings.Join(parts, "; ")
+}
+
 func dropUpstreamCookie(name string) bool {
 	switch strings.ToLower(name) {
 	case "ct_session", "proxy_token":
+		return true
+	}
+	return false
+}
+
+func dropJunkCookie(name string) bool {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.HasPrefix(lower, "_ga"), strings.HasPrefix(lower, "_gid"), strings.HasPrefix(lower, "_gat"):
+		return true
+	case strings.HasPrefix(lower, "_fbp"), strings.HasPrefix(lower, "_fbc"):
+		return true
+	case strings.HasPrefix(lower, "amp_"), strings.HasPrefix(lower, "ajs_"):
+		return true
+	case strings.HasPrefix(lower, "mp_"), strings.HasPrefix(lower, "intercom"):
+		return true
+	case strings.HasPrefix(lower, "hubspot"), strings.HasPrefix(lower, "__hstc"), strings.HasPrefix(lower, "hs"):
+		return true
+	case strings.HasPrefix(lower, "_hj"), strings.HasPrefix(lower, "ajs_"):
 		return true
 	}
 	return false
@@ -192,7 +275,7 @@ func expireBloatedBrowserCookies(dst http.Header, r *http.Request, publicHost st
 	}
 	host := publicCookieHost(publicHost)
 	raw := r.Header.Get("Cookie")
-	nukeAll := len(raw) > 48*1024 // keep only ct_session once jar is fat
+	nukeAll := len(raw) > 48*1024
 	for _, c := range r.Cookies() {
 		if c == nil || c.Name == "" {
 			continue
