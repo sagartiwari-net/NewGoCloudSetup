@@ -28,7 +28,9 @@ func bodyLooksLoggedOut(body []byte) bool {
 	text := strings.ToLower(string(body))
 	return strings.Contains(text, "session expired") ||
 		strings.Contains(text, "access again from dashboard") ||
-		strings.Contains(text, "this section is restricted")
+		strings.Contains(text, "this section is restricted") ||
+		strings.Contains(text, "access refused") ||
+		strings.Contains(text, "this request could not be completed")
 }
 
 func noteLogout(cfg Config, r *http.Request, acc ToolAccount, sessionToken, reason string) (switched bool, nextName string) {

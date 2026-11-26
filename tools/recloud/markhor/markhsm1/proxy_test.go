@@ -121,4 +121,29 @@ func TestLogoutPath(t *testing.T) {
 	if !bodyLooksLoggedOut([]byte(`<h1>Access Denied</h1><p>This section is restricted.</p>`)) {
 		t.Fatal("restricted page should count as logged out")
 	}
+	if !bodyLooksLoggedOut([]byte(`<h1>Access refused</h1><p>This request could not be completed. If you think this is a mistake, contact support.</p>`)) {
+		t.Fatal("access refused page should count as logged out")
+	}
+}
+
+func TestPlainAccessDeniedDetectsMarkhorRefuse(t *testing.T) {
+	body := []byte(`Access refused\nThis request could not be completed. If you think this is a mistake, contact support.`)
+	if !plainAccessDenied(http.StatusForbidden, body) {
+		t.Fatal("403 access refused should trigger bare retry")
+	}
+	if !plainAccessDenied(http.StatusOK, []byte(`<html><body><h1>Access refused</h1><p>This request could not be completed.</p></body></html>`)) {
+		t.Fatal("200 HTML access refused should trigger bare retry")
+	}
+}
+
+func TestCookiesForUpstreamPreferPanelSession(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "https://markhsm1.upays.in/analytics/overview/", nil)
+	req.Header.Set("Cookie", "ct_session=panel; PHPSESSID=stale")
+	got := cookiesForUpstream(ToolAccount{ID: 7, Cookie: "PHPSESSID=fresh; mht_session=tok; mh_bp=proof"}, req)
+	if !strings.Contains(got, "PHPSESSID=fresh") || !strings.Contains(got, "mht_session=tok") || !strings.Contains(got, "mh_bp=proof") {
+		t.Fatalf("panel cookie missing: %s", got)
+	}
+	if strings.Contains(got, "ct_session=") {
+		t.Fatal("ct_session must not go upstream")
+	}
 }
