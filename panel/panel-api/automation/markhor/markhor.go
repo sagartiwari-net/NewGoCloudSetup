@@ -505,7 +505,22 @@ func markhorShowsDenied(html string) bool {
 	return strings.Contains(lower, "active subscription") || strings.Contains(lower, "do not have an active")
 }
 
+func markhorOneMomentPage(html string) bool {
+	lower := strings.ToLower(html)
+	if len(html) > 64<<10 {
+		return false
+	}
+	return strings.Contains(lower, `data-mh-bl="1"`) ||
+		strings.Contains(lower, "data-mh-bl='1'") ||
+		strings.Contains(lower, "<title>one moment</title>") ||
+		strings.Contains(lower, `id="mh-bl-wait"`)
+}
+
 func markhorToolSessionEnded(html string) bool {
+	// One moment proof page embeds "signed out" strings inside JS — not a dead session yet.
+	if markhorOneMomentPage(html) {
+		return false
+	}
 	lower := strings.ToLower(html)
 	return strings.Contains(lower, "you have been signed out") ||
 		strings.Contains(lower, "markhor session has ended") ||

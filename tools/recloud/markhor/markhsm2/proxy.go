@@ -318,9 +318,14 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 				hop = -1
 				continue
 			}
-			if markhorHTMLSessionEnded(payload) && !warmedRetry && r.Method == http.MethodGet && isDocumentNavigation(r) {
+			if (markhorHTMLSessionEnded(payload) || markhorOneMomentPage(payload)) && !warmedRetry && r.Method == http.MethodGet && isDocumentNavigation(r) {
 				warmedRetry = true
-				jar = warmMarkhorPortalSSO(r, jar, base.Scheme+"://"+base.Host)
+				toolOrigin := base.Scheme + "://" + base.Host
+				if markhorOneMomentPage(payload) {
+					jar = warmMarkhorBrowserProof(r, jar, toolOrigin)
+				} else {
+					jar = warmMarkhorPortalSSO(r, jar, toolOrigin)
+				}
 				rememberUpstreamCookies(acc, jar)
 				requestURI = originalURI
 				hop = -1
@@ -341,6 +346,19 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		ct = resp.Header.Get("Content-Type")
 		if shouldRewriteBody(ct) && len(payload) > 0 && len(payload) <= 8<<20 {
 			payload = rewriteText(payload, base.Host, origin)
+		}
+		// One moment after a failed server-side mh_bp enroll means this browser
+		// proof is bound elsewhere — treat as session expired for our UI/automation.
+		if isDocumentNavigation(r) && markhorOneMomentPage(payload) && warmedRetry {
+			token := sessionTokenFromRequest(r)
+			switched, _ := noteLogout(cfg, r, acc, token, "session_expired")
+			homePathOnly := strings.SplitN(strings.TrimSpace(cfg.HomePath), "?", 2)[0]
+			if switched && homePathOnly != "" && homePathOnly != "/" && !strings.EqualFold(homePathOnly, r.URL.Path) {
+				http.Redirect(w, r, cfg.HomePath, http.StatusFound)
+				return
+			}
+			renderLoggedOutPage(w, cfg)
+			return
 		}
 		loggedOut := isDocumentNavigation(r) && responseLooksLoggedOut(resp.StatusCode, resp.Header.Get("Location"), payload)
 		if loggedOut && attempt < attempts {
@@ -420,6 +438,9 @@ func plainAccessDenied(status int, body []byte) bool {
 }
 
 func markhorHTMLSessionEnded(body []byte) bool {
+	if markhorOneMomentPage(body) {
+		return false
+	}
 	text := strings.ToLower(string(body))
 	return strings.Contains(text, "you have been signed out") ||
 		strings.Contains(text, "markhor session has ended") ||

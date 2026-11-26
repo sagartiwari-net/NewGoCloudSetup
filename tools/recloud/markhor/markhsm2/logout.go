@@ -25,6 +25,10 @@ func isLoginPath(path string) bool {
 }
 
 func bodyLooksLoggedOut(body []byte) bool {
+	// One moment proof page embeds "signed out" copy inside its JS — not a logout.
+	if markhorOneMomentPage(body) {
+		return false
+	}
 	text := strings.ToLower(string(body))
 	return strings.Contains(text, "session expired") ||
 		strings.Contains(text, "access again from dashboard") ||

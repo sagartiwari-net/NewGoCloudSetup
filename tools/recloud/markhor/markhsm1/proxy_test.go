@@ -124,6 +124,16 @@ func TestLogoutPath(t *testing.T) {
 	if !bodyLooksLoggedOut([]byte(`<h1>Access refused</h1><p>This request could not be completed. If you think this is a mistake, contact support.</p>`)) {
 		t.Fatal("access refused page should count as logged out")
 	}
+	oneMoment := []byte(`<!DOCTYPE html><html><head><title>One moment</title></head><body><div id="mh-bl-wait">One moment...</div><script data-mh-bl="1">h.textContent = 'You have been signed out'; p.textContent = 'Your Markhor session has ended. Please log in again.';</script></body></html>`)
+	if !markhorOneMomentPage(oneMoment) {
+		t.Fatal("one moment page not detected")
+	}
+	if bodyLooksLoggedOut(oneMoment) || markhorHTMLSessionEnded(oneMoment) {
+		t.Fatal("one moment proof page must not count as logged out")
+	}
+	if markhorSiteCode("https://sm02.markhorseotool.com") != "sm02" {
+		t.Fatal("site code")
+	}
 }
 
 func TestPlainAccessDeniedDetectsMarkhorRefuse(t *testing.T) {

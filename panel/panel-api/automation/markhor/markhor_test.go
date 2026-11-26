@@ -22,6 +22,13 @@ func TestPageSignals(t *testing.T) {
 	if !markhorShowsLogin(`<h1>You have been signed out</h1><p>Your Markhor session has ended. Please log in again.</p>`, "https://sm01.markhorseotool.com/analytics/overview/") {
 		t.Fatal("markhor signed-out tool page must fail capture")
 	}
+	oneMoment := `<!DOCTYPE html><html><head><title>One moment</title></head><body><div id="mh-bl-wait">One moment...</div><script data-mh-bl="1">h.textContent = 'You have been signed out'; p.textContent = 'Your Markhor session has ended.';</script></body></html>`
+	if !markhorOneMomentPage(oneMoment) {
+		t.Fatal("one moment page not detected")
+	}
+	if markhorToolSessionEnded(oneMoment) || markhorShowsLogin(oneMoment, "https://sm01.markhorseotool.com/analytics/overview/") {
+		t.Fatal("one moment proof page must not count as signed out")
+	}
 	if markhorShowsLogin(`<a href="/logout">Logout</a><input name="password">`, "https://markhorseotool.com/member/") {
 		t.Fatal("member page with logout was treated as logged out")
 	}
