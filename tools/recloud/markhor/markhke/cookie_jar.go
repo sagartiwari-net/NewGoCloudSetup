@@ -163,12 +163,7 @@ func dropUpstreamCookie(name string) bool {
 	return false
 }
 
-// expireBloatedBrowserCookies asks Chrome to drop host cookies that already
-// push the Cookie header toward nginx's limit. Safe to call on every response.
-func expireBloatedBrowserCookies(dst http.Header, r *http.Request, publicHost string) {
-	if r == nil || dst == nil {
-		return
-	}
+func publicCookieHost(publicHost string) string {
 	host := publicHost
 	if i := strings.Index(host, "://"); i >= 0 {
 		host = host[i+3:]
@@ -176,18 +171,43 @@ func expireBloatedBrowserCookies(dst http.Header, r *http.Request, publicHost st
 	if i := strings.Index(host, ":"); i >= 0 {
 		host = host[:i]
 	}
+	return host
+}
+
+func expireCookie(dst http.Header, name, host string) {
+	if name == "" || dst == nil {
+		return
+	}
+	dst.Add("Set-Cookie", name+"=; Path=/; Max-Age=0")
+	if host != "" {
+		dst.Add("Set-Cookie", name+"=; Path=/; Max-Age=0; Domain="+host)
+	}
+}
+
+// expireBloatedBrowserCookies drops oversized host cookies. When the Cookie
+// header is already huge, expire every non-session cookie so the next request fits.
+func expireBloatedBrowserCookies(dst http.Header, r *http.Request, publicHost string) {
+	if r == nil || dst == nil {
+		return
+	}
+	host := publicCookieHost(publicHost)
+	raw := r.Header.Get("Cookie")
+	nukeAll := len(raw) > 48*1024 // keep only ct_session once jar is fat
 	for _, c := range r.Cookies() {
 		if c == nil || c.Name == "" {
 			continue
 		}
+		lower := strings.ToLower(c.Name)
+		if lower == "ct_session" {
+			continue
+		}
 		if dropUpstreamCookie(c.Name) {
+			expireCookie(dst, c.Name, host)
 			continue
 		}
-		if len(c.Value) <= maxBrowserCookieValueLen {
-			continue
+		if nukeAll || len(c.Value) > maxBrowserCookieValueLen {
+			expireCookie(dst, c.Name, host)
 		}
-		dst.Add("Set-Cookie", c.Name+"=; Path=/; Max-Age=0; Domain="+host)
-		dst.Add("Set-Cookie", c.Name+"=; Path=/; Max-Age=0")
 	}
 }
 

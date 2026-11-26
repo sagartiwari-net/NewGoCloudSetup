@@ -1,69 +1,69 @@
 #!/usr/bin/env bash
 # markhke / other tools: nginx 400 "Request Header Fields Too Large" when Chrome's
 # Cookie header outgrows large_client_header_buffers. Raise buffers on the live
-# upays.in vhost (and gt4rents.com if present), then reload nginx.
+# upays.in vhost AND the http{} defaults (default-server selection can ignore
+# per-vhost values until Host is known). Then reload nginx.
 set -euo pipefail
 
-patch_conf() {
-  local conf="$1"
-  [[ -f "${conf}" ]] || return 0
-  python3 - "$conf" <<'PY'
+TARGET_SIZE="${HEADER_BUFFER_SIZE:-2m}"
+
+patch_text() {
+  python3 - "$1" "$TARGET_SIZE" <<'PY'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
+size = sys.argv[2]
+if not p.is_file():
+    raise SystemExit(0)
 t = p.read_text()
 orig = t
-replacements = [
-    ("client_header_buffer_size 8k;", "client_header_buffer_size 512k;"),
-    ("client_header_buffer_size 16k;", "client_header_buffer_size 512k;"),
-    ("client_header_buffer_size 32k;", "client_header_buffer_size 512k;"),
-    ("client_header_buffer_size 64k;", "client_header_buffer_size 512k;"),
-    ("client_header_buffer_size 128k;", "client_header_buffer_size 512k;"),
-    ("client_header_buffer_size 256k;", "client_header_buffer_size 512k;"),
-    ("large_client_header_buffers 4 8k;", "large_client_header_buffers 8 512k;"),
-    ("large_client_header_buffers 4 16k;", "large_client_header_buffers 8 512k;"),
-    ("large_client_header_buffers 4 32k;", "large_client_header_buffers 8 512k;"),
-    ("large_client_header_buffers 4 64k;", "large_client_header_buffers 8 512k;"),
-    ("large_client_header_buffers 8 128k;", "large_client_header_buffers 8 512k;"),
-    ("large_client_header_buffers 8 256k;", "large_client_header_buffers 8 512k;"),
-]
-for a, b in replacements:
-    t = t.replace(a, b)
+# Normalize any prior buffer sizes up to TARGET.
+for old in ("8k", "16k", "32k", "64k", "128k", "256k", "512k", "1m", "2m", "4m"):
+    t = t.replace(f"client_header_buffer_size {old};", f"client_header_buffer_size {size};")
+    t = t.replace(f"large_client_header_buffers 4 {old};", f"large_client_header_buffers 8 {size};")
+    t = t.replace(f"large_client_header_buffers 8 {old};", f"large_client_header_buffers 8 {size};")
 if "client_header_buffer_size" not in t:
     for needle in (
         "server_name *.upays.in upays.in;",
         "server_name upays.in *.upays.in;",
         "server_name *.gt4rents.com gt4rents.com;",
         "server_name gt4rents.com *.gt4rents.com;",
+        "http {",
     ):
         if needle in t:
-            t = t.replace(
-                needle,
-                needle + "\n    client_header_buffer_size 512k;\n    large_client_header_buffers 8 512k;",
-                1,
-            )
+            insert = f"{needle}\n    client_header_buffer_size {size};\n    large_client_header_buffers 8 {size};"
+            # Only inject once for http {
+            t = t.replace(needle, insert, 1)
             break
 if t == orig:
     print("already ok", p)
 else:
-    p.with_name(p.name + ".bak-header-buffers").write_text(orig)
+    bak = p.with_name(p.name + ".bak-header-buffers")
+    if not bak.exists():
+        bak.write_text(orig)
     p.write_text(t)
     print("patched", p)
 PY
 }
 
+# Prefer live aaPanel vhosts + main nginx.conf http{} (default server trap).
 for conf in \
+  /www/server/nginx/conf/nginx.conf \
   /www/server/panel/vhost/nginx/upays.in.conf \
   /www/server/panel/vhost/nginx/gt4rents.com.conf \
-  /www/wwwroot/gt4rents.com/deploy/nginx-wildcard.server.conf
+  /www/wwwroot/gt4rents.com/deploy/nginx-wildcard.server.conf \
+  /www/wwwroot/gt4rents.com/_repo/deploy/nginx-wildcard.server.conf
 do
-  patch_conf "${conf}" || true
+  patch_text "${conf}" || true
 done
 
-# Also patch any extension / include files that still ship 8k defaults.
+# Active vhosts only — skip *.bak* so we do not rewrite backup piles.
 while IFS= read -r conf; do
-  patch_conf "${conf}" || true
-done < <(grep -rl 'large_client_header_buffers\|client_header_buffer_size' /www/server/panel/vhost/nginx 2>/dev/null | head -40 || true)
+  case "${conf}" in
+    *.bak*|*.bak-*|*.old|*.rpmsave) continue ;;
+  esac
+  patch_text "${conf}" || true
+done < <(grep -rl 'large_client_header_buffers\|client_header_buffer_size\|server_name.*upays' /www/server/panel/vhost/nginx 2>/dev/null | head -40 || true)
 
 nginx -t
 nginx -s reload
-echo "nginx header buffers raised. Clear site cookies for markhke.upays.in once, then reopen from the access link."
+echo "nginx header buffers -> ${TARGET_SIZE}. Clear Chrome cookies for markhke.upays.in (or use Incognito), then reopen from the access link."

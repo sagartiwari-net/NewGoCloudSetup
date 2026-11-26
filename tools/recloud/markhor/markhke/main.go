@@ -50,6 +50,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	}
 	if usesPanelAccountMode(cfg) {
 		if _, err := panelSessionUsername(r); err != nil {
+			expireBloatedBrowserCookies(w.Header(), r, cfg.PublicHost)
 			if isDocumentNavigation(r) || strings.Contains(r.Header.Get("Accept"), "text/html") {
 				renderAccessDeniedPage(w, cfg)
 			} else {
