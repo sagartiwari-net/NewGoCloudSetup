@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -13,9 +14,9 @@ const maxCookieHops = 6
 // bigger than nginx large_client_header_buffers.
 const maxBrowserCookieValueLen = 2048
 
-// ke.markhorseotool.com is Node — default max-http-header-size is 16KiB. Over that
-// it returns 431 "Error parsing headers: 'limit request headers fields size'".
-const maxUpstreamCookieBytes = 12 * 1024
+// Upstream (Node/Flask behind markhorseotool) rejects Cookie headers over ~16KiB
+// with 431 "Error parsing headers: 'limit request headers fields size'".
+const maxUpstreamCookieBytes = 14 * 1024
 
 var derivedCookies sync.Map
 
@@ -194,13 +195,36 @@ func serializeCookies(order []string, vals map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
+func cookiePriority(name string) int {
+	lower := strings.ToLower(name)
+	switch {
+	case lower == "proxy_token", lower == "phpsessid", lower == "grauth":
+		return 100
+	case strings.Contains(lower, "session"), strings.Contains(lower, "sess"):
+		return 90
+	case strings.Contains(lower, "auth"), strings.Contains(lower, "token"), strings.Contains(lower, "jwt"):
+		return 80
+	case strings.Contains(lower, "csrf"), strings.Contains(lower, "xsrf"):
+		return 70
+	case strings.HasPrefix(lower, "ke"), strings.Contains(lower, "keyword"):
+		return 60
+	default:
+		return 10
+	}
+}
+
 func fitCookieBudget(order []string, vals map[string]string, maxBytes int) string {
 	if maxBytes <= 0 {
 		return serializeCookies(order, vals)
 	}
-	parts := make([]string, 0, len(order))
+	// Prefer auth/session cookies so a fat jar does not drop proxy_token first.
+	ranked := append([]string{}, order...)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		return cookiePriority(ranked[i]) > cookiePriority(ranked[j])
+	})
+	parts := make([]string, 0, len(ranked))
 	n := 0
-	for _, name := range order {
+	for _, name := range ranked {
 		value, ok := vals[name]
 		if !ok || value == "" {
 			continue
@@ -220,8 +244,10 @@ func fitCookieBudget(order []string, vals map[string]string, maxBytes int) strin
 }
 
 func dropUpstreamCookie(name string) bool {
+	// ct_session is our panel gate only. proxy_token must go upstream — it is the
+	// Markhor portal session. rewriteSetCookie still blocks it from the browser.
 	switch strings.ToLower(name) {
-	case "ct_session", "proxy_token":
+	case "ct_session":
 		return true
 	}
 	return false

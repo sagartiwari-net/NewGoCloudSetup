@@ -308,7 +308,14 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			}
 			jar = absorbSetCookies(jar, resp.Header)
 			rememberUpstreamCookies(acc, jar)
-			next, ok := sameSiteRequestURI(resp.Header.Get("Location"), base.Host, origin)
+			loc := resp.Header.Get("Location")
+			// Portal login lives on apex markhorseotool.com. Following that
+			// Location onto ke.markhorseotool.com/login yields Flask 404.
+			if resp.StatusCode >= 300 && resp.StatusCode < 400 && locationIsLogin(loc) {
+				log.Printf("[UP] login redirect (not followed): %s", loc)
+				break
+			}
+			next, ok := sameSiteRequestURI(loc, base.Host, origin)
 			if ok && resp.StatusCode >= 300 && resp.StatusCode < 400 {
 				log.Printf("[UP] session cookie hop %d -> %s", hop+1, next)
 				requestURI = next

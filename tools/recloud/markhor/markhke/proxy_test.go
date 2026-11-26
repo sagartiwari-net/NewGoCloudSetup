@@ -174,6 +174,48 @@ func TestUpstreamCookieStaysUnderNodeLimit(t *testing.T) {
 	}
 }
 
+func TestLoginRedirectNotFollowedOntoKeHost(t *testing.T) {
+	var paths []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.RequestURI())
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "https://markhorseotool.com/login?url=%2F&host=ke.markhorseotool.com&ssl=on", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`<html><body>Not Found</body></html>`))
+	}))
+	defer upstream.Close()
+
+	oldWait := loginRetryWait
+	loginRetryWait = 0
+	t.Cleanup(func() { loginRetryWait = oldWait })
+
+	cfg := Config{TargetURL: upstream.URL, HomePath: "/", PublicHost: "markhke.gt4rents.com", PublicScheme: "http", ToolName: "Markhor Keyword Everywhere"}
+	req := httptest.NewRequest(http.MethodGet, "http://markhke.gt4rents.com/", nil)
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Host = "markhke.gt4rents.com"
+	rr := httptest.NewRecorder()
+	proxyUpstream(rr, req, cfg, ToolAccount{ID: 7, Cookie: "proxy_token=abc; PHPSESSID=fresh"})
+	for _, p := range paths {
+		if strings.HasPrefix(p, "/login") {
+			t.Fatalf("followed login onto tool host: %v", paths)
+		}
+	}
+	if strings.Contains(rr.Body.String(), "Not Found") {
+		t.Fatalf("flask 404 leaked: %s", rr.Body.String())
+	}
+}
+
+func TestProxyTokenGoesUpstream(t *testing.T) {
+	got := cookiesForUpstream(ToolAccount{Cookie: "proxy_token=secret; junk=1"}, nil)
+	if !strings.Contains(got, "proxy_token=secret") {
+		t.Fatalf("proxy_token must be sent upstream: %s", got)
+	}
+}
+
 func TestUpstream431RetriesPanelOnly(t *testing.T) {
 	var hits int
 	var lastCookie string
