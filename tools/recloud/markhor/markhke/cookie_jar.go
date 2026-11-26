@@ -9,19 +9,27 @@ import (
 
 const maxCookieHops = 6
 
+// Oversized values rewritten onto the public host make Chrome's Cookie header
+// bigger than nginx large_client_header_buffers (400 Request Header Fields Too Large).
+const maxBrowserCookieValueLen = 2048
+
 var derivedCookies sync.Map
 
 func cookiesForUpstream(acc ToolAccount, r *http.Request) string {
-	base := strings.TrimSpace(acc.Cookie)
+	// Panel cookie wins. Browser/derived overlays must not replace the saved session.
+	panel := strings.TrimSpace(acc.Cookie)
+	derived := ""
 	if acc.ID != 0 {
 		if extra, ok := derivedCookies.Load(acc.ID); ok {
-			base = mergeCookieHeaders(extra.(string), base)
+			derived = extra.(string)
 		}
 	}
-	if r == nil {
-		return base
+	browser := ""
+	if r != nil {
+		browser = browserCookiesForUpstream(r)
 	}
-	return mergeCookieHeaders(base, browserCookiesForUpstream(r))
+	merged := mergeCookieHeaders(browser, derived)
+	return mergeCookieHeaders(merged, panel)
 }
 
 func browserCookiesForUpstream(r *http.Request) string {
@@ -66,13 +74,18 @@ func parseCookieHeader(header string) ([]string, map[string]string) {
 		}
 		name, value, _ := strings.Cut(part, "=")
 		name = strings.TrimSpace(name)
+		value = strings.TrimSpace(value)
 		if name == "" || dropUpstreamCookie(name) {
+			continue
+		}
+		// Keep huge values out of the upstream jar and out of further Set-Cookie churn.
+		if len(value) > maxBrowserCookieValueLen {
 			continue
 		}
 		if _, ok := vals[name]; !ok {
 			order = append(order, name)
 		}
-		vals[name] = strings.TrimSpace(value)
+		vals[name] = value
 	}
 	return order, vals
 }
@@ -108,6 +121,9 @@ func applySetCookie(order []string, vals map[string]string, raw string) ([]strin
 			}
 		}
 		return next, vals
+	}
+	if len(value) > maxBrowserCookieValueLen {
+		return order, vals
 	}
 	if _, ok := vals[name]; !ok {
 		order = append(order, name)
@@ -145,6 +161,34 @@ func dropUpstreamCookie(name string) bool {
 		return true
 	}
 	return false
+}
+
+// expireBloatedBrowserCookies asks Chrome to drop host cookies that already
+// push the Cookie header toward nginx's limit. Safe to call on every response.
+func expireBloatedBrowserCookies(dst http.Header, r *http.Request, publicHost string) {
+	if r == nil || dst == nil {
+		return
+	}
+	host := publicHost
+	if i := strings.Index(host, "://"); i >= 0 {
+		host = host[i+3:]
+	}
+	if i := strings.Index(host, ":"); i >= 0 {
+		host = host[:i]
+	}
+	for _, c := range r.Cookies() {
+		if c == nil || c.Name == "" {
+			continue
+		}
+		if dropUpstreamCookie(c.Name) {
+			continue
+		}
+		if len(c.Value) <= maxBrowserCookieValueLen {
+			continue
+		}
+		dst.Add("Set-Cookie", c.Name+"=; Path=/; Max-Age=0; Domain="+host)
+		dst.Add("Set-Cookie", c.Name+"=; Path=/; Max-Age=0")
+	}
 }
 
 func sameSiteRequestURI(loc, upstreamHost, publicHost string) (string, bool) {

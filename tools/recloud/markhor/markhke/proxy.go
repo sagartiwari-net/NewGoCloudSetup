@@ -346,6 +346,7 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		}
 		h := w.Header()
 		copyResponseHeaders(h, resp.Header, base.Host, origin)
+		expireBloatedBrowserCookies(h, r, cfg.PublicHost)
 		h.Set("Cache-Control", "no-store")
 		h.Set("Pragma", "no-cache")
 		h.Del("Content-Encoding")
@@ -403,9 +404,17 @@ func rewriteSetCookie(raw, upstreamHost, origin string) (string, bool) {
 	if len(parts) == 0 {
 		return "", false
 	}
-	name := strings.TrimSpace(strings.SplitN(parts[0], "=", 2)[0])
+	nameVal := strings.TrimSpace(parts[0])
+	name, value, _ := strings.Cut(nameVal, "=")
+	name = strings.TrimSpace(name)
+	value = strings.TrimSpace(value)
 	switch strings.ToLower(name) {
 	case "proxy_token", "ct_session":
+		return "", false
+	}
+	// Keep huge upstream cookies in the server-side derived jar only — rewriting
+	// them onto markhke.upays.in makes Chrome send a Cookie line nginx rejects.
+	if len(value) > maxBrowserCookieValueLen {
 		return "", false
 	}
 	host := origin

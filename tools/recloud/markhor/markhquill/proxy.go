@@ -399,9 +399,15 @@ func rewriteSetCookie(raw, upstreamHost, origin string) (string, bool) {
 	if len(parts) == 0 {
 		return "", false
 	}
-	name := strings.TrimSpace(strings.SplitN(parts[0], "=", 2)[0])
+	nameVal := strings.TrimSpace(parts[0])
+	name, value, _ := strings.Cut(nameVal, "=")
+	name = strings.TrimSpace(name)
+	value = strings.TrimSpace(value)
 	switch strings.ToLower(name) {
 	case "proxy_token", "ct_session":
+		return "", false
+	}
+	if len(value) > 2048 {
 		return "", false
 	}
 	host := origin

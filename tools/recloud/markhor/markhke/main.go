@@ -22,7 +22,12 @@ func main() {
 		addr = ":6106"
 	}
 	log.Printf("[MARKHKE] listening %s host=%s", addr, cfg.PublicHost)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	srv := &http.Server{
+		Addr:           addr,
+		Handler:        mux,
+		MaxHeaderBytes: 4 << 20, // 4MB — nginx forwards large Cookie jars; we slim them
+	}
+	log.Fatal(srv.ListenAndServe())
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
