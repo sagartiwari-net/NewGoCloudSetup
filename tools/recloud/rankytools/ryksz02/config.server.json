@@ -1,0 +1,16 @@
+{
+  "port": "6509",
+  "public_host": "ryksz02.upays.in",
+  "public_scheme": "https",
+  "target_url": "https://sz02.rankytools.com",
+  "home_path": "/private-domains/",
+  "tool_name": "RankyTools SpamZilla",
+  "panel_db": "/www/wwwroot/gt4rents.com/panel/data/panel.db",
+  "local_test_mode": false,
+  "bypass_auth": false,
+  "session_duration_minutes": 30,
+  "mysql_host": "127.0.0.1",
+  "mysql_port": "3306",
+  "mysql_user": "gt4rents",
+  "mysql_db": "gt4rents"
+}

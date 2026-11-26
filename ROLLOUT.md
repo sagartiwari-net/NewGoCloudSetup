@@ -234,6 +234,23 @@ Not a proxy crash — Google flags phishing-like pages. Seen / noted on gt4rents
 
 ---
 
+
+### RankyTools recloud (ports 6500–6510)
+
+Panel kind `recloud`. Deploy: `./deploy/push-rankytools-ryk-tools.sh` after `git pull`.
+
+- [ ] `ryksm1` (:6500) — Semrush `sr.rankytools.com`
+- [ ] `rykmj` (:6501) — Majestic
+- [ ] `rykcp` (:6502) — ChatGPT
+- [ ] `rykus` (:6503) — Ubersuggest
+- [ ] `rykgm` (:6504) — Grammarly
+- [ ] `ryken` (:6505) — Envato Elements
+- [ ] `ryksb` (:6506) — Storyblocks
+- [ ] `ryksf` (:6507) — SpyFu
+- [ ] `rykns` (:6508) — Niche Scraper
+- [ ] `ryksz02` (:6509) — SpamZilla
+- [ ] `ryksw` (:6510) — SimilarWeb
+
 ## Done when
 
 - [ ] All tools built + started (or consciously skipped)  

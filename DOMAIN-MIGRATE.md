@@ -422,6 +422,17 @@ Copy that file onto the aMember box after the panel URL is live. Site key stays 
 | [ ] | `amzcenv` | amzcenv | `6307` | `amzcenv.gt4rents.com` | `amzcenv.upays.in` |
 | [ ] | `shsm1` | shsm1 | `6400` | `shsm1.gt4rents.com` | `shsm1.upays.in` |
 | [ ] | `shsm2` | shsm2 | `6401` | `shsm2.gt4rents.com` | `shsm2.upays.in` |
+| [ ] | `ryksm1` | ryksm1 | `6500` | — | `ryksm1.upays.in` |
+| [ ] | `rykmj` | rykmj | `6501` | — | `rykmj.upays.in` |
+| [ ] | `rykcp` | rykcp | `6502` | — | `rykcp.upays.in` |
+| [ ] | `rykus` | rykus | `6503` | — | `rykus.upays.in` |
+| [ ] | `rykgm` | rykgm | `6504` | — | `rykgm.upays.in` |
+| [ ] | `ryken` | ryken | `6505` | — | `ryken.upays.in` |
+| [ ] | `ryksb` | ryksb | `6506` | — | `ryksb.upays.in` |
+| [ ] | `ryksf` | ryksf | `6507` | — | `ryksf.upays.in` |
+| [ ] | `rykns` | rykns | `6508` | — | `rykns.upays.in` |
+| [ ] | `ryksz02` | ryksz02 | `6509` | — | `ryksz02.upays.in` |
+| [ ] | `ryksw` | ryksw | `6510` | — | `ryksw.upays.in` |
 
 ## Leave alone (not this move)
 

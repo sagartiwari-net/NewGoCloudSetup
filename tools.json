@@ -878,6 +878,83 @@
       "subdomain": "shsm2",
       "port": 6401,
       "fqdn": "shsm2.upays.in"
+    },
+    {
+      "tool": "ryksm1",
+      "folder": "recloud/rankytools/ryksm1",
+      "subdomain": "ryksm1",
+      "port": 6500,
+      "fqdn": "ryksm1.upays.in"
+    },
+    {
+      "tool": "rykmj",
+      "folder": "recloud/rankytools/rykmj",
+      "subdomain": "rykmj",
+      "port": 6501,
+      "fqdn": "rykmj.upays.in"
+    },
+    {
+      "tool": "rykcp",
+      "folder": "recloud/rankytools/rykcp",
+      "subdomain": "rykcp",
+      "port": 6502,
+      "fqdn": "rykcp.upays.in"
+    },
+    {
+      "tool": "rykus",
+      "folder": "recloud/rankytools/rykus",
+      "subdomain": "rykus",
+      "port": 6503,
+      "fqdn": "rykus.upays.in"
+    },
+    {
+      "tool": "rykgm",
+      "folder": "recloud/rankytools/rykgm",
+      "subdomain": "rykgm",
+      "port": 6504,
+      "fqdn": "rykgm.upays.in"
+    },
+    {
+      "tool": "ryken",
+      "folder": "recloud/rankytools/ryken",
+      "subdomain": "ryken",
+      "port": 6505,
+      "fqdn": "ryken.upays.in"
+    },
+    {
+      "tool": "ryksb",
+      "folder": "recloud/rankytools/ryksb",
+      "subdomain": "ryksb",
+      "port": 6506,
+      "fqdn": "ryksb.upays.in"
+    },
+    {
+      "tool": "ryksf",
+      "folder": "recloud/rankytools/ryksf",
+      "subdomain": "ryksf",
+      "port": 6507,
+      "fqdn": "ryksf.upays.in"
+    },
+    {
+      "tool": "rykns",
+      "folder": "recloud/rankytools/rykns",
+      "subdomain": "rykns",
+      "port": 6508,
+      "fqdn": "rykns.upays.in"
+    },
+    {
+      "tool": "ryksz02",
+      "folder": "recloud/rankytools/ryksz02",
+      "subdomain": "ryksz02",
+      "port": 6509,
+      "fqdn": "ryksz02.upays.in"
+    },
+    {
+      "tool": "ryksw",
+      "folder": "recloud/rankytools/ryksw",
+      "subdomain": "ryksw",
+      "port": 6510,
+      "fqdn": "ryksw.upays.in"
     }
   ]
 }
