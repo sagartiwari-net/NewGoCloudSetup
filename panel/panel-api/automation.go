@@ -546,7 +546,8 @@ func ensureRankytoolsJobs(db *sql.DB) {
 		return
 	}
 	followers := []string{
-		"rykmj", "rykcp", "rykus", "rykgm", "ryken", "ryksb", "ryksf", "rykns", "ryksz02", "ryksw",
+		// rykcp (ChatGPT) excluded — tool taken offline; do not cookie-share into it.
+		"rykmj", "rykus", "rykgm", "ryken", "ryksb", "ryksf", "rykns", "ryksz02", "ryksw",
 	}
 	for _, prefix := range followers {
 		followerAccountID := accountID(recloudID(prefix))

@@ -245,6 +245,17 @@ DNS: `wh.upays.in` → `65.109.16.196`. aaPanel site → `127.0.0.1:5322`.
 
 ---
 
+## RankyTools (owner) — ChatGPT offline
+
+| Tool | Host | Port | Status |
+|------|------|------|--------|
+| RankyTools Semrush | `ryksm1.upays.in` | 6500 | Live — cookie source for other Ranky tools |
+| RankyTools ChatGPT | `rykcp.upays.in` | 6502 | **OFF** (Nov 2026) — Ranky ChatGPT gateway kept hanging (inject/CDN/SPA). Code kept; Access product `5` unmapped. Re-enable only after stable. SQL: `deploy/disable-rankytools-chatgpt.sql` |
+
+Baaki `ryk*` tools product `5` pe mapped rahte hain (`deploy/map-rankytools-product-5.sql`).
+
+---
+
 ## Checklist — naya reseller tool add karte waqt
 
 1. `tools.json` / owner port confirm  
