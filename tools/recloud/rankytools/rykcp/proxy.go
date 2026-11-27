@@ -57,6 +57,23 @@ var (
 			return http.ErrUseLastResponse
 		},
 	}
+	// Hashed Ranky CDN chunks — no host rewrite needed; fail fast if Ranky stalls.
+	assetClient = &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
+			MaxIdleConns:          64,
+			MaxIdleConnsPerHost:   32,
+			IdleConnTimeout:       60 * time.Second,
+			TLSHandshakeTimeout:   8 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	// RankyTools ChatGPT gateway (+ sibling os host used in chrome).
 	rankyHost      = regexp.MustCompile(`(?i)https?://(?:[a-z0-9-]+\.)*rankytools\.com`)
 	rtCookieGuard  = regexp.MustCompile(`(?is)<script[^>]*id=["']rt-cookie-guard["'][^>]*>.*?</script>`)
@@ -305,6 +322,112 @@ func isProxyInjectPath(path string) bool {
 	return strings.EqualFold(p, "/__proxy_inject.js")
 }
 
+func isImmutableAssetPath(path string) bool {
+	p := path
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	p = strings.ToLower(p)
+	return strings.HasPrefix(p, "/cdn/") ||
+		strings.HasPrefix(p, "/__static__/") ||
+		strings.HasPrefix(p, "/__sandbox/")
+}
+
+func buildUpstreamGET(r *http.Request, acc ToolAccount, base *url.URL, target string) (*http.Request, error) {
+	upReq, err := http.NewRequestWithContext(r.Context(), r.Method, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	copyRequestHeaders(upReq, r)
+	upReq.Host = base.Host
+	upReq.Header.Set("Host", base.Host)
+	upReq.Header.Set("Origin", base.Scheme+"://"+base.Host)
+	upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
+	upReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	if upReq.Header.Get("User-Agent") == "" {
+		upReq.Header.Set("User-Agent", "Mozilla/5.0")
+	}
+	if cookieHdr := mergeSessionCookies(acc.Cookie, r.Header.Get("Cookie")); cookieHdr != "" {
+		upReq.Header.Set("Cookie", cookieHdr)
+	} else {
+		upReq.Header.Del("Cookie")
+	}
+	return upReq, nil
+}
+
+// serveImmutableAsset proxies hashed Ranky SPA chunks without rewriteText.
+// These files do not embed cp.rankytools.com; buffering+rewrite only adds hang risk.
+func serveImmutableAsset(w http.ResponseWriter, r *http.Request, acc ToolAccount, base *url.URL, started time.Time) {
+	path := r.URL.RequestURI()
+	cdnKey := cdncache.RequestKey(r, true)
+	if cdncache.Serve(w, r, cdnKey) {
+		log.Printf("[REQ] ← %s %s 200 cache asset", r.Method, path)
+		pushProxyLog(proxyLogEntry{
+			Source: "cdn", Method: r.Method, Path: path, Status: 200,
+			Ms: time.Since(started).Milliseconds(), Detail: "asset cache",
+		})
+		return
+	}
+	if cdnKey != "" {
+		defer cdncache.Complete(cdnKey)
+	}
+	target := *base
+	target.Path = r.URL.Path
+	target.RawPath = r.URL.RawPath
+	target.RawQuery = r.URL.RawQuery
+	upReq, err := buildUpstreamGET(r, acc, base, target.String())
+	if err != nil {
+		http.Error(w, "Bad gateway", http.StatusBadGateway)
+		return
+	}
+	resp, err := assetClient.Do(upReq)
+	if err != nil {
+		log.Printf("[REQ] ← %s %s 502 %dms asset: %v", r.Method, path, time.Since(started).Milliseconds(), err)
+		pushProxyLog(proxyLogEntry{
+			Source: "asset", Method: r.Method, Path: path, Status: 502,
+			Ms: time.Since(started).Milliseconds(), Detail: err.Error(),
+		})
+		http.Error(w, "Upstream asset unavailable", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	payload, err := readUpstreamBody(resp)
+	if err != nil {
+		log.Printf("[REQ] ← %s %s 502 %dms asset body: %v", r.Method, path, time.Since(started).Milliseconds(), err)
+		http.Error(w, "Upstream asset unreadable", http.StatusBadGateway)
+		return
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "application/javascript"
+	}
+	if cdnKey != "" && resp.StatusCode == http.StatusOK {
+		cdncache.Store(cdnKey, resp.StatusCode, ct, payload)
+		if cdncache.ServeDisk(w, r, cdnKey) {
+			ms := time.Since(started).Milliseconds()
+			log.Printf("[REQ] ← %s %s %d %dms bytes=%d asset", r.Method, path, resp.StatusCode, ms, len(payload))
+			pushProxyLog(proxyLogEntry{
+				Source: "asset", Method: r.Method, Path: path, Status: resp.StatusCode,
+				Ms: ms, Detail: fmt.Sprintf("%s bytes=%d", ct, len(payload)),
+			})
+			return
+		}
+	}
+	h := w.Header()
+	h.Set("Content-Type", ct)
+	h.Set("Cache-Control", cdncache.CacheControl(cdnKey))
+	w.WriteHeader(resp.StatusCode)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(payload)
+	}
+	ms := time.Since(started).Milliseconds()
+	log.Printf("[REQ] ← %s %s %d %dms bytes=%d asset", r.Method, path, resp.StatusCode, ms, len(payload))
+	pushProxyLog(proxyLogEntry{
+		Source: "asset", Method: r.Method, Path: path, Status: resp.StatusCode,
+		Ms: ms, Detail: fmt.Sprintf("%s bytes=%d", ct, len(payload)),
+	})
+}
+
 // patchProxyInject rewrites Ranky's secondary injector onto our public origin.
 // ChatGPT shell hangs if this file never arrives or still points at cp.rankytools.com.
 func patchProxyInject(body []byte, upstreamHost, origin string) []byte {
@@ -442,6 +565,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 			serveProxyInjectJS(w, r, acc, base, origin, started)
 			return
 		}
+		if isImmutableAssetPath(r.URL.Path) {
+			serveImmutableAsset(w, r, acc, base, started)
+			return
+		}
 	}
 	target := *base
 	target.Path = r.URL.Path
@@ -563,6 +690,12 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	if cdnKey != "" && resp.StatusCode == http.StatusOK {
 		cdncache.Store(cdnKey, resp.StatusCode, ct, payload)
 		if cdncache.ServeDisk(w, r, cdnKey) {
+			ms := time.Since(started).Milliseconds()
+			log.Printf("[REQ] ← %s %s %d %dms bytes=%d", r.Method, path, resp.StatusCode, ms, len(payload))
+			pushProxyLog(proxyLogEntry{
+				Source: "up", Method: r.Method, Path: path, Status: resp.StatusCode,
+				Ms: ms, Detail: fmt.Sprintf("%s bytes=%d", ct, len(payload)),
+			})
 			return
 		}
 	}

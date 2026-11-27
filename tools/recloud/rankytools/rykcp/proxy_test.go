@@ -6,6 +6,18 @@ import (
 	"testing"
 )
 
+func TestImmutableAssetPath(t *testing.T) {
+	if !isImmutableAssetPath("/cdn/assets/async/831843.7510b7f070.js") {
+		t.Fatal("cdn chunk must be immutable")
+	}
+	if !isImmutableAssetPath("/__static__/x.js") || !isImmutableAssetPath("/__sandbox/a") {
+		t.Fatal("static/sandbox must be immutable")
+	}
+	if isImmutableAssetPath("/api/my-info") || isImmutableAssetPath("/__proxy_inject.js") {
+		t.Fatal("api/inject must not use asset passthrough")
+	}
+}
+
 func TestPatchProxyInjectForcesOrigin(t *testing.T) {
 	in := []byte(`(function(){ var base = "https://cp.rankytools.com"; var domains = ['https://chatgpt.com']; })();`)
 	out := string(patchProxyInject(in, "cp.rankytools.com", "https://rykcp.upays.in"))
