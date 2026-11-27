@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -289,12 +290,14 @@ func readUpstreamBody(resp *http.Response) ([]byte, error) {
 }
 
 func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount) {
+	started := time.Now()
 	base, err := url.Parse(liveUpstream(cfg))
 	if err != nil || base.Host == "" {
 		http.Error(w, "Upstream URL is not configured", http.StatusBadGateway)
 		return
 	}
 	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		pushProxyLog(proxyLogEntry{Source: "ws", Method: r.Method, Path: r.URL.Path, Status: 101, Detail: "websocket upgrade"})
 		proxyWebSocket(w, r, acc, base)
 		return
 	}
@@ -351,6 +354,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	resp, err := upstreamClient.Do(upReq)
 	if err != nil {
 		log.Printf("[UP] %s %s: %v", r.Method, r.URL.Path, err)
+		pushProxyLog(proxyLogEntry{
+			Source: "up", Method: r.Method, Path: r.URL.RequestURI(), Status: 502,
+			Ms: time.Since(started).Milliseconds(), Detail: err.Error(),
+		})
 		http.Error(w, "Upstream unavailable", http.StatusBadGateway)
 		return
 	}
@@ -358,6 +365,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 
 	payload, err := readUpstreamBody(resp)
 	if err != nil {
+		pushProxyLog(proxyLogEntry{
+			Source: "up", Method: r.Method, Path: r.URL.RequestURI(), Status: 502,
+			Ms: time.Since(started).Milliseconds(), Detail: "body read failed",
+		})
 		http.Error(w, "Upstream unreadable", http.StatusBadGateway)
 		return
 	}
@@ -425,6 +436,16 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	w.WriteHeader(resp.StatusCode)
 	if r.Method != http.MethodHead {
 		_, _ = w.Write(payload)
+	}
+	detail := ct
+	if len(payload) > 0 {
+		detail = fmt.Sprintf("%s bytes=%d", ct, len(payload))
+	}
+	if resp.StatusCode >= 400 || strings.Contains(strings.ToLower(ct), "text/html") || strings.HasPrefix(r.URL.Path, "/backend") || strings.HasPrefix(r.URL.Path, "/api") {
+		pushProxyLog(proxyLogEntry{
+			Source: "up", Method: r.Method, Path: r.URL.RequestURI(), Status: resp.StatusCode,
+			Ms: time.Since(started).Milliseconds(), Detail: detail,
+		})
 	}
 }
 

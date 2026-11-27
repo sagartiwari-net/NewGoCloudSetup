@@ -56,6 +56,15 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	case "/__tm_access_denied":
 		renderAccessDeniedPage(w, cfg)
 		return
+	case "/__tm_shrink":
+		shrinkCookiesHandler(w, r)
+		return
+	case "/__logs":
+		liveLogsPageHandler(w, r)
+		return
+	case "/__logs.json":
+		liveLogsJSONHandler(w, r)
+		return
 	}
 	if usesPanelAccountMode(cfg) {
 		if _, err := panelSessionUsername(r); err != nil {
