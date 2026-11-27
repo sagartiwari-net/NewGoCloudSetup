@@ -466,8 +466,8 @@ func ensureNoxtoolsJobs(db *sql.DB) {
 }
 
 // ensureRankytoolsJobs seeds:
-//  1) session/homepage — keeps Storage PHPSESSID warm (check cookie first, login when dead)
-//  2) Semrush → ryksm1 (same portal cookie written to the recloud account)
+//  1) session/homepage — Storage PHPSESSID (check cookie first, login when dead)
+//  2) Semrush → ryksm1 only (other Ranky tools follow via account_cookie_links / panel share)
 // Credential must already exist in the panel UI. Default interval: 20 minutes.
 func ensureRankytoolsJobs(db *sql.DB) {
 	if db == nil {
@@ -507,6 +507,14 @@ func ensureRankytoolsJobs(db *sql.DB) {
 			prefix+".upays.in", prefix+".gt4rents.com").Scan(&id)
 		return id
 	}
+	accountID := func(websiteID int) int {
+		if websiteID <= 0 {
+			return 0
+		}
+		var id int
+		_ = db.QueryRow(`SELECT id FROM accounts WHERE website_id=? ORDER BY id LIMIT 1`, websiteID).Scan(&id)
+		return id
+	}
 	ensureTool := func(name, prefix string) {
 		websiteID := recloudID(prefix)
 		if websiteID <= 0 {
@@ -530,46 +538,55 @@ func ensureRankytoolsJobs(db *sql.DB) {
 		log.Printf("[automation] added RankyTools job %s → website %d (interval=%dm)", name, websiteID, interval)
 	}
 	ensureTool("RankyTools Semrush", "ryksm1")
+
+	// Semrush is the single write target; other Ranky tools follow via panel cookie-share.
+	semrushWebsiteID := recloudID("ryksm1")
+	semrushAccountID := accountID(semrushWebsiteID)
+	if semrushAccountID <= 0 {
+		return
+	}
+	followers := []string{
+		"rykmj", "rykcp", "rykus", "rykgm", "ryken", "ryksb", "ryksf", "rykns", "ryksz02", "ryksw",
+	}
+	for _, prefix := range followers {
+		followerAccountID := accountID(recloudID(prefix))
+		if followerAccountID <= 0 || followerAccountID == semrushAccountID {
+			continue
+		}
+		_, _ = db.Exec(`DELETE FROM account_cookie_links WHERE follower_account_id=?`, followerAccountID)
+		if _, err := db.Exec(`INSERT INTO account_cookie_links (follower_account_id, source_account_id, created_at) VALUES (?,?,?)`,
+			followerAccountID, semrushAccountID, now); err != nil {
+			log.Printf("[automation] rankytools cookie share %s: %v", prefix, err)
+			continue
+		}
+		log.Printf("[automation] RankyTools cookie share: %s ← ryksm1 account %d", prefix, semrushAccountID)
+	}
 }
 
-// writeRankytoolsCookies pushes the portal PHPSESSID onto every RankyTools recloud row
-// (same cookie works across sr/mj/sw/…). Home session job calls this after a successful check/login.
+// writeRankytoolsSemrushCookie writes the homepage portal cookie to ryksm1 only.
+// Followers (other ryk*) pick it up through account_cookie_links / shareCookieFrom.
 func (s *server) writeRankytoolsCookies(portal []cookieJSON) (string, error) {
 	raw, err := cookiesToJSON(portal)
 	if err != nil {
 		return "", err
 	}
-	rows, err := s.db.Query(`SELECT id FROM websites WHERE kind='recloud'
-		AND (lower(domain) LIKE 'ryk%.upays.in' OR lower(domain) LIKE 'ryk%.gt4rents.com'
-		     OR lower(upstream_url) LIKE '%rankytools.com%')`)
+	var websiteID int
+	err = s.db.QueryRow(`SELECT id FROM websites WHERE kind='recloud'
+		AND (lower(domain)='ryksm1.upays.in' OR lower(domain)='ryksm1.gt4rents.com')
+		ORDER BY CASE WHEN domain LIKE '%.upays.in' THEN 0 ELSE 1 END, id LIMIT 1`).Scan(&websiteID)
+	if err != nil || websiteID <= 0 {
+		return "", nil
+	}
+	site, ok := s.loadAutomationSite(websiteID)
+	if !ok {
+		return "", nil
+	}
+	accountID, err := s.writeAutomationAccountCookie(site, 0, raw)
 	if err != nil {
 		return "", err
 	}
-	var ids []int
-	for rows.Next() {
-		var id int
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
-		}
-	}
-	rows.Close()
-	var wrote []string
-	for _, id := range ids {
-		site, ok := s.loadAutomationSite(id)
-		if !ok {
-			continue
-		}
-		accountID, err := s.writeAutomationAccountCookie(site, 0, raw)
-		if err != nil {
-			return "", err
-		}
-		s.shareCookieFrom(accountID)
-		wrote = append(wrote, strings.TrimSpace(site.Name))
-	}
-	if len(wrote) == 0 {
-		return "", nil
-	}
-	return "wrote portal cookie to " + strings.Join(wrote, ", "), nil
+	s.shareCookieFrom(accountID)
+	return "wrote portal cookie to " + strings.TrimSpace(site.Name), nil
 }
 
 func automationPublicReason(err error) string {
