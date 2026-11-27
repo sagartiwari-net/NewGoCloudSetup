@@ -20,6 +20,7 @@ import (
 	"panel-api/automation/erank"
 	"panel-api/automation/markhor"
 	"panel-api/automation/noxtools"
+	"panel-api/automation/rankytools"
 	"panel-api/automation/toolbaazar"
 	"panel-api/automation/zik"
 	"sort"
@@ -62,6 +63,7 @@ var (
 		"zikaanalytics":      zik.Recipe{},
 		"erank":              erank.Recipe{},
 		"noxtools":           noxtools.Recipe{},
+		"rankytools":         rankytools.Recipe{},
 	}
 	automationProviderNames = map[string]string{
 		"markhor": "Markhor", "azad": "Azad", "toolbaazar": "Toolbaazar",
@@ -70,6 +72,7 @@ var (
 		"zikaanalytics":      "ZikAnalytics",
 		"erank":              "eRank",
 		"noxtools":           "NoxTools",
+		"rankytools":         "RankyTools",
 	}
 	automationCredLocks sync.Map
 	automationKeyWarn   sync.Once
@@ -256,6 +259,7 @@ func ensureAutomationTables(db *sql.DB) {
 	}
 	ensureAmzToolsConsultantJobs(db)
 	ensureNoxtoolsJobs(db)
+	ensureRankytoolsJobs(db)
 	if strings.TrimSpace(os.Getenv("GT4RENTS_MYSQL_PASSWORD")) == "" {
 		return
 	}
@@ -459,6 +463,113 @@ func ensureNoxtoolsJobs(db *sql.DB) {
 	}
 	ensureTool("NoxTools Semrush 1", "nxsm1")
 	ensureTool("NoxTools Site Audit 1", "nxaud1")
+}
+
+// ensureRankytoolsJobs seeds:
+//  1) session/homepage — keeps Storage PHPSESSID warm (check cookie first, login when dead)
+//  2) Semrush → ryksm1 (same portal cookie written to the recloud account)
+// Credential must already exist in the panel UI. Default interval: 20 minutes.
+func ensureRankytoolsJobs(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	var credID int
+	if db.QueryRow(`SELECT id FROM automation_credentials WHERE provider='rankytools' ORDER BY id LIMIT 1`).Scan(&credID) != nil || credID <= 0 {
+		return
+	}
+	interval := 20
+	var homeInterval int
+	if db.QueryRow(`SELECT interval_minutes FROM automation_jobs WHERE credential_id=? AND job_kind='session' ORDER BY id LIMIT 1`, credID).Scan(&homeInterval) == nil && homeInterval >= 5 {
+		interval = homeInterval
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	next := time.Now().UTC().Add(time.Duration(interval) * time.Minute).Format(time.RFC3339)
+
+	var sessionID int
+	if db.QueryRow(`SELECT id FROM automation_jobs WHERE credential_id=? AND job_kind='session' ORDER BY id LIMIT 1`, credID).Scan(&sessionID) != nil || sessionID <= 0 {
+		if _, err := db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
+			VALUES (?,?,?,0,0,?,1,1,?,'','','',?,?, 'session')`,
+			"RankyTools Home", "rankytools", credID, interval, next, now, now); err != nil {
+			log.Printf("[automation] rankytools home job: %v", err)
+		} else {
+			log.Printf("[automation] added RankyTools Home session job (interval=%dm)", interval)
+		}
+	} else {
+		_, _ = db.Exec(`UPDATE automation_jobs SET name=?, enabled=1, updated_at=? WHERE id=?`,
+			"RankyTools Home", now, sessionID)
+	}
+
+	recloudID := func(prefix string) int {
+		var id int
+		_ = db.QueryRow(`SELECT id FROM websites
+			WHERE kind='recloud' AND (lower(domain)=lower(?) OR lower(domain)=lower(?))
+			ORDER BY CASE WHEN domain LIKE '%.upays.in' THEN 0 ELSE 1 END, id LIMIT 1`,
+			prefix+".upays.in", prefix+".gt4rents.com").Scan(&id)
+		return id
+	}
+	ensureTool := func(name, prefix string) {
+		websiteID := recloudID(prefix)
+		if websiteID <= 0 {
+			log.Printf("[automation] rankytools job %s skipped; website %s.* missing", name, prefix)
+			return
+		}
+		var jobID int
+		err := db.QueryRow(`SELECT id FROM automation_jobs WHERE credential_id=? AND target_website_id=? AND COALESCE(job_kind,'tool')='tool' ORDER BY id LIMIT 1`,
+			credID, websiteID).Scan(&jobID)
+		if err == nil && jobID > 0 {
+			_, _ = db.Exec(`UPDATE automation_jobs SET name=?, enabled=1, updated_at=? WHERE id=?`,
+				name, now, jobID)
+			return
+		}
+		if _, err := db.Exec(`INSERT INTO automation_jobs (name, provider, credential_id, target_website_id, target_account_id, interval_minutes, enabled, run_requested, next_run_at, last_run_at, last_result, last_reason, created_at, updated_at, job_kind)
+			VALUES (?,?,?,?,0,?,1,0,?,'','','',?,?, 'tool')`,
+			name, "rankytools", credID, websiteID, interval, next, now, now); err != nil {
+			log.Printf("[automation] rankytools job %s: %v", name, err)
+			return
+		}
+		log.Printf("[automation] added RankyTools job %s → website %d (interval=%dm)", name, websiteID, interval)
+	}
+	ensureTool("RankyTools Semrush", "ryksm1")
+}
+
+// writeRankytoolsCookies pushes the portal PHPSESSID onto every RankyTools recloud row
+// (same cookie works across sr/mj/sw/…). Home session job calls this after a successful check/login.
+func (s *server) writeRankytoolsCookies(portal []cookieJSON) (string, error) {
+	raw, err := cookiesToJSON(portal)
+	if err != nil {
+		return "", err
+	}
+	rows, err := s.db.Query(`SELECT id FROM websites WHERE kind='recloud'
+		AND (lower(domain) LIKE 'ryk%.upays.in' OR lower(domain) LIKE 'ryk%.gt4rents.com'
+		     OR lower(upstream_url) LIKE '%rankytools.com%')`)
+	if err != nil {
+		return "", err
+	}
+	var ids []int
+	for rows.Next() {
+		var id int
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	var wrote []string
+	for _, id := range ids {
+		site, ok := s.loadAutomationSite(id)
+		if !ok {
+			continue
+		}
+		accountID, err := s.writeAutomationAccountCookie(site, 0, raw)
+		if err != nil {
+			return "", err
+		}
+		s.shareCookieFrom(accountID)
+		wrote = append(wrote, strings.TrimSpace(site.Name))
+	}
+	if len(wrote) == 0 {
+		return "", nil
+	}
+	return "wrote portal cookie to " + strings.Join(wrote, ", "), nil
 }
 
 func automationPublicReason(err error) string {
@@ -739,6 +850,11 @@ func (s *server) runAutomationJob(ctx context.Context, id int) {
 				message = message + "; " + extra
 			}
 		}
+		if job.Provider == "rankytools" {
+			if extra, err := s.writeRankytoolsCookies(portal); err == nil && extra != "" {
+				message = message + "; " + extra
+			}
+		}
 		s.writeAutomationLog(job, "info", message, secrets)
 		s.finishAutomation(job, "ok", message)
 		return
@@ -854,7 +970,7 @@ func upstreamHost(raw string) string {
 func (s *server) loginForAutomationJob(ctx context.Context, recipe automation.Recipe, job automationJobRow, username, password string, secrets []string) ([]cookieJSON, error) {
 	// Prefer the dedicated homepage/session job when Storage is dead, same as Azad/AMZ:
 	// that job refreshes Storage, then the tool job continues with the new cookie.
-	if job.Kind != "session" && (job.Provider == "noxtools" || job.Provider == "azad" || (job.Provider == "amztoolsconsultant" && !s.amzKeepaJob(job))) {
+	if job.Kind != "session" && (job.Provider == "noxtools" || job.Provider == "rankytools" || job.Provider == "azad" || (job.Provider == "amztoolsconsultant" && !s.amzKeepaJob(job))) {
 		log.Printf("[automation] job %d cookie expired, running the homepage job", job.ID)
 		if err := s.runAmzHomepage(ctx, job.CredentialID); err != nil {
 			if job.Provider == "amztoolsconsultant" {
