@@ -26,11 +26,12 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 async function browserPublicIP(): Promise<string> {
+  const opts: RequestInit = { cache: "no-store", signal: AbortSignal.timeout(2500) }
   const checks = [
-    async () => (await (await fetch("https://ipv4.icanhazip.com", { cache: "no-store" })).text()).trim(),
-    async () => (await (await fetch("https://ifconfig.me/ip", { cache: "no-store" })).text()).trim(),
+    async () => (await (await fetch("https://ipv4.icanhazip.com", opts)).text()).trim(),
+    async () => (await (await fetch("https://ifconfig.me/ip", opts)).text()).trim(),
     async () => {
-      const body = await (await fetch("https://api.ipify.org?format=json", { cache: "no-store" })).json() as { ip?: string }
+      const body = await (await fetch("https://api.ipify.org?format=json", opts)).json() as { ip?: string }
       return (body.ip ?? "").trim()
     },
   ]

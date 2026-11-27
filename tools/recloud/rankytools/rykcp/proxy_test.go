@@ -6,6 +6,24 @@ import (
 	"testing"
 )
 
+func TestPatchProxyInjectForcesOrigin(t *testing.T) {
+	in := []byte(`(function(){ var base = "https://cp.rankytools.com"; var domains = ['https://chatgpt.com']; })();`)
+	out := string(patchProxyInject(in, "cp.rankytools.com", "https://rykcp.upays.in"))
+	if strings.Contains(out, "cp.rankytools.com") {
+		t.Fatalf("upstream leaked: %s", out)
+	}
+	if !strings.Contains(out, `var base = "https://rykcp.upays.in"`) {
+		t.Fatalf("base not patched: %s", out)
+	}
+	fb := string(fallbackProxyInject("https://rykcp.upays.in"))
+	if strings.Contains(fb, "__TM_ORIGIN__") || strings.Contains(fb, "cp.rankytools.com") {
+		t.Fatalf("fallback bad: %s", fb[:200])
+	}
+	if !strings.Contains(fb, `var base = "https://rykcp.upays.in"`) {
+		t.Fatal("fallback missing origin base")
+	}
+}
+
 func TestRewriteChatGPTHosts(t *testing.T) {
 	in := []byte(`<script src="https://cp.rankytools.com/__proxy_inject.js"></script><script id="rt-cookie-guard">nuke()</script><a href="https://os.rankytools.com/x">x</a>`)
 	out := string(rewriteText(in, "cp.rankytools.com", "http://127.0.0.1:6502"))

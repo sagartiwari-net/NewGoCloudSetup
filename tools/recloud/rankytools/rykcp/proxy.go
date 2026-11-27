@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/tls"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,9 @@ import (
 	"recloud.dev/cdncache"
 )
 
+//go:embed proxy_inject_fallback.js
+var proxyInjectFallback []byte
+
 var (
 	upstreamClient = &http.Client{
 		Timeout: 45 * time.Second,
@@ -30,6 +34,23 @@ var (
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   12 * time.Second,
 			ResponseHeaderTimeout: 25 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	// Short client for Ranky's secondary injector — must never hang the ChatGPT shell.
+	injectClient = &http.Client{
+		Timeout: 8 * time.Second,
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
+			MaxIdleConns:          16,
+			MaxIdleConnsPerHost:   8,
+			IdleConnTimeout:       30 * time.Second,
+			TLSHandshakeTimeout:   6 * time.Second,
+			ResponseHeaderTimeout: 6 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -276,6 +297,110 @@ func isCacheableStaticPath(path string) bool {
 	return false
 }
 
+func isProxyInjectPath(path string) bool {
+	p := path
+	if i := strings.Index(p, "?"); i >= 0 {
+		p = p[:i]
+	}
+	return strings.EqualFold(p, "/__proxy_inject.js")
+}
+
+// patchProxyInject rewrites Ranky's secondary injector onto our public origin.
+// ChatGPT shell hangs if this file never arrives or still points at cp.rankytools.com.
+func patchProxyInject(body []byte, upstreamHost, origin string) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	out := rewriteText(body, upstreamHost, origin)
+	s := string(out)
+	s = strings.ReplaceAll(s, "__TM_ORIGIN__", origin)
+	// Defense: force base= onto the live origin even if Ranky changes host wording.
+	if i := strings.Index(s, "var base = "); i >= 0 {
+		if j := strings.Index(s[i:], ";"); j > 0 {
+			s = s[:i] + `var base = "` + origin + `"` + s[i+j:]
+		}
+	}
+	return []byte(s)
+}
+
+func fallbackProxyInject(origin string) []byte {
+	s := string(proxyInjectFallback)
+	s = strings.ReplaceAll(s, "__TM_ORIGIN__", origin)
+	return []byte(s)
+}
+
+// serveProxyInjectJS never blocks the ChatGPT shell on a slow Ranky asset.
+// Cache key ignores ?v= so every Open does not re-fetch upstream.
+func serveProxyInjectJS(w http.ResponseWriter, r *http.Request, acc ToolAccount, base *url.URL, origin string, started time.Time) {
+	const cdnKey = "/__proxy_inject.js"
+	path := r.URL.RequestURI()
+	if cdncache.Serve(w, r, cdnKey) {
+		log.Printf("[REQ] ← %s %s 200 cache inject", r.Method, path)
+		pushProxyLog(proxyLogEntry{
+			Source: "cdn", Method: r.Method, Path: path, Status: 200,
+			Ms: time.Since(started).Milliseconds(), Detail: "inject cache",
+		})
+		return
+	}
+	defer cdncache.Complete(cdnKey)
+
+	payload := fallbackProxyInject(origin)
+	src := "fallback"
+	upURL := strings.TrimRight(base.String(), "/") + "/__proxy_inject.js"
+	upReq, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upURL, nil)
+	if err == nil {
+		upReq.Host = base.Host
+		upReq.Header.Set("Host", base.Host)
+		upReq.Header.Set("User-Agent", "Mozilla/5.0")
+		upReq.Header.Set("Accept", "*/*")
+		upReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		upReq.Header.Set("Referer", base.Scheme+"://"+base.Host+"/")
+		if cookieHdr := mergeSessionCookies(acc.Cookie, r.Header.Get("Cookie")); cookieHdr != "" {
+			upReq.Header.Set("Cookie", cookieHdr)
+		}
+		resp, err := injectClient.Do(upReq)
+		if err == nil {
+			body, readErr := readUpstreamBody(resp)
+			_ = resp.Body.Close()
+			if readErr == nil && resp.StatusCode == http.StatusOK && len(body) > 200 &&
+				bytes.Contains(body, []byte("var base")) {
+				payload = patchProxyInject(body, base.Host, origin)
+				src = "upstream"
+			} else {
+				log.Printf("[inject] upstream unusable status=%d err=%v bytes=%d — using fallback",
+					resp.StatusCode, readErr, len(body))
+			}
+		} else {
+			log.Printf("[inject] upstream fetch failed: %v — using fallback", err)
+		}
+	}
+
+	cdncache.Store(cdnKey, http.StatusOK, "application/javascript; charset=utf-8", payload)
+	if cdncache.ServeDisk(w, r, cdnKey) {
+		ms := time.Since(started).Milliseconds()
+		log.Printf("[REQ] ← %s %s 200 %dms bytes=%d inject=%s", r.Method, path, ms, len(payload), src)
+		pushProxyLog(proxyLogEntry{
+			Source: "inject", Method: r.Method, Path: path, Status: 200,
+			Ms: ms, Detail: fmt.Sprintf("%s bytes=%d", src, len(payload)),
+		})
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "application/javascript; charset=utf-8")
+	h.Set("Cache-Control", "public, max-age=86400")
+	h.Set("X-TM-Inject", src)
+	w.WriteHeader(http.StatusOK)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(payload)
+	}
+	ms := time.Since(started).Milliseconds()
+	log.Printf("[REQ] ← %s %s 200 %dms bytes=%d inject=%s", r.Method, path, ms, len(payload), src)
+	pushProxyLog(proxyLogEntry{
+		Source: "inject", Method: r.Method, Path: path, Status: 200,
+		Ms: ms, Detail: fmt.Sprintf("%s bytes=%d", src, len(payload)),
+	})
+}
+
 func readUpstreamBody(resp *http.Response) ([]byte, error) {
 	var reader io.Reader = resp.Body
 	switch strings.ToLower(resp.Header.Get("Content-Encoding")) {
@@ -311,13 +436,24 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 		})
 		return
 	}
+	origin := publicOrigin(r, cfg)
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		if isProxyInjectPath(r.URL.Path) {
+			serveProxyInjectJS(w, r, acc, base, origin, started)
+			return
+		}
+	}
 	target := *base
 	target.Path = r.URL.Path
 	target.RawPath = r.URL.RawPath
 	target.RawQuery = r.URL.RawQuery
-	origin := publicOrigin(r, cfg)
 	cdnKey := cdncache.RequestKey(r, isCacheableStaticPath(r.URL.Path))
 	if cdncache.Serve(w, r, cdnKey) {
+		log.Printf("[REQ] ← %s %s 200 cache", r.Method, path)
+		pushProxyLog(proxyLogEntry{
+			Source: "cdn", Method: r.Method, Path: path, Status: 200,
+			Ms: time.Since(started).Milliseconds(), Detail: "cdn cache",
+		})
 		return
 	}
 	if cdnKey != "" {
