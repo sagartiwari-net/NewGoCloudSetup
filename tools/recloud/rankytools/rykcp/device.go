@@ -57,8 +57,11 @@ func bindPanelDevice(sessionToken, fp, proof string) error {
 }
 
 func browserSubresource(r *http.Request) bool {
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return true
+	}
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Dest")) {
-	case "image", "style", "font", "script":
+	case "image", "style", "font", "script", "websocket":
 		return true
 	}
 	return false
@@ -268,11 +271,12 @@ function tmReveal() {
     }).finally(tmDeny);
     return;
   }
-  tmReveal();
+  // Patch fetch/XHR before reveal so early ChatGPT API calls carry device headers.
   tmFingerprint().then(function (fp) {
     try { sessionStorage.setItem("tm_device_fp", fp); localStorage.setItem("tm_device_fp", fp); } catch (e) {}
     return tmStore(fp, proof).then(function () {
       tmPatchRequests(fp, proof);
+      tmReveal();
       return fetch("/api/device-bind", {
         method: "POST",
         credentials: "same-origin",
@@ -280,7 +284,7 @@ function tmReveal() {
       });
     });
   }).then(function (res) {
-    if (!res.ok) tmDeny();
+    if (!res || !res.ok) tmDeny();
   }).catch(function () { tmDeny(); });
 })();
 </script>`

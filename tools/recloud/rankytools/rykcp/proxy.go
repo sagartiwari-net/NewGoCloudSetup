@@ -169,8 +169,11 @@ func injectViewerChrome(body []byte, panelUser string) []byte {
     }catch(e){}
   }
   paint();
-  setInterval(paint,800);
-  try{new MutationObserver(paint).observe(document.documentElement,{childList:true,subtree:true,characterData:true});}catch(e){}
+  // No setInterval — ChatGPT SPA + full-tree observer already paints on DOM changes.
+  try{
+    var root=document.getElementById("ranky-user-name")||document.body||document.documentElement;
+    new MutationObserver(paint).observe(root,{childList:true,subtree:true,characterData:true});
+  }catch(e){}
 })();
 </script>`)
 	lower := bytes.ToLower(body)
@@ -289,6 +292,10 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	base, err := url.Parse(liveUpstream(cfg))
 	if err != nil || base.Host == "" {
 		http.Error(w, "Upstream URL is not configured", http.StatusBadGateway)
+		return
+	}
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		proxyWebSocket(w, r, acc, base)
 		return
 	}
 	target := *base
