@@ -21,13 +21,16 @@ import (
 
 var (
 	upstreamClient = &http.Client{
-		Timeout: 90 * time.Second,
+		Timeout: 45 * time.Second,
 		Transport: &http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
-			MaxIdleConns:        64,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 15 * time.Second,
+			Proxy:                 http.ProxyFromEnvironment,
+			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
+			MaxIdleConns:          128,
+			MaxIdleConnsPerHost:   32,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   12 * time.Second,
+			ResponseHeaderTimeout: 25 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -291,14 +294,21 @@ func readUpstreamBody(resp *http.Response) ([]byte, error) {
 
 func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolAccount) {
 	started := time.Now()
+	path := r.URL.RequestURI()
+	// Always print immediately so `tail -f app.log` shows the hang point.
+	log.Printf("[REQ] → %s %s", r.Method, path)
 	base, err := url.Parse(liveUpstream(cfg))
 	if err != nil || base.Host == "" {
 		http.Error(w, "Upstream URL is not configured", http.StatusBadGateway)
 		return
 	}
 	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		pushProxyLog(proxyLogEntry{Source: "ws", Method: r.Method, Path: r.URL.Path, Status: 101, Detail: "websocket upgrade"})
+		log.Printf("[WS] → upgrade %s", path)
 		proxyWebSocket(w, r, acc, base)
+		pushProxyLog(proxyLogEntry{
+			Source: "ws", Method: r.Method, Path: path, Status: 101,
+			Ms: time.Since(started).Milliseconds(), Detail: "websocket closed",
+		})
 		return
 	}
 	target := *base
@@ -437,16 +447,17 @@ func proxyUpstream(w http.ResponseWriter, r *http.Request, cfg Config, acc ToolA
 	if r.Method != http.MethodHead {
 		_, _ = w.Write(payload)
 	}
+	ms := time.Since(started).Milliseconds()
 	detail := ct
 	if len(payload) > 0 {
 		detail = fmt.Sprintf("%s bytes=%d", ct, len(payload))
 	}
-	if resp.StatusCode >= 400 || strings.Contains(strings.ToLower(ct), "text/html") || strings.HasPrefix(r.URL.Path, "/backend") || strings.HasPrefix(r.URL.Path, "/api") {
-		pushProxyLog(proxyLogEntry{
-			Source: "up", Method: r.Method, Path: r.URL.RequestURI(), Status: resp.StatusCode,
-			Ms: time.Since(started).Milliseconds(), Detail: detail,
-		})
-	}
+	log.Printf("[REQ] ← %s %s %d %dms bytes=%d", r.Method, path, resp.StatusCode, ms, len(payload))
+	// Keep ring buffer full for /__logs, but terminal is the live source of truth.
+	pushProxyLog(proxyLogEntry{
+		Source: "up", Method: r.Method, Path: path, Status: resp.StatusCode,
+		Ms: ms, Detail: detail,
+	})
 }
 
 func copyRequestHeaders(dst *http.Request, src *http.Request) {

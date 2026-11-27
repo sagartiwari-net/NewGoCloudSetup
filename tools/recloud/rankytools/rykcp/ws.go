@@ -38,6 +38,7 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request, acc ToolAccount, bas
 	}
 	if err != nil {
 		log.Printf("[WS] dial %s: %v", addr, err)
+		pushProxyLog(proxyLogEntry{Source: "ws", Method: r.Method, Path: r.URL.RequestURI(), Status: 502, Detail: "dial: " + err.Error()})
 		http.Error(w, "WebSocket upstream unavailable", http.StatusBadGateway)
 		return
 	}
@@ -80,6 +81,7 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request, acc ToolAccount, bas
 	if resp.StatusCode != http.StatusSwitchingProtocols {
 		resp.Body.Close()
 		log.Printf("[WS] rejected %s status=%d", r.URL.Path, resp.StatusCode)
+		pushProxyLog(proxyLogEntry{Source: "ws", Method: r.Method, Path: r.URL.RequestURI(), Status: resp.StatusCode, Detail: "upstream rejected upgrade"})
 		http.Error(w, "WebSocket upstream rejected", http.StatusBadGateway)
 		return
 	}
