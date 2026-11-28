@@ -700,6 +700,34 @@ func ahrefsDuplicateBill(key, family string) bool {
 	return false
 }
 
+// ahrefsSwitchReasonFromBody detects login / ban / expired-plan walls that require
+// rotating to the next mapped Ahrefs account. bodyLower must already be lowercased.
+func ahrefsSwitchReasonFromBody(bodyLower string) (reason string, ok bool) {
+	switch {
+	case strings.Contains(bodyLower, "sign in to ahrefs"),
+		strings.Contains(bodyLower, "sign in to your account"):
+		return "sign in to your account", true
+	case strings.Contains(bodyLower, "/user/login") && strings.Contains(bodyLower, "/pricing?utm_source=dashboard"):
+		return "sign in and sign up shown", true
+	case strings.Contains(bodyLower, "suspicious activity"),
+		strings.Contains(bodyLower, "suspicious_activity"),
+		strings.Contains(bodyLower, "temporarily restricted"),
+		strings.Contains(bodyLower, "potential violations"):
+		return "suspicious activity detected", true
+	case strings.Contains(bodyLower, "domain not verified"),
+		strings.Contains(bodyLower, "only check verified domains"),
+		strings.Contains(bodyLower, "subscribe to a premium plan") && strings.Contains(bodyLower, "free plan"),
+		strings.Contains(bodyLower, "verify ownership") && strings.Contains(bodyLower, "free plan"):
+		return "domain not verified / plan expired", true
+	case strings.Contains(bodyLower, "see pricing") && strings.Contains(bodyLower, "/pricing"),
+		strings.Contains(bodyLower, "see pricing") && strings.Contains(bodyLower, "verify ownership"),
+		strings.Contains(bodyLower, "see_pricing"):
+		return "account plan downgraded to free / see pricing shown", true
+	default:
+		return "", false
+	}
+}
+
 func ahrefsUsableResult(body []byte) bool {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
@@ -710,20 +738,7 @@ func ahrefsUsableResult(body []byte) bool {
 		sample = sample[:65536]
 	}
 	lower := strings.ToLower(string(sample))
-	for _, phrase := range []string{
-		"suspicious activity",
-		"suspicious_activity",
-		"temporarily restricted",
-		"potential violations",
-		"sign in to ahrefs",
-		"sign in to your account",
-		"domain not verified",
-	} {
-		if strings.Contains(lower, phrase) {
-			return false
-		}
-	}
-	if strings.Contains(lower, "see pricing") && strings.Contains(lower, "/pricing") {
+	if _, bad := ahrefsSwitchReasonFromBody(lower); bad {
 		return false
 	}
 	if trimmed[0] == '{' && len(trimmed) <= 65536 {

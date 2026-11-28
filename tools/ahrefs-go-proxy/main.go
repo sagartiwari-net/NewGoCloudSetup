@@ -2114,17 +2114,31 @@ func patcherScript() string {
         set: function() { /* do nothing */ }
     });
 
-    var suspiciousSwitched = false;
-    function watchSuspicious() {
-        if (suspiciousSwitched || !document.body) return;
+    // Client-side wall watcher: Ahrefs SPA paints login / ban / free-plan screens
+    // after JS runs, so the Go HTML body scan alone often misses them.
+    var accountSwitchTriggered = false;
+    function watchAccountSwitchWalls() {
+        if (accountSwitchTriggered || !document.body) return;
         var txt = (document.body.innerText || '').toLowerCase();
-        if (txt.indexOf('suspicious activity') === -1 && txt.indexOf('suspicious_activity') === -1 && txt.indexOf('temporarily restricted') === -1 && txt.indexOf('potential violations') === -1) return;
-        suspiciousSwitched = true;
+        var reason = '';
+        if (txt.indexOf('suspicious activity') !== -1 || txt.indexOf('suspicious_activity') !== -1 ||
+            txt.indexOf('temporarily restricted') !== -1 || txt.indexOf('potential violations') !== -1) {
+            reason = 'suspicious activity detected';
+        } else if (txt.indexOf('domain not verified') !== -1 ||
+            txt.indexOf('only check verified domains') !== -1 ||
+            (txt.indexOf('free plan') !== -1 && (txt.indexOf('subscribe to a premium plan') !== -1 || txt.indexOf('verify ownership') !== -1)) ||
+            (txt.indexOf('see pricing') !== -1 && txt.indexOf('verify ownership') !== -1)) {
+            reason = 'domain not verified / plan expired';
+        } else if (txt.indexOf('sign in to ahrefs') !== -1 || txt.indexOf('sign in to your account') !== -1) {
+            reason = 'sign in to your account';
+        }
+        if (!reason) return;
+        accountSwitchTriggered = true;
         var next = window.location.pathname + window.location.search;
-        window.location.replace('/api/account-switch?reason=' + encodeURIComponent('suspicious activity detected') + '&next=' + encodeURIComponent(next));
+        window.location.replace('/api/account-switch?reason=' + encodeURIComponent(reason) + '&next=' + encodeURIComponent(next));
     }
-    setTimeout(watchSuspicious, 800);
-    setInterval(watchSuspicious, 2000);
+    setTimeout(watchAccountSwitchWalls, 800);
+    setInterval(watchAccountSwitchWalls, 2000);
 
     // ── 1. Link href rewriter (runs periodically for React re-renders) ──────────
     function rl() {
@@ -3618,30 +3632,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 				snippetLower := strings.ToLower(snippet)
 
 				// ── Trigger conditions: account switch required ──────────────────────
-				switch {
-				case strings.Contains(snippet, "Sign in to Ahrefs"), strings.Contains(snippet, "Sign in to your account"):
+				if reason, ok := ahrefsSwitchReasonFromBody(snippetLower); ok {
 					shouldSwitch = true
-					switchReason = "sign in to your account"
-				case strings.Contains(snippetLower, "/user/login") && strings.Contains(snippetLower, "/pricing?utm_source=dashboard"):
-					shouldSwitch = true
-					switchReason = "sign in and sign up shown"
-
-				case strings.Contains(snippetLower, "suspicious activity") ||
-					strings.Contains(snippetLower, "temporarily restricted") ||
-					strings.Contains(snippetLower, "suspicious_activity") ||
-					strings.Contains(snippetLower, "potential violations"):
-					shouldSwitch = true
-					switchReason = "suspicious activity detected"
-
-				case strings.Contains(snippet, "Domain not verified"):
-					shouldSwitch = true
-					switchReason = "domain not verified / plan expired"
-
-				case (strings.Contains(snippet, "See pricing") && strings.Contains(snippetLower, "/pricing")) ||
-					strings.Contains(snippetLower, "see pricing") ||
-					strings.Contains(snippetLower, "see_pricing"):
-					shouldSwitch = true
-					switchReason = "account plan downgraded to free / see pricing shown"
+					switchReason = reason
 				}
 			}
 		}
@@ -3832,13 +3825,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		commitCredit := resp.StatusCode >= 200 && resp.StatusCode < 400
 		if commitCredit {
 			bodyLower := strings.ToLower(string(rawBody))
-			if strings.Contains(bodyLower, "sign in to ahrefs") ||
-				strings.Contains(bodyLower, "suspicious activity") ||
-				strings.Contains(bodyLower, "suspicious_activity") ||
-				strings.Contains(bodyLower, "temporarily restricted") ||
-				strings.Contains(bodyLower, "potential violations") ||
-				strings.Contains(bodyLower, "domain not verified") ||
-				(strings.Contains(bodyLower, "see pricing") && strings.Contains(bodyLower, "/pricing")) {
+			if _, bad := ahrefsSwitchReasonFromBody(bodyLower); bad {
 				commitCredit = false
 				log.Printf("[LIMITS] Skipping credit for '%s' — failure/suspicious content in response (%s)", currentUser, pendingCreditLog)
 			}
