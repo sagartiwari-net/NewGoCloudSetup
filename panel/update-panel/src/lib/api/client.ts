@@ -47,6 +47,15 @@ import type {
   Website,
   AccessSite,
   AccessReject,
+  AhrefsBarOverview,
+  AhrefsBarAccount,
+  AhrefsBarPortal,
+  AhrefsBarSettings,
+  AhrefsBarEndpointCost,
+  AhrefsBarUserLimit,
+  AhrefsBarUsageRow,
+  AhrefsBarMeters,
+  AhrefsBarUsageUserRow,
 } from "@/lib/api/types"
 
 const catalogCache = new Map<string, Promise<unknown>>()
@@ -76,10 +85,12 @@ export type Session = {
   role: Role
   accountRole?: Role
   token: string
+  ahrefs_bar_enabled?: boolean
 }
 
 export type Reseller = Operator & {
   status: "active" | "suspended"
+  ahrefs_bar_enabled?: boolean
 }
 
 export type AccountInput = Omit<
@@ -115,6 +126,7 @@ export type ResellerInput = {
   password?: string
   status: "active" | "suspended"
   website_ids: number[]
+  ahrefs_bar_enabled?: boolean
 }
 
 export type Ok = { status: "ok" }
@@ -157,7 +169,7 @@ export function clearSession() {
   window.sessionStorage.removeItem(SESSION_KEY)
 }
 
-const API = process.env.NEXT_PUBLIC_PANEL_API ?? "http://127.0.0.1:8090"
+const API = process.env.NEXT_PUBLIC_PANEL_API ?? "http://127.0.0.1:18090"
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const token = readSession()?.token
@@ -203,11 +215,14 @@ export async function login(username: string, password: string): Promise<Operato
   if (!operator.username || (operator.role !== "master" && operator.role !== "reseller")) {
     throw new Error("Sign in failed")
   }
+  // Prefer Bearer token from the login body — cookie alone can fail across
+  // localhost vs 127.0.0.1 during local dev.
   writeSession({
     username: operator.username,
     role: operator.role,
     accountRole: operator.role,
-    token: "",
+    token: operator.token || "",
+    ahrefs_bar_enabled: operator.role === "master" ? true : !!operator.ahrefs_bar_enabled,
   })
   return operator
 }
@@ -1020,3 +1035,205 @@ export async function changePassword(password: string): Promise<Ok> {
   await api("/api/password", { method: "POST", body: JSON.stringify({ password }) })
   return { status: "ok" }
 }
+
+export async function getAhrefsBarOverview(resellerId = 0): Promise<AhrefsBarOverview> {
+  return api(`/api/ahrefs-bar/overview${qs({ resellerId: resellerId || undefined })}`)
+}
+
+export async function listAhrefsBarAccounts(query: {
+  page: number
+  pageSize: number
+  query: string
+  status: string
+  resellerId?: number
+}): Promise<PageResult<AhrefsBarAccount>> {
+  return api(`/api/ahrefs-bar/accounts${qs(query)}`)
+}
+
+export async function getAhrefsBarAccount(id: number): Promise<AhrefsBarAccount> {
+  return api(`/api/ahrefs-bar/accounts/${id}`)
+}
+
+export async function saveAhrefsBarAccount(input: {
+  id?: number
+  reseller_id?: number
+  name: string
+  access_token_json?: string
+  status: string
+}): Promise<Ok> {
+  await api("/api/ahrefs-bar/accounts", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
+}
+
+export async function deleteAhrefsBarAccount(id: number): Promise<Ok> {
+  await api(`/api/ahrefs-bar/accounts${qs({ id })}`, { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function listAhrefsBarPortals(query: {
+  page: number
+  pageSize: number
+  query: string
+  resellerId?: number
+}): Promise<PageResult<AhrefsBarPortal>> {
+  return api(`/api/ahrefs-bar/portals${qs(query)}`)
+}
+
+export async function getAhrefsBarPortal(id: number): Promise<AhrefsBarPortal> {
+  return api(`/api/ahrefs-bar/portals/${id}`)
+}
+
+export async function saveAhrefsBarPortal(input: {
+  id?: number
+  reseller_id?: number
+  name: string
+  site_url: string
+  cookie_name: string
+  check_url?: string
+  product_ids?: string
+  shared_secret?: string
+  enabled: boolean
+}): Promise<Ok> {
+  await api("/api/ahrefs-bar/portals", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
+}
+
+export async function deleteAhrefsBarPortal(id: number): Promise<Ok> {
+  await api(`/api/ahrefs-bar/portals${qs({ id })}`, { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function getAhrefsBarSettings(resellerId = 0): Promise<AhrefsBarSettings> {
+  return api(`/api/ahrefs-bar/settings${qs({ resellerId: resellerId || undefined })}`)
+}
+
+export async function saveAhrefsBarSettings(input: {
+  reseller_id?: number
+  hourly_limit: number
+  daily_limit: number
+  cache_ttl_hours: number
+  sticky_minutes: number
+  refund_on_5xx: boolean
+}): Promise<Ok> {
+  await api("/api/ahrefs-bar/settings", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
+}
+
+export async function listAhrefsBarCosts(): Promise<{ items: AhrefsBarEndpointCost[] }> {
+  return api("/api/ahrefs-bar/costs")
+}
+
+export async function saveAhrefsBarCost(input: {
+  endpoint: string
+  credits: number
+  class: string
+}): Promise<Ok> {
+  await api("/api/ahrefs-bar/costs", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
+}
+
+export async function listAhrefsBarUserLimits(query: {
+  page: number
+  pageSize: number
+  query: string
+  resellerId?: number
+}): Promise<PageResult<AhrefsBarUserLimit>> {
+  return api(`/api/ahrefs-bar/user-limits${qs(query)}`)
+}
+
+export async function saveAhrefsBarUserLimit(input: {
+  id?: number
+  reseller_id?: number
+  amember_login: string
+  hourly_limit: number
+  daily_limit: number
+}): Promise<Ok> {
+  await api("/api/ahrefs-bar/user-limits", { method: "POST", body: JSON.stringify(input) })
+  return { status: "ok" }
+}
+
+export async function deleteAhrefsBarUserLimit(id: number): Promise<Ok> {
+  await api(`/api/ahrefs-bar/user-limits${qs({ id })}`, { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function listAhrefsBarUsage(query: {
+  page: number
+  pageSize: number
+  query: string
+  resellerId?: number
+  view?: "users" | "events"
+  login?: string
+}): Promise<PageResult<AhrefsBarUsageRow>> {
+  return api(`/api/ahrefs-bar/usage${qs(query)}`)
+}
+
+export async function listAhrefsBarUsageUsers(query: {
+  page: number
+  pageSize: number
+  query: string
+  resellerId?: number
+}): Promise<PageResult<AhrefsBarUsageUserRow>> {
+  return api(`/api/ahrefs-bar/usage${qs({ ...query, view: "users" })}`)
+}
+
+export async function getAhrefsBarMeters(login: string, resellerId?: number): Promise<AhrefsBarMeters> {
+  return api(`/api/ahrefs-bar/meters${qs({ login, resellerId: resellerId || undefined })}`)
+}
+
+export async function resetAhrefsBarMeters(login: string, resellerId?: number): Promise<AhrefsBarMeters> {
+  return api(`/api/ahrefs-bar/meters/reset`, {
+    method: "POST",
+    body: JSON.stringify({ login, reseller_id: resellerId || 0 }),
+  })
+}
+
+export type AhrefsBarExtInfo = {
+  extension_dir: string
+  extension_ok: boolean
+  template_dir: string
+  template_ok: boolean
+  public_api: string
+  reseller_id: number
+  portals: string[]
+}
+
+export async function getAhrefsBarExtInfo(resellerId = 0): Promise<AhrefsBarExtInfo> {
+  return api(`/api/ahrefs-bar/extension-info${qs({ resellerId: resellerId || undefined })}`)
+}
+
+async function downloadAuthenticated(path: string, filename: string) {
+  const API = (typeof process !== "undefined" && process.env.NEXT_PUBLIC_PANEL_API) || "http://127.0.0.1:18090"
+  const response = await fetch(`${API}${path}`, { credentials: "include" })
+  if (!response.ok) {
+    let message = "Download failed"
+    try {
+      const body = (await response.json()) as { error?: string }
+      if (body.error) message = body.error
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message)
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+export async function downloadAhrefsBarExtension(resellerId = 0): Promise<void> {
+  await downloadAuthenticated(
+    `/api/ahrefs-bar/extension.zip${qs({ resellerId: resellerId || undefined })}`,
+    "ahrefs-bar-extension.zip",
+  )
+}
+
+export async function downloadAhrefsBarTMCheck(): Promise<void> {
+  await downloadAuthenticated("/api/ahrefs-bar/tm-check.php", "tm-check.php")
+}
+
