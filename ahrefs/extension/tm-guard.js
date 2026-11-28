@@ -501,53 +501,62 @@ importScripts('event.js');
    */
   async function syncAuth(reason) {
     log('syncAuth', reason);
-    const portals = await fetchPortals();
-    if (!portals.length) {
-      const cur = await getLocal(['tm_bar_session']);
-      if (cur.tm_bar_session) await revokeServerSession(cur.tm_bar_session);
-      await applyParked('no_portals');
-      return { authed: false, error: 'no_portals' };
-    }
-
-    const prev = await getLocal(['tm_bar_session']);
-    let sawCookie = false;
-    let lastDeny = '';
-
-    for (const p of portals) {
-      try {
-        const cookies = await listPortalCookies(p);
-        if (!cookies.length) {
-          log('no portal cookie', p.site_url);
-          continue;
-        }
-        sawCookie = true;
-        // Cap attempts — many cookie aliases × slow tm-check used to leave popup on "checking…".
-        const tryCookies = cookies.slice(0, 4);
-        for (const c of tryCookies) {
-          const j = await verify(p, c.value, c.name);
-          if (j && j.success && j.valid && j.session_token) {
-            await applyAuthed(j.session_token, j.user, j.portal || p.site_url);
-            log('AUTHED', p.site_url, mask(j.session_token), 'via', c.name, c.site);
-            return { authed: true, portal: p.site_url };
-          }
-          let detail = (j && (j.error || j.deny)) || 'unauthorized';
-          if (j && j.detail) detail = detail + ': ' + j.detail;
-          lastDeny = detail;
-          log('verify denied', p.site_url, c.name, detail, j && j.have_products, j && j.want_products);
-        }
-      } catch (e) {
-        lastDeny = e.message || 'verify_error';
-        log('verify error', p.site_url, e.message);
+    try {
+      const portals = await fetchPortals();
+      if (!portals.length) {
+        const cur = await getLocal(['tm_bar_session']);
+        if (cur.tm_bar_session) await revokeServerSession(cur.tm_bar_session);
+        await applyParked('no_portals');
+        return { authed: false, error: 'no_portals' };
       }
-    }
 
-    if (prev.tm_bar_session) {
-      await revokeServerSession(prev.tm_bar_session);
+      const prev = await getLocal(['tm_bar_session']);
+      let sawCookie = false;
+      let lastDeny = '';
+
+      for (const p of portals) {
+        try {
+          const cookies = await listPortalCookies(p);
+          if (!cookies.length) {
+            log('no portal cookie', p.site_url);
+            continue;
+          }
+          sawCookie = true;
+          // Cap attempts — many cookie aliases × slow tm-check used to leave popup on "checking…".
+          const tryCookies = cookies.slice(0, 3);
+          for (const c of tryCookies) {
+            const j = await verify(p, c.value, c.name);
+            if (j && j.success && j.valid && j.session_token) {
+              await applyAuthed(j.session_token, j.user, j.portal || p.site_url);
+              log('AUTHED', p.site_url, mask(j.session_token), 'via', c.name, c.site);
+              return { authed: true, portal: p.site_url };
+            }
+            let detail = (j && (j.error || j.deny)) || 'unauthorized';
+            if (j && j.detail) detail = detail + ': ' + j.detail;
+            lastDeny = detail;
+            log('verify denied', p.site_url, c.name, detail, j && j.have_products, j && j.want_products);
+          }
+        } catch (e) {
+          lastDeny = e.message || 'verify_error';
+          log('verify error', p.site_url, e.message);
+        }
+      }
+
+      if (prev.tm_bar_session) {
+        await revokeServerSession(prev.tm_bar_session);
+      }
+      const err = !sawCookie ? 'not_logged_in' : (lastDeny || 'unauthorized');
+      await applyParked(err);
+      log('NOT AUTHED', err, 'reason=' + reason);
+      return { authed: false, error: err };
+    } catch (e) {
+      const err = (e && e.message) || 'sync_error';
+      log('syncAuth threw', err);
+      try {
+        await applyParked(err);
+      } catch (_) {}
+      return { authed: false, error: err };
     }
-    const err = !sawCookie ? 'not_logged_in' : (lastDeny || 'unauthorized');
-    await applyParked(err);
-    log('NOT AUTHED', err, 'reason=' + reason);
-    return { authed: false, error: err };
   }
 
   // Console-only helper. Production / Markhor path never invents cookies —
@@ -700,32 +709,32 @@ importScripts('event.js');
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'tm:refresh') {
-      syncAuth('manual').then(sendResponse);
+      const reply = (r) => {
+        try {
+          sendResponse(r);
+        } catch (_) {}
+      };
+      Promise.race([
+        syncAuth('manual').catch((e) => ({ authed: false, error: String((e && e.message) || e || 'sync_error') })),
+        new Promise((resolve) => setTimeout(() => resolve({ authed: false, error: 'check_timeout' }), 8000)),
+      ]).then(reply);
       return true;
     }
     if (msg.type === 'tm:status') {
-      getLocal(['tm_bar_authed', 'tm_bar_user', 'tm_bar_portal', 'tm_bar_error', 'tm_bar_session', 'tm_bar_block']).then(async (st) => {
-        const me = st.tm_bar_authed ? await fetchMe() : null;
-        let block = st.tm_bar_block || null;
-        if (block && block.retry_at && block.retry_at <= Date.now()) {
-          block = null;
-          await setBarBlock(null);
-        }
-        let cache = null;
-        try { cache = self.tmCache ? await self.tmCache.stats() : null; } catch (_) {}
-        const fp = await fingerprint();
-        const man = chrome.runtime.getManifest();
-        sendResponse({
-          ...st,
-          tm_bar_block: block,
-          me,
-          cache,
-          session_mask: mask(st.tm_bar_session),
-          fp_mask: mask(fp),
-          version: (CFG.version || man.version || ''),
-          buildId: CFG.buildId || '',
-        });
-      });
+      // Keep this FAST — popup used to hang on fetchMe/fingerprint forever.
+      getLocal(['tm_bar_authed', 'tm_bar_user', 'tm_bar_portal', 'tm_bar_error', 'tm_bar_session', 'tm_bar_block'])
+        .then((st) => {
+          const man = chrome.runtime.getManifest();
+          let block = st.tm_bar_block || null;
+          if (block && block.retry_at && block.retry_at <= Date.now()) block = null;
+          sendResponse({
+            ...st,
+            tm_bar_block: block,
+            version: (CFG.version || man.version || ''),
+            buildId: CFG.buildId || '',
+          });
+        })
+        .catch(() => sendResponse({ tm_bar_authed: false, tm_bar_error: 'status_error' }));
       return true;
     }
     if (msg.type === 'tm:update') {

@@ -1,6 +1,9 @@
 /* Compact ToolsMandi auth + update strip on the official Ahrefs popup.
  * Auth is portal-cookie driven (aMember / panel_session) — no manual Sign out.
  * Also surfaces hourly/daily limit + pool cooldown with retry countdown.
+ *
+ * IMPORTANT: never wait on the service worker to paint status. Popup reads
+ * chrome.storage.local directly so "checking…" cannot stick forever if SW hangs.
  */
 (() => {
   const GENERIC_FETCH_ERR = 'Error fetching data. Please try again later.';
@@ -14,7 +17,7 @@
   bar.innerHTML =
     '<span id="tm-dot" style="width:8px;height:8px;border-radius:50%;background:#64748b;flex:0 0 auto"></span>' +
     '<strong style="font-weight:600">ToolsMandi</strong>' +
-    '<span id="tm-status" style="flex:1;min-width:120px;color:#94a3b8">checking…</span>' +
+    '<span id="tm-status" style="flex:1;min-width:120px;color:#94a3b8">…</span>' +
     '<span id="tm-ver" style="color:#64748b;font-size:11px"></span>' +
     '<button id="tm-refresh" type="button" style="background:#22c55e;color:#04120a;border:0;border-radius:6px;padding:4px 10px;font-weight:600;cursor:pointer">Refresh</button>' +
     '<button id="tm-update" type="button" style="background:#334155;color:#e2e8f0;border:0;border-radius:6px;padding:4px 10px;font-weight:600;cursor:pointer">Update</button>';
@@ -37,6 +40,7 @@
   let liveBlock = null;
   let tickTimer = null;
   const replaced = new WeakSet();
+  const manVer = (chrome.runtime.getManifest() && chrome.runtime.getManifest().version) || '';
 
   function formatWait(sec) {
     sec = Math.max(0, Math.floor(Number(sec) || 0));
@@ -86,7 +90,7 @@
   }
 
   function rewriteGenericErrors() {
-    const msg = blockMessage(liveBlock);
+    const msg = blockMessage(liveBlock) || (liveBlock && liveBlock.kind === 'pool' ? SUB_EXPIRED_MSG : '');
     if (!msg) return;
     const nodes = document.querySelectorAll('div, span, p, h1, h2, h3, h4');
     for (let i = 0; i < nodes.length; i++) {
@@ -98,7 +102,7 @@
       if (el.childElementCount > 0) continue;
       const t = (el.textContent || '').trim();
       if (t === GENERIC_FETCH_ERR || t === "You've reached your usage limit") {
-        el.textContent = msg || SUB_EXPIRED_MSG;
+        el.textContent = msg;
         replaced.add(el);
       }
     }
@@ -127,10 +131,17 @@
       status.textContent = u + (r.tm_bar_portal ? ' · ' + r.tm_bar_portal : '');
       status.style.color = '#86efac';
     } else {
-      status.textContent = (r && r.tm_bar_error) || 'not signed in — log in to panel / aMember';
+      const err = (r && r.tm_bar_error) || '';
+      if (err && /subscription expired/i.test(err)) {
+        status.textContent = err;
+      } else if (liveBlock && blockMessage(liveBlock)) {
+        status.textContent = blockMessage(liveBlock);
+      } else {
+        status.textContent = err || 'not signed in — log in to panel / aMember';
+      }
       status.style.color = '#fca5a5';
     }
-    if (r && r.version) verEl.textContent = 'v' + r.version;
+    verEl.textContent = 'v' + ((r && r.version) || manVer || '');
 
     liveBlock = (r && r.tm_bar_block) || null;
     if (liveBlock && liveBlock.retry_at && liveBlock.retry_at <= Date.now()) liveBlock = null;
@@ -139,71 +150,72 @@
     if (liveBlock && liveBlock.retry_at) startTick();
   }
 
-  function loadStatus() {
-    chrome.runtime.sendMessage({ type: 'tm:status' }, (r) => paint(r || {}));
+  /** Fast path — no service worker round-trip (cannot hang). */
+  function paintFromStorage() {
+    try {
+      chrome.storage.local.get(
+        ['tm_bar_authed', 'tm_bar_user', 'tm_bar_portal', 'tm_bar_error', 'tm_bar_block'],
+        (st) => {
+          if (chrome.runtime.lastError) {
+            paint({ tm_bar_authed: false, tm_bar_error: 'storage error', version: manVer });
+            return;
+          }
+          paint(Object.assign({ version: manVer }, st || {}));
+        },
+      );
+    } catch (e) {
+      paint({ tm_bar_authed: false, tm_bar_error: 'storage error', version: manVer });
+    }
   }
 
-  function withTimeout(fn, ms, fallback) {
-    let done = false;
-    const t = setTimeout(() => {
-      if (done) return;
-      done = true;
-      fallback();
-    }, ms);
-    fn(() => {
-      if (done) return;
-      done = true;
+  function askRefresh(onDone) {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      try {
+        onDone && onDone();
+      } catch (_) {}
+    };
+    const t = setTimeout(finish, 6000);
+    try {
+      chrome.runtime.sendMessage({ type: 'tm:refresh' }, () => {
+        clearTimeout(t);
+        // Ignore lastError — still re-paint from storage.
+        finish();
+      });
+    } catch (_) {
       clearTimeout(t);
-    });
+      finish();
+    }
   }
 
-  // Always re-check live portal cookie when popup opens (never hang on "checking…").
   function syncThenPaint() {
-    status.textContent = 'checking…';
+    // 1) Always show last known state immediately (never blank "checking…").
+    paintFromStorage();
     status.style.color = '#eab308';
-    withTimeout(
-      (done) => {
-        chrome.runtime.sendMessage({ type: 'tm:refresh' }, () => {
-          loadStatus();
-          done();
-        });
-      },
-      12000,
-      () => {
-        status.textContent = 'check timeout — tap Refresh';
-        status.style.color = '#fca5a5';
-        loadStatus();
-      },
-    );
+    // 2) Background re-check; re-paint when done or after 6s max.
+    askRefresh(() => paintFromStorage());
   }
 
   btn.addEventListener('click', () => {
     status.textContent = 'refreshing…';
     status.style.color = '#eab308';
     btn.disabled = true;
-    withTimeout(
-      (done) => {
-        chrome.runtime.sendMessage({ type: 'tm:refresh' }, () => {
-          btn.disabled = false;
-          loadStatus();
-          done();
-        });
-      },
-      12000,
-      () => {
-        btn.disabled = false;
-        status.textContent = 'check timeout — tap Refresh';
-        status.style.color = '#fca5a5';
-        loadStatus();
-      },
-    );
+    askRefresh(() => {
+      btn.disabled = false;
+      paintFromStorage();
+    });
   });
 
   upd.addEventListener('click', () => {
     status.textContent = 'fetching update…';
     status.style.color = '#eab308';
     upd.disabled = true;
-    chrome.runtime.sendMessage({ type: 'tm:update' }, (r) => {
+    let done = false;
+    const finish = (r) => {
+      if (done) return;
+      done = true;
       upd.disabled = false;
       if (r && r.error) {
         status.textContent = r.error;
@@ -213,15 +225,20 @@
       status.textContent = (r && r.opened) || 'update opened — unzip & Load unpacked';
       status.style.color = '#93c5fd';
       if (r && r.version) verEl.textContent = 'v' + r.version + (r.remote_version ? ' → ' + r.remote_version : '');
-    });
+    };
+    setTimeout(() => finish({ error: 'update timeout' }), 8000);
+    try {
+      chrome.runtime.sendMessage({ type: 'tm:update' }, (r) => finish(r || {}));
+    } catch (e) {
+      finish({ error: e.message || 'update failed' });
+    }
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes.tm_bar_block) return;
-    liveBlock = changes.tm_bar_block.newValue || null;
-    paintNotice();
-    rewriteGenericErrors();
-    if (liveBlock && liveBlock.retry_at) startTick();
+    if (area !== 'local') return;
+    if (changes.tm_bar_block || changes.tm_bar_authed || changes.tm_bar_error || changes.tm_bar_user) {
+      paintFromStorage();
+    }
   });
 
   const mo = new MutationObserver(() => rewriteGenericErrors());
