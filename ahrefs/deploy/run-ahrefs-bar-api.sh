@@ -9,13 +9,20 @@ ENV_FILE="${BASE}/_secrets/mysql.env"
 EXTRA_ENV="${BASE}/_secrets/ahrefs-bar-api.env"
 
 cd "${DIR}"
-touch "${LOG}"
+mkdir -p "${DIR}"
+touch "${LOG}" || {
+  echo "ahrefs-bar-api: cannot write ${LOG}" >&2
+  exit 1
+}
 
 if [[ -f "${ENV_FILE}" ]]; then
   set -a
   # shellcheck disable=SC1090
   source "${ENV_FILE}"
   set +a
+else
+  echo "ahrefs-bar-api: missing ${ENV_FILE}" >>"${LOG}"
+  exit 1
 fi
 if [[ -f "${EXTRA_ENV}" ]]; then
   set -a
@@ -33,7 +40,12 @@ export AHREFS_BAR_SEED_DEV_ACCOUNTS="${AHREFS_BAR_SEED_DEV_ACCOUNTS:-0}"
 export AHREFS_BAR_VERIFY_RATE="${AHREFS_BAR_VERIFY_RATE:-60}"
 
 if [[ -z "${AHREFS_BAR_DSN:-}" && -z "${GT4RENTS_MYSQL_PASSWORD:-}" ]]; then
-  echo "ahrefs-bar-api refused: MySQL password / DSN missing" >>"${LOG}"
+  echo "ahrefs-bar-api refused: MySQL password / DSN missing (check ${ENV_FILE} readable)" >>"${LOG}"
+  exit 1
+fi
+
+if [[ ! -x "${BIN}" ]]; then
+  echo "ahrefs-bar-api refused: missing binary ${BIN}" >>"${LOG}"
   exit 1
 fi
 
