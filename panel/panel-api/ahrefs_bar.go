@@ -191,8 +191,19 @@ func (s *server) ahrefsBarResellerLabel(resellerID int64) string {
 
 // ensureAhrefsBarOperatorFlags adds per-reseller sell/access toggle.
 func ensureAhrefsBarOperatorFlags(db *sql.DB) {
-	_, _ = db.Exec(`ALTER TABLE operators ADD COLUMN ahrefs_bar_enabled INTEGER NOT NULL DEFAULT 0`)
-	_, _ = db.Exec(`ALTER TABLE operators ADD COLUMN ahrefs_bar_enabled TINYINT(1) NOT NULL DEFAULT 0`)
+	if db == nil {
+		return
+	}
+	// Try common dialects; ignore "duplicate column" errors.
+	for _, q := range []string{
+		`ALTER TABLE operators ADD COLUMN ahrefs_bar_enabled INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE operators ADD COLUMN ahrefs_bar_enabled TINYINT(1) NOT NULL DEFAULT 0`,
+		`ALTER TABLE operators ADD COLUMN ahrefs_bar_enabled INT NOT NULL DEFAULT 0`,
+	} {
+		if _, err := db.Exec(q); err == nil {
+			break
+		}
+	}
 	_, _ = db.Exec(`UPDATE operators SET ahrefs_bar_enabled=1 WHERE role='master'`)
 }
 

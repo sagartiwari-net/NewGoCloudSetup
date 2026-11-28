@@ -1482,25 +1482,30 @@ func (s *server) listResellers(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM operators WHERE `+where, args...).Scan(&total)
 	page = clampPage(page, size, total)
 	args = append(args, size, (page-1)*size)
-	rows, err := s.db.Query(`SELECT id, username, status FROM operators WHERE `+where+` ORDER BY username LIMIT ? OFFSET ?`, args...)
+	ensureAhrefsBarOperatorFlags(s.db)
+	rows, err := s.db.Query(`SELECT id, username, status, COALESCE(ahrefs_bar_enabled,0) FROM operators WHERE `+where+` ORDER BY username LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	type resellerRow struct {
-		id               int
+		id, barEnabled  int
 		username, status string
 	}
 	found := []resellerRow{}
 	for rows.Next() {
 		var item resellerRow
-		_ = rows.Scan(&item.id, &item.username, &item.status)
+		_ = rows.Scan(&item.id, &item.username, &item.status, &item.barEnabled)
 		found = append(found, item)
 	}
 	rows.Close()
 	items := []any{}
 	for _, item := range found {
-		items = append(items, map[string]any{"id": item.id, "username": item.username, "role": "reseller", "status": item.status, "website_ids": s.websiteIDs(item.id)})
+		items = append(items, map[string]any{
+			"id": item.id, "username": item.username, "role": "reseller", "status": item.status,
+			"ahrefs_bar_enabled": item.barEnabled == 1,
+			"website_ids":        s.websiteIDs(item.id),
+		})
 	}
 	s.writePage(w, page, size, total, items)
 }
@@ -1528,12 +1533,14 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	ensureAhrefsBarOperatorFlags(s.db)
 	var body struct {
-		ID       int    `json:"id"`
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Status   string `json:"status"`
-		Sites    []int  `json:"website_ids"`
+		ID               int    `json:"id"`
+		Username         string `json:"username"`
+		Password         string `json:"password"`
+		Status           string `json:"status"`
+		Sites            []int  `json:"website_ids"`
+		AhrefsBarEnabled *bool  `json:"ahrefs_bar_enabled"`
 	}
 	if err := readBody(r, &body); err != nil || strings.TrimSpace(body.Username) == "" {
 		writeErr(w, 400, "Username is required")
@@ -1541,6 +1548,11 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Status == "" {
 		body.Status = "active"
+	}
+	// Missing JSON key must not silently leave the flag Off after the UI sent On.
+	barOn := 0
+	if body.AhrefsBarEnabled != nil && *body.AhrefsBarEnabled {
+		barOn = 1
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1550,13 +1562,14 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	id := body.ID
 	password := strings.TrimSpace(body.Password)
+	username := strings.TrimSpace(body.Username)
 	if id == 0 {
 		if len(password) < 8 {
 			writeErr(w, 400, "Use at least 8 characters")
 			return
 		}
 		res, err := tx.Exec(`INSERT INTO operators (username, password_hash, role, status) VALUES (?,?,?,?)`,
-			strings.TrimSpace(body.Username), hashPassword(password), "reseller", body.Status)
+			username, hashPassword(password), "reseller", body.Status)
 		if err != nil {
 			writeErr(w, 400, "That username is already used")
 			return
@@ -1564,9 +1577,14 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 		raw, _ := res.LastInsertId()
 		id = int(raw)
 	} else {
-		_, err = tx.Exec(`UPDATE operators SET username=?, status=? WHERE id=? AND role='reseller'`, strings.TrimSpace(body.Username), body.Status, id)
+		res, err := tx.Exec(`UPDATE operators SET username=?, status=? WHERE id=? AND role='reseller'`,
+			username, body.Status, id)
 		if err != nil {
 			writeErr(w, 400, "That username is already used")
+			return
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			writeErr(w, 404, "Reseller not found")
 			return
 		}
 		if password != "" {
@@ -1581,11 +1599,22 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 	for _, websiteID := range body.Sites {
 		_, _ = tx.Exec(`INSERT IGNORE INTO operator_websites (operator_id, website_id) VALUES (?,?)`, id, websiteID)
 	}
+	// Dedicated flag write — never fold into username UPDATE (older DBs / silent ignore).
+	if _, err := tx.Exec(`UPDATE operators SET ahrefs_bar_enabled=? WHERE id=? AND role='reseller'`, barOn, id); err != nil {
+		writeErr(w, 500, "Could not save Ahrefs Bar access (column missing?). Restart panel-api after migrate: "+err.Error())
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "ok"})
+	var stored int
+	_ = s.db.QueryRow(`SELECT COALESCE(ahrefs_bar_enabled,0) FROM operators WHERE id=?`, id).Scan(&stored)
+	writeJSON(w, 200, map[string]any{
+		"status":             "ok",
+		"id":                 id,
+		"ahrefs_bar_enabled": stored == 1,
+	})
 }
 
 func (s *server) deleteReseller(w http.ResponseWriter, r *http.Request) {
