@@ -25,7 +25,7 @@ export default function AhrefsBarDownloadPage() {
     <>
       <PageHeader
         title="Ahrefs Bar download"
-        description="Branded extension zip (API + portals stamped) and tm-check.php for aMember sites."
+        description="Branded extension zip and tm-check.php for aMember."
       />
       {loading && !data ? (
         <div className="flex justify-center py-16"><Spinner /></div>
@@ -36,13 +36,17 @@ export default function AhrefsBarDownloadPage() {
               <CardTitle>Extension zip</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Yahan se naya branded zip nikaalo (API + portals stamp). Local test me Public API
-                <code className="mx-1">http://127.0.0.1:8088</code> hona chahiye — agar
-                <code className="mx-1">barapi.upays.in</code> dikhe to zip prod pe point karega aur
-                Refresh pe <strong>no_portals</strong> aayega. Unzip → Load unpacked. Dev shortcut:
-                seedha <code className="mx-1">ahrefs/extension</code> folder load karo.
-              </p>
+              <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                <li>Add portals first (Permissions / member hosts).</li>
+                <li>Download zip → unzip.</li>
+                <li>
+                  Chrome → Load unpacked → choose the unzipped folder.
+                </li>
+                <li>
+                  Prod API is <span className="font-mono">barapi.upays.in</span>. Local test needs{" "}
+                  <span className="font-mono">127.0.0.1:8088</span> stamped instead.
+                </li>
+              </ol>
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Public API</dt>
@@ -64,7 +68,7 @@ export default function AhrefsBarDownloadPage() {
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-muted-foreground">Add portals first so host permissions match your member sites.</p>
+                <p className="text-xs text-muted-foreground">No portals yet — zip host permissions will be empty.</p>
               )}
               <Button
                 disabled={!data?.extension_ok || busyZip}
@@ -83,10 +87,11 @@ export default function AhrefsBarDownloadPage() {
               <CardTitle>tm-check.php</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Upload to the aMember site, set Portal → tm-check URL in Ahrefs Bar → Portals,
-                and optionally match a shared secret.
-              </p>
+              <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                <li>Download tm-check.php.</li>
+                <li>Upload it to the aMember site.</li>
+                <li>Portals → set tm-check URL (+ shared secret if used).</li>
+              </ol>
               <p className="text-xs text-muted-foreground">
                 Template {data?.template_ok ? "ready" : "missing — set AHREFS_BAR_TEMPLATE_DIR"}
               </p>

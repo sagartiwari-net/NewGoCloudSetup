@@ -14,7 +14,6 @@ import { DataTable, type DataColumn } from "@/components/data-table"
 import { FormOverlay } from "@/components/form-overlay"
 import { PageHeader } from "@/components/page-header"
 import { StatusBadge } from "@/components/status-badge"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -32,32 +31,25 @@ import type { AhrefsBarAccount } from "@/lib/api/types"
 import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
 
-/**
- * Newer Ahrefs builds: bearer in IndexedDB Auth/Token; profile in chrome.storage
- * ahUserData. SW console has no DevTools copy() — log a paste-ready JSON string.
- */
-const EXTRACT_TOKEN_CONSOLE = `// Official Ahrefs SEO Toolbar → Service worker console
-// Full paste blob for panel Accounts (token + email/workspace)
-;(async () => {
+/** Service-worker console: IndexedDB Auth/Token + ahUserData → panel paste JSON */
+const EXTRACT_TOKEN_CONSOLE = `;(async () => {
   const idbGet = () => new Promise((resolve, reject) => {
     const open = indexedDB.open('Auth');
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
       const db = open.result;
-      const tx = db.transaction('Token', 'readonly');
-      const req = tx.objectStore('Token').get('token');
+      const req = db.transaction('Token', 'readonly').objectStore('Token').get('token');
       req.onerror = () => { db.close(); reject(req.error); };
       req.onsuccess = () => { const v = req.result; db.close(); resolve(v); };
     };
   });
   const storageGet = (keys) => new Promise((r) => chrome.storage.local.get(keys, r));
-
   const [tokenRow, st] = await Promise.all([
     idbGet(),
-    storageGet(['ahUserData', 'ahIsAuth3', 'ahIsEnabled']),
+    storageGet(['ahUserData', 'ahIsAuth3']),
   ]);
   if (!tokenRow || !tokenRow.accessToken) {
-    console.warn('No IndexedDB Auth/Token — log into Ahrefs in the official toolbar first');
+    console.warn('No IndexedDB Auth/Token — log into Ahrefs toolbar first');
     return;
   }
   const user = st.ahUserData || {};
@@ -74,38 +66,9 @@ const EXTRACT_TOKEN_CONSOLE = `// Official Ahrefs SEO Toolbar → Service worker
   };
   const text = JSON.stringify(paste, null, 2);
   globalThis.__ahrefsPanelPaste = text;
-  console.log(paste);
-  console.log('——— COPY EVERYTHING BETWEEN THE LINES ———');
+  console.log('——— COPY BELOW ———');
   console.log(text);
   console.log('——— END ———');
-  console.log('Also available as: copy(__ahrefsPanelPaste)  (page console) or globalThis.__ahrefsPanelPaste');
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-      console.log('Clipboard write OK');
-    }
-  } catch (e) {
-    console.warn('Clipboard blocked in SW — select the JSON block above and copy manually');
-  }
-})();`
-
-const EXTRACT_BEARER_ONLY_CONSOLE = `// Same SW console — plain bearer only
-;(async () => {
-  const row = await new Promise((resolve, reject) => {
-    const open = indexedDB.open('Auth');
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const db = open.result;
-      const req = db.transaction('Token', 'readonly').objectStore('Token').get('token');
-      req.onerror = () => { db.close(); reject(req.error); };
-      req.onsuccess = () => { const v = req.result; db.close(); resolve(v); };
-    };
-  });
-  const t = row && row.accessToken;
-  if (!t) { console.warn('No accessToken'); return; }
-  globalThis.__ahrefsPanelPaste = t;
-  console.log(t);
-  console.log('Bearer length', t.length, '— also globalThis.__ahrefsPanelPaste');
 })();`
 
 const schema = z.object({
@@ -267,89 +230,38 @@ export default function AhrefsBarAccountsPage() {
   )
 }
 
-function copySnippet(text: string, ok: string) {
-  void navigator.clipboard.writeText(text).then(
-    () => toast.success(ok),
-    () => toast.error("Could not copy"),
-  )
-}
-
 function TokenExtractHelp() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Get token from official Ahrefs Toolbar</CardTitle>
+    <Card size="sm">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+        <CardTitle>Get Ahrefs token</CardTitle>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void navigator.clipboard.writeText(EXTRACT_TOKEN_CONSOLE).then(
+              () => toast.success("Console command copied"),
+              () => toast.error("Could not copy"),
+            )
+          }}
+        >
+          <CopyIcon data-icon="inline-start" />
+          Copy console command
+        </Button>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <Alert>
-          <AlertTitle>Where the token lives</AlertTitle>
-          <AlertDescription>
-            Current Ahrefs Toolbar builds store the bearer in extension IndexedDB{" "}
-            <span className="font-mono">Auth → Token → id &quot;token&quot;</span> (
-            <span className="font-mono">accessToken</span>).{" "}
-            <span className="font-mono">chrome.storage.local.ahToken</span> is often empty — use the snippets
-            below in the <span className="font-medium">service worker</span> console, not a website tab.
-          </AlertDescription>
-        </Alert>
+      <CardContent>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>Log into a real Ahrefs account in the official Ahrefs SEO Toolbar.</li>
+          <li>Log into Ahrefs in the official SEO Toolbar.</li>
           <li>
-            Chrome → <span className="font-mono">chrome://extensions</span> → Ahrefs SEO Toolbar →{" "}
-            <span className="font-medium text-foreground">Service worker</span> / Inspect views.
+            <span className="font-mono">chrome://extensions</span> → Ahrefs SEO Toolbar → Service worker.
           </li>
-          <li>
-            Optional check: Application → IndexedDB → <span className="font-mono">Auth</span> →{" "}
-            <span className="font-mono">Token</span> → key <span className="font-mono">token</span>.
-          </li>
-          <li>
-            Paste a snippet below → Enter. SW has no <span className="font-mono">copy()</span> — use the printed
-            JSON block (or <span className="font-mono">globalThis.__ahrefsPanelPaste</span>).
-          </li>
-          <li>
-            Panel → Add account: Name = email/workspace; Access token = full JSON paste.
-          </li>
+          <li>Paste the copied command → Enter.</li>
+          <li>Copy the JSON printed between the lines.</li>
+          <li>Add account → Name = email → Access token = that JSON.</li>
         </ol>
-        <SnippetBlock
-          title="Copy ahToken JSON (recommended)"
-          code={EXTRACT_TOKEN_CONSOLE}
-          copyLabel="Copy extract JSON"
-        />
-        <SnippetBlock
-          title="Copy plain bearer only"
-          code={EXTRACT_BEARER_ONLY_CONSOLE}
-          copyLabel="Copy extract bearer"
-        />
-        <p className="text-xs text-muted-foreground">
-          Alternate: DevTools → Network → filter <span className="font-mono">/v4/</span> → request headers →{" "}
-          <span className="font-mono">Authorization: Bearer …</span>
-        </p>
       </CardContent>
     </Card>
-  )
-}
-
-function SnippetBlock({
-  title,
-  code,
-  copyLabel,
-}: {
-  title: string
-  code: string
-  copyLabel: string
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">{title}</p>
-        <Button type="button" variant="outline" size="sm" onClick={() => copySnippet(code, "Snippet copied")}>
-          <CopyIcon data-icon="inline-start" />
-          {copyLabel}
-        </Button>
-      </div>
-      <pre className="max-h-48 overflow-auto rounded-lg bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap break-all">
-        {code}
-      </pre>
-    </div>
   )
 }
 
