@@ -1,63 +1,84 @@
-# Ahrefs Bar — safe deploy (no mix with live tools)
+# Ahrefs Bar — deploy (same style as ROLLOUT / setup.md)
 
-## Isolation rules
-
-| Piece | Where | Touches live tools? |
-|-------|--------|---------------------|
-| Process | systemd `ahrefs-bar-api` only | **No** — never restarts `gt4-*` / panel |
-| Port | `127.0.0.1:8088` | **No** — outside 4501–5301 tool ports |
-| Disk binary | `/www/wwwroot/gt4rents.com/ahrefs-bar-api/` | **No** — separate folder |
-| File cache | `/var/lib/toolsmandi/ahrefs-cache/` | **No** — not tool `cdn-cache` |
-| MySQL tables | **`ahrefs_bar_*` only** (`CREATE IF NOT EXISTS`) | **No DROP/ALTER** on websites/accounts/meters |
-
-Panel UI / `gt4-panel-api` restart = **optional later step** (merge). First install can be bar-api only.
-
-## 1) GitHub (Mac)
-
-Repo: `NewGoCloudSetup` → `ahrefs/`
-
-```bash
-cd /Users/sagartiwari/Desktop/oneclickgo/NewGoCloudSetup
-git push origin main   # after commit
-```
-
-## 2) Backup + install on server
-
-```bash
-# From Mac (needs working SSH key)
-cd ahrefs
-SSH_HOST=root@65.109.16.196 SSH_KEY=~/.ssh/YOUR_KEY ./deploy/push-from-mac.sh
-
-# On server — backup runs automatically inside install
-ssh -i ~/.ssh/YOUR_KEY root@65.109.16.196 \
-  'bash /www/wwwroot/gt4rents.com/_upload/ahrefs-bar/install-on-server.sh'
-```
-
-Backup lands in:
+Mac → GitHub push already done. **Server pe** normal tool jaisa:
 
 ```text
-/www/wwwroot/gt4rents.com/_backups/ahrefs-bar-<stamp>/
-  gt4rents-full.sql.gz      ← full DB restore point
-  ahrefs_bar-only.sql.gz    ← bar tables only (if any)
-  live-services.txt
+_repo git pull  →  backup  →  build-ahrefs-bar  →  start-ahrefs-bar
 ```
 
-Or backup alone:
+Does **not** run `build-one` / `start-tool` on `refs` or any other sub.  
+Does **not** restart `gt4-panel-api` until you choose panel merge.
+
+---
+
+## Recipe (on server — copy/paste)
 
 ```bash
-bash /www/wwwroot/gt4rents.com/_upload/ahrefs-bar/backup-before-ahrefs-bar.sh
+cd /www/wwwroot/gt4rents.com/_repo
+git pull origin main
+source /www/wwwroot/gt4rents.com/_secrets/mysql.env
+
+chmod +x deploy/*.sh ahrefs/deploy/*.sh
+
+# 1) backup pehle (full gt4rents + inventory)
+./deploy/backup-ahrefs-bar.sh
+
+# 2) build (binary → …/ahrefs-bar-api/, ahrefs_bar_* tables, file-cache dir)
+./deploy/build-ahrefs-bar.sh
+
+# 3) start ONLY ahrefs-bar-api systemd
+./deploy/start-ahrefs-bar.sh
 ```
 
-## 3) Verify nothing else broke
+### Smoke
 
 ```bash
 systemctl is-active ahrefs-bar-api
 curl -s http://127.0.0.1:8088/v1/portals
-# existing tools still up:
-systemctl is-active gt4-panel-api || true
-ss -lntp | grep ':5291'   # refs Ahrefs site proxy
+ls -lh /www/wwwroot/gt4rents.com/_backups/ahrefs-bar-latest/
+# live tools still up (example):
+ss -lntp | grep -E ':(5291|5141|18090)\b' | head
 ```
 
-## 4) Panel merge (later)
+---
 
-When ready: deploy panel-api with `ahrefs_bar.go` + UI, set `AHREFS_BAR_*` in panel env, `systemctl restart gt4-panel-api` **once**. That only adds `operators.ahrefs_bar_enabled` (additive column) + routes — still no tool proxy restart.
+## Nginx (aaPanel — Method B, like other hosts)
+
+| Item | Value |
+|------|--------|
+| Site | `barapi.upays.in` |
+| Proxy | `127.0.0.1:8088` |
+| Conf sample | `_repo/ahrefs/deploy/nginx-barapi.upays.in.conf` |
+| DNS | already covered by `*.upays.in` → `65.109.16.196` |
+
+```bash
+nginx -t && nginx -s reload
+```
+
+---
+
+## Isolation
+
+| Piece | Path / name |
+|--------|-------------|
+| Runtime | `/www/wwwroot/gt4rents.com/ahrefs-bar-api/` |
+| systemd | `ahrefs-bar-api` (not `gt4-*`) |
+| Port | `8088` |
+| Tables | `ahrefs_bar_*` only |
+| File cache | `/var/lib/toolsmandi/ahrefs-cache` |
+| Backup | `/www/wwwroot/gt4rents.com/_backups/ahrefs-bar-<stamp>/` |
+
+---
+
+## Panel merge (later — alag step)
+
+```bash
+cd /www/wwwroot/gt4rents.com/_repo
+git pull origin main
+source /www/wwwroot/gt4rents.com/_secrets/mysql.env
+./deploy/build-panel.sh
+./deploy/build-panel-ui.sh
+# then restart panel-api once — NOT all tools
+```
+
+Export `AHREFS_BAR_*` from `_secrets/ahrefs-bar-api.env` into panel run env so Download zip stamps `https://barapi.upays.in`.
