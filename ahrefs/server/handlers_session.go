@@ -190,7 +190,9 @@ func (s *server) handleSessionVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	minted, err := s.mintSession(p.ResellerID, p.ID, p.SiteURL, u.Login, u.Email, u.Name, u.UID, fp)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "mint_failed")
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"success": false, "valid": false, "error": "mint_failed", "detail": err.Error(),
+		})
 		return
 	}
 	sess := &barSession{

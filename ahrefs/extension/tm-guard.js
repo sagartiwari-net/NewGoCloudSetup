@@ -521,7 +521,8 @@ importScripts('event.js');
             log('AUTHED', p.site_url, mask(j.session_token), 'via', c.name, c.site);
             return { authed: true, portal: p.site_url };
           }
-          const detail = (j && (j.error || j.deny)) || 'unauthorized';
+          let detail = (j && (j.error || j.deny)) || 'unauthorized';
+          if (j && j.detail) detail = detail + ': ' + j.detail;
           lastDeny = detail;
           log('verify denied', p.site_url, c.name, detail, j && j.have_products, j && j.want_products);
         }

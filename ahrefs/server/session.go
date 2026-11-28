@@ -30,6 +30,16 @@ func isBarSessionToken(token string) bool {
 	return strings.HasPrefix(token, sessionTokenPrefix) && len(token) >= 20
 }
 
+// dbTime formats timestamps for the active driver. MySQL DATETIME rejects RFC3339
+// (…T…Z) under STRICT mode — that surfaced as mint_failed after tm-check OK.
+func (s *server) dbTime(t time.Time) string {
+	t = t.UTC()
+	if s.driver == "mysql" {
+		return t.Format("2006-01-02 15:04:05")
+	}
+	return t.Format(time.RFC3339)
+}
+
 func (s *server) lookupSession(token string) (*barSession, error) {
 	if !isBarSessionToken(token) {
 		return nil, nil
@@ -60,7 +70,7 @@ WHERE token = ?`, token)
 		return nil, nil
 	}
 	sess.ExpiresAt = exp
-	_, _ = s.db.Exec(`UPDATE ahrefs_bar_sessions SET last_seen = ? WHERE token = ?`, time.Now().UTC().Format(time.RFC3339), token)
+	_, _ = s.db.Exec(`UPDATE ahrefs_bar_sessions SET last_seen = ? WHERE token = ?`, s.dbTime(time.Now()), token)
 	return &sess, nil
 }
 
@@ -80,13 +90,13 @@ INSERT INTO ahrefs_bar_sessions
   (token, reseller_id, portal_id, amember_login, email, name, uid, fingerprint, expires_at, last_seen, portal_url, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		token, resellerID, nullInt64(portalID), login, email, name, uid, fingerprint,
-		exp.Format(time.RFC3339), now.Format(time.RFC3339), portalURL, now.Format(time.RFC3339),
+		s.dbTime(exp), s.dbTime(now), portalURL, s.dbTime(now),
 	)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("insert session: %w", err)
 	}
 	// opportunistic cleanup
-	_, _ = s.db.Exec(`DELETE FROM ahrefs_bar_sessions WHERE expires_at < ?`, now.Add(-24*time.Hour).Format(time.RFC3339))
+	_, _ = s.db.Exec(`DELETE FROM ahrefs_bar_sessions WHERE expires_at < ?`, s.dbTime(now.Add(-24*time.Hour)))
 	return token, nil
 }
 
