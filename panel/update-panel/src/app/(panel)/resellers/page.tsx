@@ -38,6 +38,7 @@ type FormValues = {
   username: string
   password: string
   status: "active" | "suspended"
+  ahrefs_bar_enabled: "yes" | "no"
   website_ids: number[]
 }
 
@@ -66,6 +67,12 @@ export default function ResellersPage() {
   const columns: DataColumn<Reseller>[] = [
     { id: "username", header: "Username", cell: (row) => row.username, sortValue: (row) => row.username },
     { id: "status", header: "Status", cell: (row) => <StatusBadge status={row.status} />, sortValue: (row) => row.status },
+    {
+      id: "bar",
+      header: "Ahrefs Bar",
+      cell: (row) => (row.ahrefs_bar_enabled ? "On" : "Off"),
+      sortValue: (row) => (row.ahrefs_bar_enabled ? 1 : 0),
+    },
     {
       id: "count",
       header: "Website count",
@@ -205,6 +212,7 @@ function ResellerForm({
         username: z.string().trim().min(1, "Enter a username"),
         password: z.string(),
         status: z.enum(["active", "suspended"]),
+        ahrefs_bar_enabled: z.enum(["yes", "no"]),
         website_ids: z.array(z.number()).min(1, "Choose at least one website"),
       }).superRefine((value, ctx) => {
         const changing = value.password.length > 0
@@ -225,6 +233,7 @@ function ResellerForm({
       username: reseller?.username ?? "",
       password: "",
       status: reseller?.status ?? "active",
+      ahrefs_bar_enabled: reseller?.ahrefs_bar_enabled ? "yes" : "no",
       website_ids: reseller?.website_ids ?? [],
     },
   })
@@ -257,6 +266,7 @@ function ResellerForm({
           password: values.password,
           status: values.status,
           website_ids: values.website_ids,
+          ahrefs_bar_enabled: values.ahrefs_bar_enabled === "yes",
         }),
       reseller ? "Reseller updated" : "Reseller saved"
     )
@@ -295,6 +305,30 @@ function ResellerForm({
               >
                 <ToggleGroupItem value="active" data-tone="positive">Active</ToggleGroupItem>
                 <ToggleGroupItem value="suspended" data-tone="negative">Suspended</ToggleGroupItem>
+              </ToggleGroup>
+            )}
+          />
+        </Field>
+        <Field>
+          <FieldLabel>Ahrefs Bar access</FieldLabel>
+          <FieldDescription>
+            On = this reseller sees Ahrefs Bar in the sidebar and can manage their own portals / accounts / limits.
+            Off = menu hidden.
+          </FieldDescription>
+          <Controller
+            control={form.control}
+            name="ahrefs_bar_enabled"
+            render={({ field }) => (
+              <ToggleGroup
+                spacing={2}
+                value={[field.value]}
+                onValueChange={(values) => {
+                  const next = values[values.length - 1]
+                  if (next === "yes" || next === "no") field.onChange(next)
+                }}
+              >
+                <ToggleGroupItem value="yes" data-tone="positive">On</ToggleGroupItem>
+                <ToggleGroupItem value="no">Off</ToggleGroupItem>
               </ToggleGroup>
             )}
           />

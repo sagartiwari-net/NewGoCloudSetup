@@ -646,6 +646,7 @@ export type AhrefsBarOverview = {
 export type AhrefsBarAccount = {
   id: number
   reseller_id: number
+  reseller_username?: string
   name: string
   token_mask: string
   has_token: boolean
@@ -656,6 +657,22 @@ export type AhrefsBarAccount = {
   created_at: string
   updated_at: string
   access_token_json?: string
+  source_account_id?: number
+  source_label?: string
+}
+
+export type AhrefsBarAccountLinkSources = {
+  is_source: boolean
+  current: { source_account_id: number; source_label: string } | null
+  sources: Array<{ id: number; label: string }>
+}
+
+export type AhrefsBarAccountLinkCopy = {
+  status: string
+  follower_account_id: number
+  source_account_id: number
+  source_label: string
+  token_mask: string
 }
 
 export type AhrefsBarPortal = {

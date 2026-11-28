@@ -100,6 +100,7 @@ func ensureAhrefsBarTables(db *sql.DB) {
 		}
 	}
 	_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_ab_user_limits ON ahrefs_bar_user_limits (reseller_id, amember_login)`)
+	ensureAhrefsBarAccountLinks(db)
 	for _, row := range []struct {
 		ep, class string
 		credits   int
@@ -153,6 +154,39 @@ func (s *server) resolveAhrefsReseller(op operator, requested int) int {
 		return requested
 	}
 	return op.ID
+}
+
+// resolveAhrefsResellerRequired forces master to pick a reseller (or self) so tokens never land on the wrong pool.
+func (s *server) resolveAhrefsResellerRequired(op operator, requested int) (int, string) {
+	if op.Role != "master" {
+		return op.ID, ""
+	}
+	if requested <= 0 {
+		return 0, "Choose a reseller"
+	}
+	var role, status string
+	err := s.db.QueryRow(`SELECT role, status FROM operators WHERE id=?`, requested).Scan(&role, &status)
+	if err != nil {
+		return 0, "Reseller not found"
+	}
+	if role != "master" && role != "reseller" {
+		return 0, "Invalid reseller"
+	}
+	if status == "suspended" {
+		return 0, "Reseller is suspended"
+	}
+	return requested, ""
+}
+
+func (s *server) ahrefsBarResellerLabel(resellerID int64) string {
+	if resellerID <= 0 {
+		return ""
+	}
+	var username string
+	if s.db.QueryRow(`SELECT username FROM operators WHERE id=?`, resellerID).Scan(&username) != nil {
+		return ""
+	}
+	return strings.TrimSpace(username)
 }
 
 // ensureAhrefsBarOperatorFlags adds per-reseller sell/access toggle.
@@ -282,12 +316,14 @@ FROM ahrefs_bar_accounts WHERE `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, arg
 		var id, rid int64
 		var name, tok, status, lastErr, cool, used, created, updated string
 		_ = rows.Scan(&id, &rid, &name, &tok, &status, &lastErr, &cool, &used, &created, &updated)
+		srcID, srcLabel := s.ahrefsBarLinkInfo(id)
 		items = append(items, map[string]any{
-			"id": id, "reseller_id": rid, "name": name,
+			"id": id, "reseller_id": rid, "reseller_username": s.ahrefsBarResellerLabel(rid), "name": name,
 			"token_mask": maskAhrefsToken(tok), "has_token": strings.TrimSpace(tok) != "",
 			"status": status, "last_error": lastErr,
 			"cooldown_until": cool, "last_used_at": used,
 			"created_at": created, "updated_at": updated,
+			"source_account_id": srcID, "source_label": srcLabel,
 		})
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "pageSize": size})
@@ -312,12 +348,14 @@ FROM ahrefs_bar_accounts WHERE id=?`, id).Scan(&rid, &name, &tok, &status, &last
 		writeErr(w, 404, "Not found")
 		return
 	}
+	srcID, srcLabel := s.ahrefsBarLinkInfo(id)
 	writeJSON(w, 200, map[string]any{
-		"id": id, "reseller_id": rid, "name": name,
+		"id": id, "reseller_id": rid, "reseller_username": s.ahrefsBarResellerLabel(rid), "name": name,
 		"access_token_json": tok, "token_mask": maskAhrefsToken(tok),
 		"status": status, "last_error": lastErr,
 		"cooldown_until": cool, "last_used_at": used,
 		"created_at": created, "updated_at": updated,
+		"source_account_id": srcID, "source_label": srcLabel,
 	})
 }
 
@@ -346,10 +384,14 @@ func (s *server) saveAhrefsBarAccount(w http.ResponseWriter, r *http.Request) {
 	if status == "" {
 		status = "active"
 	}
-	reseller := s.resolveAhrefsReseller(op, body.ResellerID)
 	now := nowRFC3339()
 
 	if body.ID == 0 {
+		reseller, errMsg := s.resolveAhrefsResellerRequired(op, body.ResellerID)
+		if errMsg != "" {
+			writeErr(w, 400, errMsg)
+			return
+		}
 		tok := strings.TrimSpace(body.AccessTokenJSON)
 		if tok == "" {
 			writeErr(w, 400, "Paste Ahrefs access token / JSON")
@@ -380,8 +422,14 @@ VALUES (?,?,?,?,?,?,?)`, reseller, name, tok, status, "", now, now)
 				writeErr(w, 500, err.Error())
 				return
 			}
+			s.shareAhrefsBarTokenFrom(body.ID)
 		}
 		if op.Role == "master" && body.ResellerID > 0 {
+			reseller, errMsg := s.resolveAhrefsResellerRequired(op, body.ResellerID)
+			if errMsg != "" {
+				writeErr(w, 400, errMsg)
+				return
+			}
 			_, _ = s.db.Exec(`UPDATE ahrefs_bar_accounts SET reseller_id=? WHERE id=?`, reseller, body.ID)
 		}
 	}
@@ -398,6 +446,8 @@ func (s *server) deleteAhrefsBarAccount(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, 403, "You cannot manage this item")
 		return
 	}
+	s.ensureAhrefsBarAccountLinks()
+	_, _ = s.db.Exec(`DELETE FROM ahrefs_bar_account_links WHERE follower_account_id=? OR source_account_id=?`, id, id)
 	_, _ = s.db.Exec(`DELETE FROM ahrefs_bar_accounts WHERE id=?`, id)
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }

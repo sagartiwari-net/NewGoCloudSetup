@@ -49,6 +49,8 @@ import type {
   AccessReject,
   AhrefsBarOverview,
   AhrefsBarAccount,
+  AhrefsBarAccountLinkCopy,
+  AhrefsBarAccountLinkSources,
   AhrefsBarPortal,
   AhrefsBarSettings,
   AhrefsBarEndpointCost,
@@ -1067,6 +1069,25 @@ export async function saveAhrefsBarAccount(input: {
 
 export async function deleteAhrefsBarAccount(id: number): Promise<Ok> {
   await api(`/api/ahrefs-bar/accounts${qs({ id })}`, { method: "DELETE" })
+  return { status: "ok" }
+}
+
+export async function ahrefsBarAccountLinkSources(accountId: number): Promise<AhrefsBarAccountLinkSources> {
+  return api(`/api/ahrefs-bar/account-links/sources${qs({ accountId })}`)
+}
+
+export async function saveAhrefsBarAccountLink(
+  followerAccountId: number,
+  sourceAccountId: number,
+): Promise<AhrefsBarAccountLinkCopy> {
+  return api("/api/ahrefs-bar/account-links", {
+    method: "POST",
+    body: JSON.stringify({ follower_account_id: followerAccountId, source_account_id: sourceAccountId }),
+  })
+}
+
+export async function deleteAhrefsBarAccountLink(followerAccountId: number): Promise<Ok> {
+  await api(`/api/ahrefs-bar/account-links${qs({ follower: followerAccountId })}`, { method: "DELETE" })
   return { status: "ok" }
 }
 
