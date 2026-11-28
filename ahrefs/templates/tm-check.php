@@ -2,12 +2,13 @@
 /**
  * ToolsMandi Ahrefs Bar — aMember membership check endpoint
  *
- * Prefer installing THIS file inside the aMember root, e.g.:
- *   https://yoursite.com/member/tm-check.php
- * then set that URL as Portal "tm-check URL".
+ * Install next to aMember's library/ folder (same directory level):
+ *   …/tm-check.php
+ *   …/library/Am/Lite.php
  *
- * If you keep it at the site web root, aMember must live in ./member or
- * set TM_AMEMBER_ROOT below to the folder that contains library/Am/Lite.php.
+ * Member URL path differs per site (/member, /amember, web root, …).
+ * Put this file wherever Lite.php's parent tree lives, then set that
+ * full URL as Portal "tm-check URL" in the panel.
  *
  * Optional shared secret: set TM_CHECK_SECRET below AND the same value
  * on the portal row (panel). Caller must send header X-TM-Check-Key.
@@ -24,8 +25,11 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
 const TM_CHECK_SECRET = ''; // e.g. 'change-me-long-random'
-/** Absolute path to aMember root (folder that contains library/Am/Lite.php). Leave empty to auto-detect. */
-const TM_AMEMBER_ROOT = '';
+/**
+ * Optional absolute path to Lite.php OR aMember root (folder containing library/).
+ * Leave empty — auto-detect from this file's directory first.
+ */
+const TM_AMEMBER_LITE_PATH = '';
 /** Comma-separated aMember product IDs that grant Ahrefs Bar access (fallback if request omits them). */
 const TM_DEFAULT_PRODUCT_IDS = '';
 
@@ -50,35 +54,80 @@ if (TM_CHECK_SECRET !== '') {
 }
 
 /**
- * Resolve aMember root. toolsmandi-style installs often live in /member
- * while operators drop tm-check.php at the domain web root.
+ * Locate library/Am/Lite.php.
+ * Primary rule: tm-check.php and library/ are siblings (same folder).
+ * Extra candidates cover odd layouts without hardcoding one reseller domain.
  */
-function tm_find_amember_root(): string
+function tm_find_lite_path(): string
 {
-    if (TM_AMEMBER_ROOT !== '' && is_file(rtrim(TM_AMEMBER_ROOT, '/\\') . '/library/Am/Lite.php')) {
-        return rtrim(TM_AMEMBER_ROOT, '/\\');
+    if (TM_AMEMBER_LITE_PATH !== '') {
+        $p = rtrim(str_replace('\\', '/', TM_AMEMBER_LITE_PATH), '/');
+        if (is_file($p) && strtolower(substr($p, -8)) === 'lite.php') {
+            return $p;
+        }
+        if (is_file($p . '/library/Am/Lite.php')) {
+            return $p . '/library/Am/Lite.php';
+        }
     }
+
+    if (defined('AMEMBER_LITE_PATH') && AMEMBER_LITE_PATH !== '') {
+        $p = rtrim(str_replace('\\', '/', (string) AMEMBER_LITE_PATH), '/');
+        if (is_file($p) && strtolower(substr($p, -8)) === 'lite.php') {
+            return $p;
+        }
+        if (is_file($p . '/library/Am/Lite.php')) {
+            return $p . '/library/Am/Lite.php';
+        }
+    }
+
+    $dir = str_replace('\\', '/', __DIR__);
+    $parent = dirname($dir);
+    $grand = dirname($parent);
+
+    // Order matters: same-level library/ wins (normal install).
     $candidates = [
-        __DIR__,
-        __DIR__ . '/member',
-        dirname(__DIR__),
-        dirname(__DIR__) . '/member',
-        dirname(__DIR__) . '/public_html/member',
-        dirname(__DIR__) . '/httpdocs/member',
+        $dir . '/library/Am/Lite.php',
+        $dir . '/amember/library/Am/Lite.php',
+        $dir . '/member/library/Am/Lite.php',
+        $dir . '/members/library/Am/Lite.php',
+        $parent . '/library/Am/Lite.php',
+        $parent . '/amember/library/Am/Lite.php',
+        $parent . '/member/library/Am/Lite.php',
+        $grand . '/library/Am/Lite.php',
+        $grand . '/amember/library/Am/Lite.php',
+        $grand . '/member/library/Am/Lite.php',
     ];
-    foreach ($candidates as $dir) {
-        if (is_file($dir . '/library/Am/Lite.php')) {
-            return $dir;
+
+    // dirname(__DIR__, n) style extras when PHP supports it (already covered above).
+    foreach ([1, 2, 3] as $n) {
+        $base = dirname(__DIR__, $n);
+        $candidates[] = $base . '/library/Am/Lite.php';
+        $candidates[] = $base . '/amember/library/Am/Lite.php';
+        $candidates[] = $base . '/member/library/Am/Lite.php';
+    }
+
+    $seen = [];
+    foreach ($candidates as $path) {
+        $path = str_replace('\\', '/', $path);
+        if (isset($seen[$path])) {
+            continue;
+        }
+        $seen[$path] = true;
+        if (is_file($path)) {
+            return $path;
         }
     }
     return '';
 }
 
-$amRoot = tm_find_amember_root();
-if ($amRoot === '') {
-    tm_fail('amember_lite_missing', 500, 'Put tm-check.php inside aMember root (e.g. /member/) or set TM_AMEMBER_ROOT');
+$lite = tm_find_lite_path();
+if ($lite === '') {
+    tm_fail(
+        'amember_lite_missing',
+        500,
+        'Expected library/Am/Lite.php next to tm-check.php (same folder). Or set TM_AMEMBER_LITE_PATH.'
+    );
 }
-$lite = $amRoot . '/library/Am/Lite.php';
 require_once $lite;
 
 $raw = file_get_contents('php://input') ?: '';
@@ -102,7 +151,7 @@ $products = array_values(array_filter(array_map('trim', explode(',', $productCsv
 
 try {
     if (!class_exists('Am_Lite')) {
-        tm_fail('amember_lite_missing', 500, 'Am_Lite class missing after require');
+        tm_fail('amember_lite_missing', 500, 'Am_Lite class missing after require: ' . $lite);
     }
 
     // Adopt session cookie from bar-api before Am_Lite reads login state.
@@ -121,7 +170,6 @@ try {
             }
         }
         if (session_status() === PHP_SESSION_NONE) {
-            // Prefer real PHP session id when the portal cookie is PHPSESSID.
             $sidName = $cookieName !== '' ? $cookieName : 'PHPSESSID';
             if ($sidName === 'PHPSESSID' || $sidName === '') {
                 @session_id($token);
@@ -158,7 +206,6 @@ try {
             }
         }
         if (!$okProduct && method_exists('Am_Lite', 'haveSubscriptions')) {
-            // Some builds expose haveSubscriptions(array $ids): bool
             try {
                 if (Am_Lite::haveSubscriptions($products)) {
                     $okProduct = true;

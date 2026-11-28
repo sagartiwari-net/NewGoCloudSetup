@@ -343,10 +343,9 @@ function PortalForm({
         </Field>
         <Field>
           <FieldLabel htmlFor="ab-p-check">tm-check URL</FieldLabel>
-          <Input id="ab-p-check" placeholder="https://…/member/tm-check.php" {...form.register("check_url")} />
+          <Input id="ab-p-check" placeholder="https://site.example/tm-check.php" {...form.register("check_url")} />
           <FieldDescription>
-            Put the file in aMember root (next to <span className="font-mono">library/</span>), e.g.{" "}
-            <span className="font-mono">/member/tm-check.php</span>.
+            Full URL to tm-check.php on that site. File must sit beside <span className="font-mono">library/Am/Lite.php</span> (path differs per reseller).
           </FieldDescription>
         </Field>
         <Field>

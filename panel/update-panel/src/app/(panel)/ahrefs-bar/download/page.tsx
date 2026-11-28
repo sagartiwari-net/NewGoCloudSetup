@@ -152,18 +152,18 @@ export default function AhrefsBarDownloadPage() {
               <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                 <li>Download tm-check.php.</li>
                 <li>
-                  Upload into the <span className="font-medium text-foreground">aMember root</span> (folder that has{" "}
-                  <span className="font-mono">library/Am/Lite.php</span>) — often{" "}
-                  <span className="font-mono">/member/tm-check.php</span>, not only the domain web root.
+                  Upload next to aMember <span className="font-mono">library/</span> (same folder as{" "}
+                  <span className="font-mono">library/Am/Lite.php</span>). Path varies per site — web root,{" "}
+                  <span className="font-mono">/member/</span>, <span className="font-mono">/amember/</span>, etc.
                 </li>
-                <li>Portals → set that full tm-check URL (+ cookie name, usually <span className="font-mono">amember_nr</span> or <span className="font-mono">PHPSESSID</span>).</li>
+                <li>Portals → paste that site&apos;s full tm-check URL (+ cookie name: <span className="font-mono">amember_nr</span> or <span className="font-mono">PHPSESSID</span>).</li>
               </ol>
               <p className="text-xs text-muted-foreground">
                 Template {data?.template_ok ? "ready" : "missing — set AHREFS_BAR_TEMPLATE_DIR"}
               </p>
               <p className="text-xs text-muted-foreground">
-                Logged-out browser open should return <span className="font-mono">not_logged_in</span>.{" "}
-                <span className="font-mono">check_failed</span> / <span className="font-mono">amember_lite_missing</span> means wrong install path.
+                Logged-out open should return <span className="font-mono">not_logged_in</span>.{" "}
+                <span className="font-mono">amember_lite_missing</span> means <span className="font-mono">library/</span> is not beside the PHP file.
               </p>
               <Button
                 variant="outline"
