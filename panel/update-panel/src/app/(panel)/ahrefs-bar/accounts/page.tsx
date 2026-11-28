@@ -4,7 +4,8 @@ import { useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { PlusIcon } from "lucide-react"
+import { toast } from "sonner"
+import { CopyIcon, PlusIcon } from "lucide-react"
 
 import { useAuth } from "@/components/auth-provider"
 import { ChoiceSelect } from "@/components/choice-select"
@@ -13,8 +14,9 @@ import { DataTable, type DataColumn } from "@/components/data-table"
 import { FormOverlay } from "@/components/form-overlay"
 import { PageHeader } from "@/components/page-header"
 import { StatusBadge } from "@/components/status-badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
@@ -29,6 +31,25 @@ import {
 import type { AhrefsBarAccount } from "@/lib/api/types"
 import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
+
+/** Paste into official Ahrefs Toolbar service-worker console (chrome.storage — not page IndexedDB). */
+const EXTRACT_TOKEN_CONSOLE = `// Official Ahrefs SEO Toolbar → service worker console
+chrome.storage.local.get(['ahToken', 'ahUserData', 'ahIsAuth3'], (d) => {
+  console.log('ahIsAuth3', d.ahIsAuth3);
+  console.log('ahUserData', d.ahUserData);
+  console.log('ahToken', d.ahToken);
+  const json = JSON.stringify(d.ahToken || {}, null, 2);
+  copy(json);
+  console.log('Copied ahToken JSON — paste into panel → Ahrefs Bar → Accounts');
+});`
+
+const EXTRACT_BEARER_ONLY_CONSOLE = `// Same SW console — plain bearer only
+chrome.storage.local.get(['ahToken'], (d) => {
+  const t = d.ahToken && d.ahToken.accessToken;
+  if (!t) { console.warn('No accessToken — log into Ahrefs in the official toolbar first'); return; }
+  copy(t);
+  console.log('Copied bearer (' + t.length + ' chars)');
+});`
 
 const schema = z.object({
   name: z.string().trim().min(1, "Enter a name"),
@@ -100,6 +121,7 @@ export default function AhrefsBarAccountsPage() {
           </Button>
         }
       />
+      <TokenExtractHelp />
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
         <Field className="md:max-w-sm md:flex-1">
           <FieldLabel htmlFor="ab-acc-search">Search</FieldLabel>
@@ -188,6 +210,84 @@ export default function AhrefsBarAccountsPage() {
   )
 }
 
+function copySnippet(text: string, ok: string) {
+  void navigator.clipboard.writeText(text).then(
+    () => toast.success(ok),
+    () => toast.error("Could not copy"),
+  )
+}
+
+function TokenExtractHelp() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Get token from official Ahrefs Toolbar</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <Alert>
+          <AlertTitle>Where the token lives</AlertTitle>
+          <AlertDescription>
+            Official toolbar keeps <span className="font-mono">ahToken</span> in{" "}
+            <span className="font-mono">chrome.storage.local</span> (extension storage). That is not page
+            IndexedDB — open the extension service worker console, not a normal website console.
+          </AlertDescription>
+        </Alert>
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+          <li>Log into a real Ahrefs account in the official Ahrefs SEO Toolbar.</li>
+          <li>
+            Chrome → <span className="font-mono">chrome://extensions</span> → Ahrefs SEO Toolbar →{" "}
+            <span className="font-medium text-foreground">Service worker</span> / Inspect views.
+          </li>
+          <li>Paste a snippet below → Enter. DevTools <span className="font-mono">copy()</span> puts JSON on the clipboard.</li>
+          <li>
+            Confirm: Application → Extension storage → <span className="font-mono">ahToken.accessToken</span>.
+          </li>
+          <li>Panel → Add account → paste into Access token / JSON.</li>
+        </ol>
+        <SnippetBlock
+          title="Copy ahToken JSON (recommended)"
+          code={EXTRACT_TOKEN_CONSOLE}
+          copyLabel="Copy extract JSON"
+        />
+        <SnippetBlock
+          title="Copy plain bearer only"
+          code={EXTRACT_BEARER_ONLY_CONSOLE}
+          copyLabel="Copy extract bearer"
+        />
+        <p className="text-xs text-muted-foreground">
+          Alternate: DevTools → Network → filter <span className="font-mono">/v4/</span> → request headers →{" "}
+          <span className="font-mono">Authorization: Bearer …</span>
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SnippetBlock({
+  title,
+  code,
+  copyLabel,
+}: {
+  title: string
+  code: string
+  copyLabel: string
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">{title}</p>
+        <Button type="button" variant="outline" size="sm" onClick={() => copySnippet(code, "Snippet copied")}>
+          <CopyIcon data-icon="inline-start" />
+          {copyLabel}
+        </Button>
+      </div>
+      <pre className="max-h-48 overflow-auto rounded-lg bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap break-all">
+        {code}
+      </pre>
+    </div>
+  )
+}
+
 function AccountForm({
   account,
   onDone,
@@ -244,7 +344,9 @@ function AccountForm({
             {...form.register("access_token_json")}
           />
           <FieldDescription>
-            {account?.token_mask ? `Current: ${account.token_mask}` : "Required for new accounts."}
+            {account?.token_mask
+              ? `Current: ${account.token_mask}`
+              : "Paste ahToken JSON or plain bearer from the extract snippet above."}
           </FieldDescription>
           <FieldError errors={[errors.access_token_json]} />
         </Field>
