@@ -1216,6 +1216,8 @@ export type AhrefsBarExtInfo = {
   template_ok: boolean
   public_api: string
   reseller_id: number
+  reseller_name?: string
+  needs_reseller?: boolean
   portals: string[]
 }
 

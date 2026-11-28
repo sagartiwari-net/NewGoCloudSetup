@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { PlusIcon } from "lucide-react"
 
 import { useAuth } from "@/components/auth-provider"
+import { ChoiceSelect } from "@/components/choice-select"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { DataTable, type DataColumn } from "@/components/data-table"
 import { FormOverlay } from "@/components/form-overlay"
@@ -20,34 +21,37 @@ import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useResource } from "@/hooks/use-resource"
 import {
+  currentOperator,
   deleteAhrefsBarPortal,
   listAhrefsBarPortals,
+  listResellerChoices,
   saveAhrefsBarPortal,
 } from "@/lib/api/client"
 import type { AhrefsBarPortal } from "@/lib/api/types"
 import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
 
-const schema = z.object({
-  name: z.string().trim(),
-  site_url: z.string().trim().min(1, "Enter site URL"),
-  cookie_name: z.string().trim().min(1, "Cookie name"),
-  check_url: z.string().trim(),
-  product_ids: z.string().trim(),
-  shared_secret: z.string(),
-  enabled: z.enum(["yes", "no"]),
-})
-
-type FormValues = z.infer<typeof schema>
-
 export default function AhrefsBarPortalsPage() {
   const { session } = useAuth()
+  const isMaster = session?.role === "master"
   const [query, setQuery] = useState("")
+  const [filterResellerId, setFilterResellerId] = useState("all")
   const { page, setPage, pageSize } = useListPage()
   const { data, loading, reload } = useResource(
-    `${session?.role ?? "none"}-${page}-${pageSize}-${query}`,
-    () => listAhrefsBarPortals({ page, pageSize, query }),
+    `${session?.role ?? "none"}-${page}-${pageSize}-${query}-${filterResellerId}`,
+    () =>
+      listAhrefsBarPortals({
+        page,
+        pageSize,
+        query,
+        resellerId: isMaster && filterResellerId !== "all" ? Number(filterResellerId) : undefined,
+      }),
   )
+  const { data: filterChoices } = useResource(isMaster ? "ab-portal-filter-resellers" : "skip", async () => {
+    if (!isMaster) return { items: [] as Array<{ id: number; username: string }> }
+    const page = await listResellerChoices()
+    return { items: page.items.filter((r) => r.ahrefs_bar_enabled).map((r) => ({ id: r.id, username: r.username })) }
+  })
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<AhrefsBarPortal | null>(null)
   const [pendingDelete, setPendingDelete] = useState<AhrefsBarPortal | null>(null)
@@ -55,8 +59,26 @@ export default function AhrefsBarPortalsPage() {
 
   const rows = data?.items ?? []
 
+  const filterItems = useMemo(
+    () => [
+      { label: "All resellers", value: "all" },
+      ...(filterChoices?.items ?? []).map((r) => ({ label: r.username, value: String(r.id) })),
+    ],
+    [filterChoices],
+  )
+
   const columns: DataColumn<AhrefsBarPortal>[] = [
     { id: "name", header: "Name", cell: (row) => row.name || "—", sortValue: (row) => row.name },
+    ...(isMaster
+      ? [
+          {
+            id: "reseller",
+            header: "Reseller",
+            cell: (row: AhrefsBarPortal) => row.reseller_username || `id ${row.reseller_id}`,
+            sortValue: (row: AhrefsBarPortal) => row.reseller_username || String(row.reseller_id),
+          } satisfies DataColumn<AhrefsBarPortal>,
+        ]
+      : []),
     { id: "site", header: "Site", cell: (row) => row.site_url, sortValue: (row) => row.site_url },
     { id: "cookie", header: "Cookie", cell: (row) => row.cookie_name, sortValue: (row) => row.cookie_name },
     { id: "products", header: "Products", cell: (row) => row.product_ids || "—", sortValue: (row) => row.product_ids },
@@ -93,7 +115,7 @@ export default function AhrefsBarPortalsPage() {
     <>
       <PageHeader
         title="Ahrefs Bar portals"
-        description="aMember / tm-check sites bound to this reseller for toolbar login verify."
+        description="aMember / tm-check sites bound to one reseller — that reseller's stamped extension can only use these hosts."
         action={
           <Button
             onClick={() => {
@@ -106,18 +128,34 @@ export default function AhrefsBarPortalsPage() {
           </Button>
         }
       />
-      <Field className="md:max-w-sm">
-        <FieldLabel htmlFor="ab-portal-search">Search</FieldLabel>
-        <Input
-          id="ab-portal-search"
-          value={query}
-          placeholder="Name or URL"
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setPage(1)
-          }}
-        />
-      </Field>
+      <div className="flex flex-wrap gap-4">
+        <Field className="md:max-w-sm">
+          <FieldLabel htmlFor="ab-portal-search">Search</FieldLabel>
+          <Input
+            id="ab-portal-search"
+            value={query}
+            placeholder="Name or URL"
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setPage(1)
+            }}
+          />
+        </Field>
+        {isMaster ? (
+          <Field className="md:max-w-xs">
+            <FieldLabel htmlFor="ab-portal-reseller-filter">Reseller</FieldLabel>
+            <ChoiceSelect
+              id="ab-portal-reseller-filter"
+              value={filterResellerId}
+              onValueChange={(v) => {
+                setFilterResellerId(v)
+                setPage(1)
+              }}
+              items={filterItems}
+            />
+          </Field>
+        ) : null}
+      </div>
       <Card>
         <CardContent>
           <DataTable
@@ -126,8 +164,8 @@ export default function AhrefsBarPortalsPage() {
             rowKey={(row) => row.id}
             loading={loading}
             paging={{ page: data?.page ?? page, total: data?.total ?? 0, pageSize, onPageChange: setPage }}
-            resetKey={query}
-            emptyTitle={query ? "No matches" : "No portals"}
+            resetKey={`${query}-${filterResellerId}`}
+            emptyTitle={query || filterResellerId !== "all" ? "No matches" : "No portals"}
             emptyDescription="Bind an aMember site URL for session verify."
           />
         </CardContent>
@@ -142,6 +180,7 @@ export default function AhrefsBarPortalsPage() {
           <PortalForm
             key={editing?.id ?? "new"}
             portal={editing}
+            isMaster={isMaster}
             onDone={async () => {
               setOpen(false)
               reload()
@@ -176,14 +215,61 @@ export default function AhrefsBarPortalsPage() {
 
 function PortalForm({
   portal,
+  isMaster,
   onDone,
 }: {
   portal: AhrefsBarPortal | null
+  isMaster: boolean
   onDone: () => Promise<void>
 }) {
+  const schema = useMemo(
+    () =>
+      z
+        .object({
+          reseller_id: z.string(),
+          name: z.string().trim(),
+          site_url: z.string().trim().min(1, "Enter site URL"),
+          cookie_name: z.string().trim().min(1, "Cookie name"),
+          check_url: z.string().trim(),
+          product_ids: z.string().trim(),
+          shared_secret: z.string(),
+          enabled: z.enum(["yes", "no"]),
+        })
+        .superRefine((value, ctx) => {
+          if (isMaster && (!value.reseller_id || value.reseller_id === "0")) {
+            ctx.addIssue({ code: "custom", path: ["reseller_id"], message: "Choose a reseller" })
+          }
+        }),
+    [isMaster],
+  )
+  type FormValues = z.infer<typeof schema>
+
+  const { data: resellerChoices } = useResource(isMaster ? "ab-portal-reseller-choices" : "skip", async () => {
+    if (!isMaster) {
+      return { me: null as null | { id: number; username: string }, items: [] as Array<{ id: number; username: string }> }
+    }
+    const [me, page] = await Promise.all([currentOperator(), listResellerChoices()])
+    return {
+      me: { id: me.id, username: me.username },
+      items: page.items.filter((r) => r.ahrefs_bar_enabled).map((r) => ({ id: r.id, username: r.username })),
+    }
+  })
+
+  const resellerItems = useMemo(() => {
+    const items: Array<{ label: string; value: string }> = []
+    if (resellerChoices?.me) {
+      items.push({ label: `Master (${resellerChoices.me.username})`, value: String(resellerChoices.me.id) })
+    }
+    for (const r of resellerChoices?.items ?? []) {
+      items.push({ label: r.username, value: String(r.id) })
+    }
+    return items
+  }, [resellerChoices])
+
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
+      reseller_id: portal?.reseller_id ? String(portal.reseller_id) : "",
       name: portal?.name ?? "",
       site_url: portal?.site_url ?? "",
       cookie_name: portal?.cookie_name || "PHPSESSID",
@@ -200,6 +286,7 @@ function PortalForm({
       () =>
         saveAhrefsBarPortal({
           id: portal?.id,
+          reseller_id: isMaster ? Number(values.reseller_id) : undefined,
           name: values.name,
           site_url: values.site_url,
           cookie_name: values.cookie_name,
@@ -216,6 +303,28 @@ function PortalForm({
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
       <FieldGroup>
+        {isMaster ? (
+          <Field data-invalid={Boolean(errors.reseller_id) || undefined}>
+            <FieldLabel htmlFor="ab-p-reseller">Reseller</FieldLabel>
+            <Controller
+              control={form.control}
+              name="reseller_id"
+              render={({ field }) => (
+                <ChoiceSelect
+                  id="ab-p-reseller"
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  placeholder="Choose reseller"
+                  items={resellerItems}
+                />
+              )}
+            />
+            <FieldDescription>
+              Required. Only that reseller&apos;s stamped extension can login via this aMember site.
+            </FieldDescription>
+            <FieldError errors={[errors.reseller_id]} />
+          </Field>
+        ) : null}
         <Field>
           <FieldLabel htmlFor="ab-p-name">Name</FieldLabel>
           <Input id="ab-p-name" {...form.register("name")} />

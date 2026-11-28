@@ -1,23 +1,57 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 import { useAuth } from "@/components/auth-provider"
+import { ChoiceSelect } from "@/components/choice-select"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Spinner } from "@/components/ui/spinner"
 import { useResource } from "@/hooks/use-resource"
 import {
+  currentOperator,
   downloadAhrefsBarExtension,
   downloadAhrefsBarTMCheck,
   getAhrefsBarExtInfo,
+  listResellerChoices,
 } from "@/lib/api/client"
 import { runMutation } from "@/lib/mutate"
 
 export default function AhrefsBarDownloadPage() {
   const { session } = useAuth()
-  const { data, loading } = useResource(`${session?.role ?? "none"}-ext`, () => getAhrefsBarExtInfo())
+  const isMaster = session?.role === "master"
+  const [resellerId, setResellerId] = useState(0)
+
+  const { data: resellerChoices } = useResource(isMaster ? "ab-dl-reseller-choices" : "skip", async () => {
+    if (!isMaster) {
+      return { me: null as null | { id: number; username: string }, items: [] as Array<{ id: number; username: string }> }
+    }
+    const [me, page] = await Promise.all([currentOperator(), listResellerChoices()])
+    return {
+      me: { id: me.id, username: me.username },
+      items: page.items.filter((r) => r.ahrefs_bar_enabled).map((r) => ({ id: r.id, username: r.username })),
+    }
+  })
+
+  const resellerItems = useMemo(() => {
+    const items: Array<{ label: string; value: string }> = [{ label: "Choose reseller…", value: "0" }]
+    if (resellerChoices?.me) {
+      items.push({ label: `Master (${resellerChoices.me.username})`, value: String(resellerChoices.me.id) })
+    }
+    for (const r of resellerChoices?.items ?? []) {
+      items.push({ label: r.username, value: String(r.id) })
+    }
+    return items
+  }, [resellerChoices])
+
+  const effectiveResellerId = isMaster ? resellerId : 0
+  const canLoad = !isMaster || resellerId > 0
+  const { data, loading } = useResource(
+    `${session?.role ?? "none"}-ext-${effectiveResellerId}`,
+    () => (canLoad ? getAhrefsBarExtInfo(isMaster ? resellerId : 0) : Promise.resolve(null)),
+  )
   const [busyZip, setBusyZip] = useState(false)
   const [busyCheck, setBusyCheck] = useState(false)
 
@@ -25,9 +59,25 @@ export default function AhrefsBarDownloadPage() {
     <>
       <PageHeader
         title="Ahrefs Bar download"
-        description="Branded extension zip and tm-check.php for aMember."
+        description="Branded extension zip (one reseller + their portals only) and tm-check.php for aMember."
       />
-      {loading && !data ? (
+      {isMaster ? (
+        <Field className="max-w-md">
+          <FieldLabel htmlFor="ab-dl-reseller">Reseller for this zip</FieldLabel>
+          <ChoiceSelect
+            id="ab-dl-reseller"
+            value={String(resellerId)}
+            onValueChange={(v) => setResellerId(Number(v) || 0)}
+            items={resellerItems}
+          />
+          <FieldDescription>
+            Required. Zip stamps that reseller id and only their enabled portal hosts — another reseller&apos;s aMember will not unlock it.
+          </FieldDescription>
+        </Field>
+      ) : null}
+      {isMaster && !canLoad ? (
+        <p className="text-sm text-muted-foreground">Pick a reseller to see bound portals and download their extension.</p>
+      ) : loading && !data ? (
         <div className="flex justify-center py-16"><Spinner /></div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
@@ -37,7 +87,7 @@ export default function AhrefsBarDownloadPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-                <li>Add portals first (Permissions / member hosts).</li>
+                <li>Add portals first (bind aMember host to this reseller).</li>
                 <li>Download zip → unzip.</li>
                 <li>
                   Chrome → Load unpacked → choose the unzipped folder.
@@ -52,6 +102,15 @@ export default function AhrefsBarDownloadPage() {
                   <dt className="text-muted-foreground">Public API</dt>
                   <dd className="font-mono text-xs">{data?.public_api || "—"}</dd>
                 </div>
+                {data?.reseller_name || data?.reseller_id ? (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Stamped for</dt>
+                    <dd className="text-right text-xs">
+                      {data.reseller_name || "reseller"}{" "}
+                      <span className="font-mono text-muted-foreground">(id {data.reseller_id})</span>
+                    </dd>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Source</dt>
                   <dd className="text-right text-xs">{data?.extension_ok ? "ready" : "missing AHREFS_BAR_EXT_DIR"}</dd>
@@ -68,13 +127,16 @@ export default function AhrefsBarDownloadPage() {
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-muted-foreground">No portals yet — zip host permissions will be empty.</p>
+                <p className="text-xs text-muted-foreground">No portals for this reseller — zip host permissions will only include Ahrefs + API.</p>
               )}
               <Button
-                disabled={!data?.extension_ok || busyZip}
+                disabled={!data?.extension_ok || busyZip || (isMaster && resellerId <= 0)}
                 onClick={() => {
                   setBusyZip(true)
-                  void runMutation(() => downloadAhrefsBarExtension(), "Extension zip ready").finally(() => setBusyZip(false))
+                  void runMutation(
+                    () => downloadAhrefsBarExtension(isMaster ? resellerId : 0),
+                    "Extension zip ready",
+                  ).finally(() => setBusyZip(false))
                 }}
               >
                 {busyZip ? <Spinner data-icon="inline-start" /> : null}
@@ -94,6 +156,10 @@ export default function AhrefsBarDownloadPage() {
               </ol>
               <p className="text-xs text-muted-foreground">
                 Template {data?.template_ok ? "ready" : "missing — set AHREFS_BAR_TEMPLATE_DIR"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Opening tm-check.php in a browser with no session cookie returns{" "}
+                <span className="font-mono">check_failed</span> — that is expected. The bar calls it with the member cookie.
               </p>
               <Button
                 variant="outline"

@@ -316,7 +316,15 @@ importScripts('event.js');
 
   async function fetchPortals() {
     try {
-      const r = await fetch(API_BASE + '/v1/portals', { cache: 'no-store' });
+      const rid = Number(CFG.resellerId) || 0;
+      if (!rid) {
+        log('portals skipped — extension not stamped with resellerId');
+        return [];
+      }
+      const r = await fetch(API_BASE + '/v1/portals?resellerId=' + encodeURIComponent(String(rid)), {
+        cache: 'no-store',
+        headers: { 'X-TM-Bar-Reseller': String(rid) },
+      });
       const j = await r.json();
       if (j && j.success && Array.isArray(j.portals)) return j.portals;
     } catch (e) {
@@ -372,17 +380,20 @@ importScripts('event.js');
 
   async function verify(portal, cookieValue, cookieName) {
     const fp = await fingerprint();
+    const rid = Number(CFG.resellerId) || 0;
     const r = await fetch(API_BASE + '/v1/session/verify', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-TM-Bar-FP': fp,
+        ...(rid ? { 'X-TM-Bar-Reseller': String(rid) } : {}),
       },
       body: JSON.stringify({
         token: cookieValue,
         portal: portal.site_url,
         cookie_name: cookieName,
         fingerprint: fp,
+        reseller_id: rid,
       }),
     });
     return r.json();

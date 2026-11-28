@@ -68,9 +68,13 @@ func (s *server) downloadAhrefsBarExtension(w http.ResponseWriter, r *http.Reque
 	}
 	resellerID := op.ID
 	if op.Role == "master" {
-		if n, err := strconv.Atoi(r.URL.Query().Get("resellerId")); err == nil && n > 0 {
-			resellerID = n
+		n, _ := strconv.Atoi(r.URL.Query().Get("resellerId"))
+		rid, errMsg := s.resolveAhrefsResellerRequired(op, n)
+		if errMsg != "" {
+			writeErr(w, 400, errMsg)
+			return
 		}
+		resellerID = rid
 	}
 	src := ahrefsExtDir()
 	if src == "" {
@@ -140,20 +144,40 @@ func (s *server) ahrefsBarExtInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resellerID := op.ID
+	needsReseller := false
 	if op.Role == "master" {
-		if n, err := strconv.Atoi(r.URL.Query().Get("resellerId")); err == nil && n > 0 {
-			resellerID = n
+		n, _ := strconv.Atoi(r.URL.Query().Get("resellerId"))
+		if n <= 0 {
+			needsReseller = true
+			resellerID = 0
+		} else {
+			rid, errMsg := s.resolveAhrefsResellerRequired(op, n)
+			if errMsg != "" {
+				writeErr(w, 400, errMsg)
+				return
+			}
+			resellerID = rid
 		}
 	}
 	src := ahrefsExtDir()
+	portals := []string{}
+	if !needsReseller {
+		portals = s.ahrefsPortalURLs(resellerID)
+	}
+	var brand string
+	if resellerID > 0 {
+		_ = s.db.QueryRow(`SELECT username FROM operators WHERE id=?`, resellerID).Scan(&brand)
+	}
 	writeJSON(w, 200, map[string]any{
-		"extension_dir": src,
-		"extension_ok":  src != "",
-		"template_dir":  ahrefsTemplateDir(),
-		"template_ok":   ahrefsTemplateDir() != "",
-		"public_api":    publicBarAPIBase(),
-		"reseller_id":   resellerID,
-		"portals":       s.ahrefsPortalURLs(resellerID),
+		"extension_dir":   src,
+		"extension_ok":    src != "",
+		"template_dir":    ahrefsTemplateDir(),
+		"template_ok":     ahrefsTemplateDir() != "",
+		"public_api":      publicBarAPIBase(),
+		"reseller_id":     resellerID,
+		"reseller_name":   brand,
+		"needs_reseller":  needsReseller,
+		"portals":         portals,
 	})
 }
 
@@ -253,20 +277,8 @@ self.TM_BAR_CONFIG = {
 		seen[origin+"/*"] = true
 		hosts = append(hosts, origin+"/*")
 	}
-	// keep common reseller sites from base manifest if present
-	if prev, ok := manifest["host_permissions"].([]any); ok {
-		for _, h := range prev {
-			hs, _ := h.(string)
-			if hs == "" || seen[hs] {
-				continue
-			}
-			if strings.Contains(hs, "127.0.0.1") || strings.Contains(hs, "localhost") {
-				continue
-			}
-			seen[hs] = true
-			hosts = append(hosts, hs)
-		}
-	}
+	// Do NOT copy other aMember hosts from the source manifest — only this
+	// reseller's stamped portals may be in host_permissions.
 	manifest["host_permissions"] = hosts
 	manifestJSON, _ := json.MarshalIndent(manifest, "", "  ")
 

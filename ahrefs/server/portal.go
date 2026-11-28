@@ -63,9 +63,14 @@ FROM ahrefs_bar_portals WHERE enabled = 1`)
 	return nil, rows.Err()
 }
 
-func (s *server) listEnabledPortalsPublic() ([]map[string]any, error) {
+func (s *server) listEnabledPortalsPublic(resellerID int) ([]map[string]any, error) {
+	// resellerID required — never leak every reseller's aMember hosts to one extension.
+	if resellerID <= 0 {
+		return []map[string]any{}, nil
+	}
 	rows, err := s.db.Query(`
-SELECT id, name, site_url, cookie_name FROM ahrefs_bar_portals WHERE enabled = 1 ORDER BY id ASC`)
+SELECT id, name, site_url, cookie_name FROM ahrefs_bar_portals
+WHERE enabled = 1 AND reseller_id = ? ORDER BY id ASC`, resellerID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +93,38 @@ SELECT id, name, site_url, cookie_name FROM ahrefs_bar_portals WHERE enabled = 1
 		})
 	}
 	return out, rows.Err()
+}
+
+func (s *server) findPortalBySiteURLForReseller(siteURL string, resellerID int) (*portalRow, error) {
+	want := normalizeSiteURL(siteURL)
+	if want == "" {
+		return nil, nil
+	}
+	q := `
+SELECT id, reseller_id, name, site_url, cookie_name, check_url, product_ids, COALESCE(shared_secret,''), enabled
+FROM ahrefs_bar_portals WHERE enabled = 1`
+	args := []any{}
+	if resellerID > 0 {
+		q += ` AND reseller_id = ?`
+		args = append(args, resellerID)
+	}
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p portalRow
+		var en int
+		if err := rows.Scan(&p.ID, &p.ResellerID, &p.Name, &p.SiteURL, &p.CookieName, &p.CheckURL, &p.ProductIDs, &p.SharedSecret, &en); err != nil {
+			return nil, err
+		}
+		p.Enabled = en == 1
+		if normalizeSiteURL(p.SiteURL) == want {
+			return &p, nil
+		}
+	}
+	return nil, rows.Err()
 }
 
 func (s *server) seedDevPortal() error {

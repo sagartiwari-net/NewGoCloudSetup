@@ -678,6 +678,7 @@ export type AhrefsBarAccountLinkCopy = {
 export type AhrefsBarPortal = {
   id: number
   reseller_id: number
+  reseller_username?: string
   name: string
   site_url: string
   cookie_name: string

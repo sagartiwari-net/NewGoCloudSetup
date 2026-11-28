@@ -478,10 +478,15 @@ func (s *server) listAhrefsBarPortals(w http.ResponseWriter, r *http.Request) {
 	}
 	var total int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM ahrefs_bar_portals WHERE `+where, args...).Scan(&total)
-	args = append(args, size, (page-1)*size)
+	joinWhere := strings.ReplaceAll(where, "reseller_id", "p.reseller_id")
+	joinWhere = strings.ReplaceAll(joinWhere, "name LIKE", "p.name LIKE")
+	joinWhere = strings.ReplaceAll(joinWhere, "site_url LIKE", "p.site_url LIKE")
+	qArgs := append(append([]any{}, args...), size, (page-1)*size)
 	rows, err := s.db.Query(`
-SELECT id, reseller_id, name, site_url, cookie_name, check_url, product_ids, shared_secret, enabled, created_at, updated_at
-FROM ahrefs_bar_portals WHERE `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args...)
+SELECT p.id, p.reseller_id, COALESCE(o.username,''), p.name, p.site_url, p.cookie_name, p.check_url, p.product_ids, p.shared_secret, p.enabled, p.created_at, p.updated_at
+FROM ahrefs_bar_portals p
+LEFT JOIN operators o ON o.id = p.reseller_id
+WHERE `+joinWhere+` ORDER BY p.id DESC LIMIT ? OFFSET ?`, qArgs...)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -490,15 +495,15 @@ FROM ahrefs_bar_portals WHERE `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, args
 	items := []any{}
 	for rows.Next() {
 		var id, rid int64
-		var name, site, cookie, check, products, secret, created, updated string
+		var rname, name, site, cookie, check, products, secret, created, updated string
 		var enabled int
-		_ = rows.Scan(&id, &rid, &name, &site, &cookie, &check, &products, &secret, &enabled, &created, &updated)
+		_ = rows.Scan(&id, &rid, &rname, &name, &site, &cookie, &check, &products, &secret, &enabled, &created, &updated)
 		secretMask := ""
 		if strings.TrimSpace(secret) != "" {
 			secretMask = maskAhrefsToken(secret)
 		}
 		items = append(items, map[string]any{
-			"id": id, "reseller_id": rid, "name": name, "site_url": site,
+			"id": id, "reseller_id": rid, "reseller_username": rname, "name": name, "site_url": site,
 			"cookie_name": cookie, "check_url": check, "product_ids": products,
 			"has_secret": strings.TrimSpace(secret) != "", "secret_mask": secretMask,
 			"enabled": enabled == 1, "created_at": created, "updated_at": updated,
@@ -568,7 +573,11 @@ func (s *server) saveAhrefsBarPortal(w http.ResponseWriter, r *http.Request) {
 	if body.Enabled != nil && !*body.Enabled {
 		enabled = 0
 	}
-	reseller := s.resolveAhrefsReseller(op, body.ResellerID)
+	reseller, errMsg := s.resolveAhrefsResellerRequired(op, body.ResellerID)
+	if errMsg != "" {
+		writeErr(w, 400, errMsg)
+		return
+	}
 	now := nowRFC3339()
 	name := strings.TrimSpace(body.Name)
 
@@ -589,22 +598,19 @@ VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		}
 		secret := strings.TrimSpace(body.SharedSecret)
 		if secret == "" {
-			_, err := s.db.Exec(`UPDATE ahrefs_bar_portals SET name=?, site_url=?, cookie_name=?, check_url=?, product_ids=?, enabled=?, updated_at=? WHERE id=?`,
-				name, site, cookie, strings.TrimSpace(body.CheckURL), strings.TrimSpace(body.ProductIDs), enabled, now, body.ID)
+			_, err := s.db.Exec(`UPDATE ahrefs_bar_portals SET reseller_id=?, name=?, site_url=?, cookie_name=?, check_url=?, product_ids=?, enabled=?, updated_at=? WHERE id=?`,
+				reseller, name, site, cookie, strings.TrimSpace(body.CheckURL), strings.TrimSpace(body.ProductIDs), enabled, now, body.ID)
 			if err != nil {
 				writeErr(w, 500, err.Error())
 				return
 			}
 		} else {
-			_, err := s.db.Exec(`UPDATE ahrefs_bar_portals SET name=?, site_url=?, cookie_name=?, check_url=?, product_ids=?, shared_secret=?, enabled=?, updated_at=? WHERE id=?`,
-				name, site, cookie, strings.TrimSpace(body.CheckURL), strings.TrimSpace(body.ProductIDs), secret, enabled, now, body.ID)
+			_, err := s.db.Exec(`UPDATE ahrefs_bar_portals SET reseller_id=?, name=?, site_url=?, cookie_name=?, check_url=?, product_ids=?, shared_secret=?, enabled=?, updated_at=? WHERE id=?`,
+				reseller, name, site, cookie, strings.TrimSpace(body.CheckURL), strings.TrimSpace(body.ProductIDs), secret, enabled, now, body.ID)
 			if err != nil {
 				writeErr(w, 500, err.Error())
 				return
 			}
-		}
-		if op.Role == "master" && body.ResellerID > 0 {
-			_, _ = s.db.Exec(`UPDATE ahrefs_bar_portals SET reseller_id=? WHERE id=?`, reseller, body.ID)
 		}
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})

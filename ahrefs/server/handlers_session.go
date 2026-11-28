@@ -4,26 +4,38 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
 type verifyRequest struct {
-	Token      string `json:"token"`
-	Portal     string `json:"portal"`
-	SiteURL    string `json:"site_url"`
-	CookieName string `json:"cookie_name"`
+	Token       string `json:"token"`
+	Portal      string `json:"portal"`
+	SiteURL     string `json:"site_url"`
+	CookieName  string `json:"cookie_name"`
 	Fingerprint string `json:"fingerprint"`
+	ResellerID  int    `json:"reseller_id"`
 }
 
 func (s *server) handlePortals(w http.ResponseWriter, r *http.Request) {
-	list, err := s.listEnabledPortalsPublic()
+	resellerID := 0
+	if n, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("resellerId"))); err == nil {
+		resellerID = n
+	}
+	if resellerID <= 0 {
+		if n, err := strconv.Atoi(strings.TrimSpace(r.Header.Get("X-TM-Bar-Reseller"))); err == nil {
+			resellerID = n
+		}
+	}
+	list, err := s.listEnabledPortalsPublic(resellerID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "db_error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"portals": list,
+		"success":     true,
+		"reseller_id": resellerID,
+		"portals":     list,
 	})
 }
 
@@ -39,6 +51,10 @@ func (s *server) handleSessionVerify(w http.ResponseWriter, r *http.Request) {
 	portal := headerOr(r, "X-TM-Bar-Portal", "X-Tb-Portal")
 	cookieName := headerOr(r, "X-TM-Bar-Cookie", "X-Tb-Cookie")
 	fp := headerOr(r, "X-TM-Bar-FP", "X-Tb-FP")
+	resellerID := 0
+	if n, err := strconv.Atoi(strings.TrimSpace(headerOr(r, "X-TM-Bar-Reseller"))); err == nil {
+		resellerID = n
+	}
 
 	if r.Body != nil {
 		defer r.Body.Close()
@@ -57,6 +73,9 @@ func (s *server) handleSessionVerify(w http.ResponseWriter, r *http.Request) {
 				}
 				if fp == "" {
 					fp = strings.TrimSpace(req.Fingerprint)
+				}
+				if resellerID <= 0 && req.ResellerID > 0 {
+					resellerID = req.ResellerID
 				}
 			}
 		}
@@ -112,7 +131,7 @@ func (s *server) handleSessionVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := s.findPortalBySiteURL(portal)
+	p, err := s.findPortalBySiteURLForReseller(portal, resellerID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "db_error")
 		return
@@ -120,6 +139,12 @@ func (s *server) handleSessionVerify(w http.ResponseWriter, r *http.Request) {
 	if p == nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{
 			"success": false, "valid": false, "error": "portal_not_allowed", "deny": "Unauthorized",
+		})
+		return
+	}
+	if resellerID > 0 && p.ResellerID != resellerID {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"success": false, "valid": false, "error": "reseller_mismatch", "deny": "Unauthorized",
 		})
 		return
 	}
