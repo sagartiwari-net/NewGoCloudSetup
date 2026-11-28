@@ -11,18 +11,29 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BASE="${BASE:-/www/wwwroot/gt4rents.com}"
 MAP_SRC="${ROOT}/deploy/nginx-host-port.map.conf"
-MAP_DST="/www/server/panel/vhost/nginx/gt4rents-host-port.map.conf"
+# aaPanel may include any of these — sync all (same as fix-nox / fix-t4toolz)
+MAP_DSTS=(
+  /www/server/panel/vhost/nginx/gt4rents-host-port.map.conf
+  /www/server/panel/vhost/nginx/nginx-host-port.map.conf
+  /www/server/panel/vhost/nginx/extension/nginx-host-port.map.conf
+  /www/server/nginx/conf/nginx-host-port.map.conf
+)
 
 echo "== 1) nginx host→port map (barapi.upays.in → 8088)"
 if [[ -f "${MAP_SRC}" ]]; then
-  if [[ -f "${MAP_DST}" ]]; then
-    cp -a "${MAP_DST}" "${MAP_DST}.bak.$(date +%Y%m%d%H%M%S)"
-  fi
-  cp "${MAP_SRC}" "${MAP_DST}"
+  for MAP_DST in "${MAP_DSTS[@]}"; do
+    dir=$(dirname "${MAP_DST}")
+    [[ -d "${dir}" ]] || continue
+    if [[ -f "${MAP_DST}" ]]; then
+      cp -a "${MAP_DST}" "${MAP_DST}.bak.$(date +%Y%m%d%H%M%S)"
+    fi
+    cp "${MAP_SRC}" "${MAP_DST}"
+    echo "OK → ${MAP_DST}"
+  done
   nginx -t
   nginx -s reload
   echo "OK: map reloaded"
-  grep -n 'barapi' "${MAP_DST}" || echo "WARN: barapi line missing in ${MAP_DST}"
+  grep -n 'barapi' "${MAP_DSTS[0]}" 2>/dev/null || grep -rn 'barapi' "${MAP_DSTS[@]}" 2>/dev/null | head -5 || echo "WARN: barapi line missing"
 else
   echo "WARN: missing ${MAP_SRC}"
 fi
@@ -44,4 +55,4 @@ echo -n "nginx Host barapi → : "
 curl -sI -H 'Host: barapi.upays.in' http://127.0.0.1/v1/portals | head -3 || true
 echo ""
 echo "Done. Hard-refresh panel.upays.in — Ahrefs Bar in sidebar."
-echo "If browser still 404 on https://barapi.upays.in: check aaPanel SSL vhost uses same map (\$tool_port)."
+echo "If browser still 404 on https://barapi.upays.in: run deploy/fix-barapi-nginx.sh (multi-map + dedicated vhost)."
