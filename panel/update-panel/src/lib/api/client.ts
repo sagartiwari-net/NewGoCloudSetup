@@ -1224,8 +1224,13 @@ export async function getAhrefsBarExtInfo(resellerId = 0): Promise<AhrefsBarExtI
 }
 
 async function downloadAuthenticated(path: string, filename: string) {
-  const API = (typeof process !== "undefined" && process.env.NEXT_PUBLIC_PANEL_API) || "http://127.0.0.1:18090"
-  const response = await fetch(`${API}${path}`, { credentials: "include" })
+  // Same base as api() — empty NEXT_PUBLIC_PANEL_API means same-origin /api (nginx → :18090).
+  // Do NOT use || fallback to 127.0.0.1 (breaks prod downloads).
+  const token = readSession()?.token
+  const response = await fetch(`${API}${path}`, {
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
   if (!response.ok) {
     let message = "Download failed"
     try {
