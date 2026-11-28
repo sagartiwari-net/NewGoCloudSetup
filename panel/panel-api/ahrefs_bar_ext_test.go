@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,20 +26,22 @@ func TestBuildAhrefsExtensionZip(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"ahrefs-bar/tm-config.js":  false,
-		"ahrefs-bar/tm-rules.json": false,
-		"ahrefs-bar/manifest.json": false,
-		"ahrefs-bar/tm-guard.js":   false,
-		"ahrefs-bar/tm-fp.js":      false,
-		"ahrefs-bar/event.js":      false,
-		"ahrefs-bar/content.js":    false,
-		"README.txt":               false,
+		"tm-config.js":  false,
+		"tm-rules.json": false,
+		"manifest.json": false,
+		"tm-guard.js":   false,
+		"tm-fp.js":      false,
+		"event.js":      false,
+		"content.js":    false,
 	}
 	for _, f := range zr.File {
+		if strings.HasPrefix(f.Name, "ahrefs-bar/") || f.Name == "README.txt" {
+			t.Fatalf("unexpected nested/readme entry: %s", f.Name)
+		}
 		if _, ok := want[f.Name]; ok {
 			want[f.Name] = true
 		}
-		if f.Name == "ahrefs-bar/tm-config.js" {
+		if f.Name == "tm-config.js" {
 			rc, _ := f.Open()
 			buf := new(bytes.Buffer)
 			_, _ = buf.ReadFrom(rc)

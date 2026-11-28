@@ -4,13 +4,11 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 func (s *server) extensionVersion() string {
@@ -110,7 +108,7 @@ func zipExtensionDir(srcDir string) ([]byte, error) {
 		if err != nil {
 			return err
 		}
-		w, err := zw.Create("ahrefs-bar/" + rel)
+		w, err := zw.Create(rel)
 		if err != nil {
 			return err
 		}
@@ -120,11 +118,6 @@ func zipExtensionDir(srcDir string) ([]byte, error) {
 	if err != nil {
 		_ = zw.Close()
 		return nil, err
-	}
-	readme := fmt.Sprintf("ToolsMandi Ahrefs Bar\nPacked: %s UTC\n\nUnzip → chrome://extensions → Developer mode → Load unpacked → select ahrefs-bar/\n",
-		time.Now().UTC().Format(time.RFC3339))
-	if rw, e := zw.Create("README.txt"); e == nil {
-		_, _ = io.WriteString(rw, readme)
 	}
 	if err := zw.Close(); err != nil {
 		return nil, err

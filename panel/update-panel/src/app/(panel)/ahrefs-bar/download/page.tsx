@@ -88,9 +88,9 @@ export default function AhrefsBarDownloadPage() {
             <CardContent className="space-y-4">
               <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                 <li>Add portals first (bind aMember host to this reseller).</li>
-                <li>Download zip → unzip.</li>
+                <li>Download zip → unzip (manifest.json should be at the top of that folder).</li>
                 <li>
-                  Chrome → Load unpacked → choose the unzipped folder.
+                  Chrome → Load unpacked → choose that unzipped folder.
                 </li>
                 <li>
                   Prod API is <span className="font-mono">barapi.upays.in</span>. Local test needs{" "}

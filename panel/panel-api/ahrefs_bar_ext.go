@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -318,7 +317,8 @@ self.TM_BAR_CONFIG = {
 				return err
 			}
 		}
-		w, err := zw.Create("ahrefs-bar/" + rel)
+		// Flat zip root — Load unpacked points at the unzipped folder (no nested ahrefs-bar/).
+		w, err := zw.Create(rel)
 		if err != nil {
 			return err
 		}
@@ -329,10 +329,6 @@ self.TM_BAR_CONFIG = {
 		_ = zw.Close()
 		return nil, err
 	}
-	readme := fmt.Sprintf("ToolsMandi Ahrefs Bar — %s (reseller %d)\nAPI: %s\nBuild: %s\n\nLoad unpacked: chrome://extensions → Developer mode → Load unpacked → select ahrefs-bar folder (or unzip first).\n",
-		brand, resellerID, apiBase, buildID)
-	rw, _ := zw.Create("README.txt")
-	_, _ = io.WriteString(rw, readme)
 	if err := zw.Close(); err != nil {
 		return nil, err
 	}
