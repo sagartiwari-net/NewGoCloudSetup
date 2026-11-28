@@ -9,7 +9,7 @@ self.TM_BAR_CONFIG = {
   brandName: 'ToolsMandi',
   resellerId: 0,
   buildId: 'dev-local',
-  version: '1.0.32',
+  version: '1.0.33',
   /** Panel page (operator) — branded zip */
   panelUrl: 'http://127.0.0.1:3000/ahrefs-bar/download',
   /** Direct zip from bar-api (same as old “get update” button) */

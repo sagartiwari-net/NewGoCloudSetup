@@ -4,6 +4,7 @@
  */
 (() => {
   const GENERIC_FETCH_ERR = 'Error fetching data. Please try again later.';
+  const SUB_EXPIRED_MSG = 'Subscription expired. Contact to admin.';
 
   const bar = document.createElement('div');
   bar.id = 'tm-auth-strip';
@@ -52,6 +53,9 @@
 
   function blockMessage(block) {
     if (!block) return '';
+    if (block.message && /subscription expired/i.test(block.message)) {
+      return block.message;
+    }
     if (block.retry_at && block.retry_at > Date.now()) {
       const left = Math.ceil((block.retry_at - Date.now()) / 1000);
       if (block.kind === 'limit' && block.window === 'daily') {
@@ -61,7 +65,7 @@
         return 'Hourly limit reached. Try again in ' + formatWait(left) + '.';
       }
       if (block.kind === 'pool' && left > 0) {
-        return 'Ahrefs account cooling down. Try again in ' + formatWait(left) + '.';
+        return block.message || ('Ahrefs account cooling down. Try again in ' + formatWait(left) + '.');
       }
     }
     return block.message || '';
@@ -94,7 +98,7 @@
       if (el.childElementCount > 0) continue;
       const t = (el.textContent || '').trim();
       if (t === GENERIC_FETCH_ERR || t === "You've reached your usage limit") {
-        el.textContent = msg;
+        el.textContent = msg || SUB_EXPIRED_MSG;
         replaced.add(el);
       }
     }
@@ -139,21 +143,60 @@
     chrome.runtime.sendMessage({ type: 'tm:status' }, (r) => paint(r || {}));
   }
 
-  // Always re-check live portal cookie (Markhor-style) when popup opens.
+  function withTimeout(fn, ms, fallback) {
+    let done = false;
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      fallback();
+    }, ms);
+    fn(() => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+    });
+  }
+
+  // Always re-check live portal cookie when popup opens (never hang on "checking…").
   function syncThenPaint() {
     status.textContent = 'checking…';
     status.style.color = '#eab308';
-    chrome.runtime.sendMessage({ type: 'tm:refresh' }, () => loadStatus());
+    withTimeout(
+      (done) => {
+        chrome.runtime.sendMessage({ type: 'tm:refresh' }, () => {
+          loadStatus();
+          done();
+        });
+      },
+      12000,
+      () => {
+        status.textContent = 'check timeout — tap Refresh';
+        status.style.color = '#fca5a5';
+        loadStatus();
+      },
+    );
   }
 
   btn.addEventListener('click', () => {
     status.textContent = 'refreshing…';
     status.style.color = '#eab308';
     btn.disabled = true;
-    chrome.runtime.sendMessage({ type: 'tm:refresh' }, () => {
-      btn.disabled = false;
-      loadStatus();
-    });
+    withTimeout(
+      (done) => {
+        chrome.runtime.sendMessage({ type: 'tm:refresh' }, () => {
+          btn.disabled = false;
+          loadStatus();
+          done();
+        });
+      },
+      12000,
+      () => {
+        btn.disabled = false;
+        status.textContent = 'check timeout — tap Refresh';
+        status.style.color = '#fca5a5';
+        loadStatus();
+      },
+    );
   });
 
   upd.addEventListener('click', () => {

@@ -144,9 +144,7 @@ importScripts('event.js');
       const message = (detail && detail.message) || hdrMsg ||
         (code === 'RateLimit'
           ? 'Ahrefs is busy right now. Try again in ' + formatWait(retry || 15) + '.'
-          : retry > 0
-            ? 'Ahrefs account cooling down. Try again in ' + formatWait(retry) + '.'
-            : 'No Ahrefs account available right now. Please try again later.');
+          : 'Subscription expired. Contact to admin.');
       await setBarBlock({
         kind: code === 'RateLimit' ? 'upstream' : 'pool',
         window: '',
@@ -468,22 +466,31 @@ importScripts('event.js');
   async function verify(portal, cookieValue, cookieName) {
     const fp = await fingerprint();
     const rid = Number(CFG.resellerId) || 0;
-    const r = await fetch(API_BASE + '/v1/session/verify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-TM-Bar-FP': fp,
-        ...(rid ? { 'X-TM-Bar-Reseller': String(rid) } : {}),
-      },
-      body: JSON.stringify({
-        token: cookieValue,
-        portal: portal.site_url,
-        cookie_name: cookieName,
-        fingerprint: fp,
-        reseller_id: rid,
-      }),
-    });
-    return r.json();
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 10000) : null;
+    try {
+      const r = await fetch(API_BASE + '/v1/session/verify', {
+        method: 'POST',
+        signal: ctrl ? ctrl.signal : undefined,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-TM-Bar-FP': fp,
+          ...(rid ? { 'X-TM-Bar-Reseller': String(rid) } : {}),
+        },
+        body: JSON.stringify({
+          token: cookieValue,
+          portal: portal.site_url,
+          cookie_name: cookieName,
+          fingerprint: fp,
+          reseller_id: rid,
+        }),
+      });
+      return await r.json();
+    } catch (e) {
+      return { success: false, valid: false, error: (e && e.name === 'AbortError') ? 'verify_timeout' : (e.message || 'verify_error') };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /**
@@ -514,7 +521,9 @@ importScripts('event.js');
           continue;
         }
         sawCookie = true;
-        for (const c of cookies) {
+        // Cap attempts — many cookie aliases × slow tm-check used to leave popup on "checking…".
+        const tryCookies = cookies.slice(0, 4);
+        for (const c of tryCookies) {
           const j = await verify(p, c.value, c.name);
           if (j && j.success && j.valid && j.session_token) {
             await applyAuthed(j.session_token, j.user, j.portal || p.site_url);

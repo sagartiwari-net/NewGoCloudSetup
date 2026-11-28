@@ -30,7 +30,7 @@ func (s *server) loadAccountByID(id int64) (*barAccount, error) {
 	if id <= 0 {
 		return nil, nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := s.dbTime(time.Now())
 	row := s.db.QueryRow(`
 SELECT id, reseller_id, name, access_token_json, status
 FROM ahrefs_bar_accounts
@@ -57,7 +57,7 @@ func scanAccount(row *sql.Row) (*barAccount, error) {
 
 // listHealthyAccounts returns RR-ordered healthy accounts for a reseller.
 func (s *server) listHealthyAccounts(resellerID int) ([]barAccount, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := s.dbTime(time.Now())
 	// Revive cooled-down accounts back to active.
 	_, _ = s.db.Exec(`
 UPDATE ahrefs_bar_accounts
@@ -93,27 +93,49 @@ ORDER BY CASE WHEN last_used_at IS NULL OR last_used_at = '' THEN 0 ELSE 1 END, 
 	return out, rows.Err()
 }
 
-// poolUnavailableDetail explains empty healthy pool + soonest cooldown retry.
+// poolUnavailableDetail explains empty healthy pool. Auth-dead tokens
+// (expired / revoked Ahrefs subscription) get a clear admin message —
+// not a spinner / generic "Error fetching data".
 func (s *server) poolUnavailableDetail(resellerID int) (sec int, retryAt, message string) {
 	now := time.Now().UTC()
+	nowStr := s.dbTime(now)
+
+	var total, authDead int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM ahrefs_bar_accounts WHERE reseller_id = ?`, resellerID).Scan(&total)
+	_ = s.db.QueryRow(`
+SELECT COUNT(*) FROM ahrefs_bar_accounts
+WHERE reseller_id = ?
+  AND status IN ('bad','cooldown','disabled')
+  AND (
+    last_error LIKE '%401%' OR last_error LIKE '%403%' OR last_error LIKE '%Unauthorized%'
+    OR last_error LIKE '%expired%' OR last_error LIKE '%revoked%' OR last_error LIKE '%invalid_token%'
+    OR last_error LIKE '%subscription%'
+  )`, resellerID).Scan(&authDead)
+
+	if total == 0 || (total > 0 && authDead >= total) {
+		message = "Subscription expired. Contact to admin."
+		return
+	}
+
 	var until sql.NullString
 	_ = s.db.QueryRow(`
 SELECT MIN(cooldown_until) FROM ahrefs_bar_accounts
 WHERE reseller_id = ? AND status IN ('bad','cooldown')
   AND cooldown_until IS NOT NULL AND cooldown_until <> '' AND cooldown_until > ?`,
-		resellerID, now.Format(time.RFC3339)).Scan(&until)
+		resellerID, nowStr).Scan(&until)
 	if until.Valid && strings.TrimSpace(until.String) != "" {
-		if t, err := time.Parse(time.RFC3339, until.String); err == nil && t.After(now) {
+		if t, err := parseDBTime(until.String); err == nil && t.After(now) {
 			sec = int(t.Sub(now).Seconds())
 			if sec < 1 {
 				sec = 1
 			}
-			retryAt = t.UTC().Format(time.RFC3339)
+			retryAt = s.dbTime(t)
 			message = "Ahrefs account cooling down. Try again in " + formatWait(sec) + "."
 			return
 		}
 	}
-	message = "No Ahrefs account available right now. Please try again later."
+	// No healthy token left — treat as admin/subscription issue for clear UX.
+	message = "Subscription expired. Contact to admin."
 	return
 }
 
@@ -198,12 +220,17 @@ func (s *server) markAccountBad(id int64, reason string) {
 		reason = reason[:500]
 	}
 	now := time.Now().UTC()
+	// Auth failures (expired Ahrefs subscription) stay parked longer.
 	wait := 15 * time.Minute
-	cooldown := now.Add(wait).Format(time.RFC3339)
+	low := strings.ToLower(reason)
+	if strings.Contains(low, "401") || strings.Contains(low, "403") || strings.Contains(low, "unauthorized") {
+		wait = 6 * time.Hour
+	}
+	cooldown := s.dbTime(now.Add(wait))
 	_, _ = s.db.Exec(`
 UPDATE ahrefs_bar_accounts
 SET status = 'bad', last_error = ?, cooldown_until = ?, updated_at = ?
-WHERE id = ?`, reason, cooldown, now.Format(time.RFC3339), id)
+WHERE id = ?`, reason, cooldown, s.dbTime(now), id)
 }
 
 func (s *server) noteAccountUpstream(id int64, reason string) {
@@ -211,7 +238,7 @@ func (s *server) noteAccountUpstream(id int64, reason string) {
 	if len(reason) > 500 {
 		reason = reason[:500]
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := s.dbTime(time.Now())
 	_, _ = s.db.Exec(`
 UPDATE ahrefs_bar_accounts
 SET last_error = ?, updated_at = ?
