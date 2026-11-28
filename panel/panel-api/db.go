@@ -108,6 +108,8 @@ func openDB(path string) *sql.DB {
 	ensureAmzPremiumSoftwareSites(db)
 	ensureAmzPremiumExtraSellerAmp(db)
 	ensureAccessAlertSettings(db)
+	ensureAhrefsBarTables(db)
+	ensureAhrefsBarOperatorFlags(db)
 	return db
 }
 
@@ -163,6 +165,8 @@ func openMySQL() *sql.DB {
 	ensureAmzPremiumSoftwareSites(db)
 	ensureAmzPremiumExtraSellerAmp(db)
 	ensureAccessAlertSettings(db)
+	ensureAhrefsBarTables(db)
+	ensureAhrefsBarOperatorFlags(db)
 	return db
 }
 

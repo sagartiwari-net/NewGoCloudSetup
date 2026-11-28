@@ -1,0 +1,38 @@
+Titre :
+Ahrefs SEO Toolbar : outils On-Page et SERP
+
+Résumé :
+Gagnez du temps grâce à une boîte à outils complète dans une seule extension
+SEO. Informations pour le contenu on-page, la recherche de mots-clés et l’analyse des
+liens sur n’importe quelle page Web.
+
+Description :
+La barre d’outils Ahrefs est gratuite et vous fournit des informations SEO détaillées
+sans quitter votre navigateur.
+
+🌍 Recherche SEO globale (VPN non requis)
+Changez de région, de domaine Google ou de langue, et obtenez de nouvelles idées
+de mots-clés directement dans les résultats de recherche.
+
+📃 Données SEO on-page en un clic
+Vérifiez les titres, méta descriptions, en-têtes et facteurs techniques SEO tels que les
+balises canoniques et les directives d’indexation en un seul clic.
+
+🔗 Analyse des liens simplifiée
+Mettez en évidence les liens sur la page, suivez les redirections, filtrez les liens
+sortants, repérez les liens cassés et exportez toutes les données au format CSV. 
+
+🛠 Outils de recherche SEO détaillés
+Enregistrez les URL des onglets ouverts ou d’un SERP, changez d’assistant
+utilisateur pour voir les pages comme Googlebot, consultez les en-têtes HTTP et
+obtenez des données de performance pour analyser la vitesse des pages.
+
+✨ Les utilisateurs payants d’Ahrefs ont accès aux métriques Ahrefs :
+Consultez les métriques au niveau du domaine et de la page, telles que le nombre
+de mots-clés, les estimations de trafic, les domaines référents et plus encore,
+directement sur chaque site ou résultat.
+
+🤝 Approuvé par plus de 360 000 professionnels du SEO
+
+📌 Remarque : un abonnement Ahrefs est nécessaire pour accéder aux métriques
+Ahrefs. Les outils principaux de cette extension SEO restent entièrement gratuits.

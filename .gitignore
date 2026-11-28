@@ -45,3 +45,13 @@ tools/**/proxy
 tools/*-go-proxy/*-go-proxy
 tools/*-go-proxy/*-proxy
 *.exe
+**/config.local.json
+
+# Ahrefs Bar local/runtime (never push)
+ahrefs/server/data/
+ahrefs/deploy/ahrefs-bar-api
+ahrefs/deploy/ahrefs-bar-api.linux-amd64
+ahrefs/extension/_metadata/
+!ahrefs/extension/images/
+!ahrefs/extension/images/**/*.png
+!ahrefs/extension/images/**/*.svg

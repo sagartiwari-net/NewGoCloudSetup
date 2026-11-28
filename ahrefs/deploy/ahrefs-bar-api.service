@@ -1,0 +1,16 @@
+[Unit]
+Description=ToolsMandi Ahrefs Bar API
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/www/wwwroot/gt4rents.com/ahrefs-bar-api
+ExecStart=/www/wwwroot/gt4rents.com/ahrefs-bar-api/run-ahrefs-bar-api.sh
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

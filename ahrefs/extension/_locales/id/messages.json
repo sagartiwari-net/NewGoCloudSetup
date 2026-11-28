@@ -1,0 +1,883 @@
+{
+   "banner__cta_site_audit_header": {
+      "description": "Header of the banner CTA for the Site Audit",
+      "message": "Ahrefs Site Audit."
+   },
+   "banner__cta_site_audit_text": {
+      "description": "Text of the banner CTA for the Site Audit",
+      "message": "Lakukan audit SEO lengkap pada situs web Anda. Identifikasi, prioritaskan, dan perbaiki lebih dari 170 masalah SEO."
+   },
+   "banner__patch_it_description": {
+      "description": "Description of the banner CTA for the Site Audit Patches",
+      "message": "Perbaiki masalah SEO umum dan terapkan perubahan langsung dari Ahrefs ke situs web Anda."
+   },
+   "banner__patch_it_label": {
+      "description": "Label for the banner CTA for the Site Audit Patches",
+      "message": "Patch sekarang"
+   },
+   "banner__patch_it_title": {
+      "description": "Title of the banner CTA for the Site Audit Patches",
+      "message": "Patches"
+   },
+   "canonical_url": {
+      "message": "URL Kanonikal"
+   },
+   "card__missing_or_incomplete": {
+      "message": "Hilang atau tidak lengkap"
+   },
+   "content": {
+      "message": "Konten"
+   },
+   "content__changes_button": {
+      "message": "Lihat Perubahan"
+   },
+   "content__first_heading_not_h1": {
+      "description": "Error: the first heading on the page is not H1",
+      "message": "Judul pertama bukan H1"
+   },
+   "content__multiple_descriptions": {
+      "description": "Error: Multiple descriptions found on the page",
+      "message": "Deskripsi ganda"
+   },
+   "content__multiple_h1_tags": {
+      "description": "Error: Multiple H1 tags found on the page",
+      "message": "Beberapa Tag H1"
+   },
+   "content__multiple_title_tags": {
+      "description": "Error: Multiple title tags found on the page",
+      "message": "Beberapa Tag Judul"
+   },
+   "content__rendered_description_missing": {
+      "message": "Deskripsi yang dirender tidak ada"
+   },
+   "content__rendered_title_missing": {
+      "message": "Judul yang dirender hilang"
+   },
+   "copy_headings": {
+      "message": "Salin Judul"
+   },
+   "dates": {
+      "message": "Tanggal"
+   },
+   "description": {
+      "message": "Deskripsi"
+   },
+   "description__too_long": {
+      "message": "Deskripsi meta mungkin terlalu panjang. Disarankan untuk menjaga deskripsi meta Anda dalam sekitar 160 karakter. Deskripsi yang lebih panjang berisiko terpotong di SERP jika Google memilih untuk menampilkan mereka sebagai teks cuplikan."
+   },
+   "description__too_short": {
+      "message": "Deskripsi meta mungkin terlalu pendek. Dianjurkan untuk menulis deskripsi yang lebih panjang karena mereka memberikan penjelasan tentang konten halaman kepada Google."
+   },
+   "error__fetching_data": {
+      "message": "Kesalahan saat mengambil data. Silakan coba lagi nanti."
+   },
+   "error__inactive": {
+      "message": "Status pengguna Anda di ruang kerja yang terhubung saat ini \"Tidak Aktif.\""
+   },
+   "error__monthly_limit": {
+      "message": "Batas bulanan untuk ruang kerja Anda telah tercapai."
+   },
+   "error__too_many_sessions_sign_in": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "masuk"
+   },
+   "error__too_many_sessions_text_body": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "Kesalahan: terlalu banyak sesi. Akun ini mungkin digunakan di perangkat lain. Silakan "
+   },
+   "error__too_many_sessions_text_end": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "lagi."
+   },
+   "error__try_again_later": {
+      "message": "Ada kesalahan. Coba lagi nanti."
+   },
+   "error__usage_limit_body": {
+      "description": "Sentence with an inline error__usage_limit_body_button",
+      "message": "Untuk melanjutkan, silakan $UPGRADE_BUTTON$ atau tunggu sampai batas Anda di-set ulang.",
+      "placeholders": {
+         "upgrade_button": {
+            "content": "$1"
+         }
+      }
+   },
+   "error__usage_limit_body_button": {
+      "description": "The button used as the placeholder in error__usage_limit_body",
+      "message": "Tingkatkan paket langganan Anda"
+   },
+   "error__usage_limit_head": {
+      "message": "Anda telah mencapai batas penggunaan Anda"
+   },
+   "feedback__main_q": {
+      "message": "Menikmati Ahrefs SEO Ahrefs?"
+   },
+   "feedback__negative_answ": {
+      "message": "Silakan bantu kami memperbaiki."
+   },
+   "feedback__negative_button_1": {
+      "message": "Tidak juga"
+   },
+   "feedback__positive_answ": {
+      "message": "Keren! Tolong beritahu kami apa yang Anda suka."
+   },
+   "feedback__positive_button_1": {
+      "message": "Iya!"
+   },
+   "feedback__positive_button_2": {
+      "message": "Tulis ulasan"
+   },
+   "feedback__send_answ": {
+      "message": "Kirim umpan balik"
+   },
+   "freeplan_banner__limit_description": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "Metrik SEO untuk Toolbar tersedia dengan salah satu dari"
+   },
+   "freeplan_banner__limit_link": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "paket langganan berbayar"
+   },
+   "get_started": {
+      "message": "Daftar"
+   },
+   "headings": {
+      "message": "Judul"
+   },
+   "how_to_use": {
+      "message": "Cara menggunakan"
+   },
+   "hreflangs": {
+      "message": "Hreflang"
+   },
+   "icon_tip__add": {
+      "message": "Simpan URL ini ke daftar.\nUntuk mengakses URL yang disimpan, klik ikon ekstensi dan navigasikan ke tab 'Tersimpan'.\nSepuluh URL terbaru dari daftar dapat dengan cepat dikirim ke alat Link Intersect atau Content Gap di Ahrefs (hanya untuk pengguna berbayar)"
+   },
+   "icon_tip__hide_toolbar": {
+      "message": "Sembunyikan Toolbar secara permanen di situs web, halaman, atau jalur ini. \n(Anda dapat mengedit daftar blokir di pengaturan)"
+   },
+   "icon_tip__present": {
+      "message": "URL ada dalam daftar URL tersimpan.\nUntuk mengakses URL yang tersimpan, klik ikon ekstensi dan navigasikan ke tab 'Tersimpan'.\nSepuluh URL terbaru dari daftar dapat dengan cepat dikirim ke alat Link Intersect atau Content Gap di Ahrefs."
+   },
+   "icon_tip__present_in_list": {
+      "message": "URL ada dalam daftar URL yang disimpan dan dapat dikirim ke alat Link Intersect atau Content Gap.\nUntuk mengakses URL yang disimpan, klik ikon ekstensi dan navigasikan ke tab 'Tersimpan'.\nSepuluh URL terbaru dari daftar dapat dengan cepat dikirim ke alat Link Intersect atau Content Gap di Ahrefs."
+   },
+   "image__all": {
+      "message": "Semua"
+   },
+   "image__alt": {
+      "message": "Alt"
+   },
+   "image__alt_empty": {
+      "message": "Teks alt kosong"
+   },
+   "image__alt_missing": {
+      "message": "Teks alt hilang"
+   },
+   "image__alt_text": {
+      "message": "Teks alt"
+   },
+   "image__file_too_large": {
+      "message": "Ukuran file gambar terlalu besar"
+   },
+   "image__image": {
+      "message": "Gambar"
+   },
+   "image__not_found": {
+      "message": "Tidak ditemukan gambar"
+   },
+   "image__url": {
+      "message": "Url"
+   },
+   "in_html_code": {
+      "description": "Means that the information is analyzed directly within the client-side rendered HTML code of the page",
+      "message": "Di Dalam HTML yang Dirender"
+   },
+   "in_raw_html_code": {
+      "description": "Means that the information is analyzed directly within the server-returned source",
+      "message": "Di Dalam HTML Mentah"
+   },
+   "jsonld__not_found": {
+      "message": "Tidak ditemukan data terstruktur JSON-LD"
+   },
+   "kw_metrics__c_description": {
+      "message": "Perkiraan jumlah klik yang dilakukan orang pada hasil pencarian untuk kata kunci tertentu per bulan. Beberapa pencarian menghasilkan tidak ada klik, sementara yang lain menghasilkan beberapa klik di SERP."
+   },
+   "kw_metrics__c_title": {
+      "message": "Klik"
+   },
+   "kw_metrics__cpc_description": {
+      "message": "Perkiraan harga rata-rata yang dibayar pengiklan untuk setiap klik iklan dalam hasil pencarian berbayar untuk kata kunci."
+   },
+   "kw_metrics__cpc_title": {
+      "message": "Biaya per klik (CPC)"
+   },
+   "kw_metrics__gv_description": {
+      "message": "Perkiraan jumlah rata-rata pencarian bulanan untuk sebuah kata kunci di semua negara dalam basis data kami."
+   },
+   "kw_metrics__gv_title": {
+      "message": "Volume pencarian global (GV)"
+   },
+   "kw_metrics__kd_description": {
+      "message": "Memperkirakan seberapa sulit untuk mendapatkan peringkat di 10 hasil pencarian organik teratas untuk sebuah kata kunci pada skala 100 poin."
+   },
+   "kw_metrics__kd_title": {
+      "message": "Kesulitan Kata Kunci (KD)"
+   },
+   "kw_metrics__sw_description": {
+      "message": "Perkiraan jumlah rata-rata pencarian bulanan untuk sebuah kata kunci di negara tertentu."
+   },
+   "kw_metrics__sw_title": {
+      "message": "Volume pencarian"
+   },
+   "kw_metrics__tp_description": {
+      "message": "Menunjukkan jumlah traffic pencarian organik yang diterima halaman peringkat #1 untuk kata kunci target dari semua kata kunci yang diperingkatkan."
+   },
+   "kw_metrics__tp_title": {
+      "message": "Potensi lalu lintas (TP)"
+   },
+   "learn_more": {
+      "message": "Pelajari lebih lanjut"
+   },
+   "manifest_description": {
+      "message": "Hemat waktu dengan paket alat lengkap dalam satu ekstensi SEO. Dapatkan wawasan untuk on-page, riset kata kunci, dan analisis tautan pada halaman web mana pun."
+   },
+   "manifest_name": {
+      "description": "Don't translate: 'Ahrefs SEO Toolbar'",
+      "message": "Ahrefs SEO Toolbar: Peralatan On-Page dan SERP"
+   },
+   "meta": {
+      "message": "Meta"
+   },
+   "metrics__ads_description": {
+      "message": "Jumlah total iklan unik dari situs web atau URL target dalam hasil pencarian berbayar."
+   },
+   "metrics__ads_label_lg": {
+      "message": "Iklan"
+   },
+   "metrics__ads_title": {
+      "message": "Iklan"
+   },
+   "metrics__ar_description": {
+      "message": "Mewakili kekuatan profil backlink situs web dibandingkan dengan situs lain dalam basis data kami, dengan peringkat #1 sebagai yang terkuat."
+   },
+   "metrics__ar_label_lg": {
+      "message": "Peringkat Ahrefs"
+   },
+   "metrics__ar_title": {
+      "message": "Peringkat Ahrefs (AR)"
+   },
+   "metrics__bl_description": {
+      "message": "Jumlah total tautan dari situs web lain yang mengarah ke target Anda."
+   },
+   "metrics__bl_label_lg": {
+      "message": "Backlinks"
+   },
+   "metrics__bl_title": {
+      "message": "Backlinks (BL)"
+   },
+   "metrics__cost_description": {
+      "message": "Perkiraan biaya lalu lintas pencarian berbayar bulanan dari target Anda."
+   },
+   "metrics__cost_label_lg": {
+      "message": "Biaya"
+   },
+   "metrics__cost_title": {
+      "message": "Biaya lalu lintas berbayar"
+   },
+   "metrics__dr_description": {
+      "message": "Mewakili kekuatan profil backlink situs web pada skala logaritma 100 poin."
+   },
+   "metrics__dr_label_lg": {
+      "message": "Peringkat Domain"
+   },
+   "metrics__dr_title": {
+      "message": "Domain Rating (DR)"
+   },
+   "metrics__kw_description": {
+      "message": "Jumlah total kata kunci unik yang diperingkat oleh target dalam 100 hasil pencarian organik teratas di seluruh negara dalam basis data kami."
+   },
+   "metrics__kw_label_lg": {
+      "message": "Kata kunci"
+   },
+   "metrics__kw_title": {
+      "message": "Kata Kunci Organik (KW)"
+   },
+   "metrics__paid_keywords_description": {
+      "message": "Jumlah total kata kunci yang memiliki peringkat untuk target Anda dalam hasil pencarian berbayar."
+   },
+   "metrics__paid_keywords_label_lg": {
+      "message": "Kata kunci berbayar"
+   },
+   "metrics__paid_keywords_title": {
+      "message": "Kata kunci berbayar"
+   },
+   "metrics__paid_traffic_description": {
+      "message": "Perkiraan jumlah kunjungan bulanan yang didapatkan target Anda dari pencarian berbayar."
+   },
+   "metrics__paid_traffic_label_lg": {
+      "message": "Lalu lintas berbayar"
+   },
+   "metrics__paid_traffic_title": {
+      "message": "Lalu lintas berbayar"
+   },
+   "metrics__rd_description": {
+      "message": "Jumlah total domain unik yang menghubungkan ke target."
+   },
+   "metrics__rd_label_lg": {
+      "message": "Domain rujukan"
+   },
+   "metrics__rd_title": {
+      "message": "Domain rujukan (RD)"
+   },
+   "metrics__rp_description": {
+      "message": "Jumlah total halaman web unik yang menghubungkan ke target."
+   },
+   "metrics__rp_label_lg": {
+      "message": "Halaman rujukan"
+   },
+   "metrics__rp_title": {
+      "message": "Halaman pengarah (RP)"
+   },
+   "metrics__sign_up_free_button": {
+      "message": "Daftar Gratis"
+   },
+   "metrics__sign_up_free_description": {
+      "message": "Dapatkan akses gratis ke DR, AR, dan UR dengan akun gratis Ahrefs."
+   },
+   "metrics__st_description": {
+      "message": "Perkiraan jumlah kunjungan bulanan yang didapatkan target dari pencarian organik."
+   },
+   "metrics__st_label_lg": {
+      "message": "Lalu lintas pencarian"
+   },
+   "metrics__st_title": {
+      "message": "Lalu lintas pencarian organik (ST)"
+   },
+   "metrics__tv_description": {
+      "message": "Biaya bulanan setara dari traffic pencarian organik untuk situs web atau halaman web, dihitung berdasarkan asumsi bahwa jumlah lalu lintas yang sama diperoleh melalui iklan pay-per-click (PPC) bukan dari peringkat pencarian organik."
+   },
+   "metrics__tv_title": {
+      "message": "Nilai Traffic (TV)"
+   },
+   "metrics__ur_description": {
+      "message": "Peringkat URL (UR) menunjukkan kekuatan profil backlinks halaman target pada skala logaritmik 100 poin."
+   },
+   "metrics__ur_label_lg": {
+      "message": "Peringkat URL"
+   },
+   "metrics__ur_title": {
+      "message": "Peringkat URL (UR)"
+   },
+   "metrics__w_description": {
+      "message": "Jumlah kata pada halaman web seperti yang dilihat oleh crawler Ahrefs dalam kode halaman. Angka ini mungkin sedikit berbeda dari yang Anda lihat di browser saat membuka halaman."
+   },
+   "metrics__w_label_lg": {
+      "message": "Kata"
+   },
+   "metrics__w_title": {
+      "message": "Kata pada Halaman"
+   },
+   "modal__blocklist_btn_negative": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "Jangan nonaktifkan"
+   },
+   "modal__blocklist_btn_positive_domain": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "Untuk domain"
+   },
+   "modal__blocklist_btn_positive_page": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "Untuk halaman ini"
+   },
+   "modal__blocklist_description": {
+      "message": "Apakah Anda ingin menonaktifkan Toolbar dengan metrik untuk situs web atau halaman ini?\n(Anda dapat mengedit daftar blokir di pengaturan)"
+   },
+   "modal__shortcuts_button_ok": {
+      "message": "Mengerti"
+   },
+   "modal__shortcuts_button_settings": {
+      "description": "The button used to open the browser settings e.g. chrome://extensions/shortcuts",
+      "message": "pengaturan browser"
+   },
+   "modal__shortcuts_description": {
+      "description": "Example of the last sentence 'You can change these key bindings in your browser settings'",
+      "message": "Anda dapat menggunakan pintasan berikut dengan Toolbar SEO Ahrefs:\n$SHORTCUT_TOOLBAR$ untuk mengaktifkan/nonaktifkan bar metrik\n$SHORTCUT_POPUP$ untuk membuka laporan dan pengaturan halaman\nAnda dapat mengubah pengikatan tombol ini di",
+      "placeholders": {
+         "shortcut_popup": {
+            "content": "$2",
+            "example": "Ctrl+Cmd+A"
+         },
+         "shortcut_toolbar": {
+            "content": "$1",
+            "example": "Ctrl+Cmd+A"
+         }
+      }
+   },
+   "modified": {
+      "message": "Diubah"
+   },
+   "new": {
+      "message": "Baru"
+   },
+   "noindex_page": {
+      "message": "Halaman noindex"
+   },
+   "open_graph_tags": {
+      "message": "Tag Open Graph"
+   },
+   "outgoing_links__check_status": {
+      "message": "Periksa status"
+   },
+   "outgoing_links__dofollow": {
+      "message": "Dofollow"
+   },
+   "outgoing_links__dropdown_description": {
+      "message": "Kirim hingga 10 URL terbaru dari daftar ke Ahrefs"
+   },
+   "outgoing_links__dropdown_item_1": {
+      "message": "Link intersect"
+   },
+   "outgoing_links__dropdown_item_2": {
+      "message": "Kesempatan Konten"
+   },
+   "outgoing_links__external": {
+      "message": "Eksternal"
+   },
+   "outgoing_links__highlight": {
+      "message": "Sorotan"
+   },
+   "outgoing_links__internal": {
+      "message": "Internal"
+   },
+   "outgoing_links__link_type": {
+      "message": "Jenis tautan"
+   },
+   "outgoing_links__nofollow": {
+      "message": "Nofollow"
+   },
+   "outgoing_links__status": {
+      "message": "Status"
+   },
+   "outgoing_links__target_url": {
+      "message": "URL target"
+   },
+   "popup_menu__content": {
+      "message": "Konten"
+   },
+   "popup_menu__http_headers": {
+      "message": "Header HTTP"
+   },
+   "popup_menu__images": {
+      "message": "Gambar"
+   },
+   "popup_menu__indexability": {
+      "message": "Pengindeksan"
+   },
+   "popup_menu__metrics": {
+      "message": "Metrik"
+   },
+   "popup_menu__metrics_bar": {
+      "message": "Bar Metrik"
+   },
+   "popup_menu__outgoing_links": {
+      "message": "Tautan keluar"
+   },
+   "popup_menu__outgoing_links_short": {
+      "message": "Tautan"
+   },
+   "popup_menu__saved_urls": {
+      "message": "URL Tersimpan"
+   },
+   "popup_menu__search_tools": {
+      "message": "Alat Pencarian"
+   },
+   "popup_menu__settings": {
+      "message": "Pengaturan"
+   },
+   "popup_menu__social": {
+      "message": "Tag media sosial"
+   },
+   "popup_menu__social_image_fail": {
+      "message": "Gagal mengambil"
+   },
+   "popup_menu__struct_data": {
+      "message": "Data terstruktur"
+   },
+   "popup_menu__ua": {
+      "message": "User agent"
+   },
+   "popup_menu__ua_texarea_label": {
+      "message": "String agen-pengguna"
+   },
+   "published": {
+      "message": "Diluncurkan"
+   },
+   "raw": {
+      "description": "Raw HTML- server-returned source",
+      "message": "Raw"
+   },
+   "raw_vs_rendered": {
+      "description": "Button on popup content. Raw HTML- server-returned source. Rendered HTML- final DOM.",
+      "message": "Raw vs Dirender"
+   },
+   "rendered": {
+      "description": "Rendered HTML- final DOM.",
+      "message": "Ter-render"
+   },
+   "robots": {
+      "message": "Robot"
+   },
+   "robots__meta_tag": {
+      "message": "Meta Tag Robot"
+   },
+   "robots__tag_http": {
+      "message": "X-Robots-Tag HTTP"
+   },
+   "robots__txt": {
+      "message": "Robots.txt"
+   },
+   "saved_urls__all_tabs": {
+      "message": "Semua Tab"
+   },
+   "saved_urls__copy_list": {
+      "message": "Salin Daftar"
+   },
+   "saved_urls__current_tab": {
+      "message": "Tab saat ini"
+   },
+   "search_tools__desktop": {
+      "message": "Desktop"
+   },
+   "search_tools__device": {
+      "message": "Perangkat"
+   },
+   "search_tools__highlight_placeholder": {
+      "message": "Masukkan domain yang Anda ingin disorot dalam hasil pencarian."
+   },
+   "search_tools__highlight_title": {
+      "message": "Sorot hasil"
+   },
+   "search_tools__kw_title": {
+      "message": "Metrik Kata Kunci"
+   },
+   "search_tools__language": {
+      "message": "Bahasa"
+   },
+   "search_tools__location": {
+      "message": "Lokasi"
+   },
+   "search_tools__ls_menu_title": {
+      "message": "Simulasi pencarian lokal"
+   },
+   "search_tools__menu_title": {
+      "message": "Pengaturan pencarian"
+   },
+   "search_tools__position_numbers_title": {
+      "message": "Nomor posisi"
+   },
+   "search_tools__reset": {
+      "message": "Atur ulang"
+   },
+   "search_tools__results_metrics_title": {
+      "message": "Metrik hasil pencarian"
+   },
+   "search_tools__tip_body": {
+      "message": "Gunakan tombol ini untuk mensimulasikan pencarian lokal"
+   },
+   "search_tools__trends_title": {
+      "message": "Metrik kata kunci dalam Tren"
+   },
+   "serp__adv": {
+      "message": "Coba pencarian ini di Yep"
+   },
+   "serp__counter_title": {
+      "description": "Tooltip title for the SERP counter",
+      "message": "Dibawa ke SERP oleh Ahrefs SEO Toolbar"
+   },
+   "serp__export_button": {
+      "message": "Ekspor CSV"
+   },
+   "serp__kw_ideas": {
+      "message": "Ide kata kunci"
+   },
+   "serp__local_search": {
+      "message": "Pencarian lokal"
+   },
+   "serp__local_search_active": {
+      "message": "Menampilkan SERP yang disimulasikan"
+   },
+   "serp__ppa": {
+      "message": "Orang juga menanyakan"
+   },
+   "serp__save_urls_button": {
+      "message": "Simpan URL"
+   },
+   "serp__tip_conf": {
+      "message": "Klik ikon ekstensi untuk mengkonfigurasi"
+   },
+   "settings__appearance": {
+      "message": "Tampilan"
+   },
+   "settings__bottom": {
+      "description": "Location of the toolbar on the screen",
+      "message": "Bawah"
+   },
+   "settings__dark": {
+      "description": "Theme color",
+      "message": "Gelap"
+   },
+   "settings__exclude_list": {
+      "message": "Kecualikan daftar"
+   },
+   "settings__exlude_list_warn": {
+      "message": "Masukkan domain, URL, atau jalur URL di mana Anda tidak menginginkan Toolbar muncul."
+   },
+   "settings__exlude_list_warn_2": {
+      "message": "Gunakan * untuk jalur URL, misalnya https://ahrefs.com/blog/*"
+   },
+   "settings__exlude_list_warn_3": {
+      "message": "Satu entri per baris."
+   },
+   "settings__light": {
+      "description": "Theme color",
+      "message": "Terang"
+   },
+   "settings__position": {
+      "message": "Posisi"
+   },
+   "settings__show_on_update": {
+      "message": "Tampilkan saat pembaruan"
+   },
+   "settings__system": {
+      "description": "Theme color",
+      "message": "Sistem"
+   },
+   "settings__top": {
+      "description": "Location of the toolbar on the screen",
+      "message": "Teratas"
+   },
+   "shared__all": {
+      "message": "Semua"
+   },
+   "shared__broken": {
+      "message": "Rusak"
+   },
+   "shared__changelog": {
+      "message": "Catatan Perubahan"
+   },
+   "shared__clear": {
+      "message": "Bersihkan"
+   },
+   "shared__copy": {
+      "message": "Salin"
+   },
+   "shared__custom": {
+      "message": "Custom"
+   },
+   "shared__default": {
+      "message": "Default"
+   },
+   "shared__default_browser": {
+      "message": "Default (Peramban Anda)"
+   },
+   "shared__default_report": {
+      "message": "Laporan Default"
+   },
+   "shared__disallowed_in_robots_txt": {
+      "message": "Tidak diizinkan dalam robots.txt"
+   },
+   "shared__domain": {
+      "message": "Domain"
+   },
+   "shared__edit": {
+      "message": "Edit"
+   },
+   "shared__empty": {
+      "message": "Kosong"
+   },
+   "shared__export": {
+      "message": "Ekspor"
+   },
+   "shared__how_to_fix": {
+      "message": "Cara memperbaiki"
+   },
+   "shared__in_http_headers": {
+      "message": "Di Header HTTP"
+   },
+   "shared__last_opened": {
+      "message": "Terakhir Dibuka"
+   },
+   "shared__load_more": {
+      "message": "Muat lebih banyak"
+   },
+   "shared__mismatch": {
+      "message": "Tidak cocok"
+   },
+   "shared__missing": {
+      "message": "Tidak ada"
+   },
+   "shared__no_results": {
+      "message": "Tidak ada hasil"
+   },
+   "shared__noindex_page": {
+      "message": "Halaman Noindex"
+   },
+   "shared__non_canonical": {
+      "message": "Non-kanonikal"
+   },
+   "shared__not_available": {
+      "message": "tidak ada"
+   },
+   "shared__not_empty": {
+      "message": "Tidak kosong"
+   },
+   "shared__not_found": {
+      "message": "Tidak ditemukan"
+   },
+   "shared__not_now": {
+      "message": "Tidak sekarang"
+   },
+   "shared__ok": {
+      "message": "Ok"
+   },
+   "shared__open_in": {
+      "description": "The button used to open selected item in another app, service, etc",
+      "message": "Buka di"
+   },
+   "shared__page": {
+      "message": "Halaman"
+   },
+   "shared__redirect": {
+      "message": "Alihkan"
+   },
+   "shared__search": {
+      "message": "Telusuri"
+   },
+   "shared__self_canonical": {
+      "message": "Kanonikal mandiri"
+   },
+   "shared__shortcuts": {
+      "message": "Pintasan"
+   },
+   "shared__today": {
+      "message": "Hari ini"
+   },
+   "shared__value": {
+      "message": "Nilai"
+   },
+   "shared__words": {
+      "description": "Example: 1500 words",
+      "message": "kata"
+   },
+   "shared__yesterday": {
+      "message": "Kemarin"
+   },
+   "shared_of": {
+      "description": "e.g. 3 of 15 links",
+      "message": "dari"
+   },
+   "shared_overview": {
+      "description": "Link to Ahrefs Overview",
+      "message": "Ikhtisar"
+   },
+   "shared_upgrade": {
+      "description": "Plans and pricing",
+      "message": "Upgrade"
+   },
+   "sign_in": {
+      "message": "Masuk"
+   },
+   "sign_in__long": {
+      "description": "Uses on Serp and Content toolbar",
+      "message": "Masuk dengan Ahrefs"
+   },
+   "sign_out": {
+      "message": "Keluar"
+   },
+   "sign_up": {
+      "message": "Daftar"
+   },
+   "sign_up__content": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "atau periksa"
+   },
+   "sign_up__link": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "alat SEO gratis"
+   },
+   "sitemaps": {
+      "message": "Peta Situs"
+   },
+   "social__not_matching_canonical": {
+      "description": "Error: Social Card URL not matching canonical",
+      "message": "URL Sosial tidak cocok dengan kanonikal"
+   },
+   "starter__q": {
+      "message": "Dapatkan akses ke metrik Ahrefs dengan paket Starter kami hanya dengan $PRICE$/bulan.",
+      "placeholders": {
+         "price": {
+            "content": "$1"
+         }
+      }
+   },
+   "suggest_feature": {
+      "message": "Usulkan fitur"
+   },
+   "title": {
+      "message": "Judul"
+   },
+   "title__too_long": {
+      "message": "Judul mungkin terlalu panjang. Judul halaman yang panjang berisiko terpotong saat ditampilkan dalam hasil pencarian Google. Panjang judul maksimum yang direkomendasikan adalah ~60 karakter."
+   },
+   "title__too_short": {
+      "message": "Judul mungkin terlalu pendek. Judul halaman adalah elemen penting yang diandalkan Google untuk memahami halaman. Judul pendek mungkin kehilangan kesempatan untuk menyampaikan ide utama halaman kepada Google secara efektif."
+   },
+   "try_starter": {
+      "message": "Coba Starter"
+   },
+   "ua__warning_body": {
+      "message": "Nonaktifkan agen-pengguna kustom saat tidak lagi diperlukan."
+   },
+   "ua__warning_important": {
+      "message": "Penting!"
+   },
+   "url": {
+      "message": "Url"
+   },
+   "validate_sd": {
+      "message": "Validasi"
+   },
+   "validate_sd__placegolder": {
+      "message": "Validasi data terstruktur pada halaman ini"
+   },
+   "validate_sd__rich_results_test": {
+      "message": "Uji Hasil Kaya"
+   },
+   "validate_sd__schema_markup_validator": {
+      "message": "Validator Schema Markup"
+   },
+   "web_vitals": {
+      "message": "Web Vitals"
+   },
+   "web_vitals__cls": {
+      "message": "Cumulative Layout Shift (CLS) mengukur bagaimana elemen bergerak atau seberapa stabil tata letak halaman. Ini mempertimbangkan ukuran konten dan jaraknya bergerak."
+   },
+   "web_vitals__info_main": {
+      "message": "Core Web Vitals adalah metrik kecepatan yang merupakan bagian dari sinyal Pengalaman Halaman Google yang digunakan untuk mengukur pengalaman pengguna. Data ini berdasarkan pengalaman pengguna Chrome asli dengan halaman Anda. CWV adalah faktor peringkat minor untuk Google."
+   },
+   "web_vitals__inp": {
+      "message": "Interaction to Next Paint (INP) menilai daya tanggap halaman. Ini mengamati latensi semua interaksi pengguna dengan halaman, dan melaporkan satu nilai yang di bawahnya semua (atau hampir semua) interaksi berada. INP yang rendah berarti halaman tersebut secara konsisten dapat merespons dengan cepat terhadap interaksi pengguna sebagian besar - atau bahkan semuanya."
+   },
+   "web_vitals__lcp": {
+      "message": "Largest Contentful Paint (LCP) adalah elemen terbesar yang terlihat dimuat di layar. Biasanya berupa gambar unggulan atau H1. Diukur dalam detik."
+   },
+   "web_vitals__not_found": {
+      "message": "Core Web Vitals menggunakan data dari pengguna Chrome asli. Jika satu atau semua metrik tidak tersedia untuk halaman tersebut, ini berarti tidak ada cukup data tentang pengalaman pengguna dengan halaman ini. Dalam kasus ini, beberapa alat lain, termasuk Pagespeed Insights Google, akan menampilkan metrik CWV untuk halaman beranda sebagai gantinya."
+   },
+   "word_count": {
+      "message": "Jumlah kata"
+   },
+   "x_card": {
+      "message": "Kartu X (Twitter)"
+   }
+}

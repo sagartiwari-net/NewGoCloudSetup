@@ -1,0 +1,883 @@
+{
+   "banner__cta_site_audit_header": {
+      "description": "Header of the banner CTA for the Site Audit",
+      "message": "Ahrefs Site Audit."
+   },
+   "banner__cta_site_audit_text": {
+      "description": "Text of the banner CTA for the Site Audit",
+      "message": "Run a complete SEO audit of your website. Identify, prioritize, and fix 170+ SEO issues."
+   },
+   "banner__patch_it_description": {
+      "description": "Description of the banner CTA for the Site Audit Patches",
+      "message": "Fix common SEO issues and apply changes directly from Ahrefs to your website."
+   },
+   "banner__patch_it_label": {
+      "description": "Label for the banner CTA for the Site Audit Patches",
+      "message": "Patch it"
+   },
+   "banner__patch_it_title": {
+      "description": "Title of the banner CTA for the Site Audit Patches",
+      "message": "Patches"
+   },
+   "canonical_url": {
+      "message": "Canonical URL"
+   },
+   "card__missing_or_incomplete": {
+      "message": "Missing or incomplete"
+   },
+   "content": {
+      "message": "Content"
+   },
+   "content__changes_button": {
+      "message": "See changes"
+   },
+   "content__first_heading_not_h1": {
+      "description": "Error: the first heading on the page is not H1",
+      "message": "The first heading is not H1"
+   },
+   "content__multiple_descriptions": {
+      "description": "Error: Multiple descriptions found on the page",
+      "message": "Multiple descriptions"
+   },
+   "content__multiple_h1_tags": {
+      "description": "Error: Multiple H1 tags found on the page",
+      "message": "Multiple H1 tags"
+   },
+   "content__multiple_title_tags": {
+      "description": "Error: Multiple title tags found on the page",
+      "message": "Multiple title tags"
+   },
+   "content__rendered_description_missing": {
+      "message": "Rendered description is missing"
+   },
+   "content__rendered_title_missing": {
+      "message": "Rendered title is missing"
+   },
+   "copy_headings": {
+      "message": "Copy headings"
+   },
+   "dates": {
+      "message": "Dates"
+   },
+   "description": {
+      "message": "Description"
+   },
+   "description__too_long": {
+      "message": "The meta description may be too long. It is advisable to maintain your meta descriptions within approximately 160 characters. Lengthier descriptions risk being truncated on SERPs if Google opts to display them as snippet text."
+   },
+   "description__too_short": {
+      "message": "The meta description may be too short. It is recommended to write longer descriptions as they provide an explanation of the page's content to Google."
+   },
+   "error__fetching_data": {
+      "message": "Error fetching data. Please try again later."
+   },
+   "error__inactive": {
+      "message": "Your user status in the connected workspace is currently \"Inactive.\""
+   },
+   "error__monthly_limit": {
+      "message": "The monthly limit for your workspace has been reached."
+   },
+   "error__too_many_sessions_sign_in": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "sign in"
+   },
+   "error__too_many_sessions_text_body": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "Error: too many sessions. This account may be used on another device. Please"
+   },
+   "error__too_many_sessions_text_end": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "again."
+   },
+   "error__try_again_later": {
+      "message": "Error. Try again later."
+   },
+   "error__usage_limit_body": {
+      "description": "Sentence with an inline error__usage_limit_body_button",
+      "message": "To continue, please $UPGRADE_BUTTON$ or wait until your limit resets.",
+      "placeholders": {
+         "upgrade_button": {
+            "content": "$1"
+         }
+      }
+   },
+   "error__usage_limit_body_button": {
+      "description": "The button used as the placeholder in error__usage_limit_body",
+      "message": "upgrade your plan"
+   },
+   "error__usage_limit_head": {
+      "message": "You've reached your usage limit"
+   },
+   "feedback__main_q": {
+      "message": "Enjoying Ahrefs SEO Toolbar?"
+   },
+   "feedback__negative_answ": {
+      "message": "Please help us improve."
+   },
+   "feedback__negative_button_1": {
+      "message": "Not really"
+   },
+   "feedback__positive_answ": {
+      "message": "Great! Please tell us what you like."
+   },
+   "feedback__positive_button_1": {
+      "message": "Yes!"
+   },
+   "feedback__positive_button_2": {
+      "message": "Write a review"
+   },
+   "feedback__send_answ": {
+      "message": "Send feedback"
+   },
+   "freeplan_banner__limit_description": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "SEO metrics for the Toolbar are available with one of the"
+   },
+   "freeplan_banner__limit_link": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "paid plans"
+   },
+   "get_started": {
+      "message": "Get started"
+   },
+   "headings": {
+      "message": "Headings"
+   },
+   "how_to_use": {
+      "message": "How to use"
+   },
+   "hreflangs": {
+      "message": "Hreflangs"
+   },
+   "icon_tip__add": {
+      "message": "Save this URL to the list.\nTo access the saved URLs, click on the extension's icon and navigate to the 'Saved' tab.\nThe ten most recent URLs from the list can be quickly sent to Link Intersect or Content Gap tools in Ahrefs (for paid users only)"
+   },
+   "icon_tip__hide_toolbar": {
+      "message": "Permanently hide the Toolbar on this website, page, or path. \n(You can edit the blocklist in the settings)"
+   },
+   "icon_tip__present": {
+      "message": "The URL is on the list of saved URLs.\nTo access the saved URLs, click on the extension's icon and navigate to the 'Saved' tab.\nThe ten most recent URLs from the list can be quickly sent to Link Intersect or Content Gap tools in Ahrefs."
+   },
+   "icon_tip__present_in_list": {
+      "message": "The URL is on the list of saved URLs and can be sent to Link Intersect or Content Gap.\nTo access the saved URLs, click on the extension's icon and navigate to the 'Saved' tab.\nThe ten most recent URLs from the list can be quickly sent to Link Intersect or Content Gap tools in Ahrefs."
+   },
+   "image__all": {
+      "message": "All"
+   },
+   "image__alt": {
+      "message": "Alt"
+   },
+   "image__alt_empty": {
+      "message": "Empty alt text"
+   },
+   "image__alt_missing": {
+      "message": "Missing alt text"
+   },
+   "image__alt_text": {
+      "message": "Alt text"
+   },
+   "image__file_too_large": {
+      "message": "Image file size too large"
+   },
+   "image__image": {
+      "message": "Image"
+   },
+   "image__not_found": {
+      "message": "No images found"
+   },
+   "image__url": {
+      "message": "Url"
+   },
+   "in_html_code": {
+      "description": "Means that the information is analyzed directly within the client-side rendered HTML code of the page",
+      "message": "In Rendered HTML"
+   },
+   "in_raw_html_code": {
+      "description": "Means that the information is analyzed directly within the server-returned source",
+      "message": "In Raw HTML"
+   },
+   "jsonld__not_found": {
+      "message": "No JSON-LD structured data found"
+   },
+   "kw_metrics__c_description": {
+      "message": "An estimation of the number of clicks that people make on the search results for a given keyword per month. Some searches result in no clicks, while others generate multiple clicks on SERPs."
+   },
+   "kw_metrics__c_title": {
+      "message": "Clicks"
+   },
+   "kw_metrics__cpc_description": {
+      "message": "The estimated average price that advertisers pay for each ad click in paid search results for a keyword."
+   },
+   "kw_metrics__cpc_title": {
+      "message": "Cost per click (CPC)"
+   },
+   "kw_metrics__gv_description": {
+      "message": "An estimation of the average monthly number of searches for a keyword across all countries in our database."
+   },
+   "kw_metrics__gv_title": {
+      "message": "Global search volume (GV)"
+   },
+   "kw_metrics__kd_description": {
+      "message": "Estimates how hard it would be to rank in the top 10 organic search results for a keyword on a 100-point scale."
+   },
+   "kw_metrics__kd_title": {
+      "message": "Keyword difficulty (KD)"
+   },
+   "kw_metrics__sw_description": {
+      "message": "An estimation of the average monthly number of searches for a keyword in a given country."
+   },
+   "kw_metrics__sw_title": {
+      "message": "Search volume"
+   },
+   "kw_metrics__tp_description": {
+      "message": "Shows the sum of organic search traffic that the #1 ranking page for the target keyword receives from all the keywords that it ranks for."
+   },
+   "kw_metrics__tp_title": {
+      "message": "Traffic potential (TP)"
+   },
+   "learn_more": {
+      "message": "Learn more"
+   },
+   "manifest_description": {
+      "message": "Save hours with a complete toolkit in one SEO extension. Insights for on-page, keyword research, and link analysis on any webpage."
+   },
+   "manifest_name": {
+      "description": "Don't translate: 'Ahrefs SEO Toolbar'",
+      "message": "Ahrefs SEO Toolbar: On-Page and SERP Tools"
+   },
+   "meta": {
+      "message": "Meta"
+   },
+   "metrics__ads_description": {
+      "message": "The total number of unique ads of a target website or URL in paid search results."
+   },
+   "metrics__ads_label_lg": {
+      "message": "Ads"
+   },
+   "metrics__ads_title": {
+      "message": "Ads"
+   },
+   "metrics__ar_description": {
+      "message": "Represents the strength of the website's backlink profile compared to other websites in our database, with rank #1 being the strongest."
+   },
+   "metrics__ar_label_lg": {
+      "message": "Ahrefs Rank"
+   },
+   "metrics__ar_title": {
+      "message": "Ahrefs Rank (AR)"
+   },
+   "metrics__bl_description": {
+      "message": "The total number of links from other websites pointing to your target."
+   },
+   "metrics__bl_label_lg": {
+      "message": "Backlinks"
+   },
+   "metrics__bl_title": {
+      "message": "Backlinks (BL)"
+   },
+   "metrics__cost_description": {
+      "message": "The estimated cost of your target's monthly paid search traffic."
+   },
+   "metrics__cost_label_lg": {
+      "message": "Cost"
+   },
+   "metrics__cost_title": {
+      "message": "Paid traffic cost"
+   },
+   "metrics__dr_description": {
+      "message": "Represents the strength of the website's backlink profile on a 100-point logarithmic scale."
+   },
+   "metrics__dr_label_lg": {
+      "message": "Domain Rating"
+   },
+   "metrics__dr_title": {
+      "message": "Domain Rating (DR)"
+   },
+   "metrics__kw_description": {
+      "message": "The total number of unique keywords that the target ranks for in the top 100 organic search results across all countries in our database."
+   },
+   "metrics__kw_label_lg": {
+      "message": "Keywords"
+   },
+   "metrics__kw_title": {
+      "message": "Organic keywords (KW)"
+   },
+   "metrics__paid_keywords_description": {
+      "message": "The total number of keywords that your target ranks for in paid search results."
+   },
+   "metrics__paid_keywords_label_lg": {
+      "message": "Paid keywords"
+   },
+   "metrics__paid_keywords_title": {
+      "message": "Paid keywords"
+   },
+   "metrics__paid_traffic_description": {
+      "message": "The estimated number of monthly visits that your target gets from paid search."
+   },
+   "metrics__paid_traffic_label_lg": {
+      "message": "Paid traffic"
+   },
+   "metrics__paid_traffic_title": {
+      "message": "Paid traffic"
+   },
+   "metrics__rd_description": {
+      "message": "The total number of unique domains linking to the target."
+   },
+   "metrics__rd_label_lg": {
+      "message": "Ref. domains"
+   },
+   "metrics__rd_title": {
+      "message": "Referring domains (RD)"
+   },
+   "metrics__rp_description": {
+      "message": "The total number of unique web pages linking to the target."
+   },
+   "metrics__rp_label_lg": {
+      "message": "Ref. pages"
+   },
+   "metrics__rp_title": {
+      "message": "Referring pages (RP)"
+   },
+   "metrics__sign_up_free_button": {
+      "message": "Sign up for Free"
+   },
+   "metrics__sign_up_free_description": {
+      "message": "Get free access to DR, AR and UR with Ahrefs Free account."
+   },
+   "metrics__st_description": {
+      "message": "The estimated number of monthly visits that the target gets from organic search."
+   },
+   "metrics__st_label_lg": {
+      "message": "Search traffic"
+   },
+   "metrics__st_title": {
+      "message": "Organic search traffic (ST)"
+   },
+   "metrics__tv_description": {
+      "message": "The monthly cost equivalent of organic search traffic for a website or web page, calculated based on the assumption that the same amount of traffic was obtained through pay-per-click (PPC) advertising instead of organic search rankings."
+   },
+   "metrics__tv_title": {
+      "message": "Traffic value (TV)"
+   },
+   "metrics__ur_description": {
+      "message": "URL Rating (UR) shows the strength of the target page's backlink profile on a 100-point logarithmic scale."
+   },
+   "metrics__ur_label_lg": {
+      "message": "URL Rating"
+   },
+   "metrics__ur_title": {
+      "message": "URL Rating (UR)"
+   },
+   "metrics__w_description": {
+      "message": "The number of words on a web page as seen by Ahrefs' crawler in the page's code. This number may slightly differ from what you see in the browser when you open the page."
+   },
+   "metrics__w_label_lg": {
+      "message": "Words"
+   },
+   "metrics__w_title": {
+      "message": "Words on Page"
+   },
+   "modal__blocklist_btn_negative": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "Don't disable"
+   },
+   "modal__blocklist_btn_positive_domain": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "For the domain"
+   },
+   "modal__blocklist_btn_positive_page": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "For this page"
+   },
+   "modal__blocklist_description": {
+      "message": "Do you want to disable the Toolbar with metrics for this website or page?\n(You can edit the blocklist in the settings)"
+   },
+   "modal__shortcuts_button_ok": {
+      "message": "Got it"
+   },
+   "modal__shortcuts_button_settings": {
+      "description": "The button used to open the browser settings e.g. chrome://extensions/shortcuts",
+      "message": "browser settings"
+   },
+   "modal__shortcuts_description": {
+      "description": "Example of the last sentence 'You can change these key bindings in your browser settings'",
+      "message": "You can use the following shortcuts with Ahrefs SEO Toolbar:\n$SHORTCUT_TOOLBAR$ to toggle the metrics bar on/off\n$SHORTCUT_POPUP$ to open on-page reports and settings\nYou can change these key bindings in your",
+      "placeholders": {
+         "shortcut_popup": {
+            "content": "$2",
+            "example": "Ctrl+Cmd+A"
+         },
+         "shortcut_toolbar": {
+            "content": "$1",
+            "example": "Ctrl+Cmd+A"
+         }
+      }
+   },
+   "modified": {
+      "message": "Modified"
+   },
+   "new": {
+      "message": "New"
+   },
+   "noindex_page": {
+      "message": "Noindex page"
+   },
+   "open_graph_tags": {
+      "message": "Open graph tags"
+   },
+   "outgoing_links__check_status": {
+      "message": "Check status"
+   },
+   "outgoing_links__dofollow": {
+      "message": "Dofollow"
+   },
+   "outgoing_links__dropdown_description": {
+      "message": "Send up to 10 most recent URLs from the list to Ahrefs"
+   },
+   "outgoing_links__dropdown_item_1": {
+      "message": "Link intersect"
+   },
+   "outgoing_links__dropdown_item_2": {
+      "message": "Content gap"
+   },
+   "outgoing_links__external": {
+      "message": "External"
+   },
+   "outgoing_links__highlight": {
+      "message": "Highlight"
+   },
+   "outgoing_links__internal": {
+      "message": "Internal"
+   },
+   "outgoing_links__link_type": {
+      "message": "Link type"
+   },
+   "outgoing_links__nofollow": {
+      "message": "Nofollow"
+   },
+   "outgoing_links__status": {
+      "message": "Status"
+   },
+   "outgoing_links__target_url": {
+      "message": "Target URL"
+   },
+   "popup_menu__content": {
+      "message": "Content"
+   },
+   "popup_menu__http_headers": {
+      "message": "HTTP headers"
+   },
+   "popup_menu__images": {
+      "message": "Images"
+   },
+   "popup_menu__indexability": {
+      "message": "Indexability"
+   },
+   "popup_menu__metrics": {
+      "message": "Metrics"
+   },
+   "popup_menu__metrics_bar": {
+      "message": "Metrics bar"
+   },
+   "popup_menu__outgoing_links": {
+      "message": "Outgoing links"
+   },
+   "popup_menu__outgoing_links_short": {
+      "message": "Links"
+   },
+   "popup_menu__saved_urls": {
+      "message": "Saved URLs"
+   },
+   "popup_menu__search_tools": {
+      "message": "Search tools"
+   },
+   "popup_menu__settings": {
+      "message": "Settings"
+   },
+   "popup_menu__social": {
+      "message": "Social tags"
+   },
+   "popup_menu__social_image_fail": {
+      "message": "Failed to fetch"
+   },
+   "popup_menu__struct_data": {
+      "message": "Structured data"
+   },
+   "popup_menu__ua": {
+      "message": "User agent"
+   },
+   "popup_menu__ua_texarea_label": {
+      "message": "User agent string"
+   },
+   "published": {
+      "message": "Published"
+   },
+   "raw": {
+      "description": "Raw HTML- server-returned source",
+      "message": "Raw"
+   },
+   "raw_vs_rendered": {
+      "description": "Button on popup content. Raw HTML- server-returned source. Rendered HTML- final DOM.",
+      "message": "Raw vs Rendered"
+   },
+   "rendered": {
+      "description": "Rendered HTML- final DOM.",
+      "message": "Rendered"
+   },
+   "robots": {
+      "message": "Robots"
+   },
+   "robots__meta_tag": {
+      "message": "Robots Meta Tag"
+   },
+   "robots__tag_http": {
+      "message": "X-Robots-Tag HTTP"
+   },
+   "robots__txt": {
+      "message": "Robots.txt"
+   },
+   "saved_urls__all_tabs": {
+      "message": "All Tabs"
+   },
+   "saved_urls__copy_list": {
+      "message": "Copy List"
+   },
+   "saved_urls__current_tab": {
+      "message": "Current tab"
+   },
+   "search_tools__desktop": {
+      "message": "Desktop"
+   },
+   "search_tools__device": {
+      "message": "Device"
+   },
+   "search_tools__highlight_placeholder": {
+      "message": "Enter the domains that you want to be highlighted in the search results."
+   },
+   "search_tools__highlight_title": {
+      "message": "Highlight results"
+   },
+   "search_tools__kw_title": {
+      "message": "Keyword metrics"
+   },
+   "search_tools__language": {
+      "message": "Language"
+   },
+   "search_tools__location": {
+      "message": "Location"
+   },
+   "search_tools__ls_menu_title": {
+      "message": "Local search simulator"
+   },
+   "search_tools__menu_title": {
+      "message": "Search settings"
+   },
+   "search_tools__position_numbers_title": {
+      "message": "Position numbers"
+   },
+   "search_tools__reset": {
+      "message": "Reset"
+   },
+   "search_tools__results_metrics_title": {
+      "message": "Search result metrics"
+   },
+   "search_tools__tip_body": {
+      "message": "Use this button to simulate local search"
+   },
+   "search_tools__trends_title": {
+      "message": "Keyword metrics in Trends"
+   },
+   "serp__adv": {
+      "message": "Try this search on Yep"
+   },
+   "serp__counter_title": {
+      "description": "Tooltip title for the SERP counter",
+      "message": "Brought to SERP by Ahrefs SEO Toolbar"
+   },
+   "serp__export_button": {
+      "message": "Export CSV"
+   },
+   "serp__kw_ideas": {
+      "message": "Keywords ideas"
+   },
+   "serp__local_search": {
+      "message": "Local search"
+   },
+   "serp__local_search_active": {
+      "message": "Showing simulated SERP"
+   },
+   "serp__ppa": {
+      "message": "People also ask"
+   },
+   "serp__save_urls_button": {
+      "message": "Save URLs"
+   },
+   "serp__tip_conf": {
+      "message": "Click the extension icon to configure"
+   },
+   "settings__appearance": {
+      "message": "Appearance"
+   },
+   "settings__bottom": {
+      "description": "Location of the toolbar on the screen",
+      "message": "Bottom"
+   },
+   "settings__dark": {
+      "description": "Theme color",
+      "message": "Dark"
+   },
+   "settings__exclude_list": {
+      "message": "Exclude list"
+   },
+   "settings__exlude_list_warn": {
+      "message": "Enter domains, URLs, or URL paths where you don't want the Toolbar to show up."
+   },
+   "settings__exlude_list_warn_2": {
+      "message": "Use * for URL paths, e.g. https://ahrefs.com/blog/*"
+   },
+   "settings__exlude_list_warn_3": {
+      "message": "One entry per line."
+   },
+   "settings__light": {
+      "description": "Theme color",
+      "message": "Light"
+   },
+   "settings__position": {
+      "message": "Position"
+   },
+   "settings__show_on_update": {
+      "message": "Show on update"
+   },
+   "settings__system": {
+      "description": "Theme color",
+      "message": "System"
+   },
+   "settings__top": {
+      "description": "Location of the toolbar on the screen",
+      "message": "Top"
+   },
+   "shared__all": {
+      "message": "All"
+   },
+   "shared__broken": {
+      "message": "Broken"
+   },
+   "shared__changelog": {
+      "message": "Changelog"
+   },
+   "shared__clear": {
+      "message": "Clear"
+   },
+   "shared__copy": {
+      "message": "Copy"
+   },
+   "shared__custom": {
+      "message": "Custom"
+   },
+   "shared__default": {
+      "message": "Default"
+   },
+   "shared__default_browser": {
+      "message": "Default (Your browser)"
+   },
+   "shared__default_report": {
+      "message": "Default report"
+   },
+   "shared__disallowed_in_robots_txt": {
+      "message": "Disallowed in robots.txt"
+   },
+   "shared__domain": {
+      "message": "Domain"
+   },
+   "shared__edit": {
+      "message": "Edit"
+   },
+   "shared__empty": {
+      "message": "Empty"
+   },
+   "shared__export": {
+      "message": "Export"
+   },
+   "shared__how_to_fix": {
+      "message": "How to fix"
+   },
+   "shared__in_http_headers": {
+      "message": "In HTTP headers"
+   },
+   "shared__last_opened": {
+      "message": "Last Opened"
+   },
+   "shared__load_more": {
+      "message": "Load more"
+   },
+   "shared__mismatch": {
+      "message": "Mismatch"
+   },
+   "shared__missing": {
+      "message": "Missing"
+   },
+   "shared__no_results": {
+      "message": "No results"
+   },
+   "shared__noindex_page": {
+      "message": "NoindexPage"
+   },
+   "shared__non_canonical": {
+      "message": "Non-canonical"
+   },
+   "shared__not_available": {
+      "message": "N/A"
+   },
+   "shared__not_empty": {
+      "message": "Not empty"
+   },
+   "shared__not_found": {
+      "message": "Not found"
+   },
+   "shared__not_now": {
+      "message": "Not now"
+   },
+   "shared__ok": {
+      "message": "Ok"
+   },
+   "shared__open_in": {
+      "description": "The button used to open selected item in another app, service, etc",
+      "message": "Open in"
+   },
+   "shared__page": {
+      "message": "Page"
+   },
+   "shared__redirect": {
+      "message": "Redirect"
+   },
+   "shared__search": {
+      "message": "Search"
+   },
+   "shared__self_canonical": {
+      "message": "Self-canonical"
+   },
+   "shared__shortcuts": {
+      "message": "Shortcuts"
+   },
+   "shared__today": {
+      "message": "Today"
+   },
+   "shared__value": {
+      "message": "Value"
+   },
+   "shared__words": {
+      "description": "Example: 1500 words",
+      "message": "words"
+   },
+   "shared__yesterday": {
+      "message": "Yesterday"
+   },
+   "shared_of": {
+      "description": "e.g. 3 of 15 links",
+      "message": "of"
+   },
+   "shared_overview": {
+      "description": "Link to Ahrefs Overview",
+      "message": "Overview"
+   },
+   "shared_upgrade": {
+      "description": "Plans and pricing",
+      "message": "Upgrade"
+   },
+   "sign_in": {
+      "message": "Sign in"
+   },
+   "sign_in__long": {
+      "description": "Uses on Serp and Content toolbar",
+      "message": "Sign in with Ahrefs"
+   },
+   "sign_out": {
+      "message": "Sign out"
+   },
+   "sign_up": {
+      "message": "Sign up"
+   },
+   "sign_up__content": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "or check our"
+   },
+   "sign_up__link": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "free SEO tools"
+   },
+   "sitemaps": {
+      "message": "Sitemaps"
+   },
+   "social__not_matching_canonical": {
+      "description": "Error: Social Card URL not matching canonical",
+      "message": "Social URL not matching canonical"
+   },
+   "starter__q": {
+      "message": "Get access to Ahrefs metrics with our Starter plan for just $PRICE$/month.",
+      "placeholders": {
+         "price": {
+            "content": "$1"
+         }
+      }
+   },
+   "suggest_feature": {
+      "message": "Suggest a feature"
+   },
+   "title": {
+      "message": "Title"
+   },
+   "title__too_long": {
+      "message": "The title may be too long. Lengthy page titles risk being truncated when presented in Google search results. The recommended maximum title length is ~60 characters."
+   },
+   "title__too_short": {
+      "message": "The title may be too short. The page title is a crucial element that Google relies on to comprehend pages. Short titles may miss the opportunity to convey the main idea of a page to Google effectively."
+   },
+   "try_starter": {
+      "message": "Try Starter"
+   },
+   "ua__warning_body": {
+      "message": "Disable custom user agent when you no longer need it."
+   },
+   "ua__warning_important": {
+      "message": "Important!"
+   },
+   "url": {
+      "message": "Url"
+   },
+   "validate_sd": {
+      "message": "Validate"
+   },
+   "validate_sd__placegolder": {
+      "message": "Validate structured data on this page"
+   },
+   "validate_sd__rich_results_test": {
+      "message": "Rich Results Test"
+   },
+   "validate_sd__schema_markup_validator": {
+      "message": "Schema Markup Validator"
+   },
+   "web_vitals": {
+      "message": "Web Vitals"
+   },
+   "web_vitals__cls": {
+      "message": "Cumulative Layout Shift (CLS) measures how elements move around or how stable the page layout is. It takes into account the size of the content and the distance it moves."
+   },
+   "web_vitals__info_main": {
+      "message": "Core Web Vitals are speed metrics that are part of Google's Page Experience signals used to measure user experience. This data is based on the real Chrome users' experience with your page. CWV is a minor ranking factor for Google."
+   },
+   "web_vitals__inp": {
+      "message": "Interaction to Next Paint (INP) assesses responsiveness of a page. It observes the latency of all user interactions with the page, and reports a single value which all (or nearly all) interactions were below. A low INP means the page was consistently able to respond quickly to all-or the vast majority-of user interactions."
+   },
+   "web_vitals__lcp": {
+      "message": "Largest Contentful Paint (LCP) is the single largest visible element loaded in the viewport. Usually a featured image or H1. Measured in seconds."
+   },
+   "web_vitals__not_found": {
+      "message": "Core Web Vitals use the data from real Chrome users. If one or all metrics are not available for the page, this means there's not enough data about the users' experience with this page. In this case, some other tools, including Google's Pagespeed Insights, will show CWV metrics for the homepage instead."
+   },
+   "word_count": {
+      "message": "Word count"
+   },
+   "x_card": {
+      "message": "X (Twitter) card"
+   }
+}

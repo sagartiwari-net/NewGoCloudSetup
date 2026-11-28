@@ -57,17 +57,19 @@ function subscribeSession(callback: () => void) {
   }
 }
 
-function useReady() {
-  return useSyncExternalStore(
-    () => () => undefined,
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // Server snapshot is always null; after mount we emit so the client
+  // re-reads localStorage (useSyncExternalStore otherwise stays on null).
+  const session = useSyncExternalStore(subscribeSession, snapshotSession, () => null)
+  const ready = useSyncExternalStore(
+    subscribeSession,
     () => true,
     () => false
   )
-}
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const session = useSyncExternalStore(subscribeSession, snapshotSession, () => null)
-  const ready = useReady()
+  useEffect(() => {
+    emitSession()
+  }, [])
 
   const value = useMemo<AuthValue>(
     () => ({
@@ -92,6 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   useEffect(() => {
+    if (!ready) return
     const current = readSession()
     if (!current?.username) return
     let cancelled = false
@@ -102,8 +105,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!stored || stored.username !== current.username) return
         const accountRole = operator.role === "master" ? "master" : "reseller"
         const role = accountRole === "master" ? stored.role : "reseller"
-        if (stored.username === operator.username && stored.role === role && stored.accountRole === accountRole && !stored.token) return
-        writeSession({ username: operator.username, role, accountRole, token: "" })
+        const barOn = accountRole === "master" ? true : !!operator.ahrefs_bar_enabled
+        if (
+          stored.username === operator.username &&
+          stored.role === role &&
+          stored.accountRole === accountRole &&
+          stored.token === (stored.token || "") &&
+          !!stored.ahrefs_bar_enabled === barOn
+        ) {
+          return
+        }
+        writeSession({
+          username: operator.username,
+          role,
+          accountRole,
+          token: stored.token || "",
+          ahrefs_bar_enabled: barOn,
+        })
         emitSession()
       })
       .catch(() => {
@@ -117,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [session?.username])
+  }, [ready, session?.username])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

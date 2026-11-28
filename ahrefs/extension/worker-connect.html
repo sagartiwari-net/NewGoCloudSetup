@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="worker-connect.css">
+  <title>Ahrefs toolbar</title>
+  <style>
+    .loading-wrp {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .loading path:nth-child(2) {
+      transform-origin: 50% 50%;
+      animation: rotate 0.8s linear infinite;
+    }
+
+    @keyframes rotate {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="worker-root">
+    <div class="loading-wrp">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" class="loading">
+        <path
+          d="M40 20C40 31.0457 31.0457 40 20 40C8.9543 40 0 31.0457 0 20C0 8.9543 8.9543 0 20 0C31.0457 0 40 8.9543 40 20ZM1.99446 20C1.99446 29.9442 10.0558 38.0055 20 38.0055C29.9442 38.0055 38.0055 29.9442 38.0055 20C38.0055 10.0558 29.9442 1.99446 20 1.99446C10.0558 1.99446 1.99446 10.0558 1.99446 20Z"
+          fill="black" fill-opacity="0.0784314" />
+        <path
+          d="M20 0C22.6264 3.132e-08 25.2272 0.517315 27.6537 1.52241C30.0802 2.5275 32.285 4.00069 34.1421 5.85787C35.9993 7.71504 37.4725 9.91982 38.4776 12.3463C39.4827 14.7728 40 17.3736 40 20H37.9994C37.9994 17.6363 37.5339 15.2957 36.6293 13.1119C35.7248 10.9281 34.3989 8.94388 32.7275 7.27247C31.0561 5.60107 29.0719 4.27524 26.8881 3.37069C24.7043 2.46613 22.3637 2.00056 20 2.00056V0Z"
+          fill="#333333">
+        </path>
+      </svg>
+    </div>
+  </div>
+
+  <script src="./worker-connect.js"></script>
+</body>
+
+</html>

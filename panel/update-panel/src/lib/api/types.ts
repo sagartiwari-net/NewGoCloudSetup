@@ -5,6 +5,7 @@ export type Operator = {
   username: string
   role: Role
   website_ids: number[]
+  ahrefs_bar_enabled?: boolean
 }
 
 export type ToolLimitDef = {
@@ -629,4 +630,111 @@ export type IpReport = {
     location: string
     created_at: string
   }>
+}
+
+export type AhrefsBarOverview = {
+  accounts_total: number
+  accounts_active: number
+  accounts_bad: number
+  portals_total: number
+  credits_24h: number
+  requests_24h: number
+  errors_24h: number
+  cache_hits_24h: number
+}
+
+export type AhrefsBarAccount = {
+  id: number
+  reseller_id: number
+  name: string
+  token_mask: string
+  has_token: boolean
+  status: string
+  last_error: string
+  cooldown_until: string
+  last_used_at: string
+  created_at: string
+  updated_at: string
+  access_token_json?: string
+}
+
+export type AhrefsBarPortal = {
+  id: number
+  reseller_id: number
+  name: string
+  site_url: string
+  cookie_name: string
+  check_url: string
+  product_ids: string
+  has_secret: boolean
+  secret_mask: string
+  enabled: boolean
+  created_at: string
+  updated_at: string
+  shared_secret?: string
+}
+
+export type AhrefsBarSettings = {
+  reseller_id: number
+  hourly_limit: number
+  daily_limit: number
+  cache_ttl_hours: number
+  sticky_minutes: number
+  refund_on_5xx: boolean
+  updated_at: string
+  exists: boolean
+}
+
+export type AhrefsBarEndpointCost = {
+  endpoint: string
+  credits: number
+  class: string
+}
+
+export type AhrefsBarUserLimit = {
+  id: number
+  reseller_id: number
+  amember_login: string
+  hourly_limit: number
+  daily_limit: number
+  is_custom: boolean
+  updated_at: string
+}
+
+export type AhrefsBarUsageRow = {
+  id: number
+  reseller_id: number
+  amember_login: string
+  account_id: number
+  endpoint: string
+  target: string
+  credits: number
+  cache_hit: boolean
+  status_code: number
+  created_at: string
+}
+
+export type AhrefsBarUsageUserRow = {
+  amember_login: string
+  reseller_id?: number
+  requests: number
+  credits: number
+  cache_hits: number
+  last_at: string
+  hourly_used: number
+  hourly_limit: number
+  daily_used: number
+  daily_limit: number
+}
+
+export type AhrefsBarMeters = {
+  amember_login: string
+  reseller_id: number
+  hourly_used: number
+  hourly_limit: number
+  daily_used: number
+  daily_limit: number
+  hourly_remaining?: number
+  daily_remaining?: number
+  status?: string
 }

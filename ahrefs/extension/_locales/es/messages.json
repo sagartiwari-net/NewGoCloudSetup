@@ -1,0 +1,883 @@
+{
+   "banner__cta_site_audit_header": {
+      "description": "Header of the banner CTA for the Site Audit",
+      "message": "Site Audit de Ahrefs."
+   },
+   "banner__cta_site_audit_text": {
+      "description": "Text of the banner CTA for the Site Audit",
+      "message": "Realiza una auditoría completa de SEO de tu sitio web. Identifica, prioriza y soluciona más de 170 problemas de SEO."
+   },
+   "banner__patch_it_description": {
+      "description": "Description of the banner CTA for the Site Audit Patches",
+      "message": "Soluciona problemas comunes de SEO y aplica cambios directamente desde Ahrefs a tu sitio web."
+   },
+   "banner__patch_it_label": {
+      "description": "Label for the banner CTA for the Site Audit Patches",
+      "message": "Aplicar Patches"
+   },
+   "banner__patch_it_title": {
+      "description": "Title of the banner CTA for the Site Audit Patches",
+      "message": "Patches"
+   },
+   "canonical_url": {
+      "message": "URL canónica"
+   },
+   "card__missing_or_incomplete": {
+      "message": "Faltan o están incompletas"
+   },
+   "content": {
+      "message": "Contenido"
+   },
+   "content__changes_button": {
+      "message": "Ver cambios"
+   },
+   "content__first_heading_not_h1": {
+      "description": "Error: the first heading on the page is not H1",
+      "message": "El primer encabezado no es H1"
+   },
+   "content__multiple_descriptions": {
+      "description": "Error: Multiple descriptions found on the page",
+      "message": "Múltiples descripciones"
+   },
+   "content__multiple_h1_tags": {
+      "description": "Error: Multiple H1 tags found on the page",
+      "message": "Múltiples etiquetas H1"
+   },
+   "content__multiple_title_tags": {
+      "description": "Error: Multiple title tags found on the page",
+      "message": "Múltiples etiquetas de título"
+   },
+   "content__rendered_description_missing": {
+      "message": "Falta la descripción renderizada"
+   },
+   "content__rendered_title_missing": {
+      "message": "El título renderizado está ausente"
+   },
+   "copy_headings": {
+      "message": "Copiar encabezados"
+   },
+   "dates": {
+      "message": "Fechas"
+   },
+   "description": {
+      "message": "Descripción"
+   },
+   "description__too_long": {
+      "message": "La meta descripción puede ser demasiado larga. Se recomienda que las meta descripciones no superen los 160 caracteres. Las descripciones más largas corren el riesgo de quedar truncadas en las SERP si Google opta por mostrarlas como texto de fragmento."
+   },
+   "description__too_short": {
+      "message": "La meta descripción puede ser demasiado corta. Se recomienda escribir descripciones más largas, ya que proporcionan una explicación del contenido de la página a Google."
+   },
+   "error__fetching_data": {
+      "message": "Error al obtener los datos. Por favor, inténtalo de nuevo más tarde."
+   },
+   "error__inactive": {
+      "message": "Tu estado de usuario en el espacio de trabajo conectado está actualmente \"inactivo\"."
+   },
+   "error__monthly_limit": {
+      "message": "Se ha alcanzado el límite mensual para tu espacio de trabajo."
+   },
+   "error__too_many_sessions_sign_in": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "iniciar sesión"
+   },
+   "error__too_many_sessions_text_body": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "Error: demasiadas sesiones. Esta cuenta puede estar en uso en otro dispositivo. Por favor"
+   },
+   "error__too_many_sessions_text_end": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "inicia sesión de nuevo."
+   },
+   "error__try_again_later": {
+      "message": "Error. Inténtalo de nuevo más tarde."
+   },
+   "error__usage_limit_body": {
+      "description": "Sentence with an inline error__usage_limit_body_button",
+      "message": "Para continuar, por favor $UPGRADE_BUTTON$ o espera hasta que tu límite se restablezca.",
+      "placeholders": {
+         "upgrade_button": {
+            "content": "$1"
+         }
+      }
+   },
+   "error__usage_limit_body_button": {
+      "description": "The button used as the placeholder in error__usage_limit_body",
+      "message": "Actualización de tu plan"
+   },
+   "error__usage_limit_head": {
+      "message": "Has alcanzado tu límite de uso"
+   },
+   "feedback__main_q": {
+      "message": "¿Te resulta útil la Ahrefs Toolbar para SEO?"
+   },
+   "feedback__negative_answ": {
+      "message": "Ayúdanos a mejorar."
+   },
+   "feedback__negative_button_1": {
+      "message": "Realmente no"
+   },
+   "feedback__positive_answ": {
+      "message": "¡Genial! Por favor, cuéntanos lo que te gusta."
+   },
+   "feedback__positive_button_1": {
+      "message": "Sí"
+   },
+   "feedback__positive_button_2": {
+      "message": "Escribe una opinión"
+   },
+   "feedback__send_answ": {
+      "message": "Enviar comentarios"
+   },
+   "freeplan_banner__limit_description": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "Las métricas SEO para la Barra de herramientas están disponibles con uno de los"
+   },
+   "freeplan_banner__limit_link": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "planes de pago"
+   },
+   "get_started": {
+      "message": "Empezar"
+   },
+   "headings": {
+      "message": "Encabezados"
+   },
+   "how_to_use": {
+      "message": "Cómo usar"
+   },
+   "hreflangs": {
+      "message": "Hreflangs"
+   },
+   "icon_tip__add": {
+      "message": "Guarda esta URL en la lista.\nPara acceder a las URL guardadas, haz clic en el icono de la extensión y dirígete a la pestaña «Guardadas».\nLas diez URL más recientes de la lista pueden enviarse rápidamente a las herramientas Link Intersect o Content Gap en Ahrefs (sólo para usuarios de pago)"
+   },
+   "icon_tip__hide_toolbar": {
+      "message": "Ocultar permanentemente la barra de herramientas en este sitio web, página o ruta. \n(Puedes editar la lista de bloqueo en la configuración)"
+   },
+   "icon_tip__present": {
+      "message": "La URL aparece en la lista de URLs guardadas y puede enviarse a Link Intersect o Content Gap.\nPara acceder a las URLs guardadas, haz clic en el icono de la extensión y navega hasta la pestaña «Guardadas».\nLas diez URLs más recientes de la lista pueden ser enviadas rápidamente a las herramientas Link Intersect o Content Gap en Ahrefs."
+   },
+   "icon_tip__present_in_list": {
+      "message": "La URL aparece en la lista de URLs guardadas y puede enviarse a Link Intersect o Content Gap.\nPara acceder a las URLs guardadas, haz clic en el icono de la extensión y navega hasta la pestaña «Guardadas».\nLas diez URLs más recientes de la lista pueden ser enviadas rápidamente a las herramientas Link Intersect o Content Gap en Ahrefs."
+   },
+   "image__all": {
+      "message": "Todo"
+   },
+   "image__alt": {
+      "message": "Alt"
+   },
+   "image__alt_empty": {
+      "message": "Texto alternativo vacío"
+   },
+   "image__alt_missing": {
+      "message": "Falta texto alternativo"
+   },
+   "image__alt_text": {
+      "message": "Texto alternativo"
+   },
+   "image__file_too_large": {
+      "message": "Tamaño de archivo de imagen demasiado grande"
+   },
+   "image__image": {
+      "message": "Imagen"
+   },
+   "image__not_found": {
+      "message": "No se han encontrado imágenes"
+   },
+   "image__url": {
+      "message": "URL"
+   },
+   "in_html_code": {
+      "description": "Means that the information is analyzed directly within the client-side rendered HTML code of the page",
+      "message": "En HTML Renderizado"
+   },
+   "in_raw_html_code": {
+      "description": "Means that the information is analyzed directly within the server-returned source",
+      "message": "En HTML sin Procesar"
+   },
+   "jsonld__not_found": {
+      "message": "No se han encontrado datos estructurados JSON-LD"
+   },
+   "kw_metrics__c_description": {
+      "message": "Una estimación del número de clics que la gente hace en los resultados de búsqueda de una palabra clave determinada al mes. Algunas búsquedas no dan lugar a ningún clic, mientras que otras generan múltiples clics en las SERP."
+   },
+   "kw_metrics__c_title": {
+      "message": "Clics"
+   },
+   "kw_metrics__cpc_description": {
+      "message": "Precio medio estimado que pagan los anunciantes por cada clic en los resultados de búsqueda de pago para una palabra clave."
+   },
+   "kw_metrics__cpc_title": {
+      "message": "Coste por clic (CPC)"
+   },
+   "kw_metrics__gv_description": {
+      "message": "Estimación del número medio mensual de búsquedas de una palabra clave en todos los países de nuestra base de datos."
+   },
+   "kw_metrics__gv_title": {
+      "message": "Volumen de búsqueda global (GV)"
+   },
+   "kw_metrics__kd_description": {
+      "message": "Estima lo difícil que sería posicionarse en los 10 primeros resultados de búsqueda orgánica para una palabra clave en una escala de 100 puntos."
+   },
+   "kw_metrics__kd_title": {
+      "message": "Dificultad de la palabra clave (KD)"
+   },
+   "kw_metrics__sw_description": {
+      "message": "Estimación del número medio mensual de búsquedas de una palabra clave en un país determinado."
+   },
+   "kw_metrics__sw_title": {
+      "message": "Volumen de búsquedas"
+   },
+   "kw_metrics__tp_description": {
+      "message": "Muestra la suma del tráfico de búsqueda orgánica que recibe la página nº 1 de la palabra clave objetivo de todas las palabras clave para las que está clasificada."
+   },
+   "kw_metrics__tp_title": {
+      "message": "Potencial de tráfico (TP)"
+   },
+   "learn_more": {
+      "message": "Más información"
+   },
+   "manifest_description": {
+      "message": "Ahorra horas con un kit de herramientas completo en una sola extensión de SEO. Obtén información para on-page, Keyword Research, y análisis de enlaces en cualquier página web."
+   },
+   "manifest_name": {
+      "description": "Don't translate: 'Ahrefs SEO Toolbar'",
+      "message": "Ahrefs SEO Toolbar: Herramientas On-Page y SERP"
+   },
+   "meta": {
+      "message": "Meta"
+   },
+   "metrics__ads_description": {
+      "message": "El número total de anuncios únicos de un sitio web objetivo o URL en resultados de búsqueda de pago."
+   },
+   "metrics__ads_label_lg": {
+      "message": "Anuncios"
+   },
+   "metrics__ads_title": {
+      "message": "Anuncios"
+   },
+   "metrics__ar_description": {
+      "message": "Representa la fuerza del perfil de backlinks del sitio web comparado con otros sitios web de nuestra base de datos, siendo el ranking #1 el más fuerte."
+   },
+   "metrics__ar_label_lg": {
+      "message": "Ranking Ahrefs"
+   },
+   "metrics__ar_title": {
+      "message": "Ranking Ahrefs (AR)"
+   },
+   "metrics__bl_description": {
+      "message": "El número total de enlaces de otros sitios web que apuntan a tu objetivo."
+   },
+   "metrics__bl_label_lg": {
+      "message": "Backlinks"
+   },
+   "metrics__bl_title": {
+      "message": "Backlinks (BL)"
+   },
+   "metrics__cost_description": {
+      "message": "El coste estimado del tráfico de búsqueda de pago mensual de tu objetivo."
+   },
+   "metrics__cost_label_lg": {
+      "message": "Coste"
+   },
+   "metrics__cost_title": {
+      "message": "Coste del tráfico de pago"
+   },
+   "metrics__dr_description": {
+      "message": "Representa la fuerza del perfil de backlinks del sitio web en una escala logarítmica de 100 puntos."
+   },
+   "metrics__dr_label_lg": {
+      "message": "Domain Rating"
+   },
+   "metrics__dr_title": {
+      "message": "Domain Rating (DR)"
+   },
+   "metrics__kw_description": {
+      "message": "El número total de palabras clave únicas por las que el objetivo aparece en los 100 primeros resultados de búsqueda orgánica en todos los países de nuestra base de datos."
+   },
+   "metrics__kw_label_lg": {
+      "message": "Palabras clave"
+   },
+   "metrics__kw_title": {
+      "message": "Palabras clave orgánicas (KW)"
+   },
+   "metrics__paid_keywords_description": {
+      "message": "El número total de palabras clave por las que tu objetivo se posiciona en los resultados de búsqueda de pago."
+   },
+   "metrics__paid_keywords_label_lg": {
+      "message": "Palabras clave de pago"
+   },
+   "metrics__paid_keywords_title": {
+      "message": "Palabras clave de pago"
+   },
+   "metrics__paid_traffic_description": {
+      "message": "El número estimado de visitas mensuales que obtiene tu objetivo de la búsqueda de pago."
+   },
+   "metrics__paid_traffic_label_lg": {
+      "message": "Tráfico de pago"
+   },
+   "metrics__paid_traffic_title": {
+      "message": "Tráfico de pago"
+   },
+   "metrics__rd_description": {
+      "message": "Número total de dominios únicos que enlazan con el objetivo."
+   },
+   "metrics__rd_label_lg": {
+      "message": "Dominios de referencia"
+   },
+   "metrics__rd_title": {
+      "message": "Dominios de referencia (RD)"
+   },
+   "metrics__rp_description": {
+      "message": "Número total de páginas web únicas que enlazan con el objetivo."
+   },
+   "metrics__rp_label_lg": {
+      "message": "Páginas de referencia"
+   },
+   "metrics__rp_title": {
+      "message": "Páginas de referencia (RP)"
+   },
+   "metrics__sign_up_free_button": {
+      "message": "Regístrate gratis"
+   },
+   "metrics__sign_up_free_description": {
+      "message": "Obtén acceso gratuito a DR, AR y UR con una cuenta gratuita de Ahrefs."
+   },
+   "metrics__st_description": {
+      "message": "Número estimado de visitas mensuales que el objetivo recibe de búsquedas orgánicas."
+   },
+   "metrics__st_label_lg": {
+      "message": "Tráfico de búsqueda"
+   },
+   "metrics__st_title": {
+      "message": "Tráfico de búsqueda orgánica (ST)"
+   },
+   "metrics__tv_description": {
+      "message": "El coste mensual equivalente al tráfico de búsqueda orgánica para un sitio o página web, calculado en base a la suposición de que la misma cantidad de tráfico se obtuvo a través de publicidad de pago por clic (PPC) en lugar de clasificaciones de búsqueda orgánica."
+   },
+   "metrics__tv_title": {
+      "message": "Valor del tráfico (TV)"
+   },
+   "metrics__ur_description": {
+      "message": "URL Rating (UR) muestra la fuerza del perfil de backlinks de la página de destino en una escala logarítmica de 100 puntos."
+   },
+   "metrics__ur_label_lg": {
+      "message": "URL Rating"
+   },
+   "metrics__ur_title": {
+      "message": "URL Rating (UR)"
+   },
+   "metrics__w_description": {
+      "message": "El número de palabras en una página web tal y como lo ve el rastreador de Ahrefs en el código de la página. Este número puede diferir ligeramente de lo que se ve en el navegador al abrir la página."
+   },
+   "metrics__w_label_lg": {
+      "message": "Palabras"
+   },
+   "metrics__w_title": {
+      "message": "Palabras en la página"
+   },
+   "modal__blocklist_btn_negative": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "No desactivar"
+   },
+   "modal__blocklist_btn_positive_domain": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "Para el dominio"
+   },
+   "modal__blocklist_btn_positive_page": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "Para esta página"
+   },
+   "modal__blocklist_description": {
+      "message": "¿Deseas desactivar la barra de herramientas con métricas para este sitio web o página?\n(Puedes editar la lista de bloqueo en la configuración)"
+   },
+   "modal__shortcuts_button_ok": {
+      "message": "Entendido"
+   },
+   "modal__shortcuts_button_settings": {
+      "description": "The button used to open the browser settings e.g. chrome://extensions/shortcuts",
+      "message": "configuración de tu navegador"
+   },
+   "modal__shortcuts_description": {
+      "description": "Example of the last sentence 'You can change these key bindings in your browser settings'",
+      "message": "Puedes usar los siguientes atajos con la barra de herramientas de SEO de Ahrefs:\n$SHORTCUT_TOOLBAR$ para activar/desactivar la barra de métricas\n$SHORTCUT_POPUP$ para abrir los informes y configuraciones en la página\nPuedes cambiar estas asignaciones de teclas en tu",
+      "placeholders": {
+         "shortcut_popup": {
+            "content": "$2",
+            "example": "Ctrl+Cmd+A"
+         },
+         "shortcut_toolbar": {
+            "content": "$1",
+            "example": "Ctrl+Cmd+A"
+         }
+      }
+   },
+   "modified": {
+      "message": "Modificado"
+   },
+   "new": {
+      "message": "Nuevo"
+   },
+   "noindex_page": {
+      "message": "Página no indexada"
+   },
+   "open_graph_tags": {
+      "message": "Etiquetas Open graph"
+   },
+   "outgoing_links__check_status": {
+      "message": "Comprobar estado"
+   },
+   "outgoing_links__dofollow": {
+      "message": "Dofollow"
+   },
+   "outgoing_links__dropdown_description": {
+      "message": "Enviar hasta las 10 URLs más recientes de la lista a Ahrefs"
+   },
+   "outgoing_links__dropdown_item_1": {
+      "message": "Link Intersect"
+   },
+   "outgoing_links__dropdown_item_2": {
+      "message": "Content Gap"
+   },
+   "outgoing_links__external": {
+      "message": "Externo"
+   },
+   "outgoing_links__highlight": {
+      "message": "Resaltar"
+   },
+   "outgoing_links__internal": {
+      "message": "Interno"
+   },
+   "outgoing_links__link_type": {
+      "message": "Tipo de enlace"
+   },
+   "outgoing_links__nofollow": {
+      "message": "Nofollow"
+   },
+   "outgoing_links__status": {
+      "message": "Estado"
+   },
+   "outgoing_links__target_url": {
+      "message": "URL de destino"
+   },
+   "popup_menu__content": {
+      "message": "Contenido"
+   },
+   "popup_menu__http_headers": {
+      "message": "Encabezados HTTP"
+   },
+   "popup_menu__images": {
+      "message": "Imágenes"
+   },
+   "popup_menu__indexability": {
+      "message": "Indexabilidad"
+   },
+   "popup_menu__metrics": {
+      "message": "Métricas"
+   },
+   "popup_menu__metrics_bar": {
+      "message": "Barra de métricas"
+   },
+   "popup_menu__outgoing_links": {
+      "message": "Enlaces salientes"
+   },
+   "popup_menu__outgoing_links_short": {
+      "message": "Enlaces"
+   },
+   "popup_menu__saved_urls": {
+      "message": "URL guardadas"
+   },
+   "popup_menu__search_tools": {
+      "message": "Herramientas de búsqueda"
+   },
+   "popup_menu__settings": {
+      "message": "Configuración"
+   },
+   "popup_menu__social": {
+      "message": "Etiquetas sociales"
+   },
+   "popup_menu__social_image_fail": {
+      "message": "Error al obtener"
+   },
+   "popup_menu__struct_data": {
+      "message": "Datos estructurados"
+   },
+   "popup_menu__ua": {
+      "message": "Agente de usuario"
+   },
+   "popup_menu__ua_texarea_label": {
+      "message": "Cadena de agente de usuario"
+   },
+   "published": {
+      "message": "Publicado"
+   },
+   "raw": {
+      "description": "Raw HTML- server-returned source",
+      "message": "Sin procesar"
+   },
+   "raw_vs_rendered": {
+      "description": "Button on popup content. Raw HTML- server-returned source. Rendered HTML- final DOM.",
+      "message": "Raw vs Renderizado"
+   },
+   "rendered": {
+      "description": "Rendered HTML- final DOM.",
+      "message": "Renderizado"
+   },
+   "robots": {
+      "message": "Robots"
+   },
+   "robots__meta_tag": {
+      "message": "Metaetiqueta Robots"
+   },
+   "robots__tag_http": {
+      "message": "X-Robots-Tag HTTP"
+   },
+   "robots__txt": {
+      "message": "Robots.txt"
+   },
+   "saved_urls__all_tabs": {
+      "message": "Todas las pestañas"
+   },
+   "saved_urls__copy_list": {
+      "message": "Copiar lista"
+   },
+   "saved_urls__current_tab": {
+      "message": "Pestaña actual"
+   },
+   "search_tools__desktop": {
+      "message": "Escritorio"
+   },
+   "search_tools__device": {
+      "message": "Dispositivo"
+   },
+   "search_tools__highlight_placeholder": {
+      "message": "Introduce los dominios que quieres resaltar en los resultados de la búsqueda."
+   },
+   "search_tools__highlight_title": {
+      "message": "Resaltar resultados"
+   },
+   "search_tools__kw_title": {
+      "message": "Métricas de palabras clave"
+   },
+   "search_tools__language": {
+      "message": "Idioma"
+   },
+   "search_tools__location": {
+      "message": "Ubicación"
+   },
+   "search_tools__ls_menu_title": {
+      "message": "Simulador de búsqueda local"
+   },
+   "search_tools__menu_title": {
+      "message": "Configuración de la búsqueda"
+   },
+   "search_tools__position_numbers_title": {
+      "message": "Números de posición"
+   },
+   "search_tools__reset": {
+      "message": "Restablecer"
+   },
+   "search_tools__results_metrics_title": {
+      "message": "Métricas de resultados de búsqueda"
+   },
+   "search_tools__tip_body": {
+      "message": "Usa este botón para simular una búsqueda local"
+   },
+   "search_tools__trends_title": {
+      "message": "Métricas de palabras clave en Tendencias"
+   },
+   "serp__adv": {
+      "message": "Prueba esta búsqueda en Yep"
+   },
+   "serp__counter_title": {
+      "description": "Tooltip title for the SERP counter",
+      "message": "Traído al SERP por Ahrefs SEO Toolbar"
+   },
+   "serp__export_button": {
+      "message": "Exportar CSV"
+   },
+   "serp__kw_ideas": {
+      "message": "Ideas de palabras clave"
+   },
+   "serp__local_search": {
+      "message": "Búsqueda local"
+   },
+   "serp__local_search_active": {
+      "message": "Mostrar SERP simulado"
+   },
+   "serp__ppa": {
+      "message": "La gente también pregunta"
+   },
+   "serp__save_urls_button": {
+      "message": "Guardar URL"
+   },
+   "serp__tip_conf": {
+      "message": "Haz clic en el icono de extensión para configurar"
+   },
+   "settings__appearance": {
+      "message": "Aspecto"
+   },
+   "settings__bottom": {
+      "description": "Location of the toolbar on the screen",
+      "message": "Abajo"
+   },
+   "settings__dark": {
+      "description": "Theme color",
+      "message": "Oscuro"
+   },
+   "settings__exclude_list": {
+      "message": "Lista de exclusión"
+   },
+   "settings__exlude_list_warn": {
+      "message": "Introduce los dominios, URL o rutas URL en los que no deseas que aparezca la barra."
+   },
+   "settings__exlude_list_warn_2": {
+      "message": "Utiliza * para las rutas URL, por ejemplo https://ahrefs.com/blog/*"
+   },
+   "settings__exlude_list_warn_3": {
+      "message": " Una entrada por línea."
+   },
+   "settings__light": {
+      "description": "Theme color",
+      "message": "Claro"
+   },
+   "settings__position": {
+      "message": "Posición"
+   },
+   "settings__show_on_update": {
+      "message": "Mostrar en actualización"
+   },
+   "settings__system": {
+      "description": "Theme color",
+      "message": "Sistema"
+   },
+   "settings__top": {
+      "description": "Location of the toolbar on the screen",
+      "message": "Arriba"
+   },
+   "shared__all": {
+      "message": "Todos"
+   },
+   "shared__broken": {
+      "message": "Roto"
+   },
+   "shared__changelog": {
+      "message": "Registro de cambios"
+   },
+   "shared__clear": {
+      "message": "Borrar"
+   },
+   "shared__copy": {
+      "message": "Copiar"
+   },
+   "shared__custom": {
+      "message": "Personalizar"
+   },
+   "shared__default": {
+      "message": "Opción predeterminada"
+   },
+   "shared__default_browser": {
+      "message": "Predeterminado (Tu navegador)"
+   },
+   "shared__default_report": {
+      "message": "Informe por defecto"
+   },
+   "shared__disallowed_in_robots_txt": {
+      "message": "No permitido en robots.txt"
+   },
+   "shared__domain": {
+      "message": "Dominio"
+   },
+   "shared__edit": {
+      "message": "Editar"
+   },
+   "shared__empty": {
+      "message": "Vacío"
+   },
+   "shared__export": {
+      "message": "Exportar"
+   },
+   "shared__how_to_fix": {
+      "message": "Cómo solucionarlo"
+   },
+   "shared__in_http_headers": {
+      "message": "En encabezados HTTP"
+   },
+   "shared__last_opened": {
+      "message": "Último abierto"
+   },
+   "shared__load_more": {
+      "message": "Cargar más"
+   },
+   "shared__mismatch": {
+      "message": "Desajuste"
+   },
+   "shared__missing": {
+      "message": "Falta"
+   },
+   "shared__no_results": {
+      "message": "No hay resultados"
+   },
+   "shared__noindex_page": {
+      "message": "Noindex Página"
+   },
+   "shared__non_canonical": {
+      "message": "No canónico"
+   },
+   "shared__not_available": {
+      "message": "N/A"
+   },
+   "shared__not_empty": {
+      "message": "No está vacío"
+   },
+   "shared__not_found": {
+      "message": "No encontrado"
+   },
+   "shared__not_now": {
+      "message": "Ahora no"
+   },
+   "shared__ok": {
+      "message": "Vale"
+   },
+   "shared__open_in": {
+      "description": "The button used to open selected item in another app, service, etc",
+      "message": "Abrir en"
+   },
+   "shared__page": {
+      "message": "Página"
+   },
+   "shared__redirect": {
+      "message": "Redirección"
+   },
+   "shared__search": {
+      "message": "Búsqueda"
+   },
+   "shared__self_canonical": {
+      "message": "Autocanónico"
+   },
+   "shared__shortcuts": {
+      "message": "Accesos directos"
+   },
+   "shared__today": {
+      "message": "Hoy"
+   },
+   "shared__value": {
+      "message": "Valor"
+   },
+   "shared__words": {
+      "description": "Example: 1500 words",
+      "message": "palabras"
+   },
+   "shared__yesterday": {
+      "message": "Ayer"
+   },
+   "shared_of": {
+      "description": "e.g. 3 of 15 links",
+      "message": "de"
+   },
+   "shared_overview": {
+      "description": "Link to Ahrefs Overview",
+      "message": "Vista general"
+   },
+   "shared_upgrade": {
+      "description": "Plans and pricing",
+      "message": "Actualización"
+   },
+   "sign_in": {
+      "message": "Iniciar sesión"
+   },
+   "sign_in__long": {
+      "description": "Uses on Serp and Content toolbar",
+      "message": "Iniciar sesión con Ahrefs"
+   },
+   "sign_out": {
+      "message": "Cerrar sesión"
+   },
+   "sign_up": {
+      "message": "Regístrate"
+   },
+   "sign_up__content": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "o echa un vistazo a nuestro"
+   },
+   "sign_up__link": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "herramientas de SEO gratuitas"
+   },
+   "sitemaps": {
+      "message": "Mapa del sitio"
+   },
+   "social__not_matching_canonical": {
+      "description": "Error: Social Card URL not matching canonical",
+      "message": "La URL Social no coincide con la Canónica"
+   },
+   "starter__q": {
+      "message": "Obtén acceso a las métricas de Ahrefs con nuestro plan Starter por solo $PRICE$/mes.",
+      "placeholders": {
+         "price": {
+            "content": "$1"
+         }
+      }
+   },
+   "suggest_feature": {
+      "message": "Sugerir una función"
+   },
+   "title": {
+      "message": "Título"
+   },
+   "title__too_long": {
+      "message": "El título puede ser demasiado largo. Los títulos de páginas largos corren el riesgo de truncarse cuando aparecen en los resultados de búsqueda de Google. La longitud máxima recomendada del título es de unos 60 caracteres."
+   },
+   "title__too_short": {
+      "message": "El título puede ser demasiado corto. El título de la página es un elemento crucial en el que se basa Google para comprender las páginas. Los títulos cortos pueden perder la oportunidad de transmitir la idea principal de una página a Google de forma eficaz."
+   },
+   "try_starter": {
+      "message": "Prueba el Starter"
+   },
+   "ua__warning_body": {
+      "message": "Desactiva el agente de usuario personalizado cuando ya no lo necesites."
+   },
+   "ua__warning_important": {
+      "message": "Importante:"
+   },
+   "url": {
+      "message": "URL"
+   },
+   "validate_sd": {
+      "message": "Validar"
+   },
+   "validate_sd__placegolder": {
+      "message": "Validar datos estructurados en esta página"
+   },
+   "validate_sd__rich_results_test": {
+      "message": "Prueba de resultados enriquecidos"
+   },
+   "validate_sd__schema_markup_validator": {
+      "message": "Validador de marcado de esquema"
+   },
+   "web_vitals": {
+      "message": "Core Web Vitals"
+   },
+   "web_vitals__cls": {
+      "message": "Desplazamiento de diseño acumulativo o Cumulative Layout Shift (CLS) mide cómo se mueven los elementos o lo estable que es el diseño de la página. Tiene en cuenta el tamaño del contenido y la distancia a la que se mueve."
+   },
+   "web_vitals__info_main": {
+      "message": "Las métricas web principales o Core Web Vitals son métricas de velocidad que forman parte de las señales de experiencia de página de Google utilizadas para medir la experiencia del usuario. Estos datos se basan en la experiencia real de los usuarios de Chrome con su página. CWV es un factor de clasificación menor para Google."
+   },
+   "web_vitals__inp": {
+      "message": "Interaction to Next Paint (INP) evalúa la capacidad de respuesta de una página. Observa la latencia de todas las interacciones del usuario con la página e informa de un valor único por debajo del cual se situaron todas (o casi todas) las interacciones. Un INP bajo significa que la página fue capaz de responder rápidamente a todas -o a la gran mayoría- de las interacciones del usuario."
+   },
+   "web_vitals__lcp": {
+      "message": "La pintura de mayor contenido o Largest Contentful Paint (LCP) es el elemento visible más grande cargado en la ventana gráfica. Suele ser una imagen destacada o un H1. Se mide en segundos."
+   },
+   "web_vitals__not_found": {
+      "message": "Las métricas web principales utilizan los datos de usuarios reales de Chrome. Si una o todas las métricas no están disponibles para la página, significa que no hay datos suficientes sobre la experiencia de los usuarios con esta página. En este caso, otras herramientas, como Pagespeed Insights de Google, mostrarán las métricas de CWV para la página de inicio."
+   },
+   "word_count": {
+      "message": "Número de palabras"
+   },
+   "x_card": {
+      "message": "Tarjeta de X (Twitter)"
+   }
+}

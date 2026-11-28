@@ -1,0 +1,27 @@
+Titel:
+Ahrefs SEO-Toolbar: On-Page- und SERP-Tools
+
+Übersicht:
+Spare Zeit mit einem kompletten Toolkit in einer einzigen SEO-Erweiterung. Einblicke für On-Page, Keyword-Recherche und Linkanalyse auf jeder Webseite.
+
+Beschreibung:
+Die Ahrefs-Toolbar ist kostenlos und bietet dir detaillierte SEO-Informationen, ohne deinen Browser zu verlassen.
+
+🌍 Globale SEO-Recherche (kein VPN erforderlich)
+Wechsle Regionen, Google-Domains, Sprachen und erhalte neue Keyword-Ideen direkt in den Suchergebnissen.
+
+📃 On-Page-SEO-Daten mit nur einem Klick
+Überprüfe mit einem Klick Titel, Meta-Beschreibungen, Überschriften und technische SEO-Faktoren wie kanonische Tags und Indexierungsrichtlinien.
+
+🔗 Link-Analyse leicht gemacht
+Markiere Links auf der Seite, verfolge Weiterleitungen, filtere ausgehende Links, finde defekte Links und exportiere alle Daten als CSV-Datei. 
+
+🛠 Detaillierte SEO-Recherchetools
+Speichere URLs aus offenen Tabs oder einer SERP, wechsle den User-Agent, um Seiten wie Googlebot zu sehen, lies HTTP-Header und hol dir Leistungsdaten für Einblicke in die Seitengeschwindigkeit.
+
+✨Zahlende Ahrefs-Nutzer können die Ahrefs-Metriken freischalten:
+Schau dir direkt auf jeder Website oder in jedem Suchergebnis Domain- und Seitenmetriken wie Keyword-Anzahl, Traffic-Schätzungen, verweisende Domains und mehr an.
+
+🤝 Vertraut von über 360.000 SEO-Profis
+
+📌 Hinweis: Ein Ahrefs-Abonnement ist erforderlich, um auf Ahrefs-Metriken zuzugreifen. Die wichtigsten Tools dieser SEO-Erweiterung sind komplett kostenlos.

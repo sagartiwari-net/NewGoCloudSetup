@@ -183,6 +183,29 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/automation/jobs", s.deleteAutomationJob)
 	mux.HandleFunc("GET /api/automation/logs", s.listAutomationLogs)
 	mux.HandleFunc("DELETE /api/automation/logs", s.clearAutomationLogs)
+
+	mux.HandleFunc("GET /api/ahrefs-bar/overview", s.ahrefsBarOverview)
+	mux.HandleFunc("GET /api/ahrefs-bar/accounts", s.listAhrefsBarAccounts)
+	mux.HandleFunc("GET /api/ahrefs-bar/accounts/{id}", s.getAhrefsBarAccount)
+	mux.HandleFunc("POST /api/ahrefs-bar/accounts", s.saveAhrefsBarAccount)
+	mux.HandleFunc("DELETE /api/ahrefs-bar/accounts", s.deleteAhrefsBarAccount)
+	mux.HandleFunc("GET /api/ahrefs-bar/portals", s.listAhrefsBarPortals)
+	mux.HandleFunc("GET /api/ahrefs-bar/portals/{id}", s.getAhrefsBarPortal)
+	mux.HandleFunc("POST /api/ahrefs-bar/portals", s.saveAhrefsBarPortal)
+	mux.HandleFunc("DELETE /api/ahrefs-bar/portals", s.deleteAhrefsBarPortal)
+	mux.HandleFunc("GET /api/ahrefs-bar/settings", s.getAhrefsBarSettings)
+	mux.HandleFunc("POST /api/ahrefs-bar/settings", s.saveAhrefsBarSettings)
+	mux.HandleFunc("GET /api/ahrefs-bar/costs", s.listAhrefsBarCosts)
+	mux.HandleFunc("POST /api/ahrefs-bar/costs", s.saveAhrefsBarCost)
+	mux.HandleFunc("GET /api/ahrefs-bar/user-limits", s.listAhrefsBarUserLimits)
+	mux.HandleFunc("POST /api/ahrefs-bar/user-limits", s.saveAhrefsBarUserLimit)
+	mux.HandleFunc("DELETE /api/ahrefs-bar/user-limits", s.deleteAhrefsBarUserLimit)
+	mux.HandleFunc("GET /api/ahrefs-bar/usage", s.listAhrefsBarUsage)
+	mux.HandleFunc("GET /api/ahrefs-bar/meters", s.getAhrefsBarMeters)
+	mux.HandleFunc("POST /api/ahrefs-bar/meters/reset", s.resetAhrefsBarMetersHandler)
+	mux.HandleFunc("GET /api/ahrefs-bar/extension-info", s.ahrefsBarExtInfo)
+	mux.HandleFunc("GET /api/ahrefs-bar/extension.zip", s.downloadAhrefsBarExtension)
+	mux.HandleFunc("GET /api/ahrefs-bar/tm-check.php", s.downloadAhrefsBarTMCheck)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -329,7 +352,9 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	expires := time.Now().Add(7 * 24 * time.Hour).UTC().Format(time.RFC3339)
 	_, _ = s.db.Exec(`INSERT INTO admin_sessions (token, operator_id, expires_at) VALUES (?,?,?)`, token, op.ID, expires)
 	http.SetCookie(w, sessionCookie(r, token, 7*24*3600))
-	writeJSON(w, 200, s.operatorJSON(op))
+	out := s.operatorJSON(op)
+	out["token"] = token
+	writeJSON(w, 200, out)
 }
 
 func (s *server) operatorJSON(op operator) map[string]any {
@@ -355,7 +380,13 @@ func (s *server) operatorJSON(op operator) map[string]any {
 			}
 		}
 	}
-	return map[string]any{"id": op.ID, "username": op.Username, "role": op.Role, "website_ids": ids}
+	return map[string]any{
+		"id":                 op.ID,
+		"username":           op.Username,
+		"role":               op.Role,
+		"website_ids":        ids,
+		"ahrefs_bar_enabled": s.operatorAhrefsBarEnabled(op),
+	}
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {

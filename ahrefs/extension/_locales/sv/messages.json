@@ -1,0 +1,883 @@
+{
+   "banner__cta_site_audit_header": {
+      "description": "Header of the banner CTA for the Site Audit",
+      "message": "Ahrefs Site Audit."
+   },
+   "banner__cta_site_audit_text": {
+      "description": "Text of the banner CTA for the Site Audit",
+      "message": "Kör en komplett SEO-revision av din webbplats. Identifiera, prioritera och åtgärda 170+ SEO-problem."
+   },
+   "banner__patch_it_description": {
+      "description": "Description of the banner CTA for the Site Audit Patches",
+      "message": "Åtgärda vanliga SEO-problem och tillämpa ändringar direkt från Ahrefs till din webbplats."
+   },
+   "banner__patch_it_label": {
+      "description": "Label for the banner CTA for the Site Audit Patches",
+      "message": "Patches"
+   },
+   "banner__patch_it_title": {
+      "description": "Title of the banner CTA for the Site Audit Patches",
+      "message": "Patches"
+   },
+   "canonical_url": {
+      "message": "Kanonisk URL"
+   },
+   "card__missing_or_incomplete": {
+      "message": "Saknas eller ofullständiga"
+   },
+   "content": {
+      "message": "Innehåll"
+   },
+   "content__changes_button": {
+      "message": "Se ändringar"
+   },
+   "content__first_heading_not_h1": {
+      "description": "Error: the first heading on the page is not H1",
+      "message": "Den första rubriken är inte H1"
+   },
+   "content__multiple_descriptions": {
+      "description": "Error: Multiple descriptions found on the page",
+      "message": "Flera beskrivningar"
+   },
+   "content__multiple_h1_tags": {
+      "description": "Error: Multiple H1 tags found on the page",
+      "message": "Flera H1-taggar"
+   },
+   "content__multiple_title_tags": {
+      "description": "Error: Multiple title tags found on the page",
+      "message": "Flera titeltaggar"
+   },
+   "content__rendered_description_missing": {
+      "message": "Renderad beskrivning saknas"
+   },
+   "content__rendered_title_missing": {
+      "message": "Renderad titel saknas"
+   },
+   "copy_headings": {
+      "message": "Kopiera rubriker"
+   },
+   "dates": {
+      "message": "Datum"
+   },
+   "description": {
+      "message": "Beskrivning"
+   },
+   "description__too_long": {
+      "message": "Metabeskrivningen kan vara för lång. Det är tillrådligt att hålla dina metabeskrivningar inom cirka 160 tecken. Längre beskrivningar riskerar att bli avkortade på SERP:er om Google väljer att visa dem som utdragstext."
+   },
+   "description__too_short": {
+      "message": "Metabeskrivningen kan vara för kort. Det rekommenderas att skriva längre beskrivningar eftersom de ger en förklaring av sidans innehåll till Google."
+   },
+   "error__fetching_data": {
+      "message": "Fel vid hämtning av data. Försök igen senare."
+   },
+   "error__inactive": {
+      "message": "Din användarstatus i den anslutna arbetsytan är för närvarande \"Inaktiv.\""
+   },
+   "error__monthly_limit": {
+      "message": "Den månatliga gränsen för din arbetsyta har nåtts."
+   },
+   "error__too_many_sessions_sign_in": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "logga in"
+   },
+   "error__too_many_sessions_text_body": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "Fel: för många sessioner. Detta konto kan användas på en annan enhet. Var god att"
+   },
+   "error__too_many_sessions_text_end": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "igen."
+   },
+   "error__try_again_later": {
+      "message": "Fel. Försök igen senare."
+   },
+   "error__usage_limit_body": {
+      "description": "Sentence with an inline error__usage_limit_body_button",
+      "message": "För att fortsätta, $UPGRADE_BUTTON$ eller vänta tills din gräns återställs.",
+      "placeholders": {
+         "upgrade_button": {
+            "content": "$1"
+         }
+      }
+   },
+   "error__usage_limit_body_button": {
+      "description": "The button used as the placeholder in error__usage_limit_body",
+      "message": "Uppgradera din plan"
+   },
+   "error__usage_limit_head": {
+      "message": "Du har nått din användningsgräns"
+   },
+   "feedback__main_q": {
+      "message": "Gillar du Ahrefs SEO Toolbar?"
+   },
+   "feedback__negative_answ": {
+      "message": "Hjälp oss att förbättra."
+   },
+   "feedback__negative_button_1": {
+      "message": "Inte riktigt"
+   },
+   "feedback__positive_answ": {
+      "message": "Utmärkt! Berätta vad du gillar."
+   },
+   "feedback__positive_button_1": {
+      "message": "Ja!"
+   },
+   "feedback__positive_button_2": {
+      "message": "Skriv en recension"
+   },
+   "feedback__send_answ": {
+      "message": "Skicka feedback"
+   },
+   "freeplan_banner__limit_description": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "SEO-mått för verktygsfältet är tillgängliga med någon av de"
+   },
+   "freeplan_banner__limit_link": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "betalda planer"
+   },
+   "get_started": {
+      "message": "Kom igång"
+   },
+   "headings": {
+      "message": "Rubriker"
+   },
+   "how_to_use": {
+      "message": "Hur man använder"
+   },
+   "hreflangs": {
+      "message": "Hreflang-taggar"
+   },
+   "icon_tip__add": {
+      "message": "Spara denna URL till listan.\nFör att komma åt de sparade URL:erna, klicka på tilläggets ikon och navigera till fliken 'Sparad'.\nDe tio senaste URL:erna från listan kan snabbt skickas till Link Intersect- eller Content Gap-verktyg i Ahrefs (endast för betalande användare)"
+   },
+   "icon_tip__hide_toolbar": {
+      "message": "Dölj verktygsfältet permanent på denna webbplats, sida eller sökväg.\n(Du kan redigera blocklistan i inställningarna)"
+   },
+   "icon_tip__present": {
+      "message": "URL:en finns på listan över sparade URL:er.\nFör att komma åt de sparade URL:erna, klicka på tilläggets ikon och navigera till 'Sparade'-fliken.\nDe tio senaste URL:erna från listan kan snabbt skickas till Link Intersect eller Content Gap-verktygen i Ahrefs."
+   },
+   "icon_tip__present_in_list": {
+      "message": "URL:en finns på listan över sparade URL:er och kan skickas till Link Intersect eller Content Gap.\nFör att komma åt de sparade URL:erna, klicka på tilläggets ikon och navigera till fliken 'Sparad'.\nDe tio senaste URL:erna från listan kan snabbt skickas till Link Intersect- eller Content Gap-verktyg i Ahrefs."
+   },
+   "image__all": {
+      "message": "Alla"
+   },
+   "image__alt": {
+      "message": "Alt"
+   },
+   "image__alt_empty": {
+      "message": "Tom alt-text"
+   },
+   "image__alt_missing": {
+      "message": "Saknar alt-text"
+   },
+   "image__alt_text": {
+      "message": "Alt-text"
+   },
+   "image__file_too_large": {
+      "message": "Bildfilens storlek är för stor"
+   },
+   "image__image": {
+      "message": "Bild"
+   },
+   "image__not_found": {
+      "message": "Inga bilder hittades"
+   },
+   "image__url": {
+      "message": "Url"
+   },
+   "in_html_code": {
+      "description": "Means that the information is analyzed directly within the client-side rendered HTML code of the page",
+      "message": "I Renderad HTML"
+   },
+   "in_raw_html_code": {
+      "description": "Means that the information is analyzed directly within the server-returned source",
+      "message": "I Rå HTML"
+   },
+   "jsonld__not_found": {
+      "message": "Ingen JSON-LD-strukturerad data hittades"
+   },
+   "kw_metrics__c_description": {
+      "message": "En uppskattning av antalet klick som folk gör på sökresultaten för ett givet sökord per månad. Vissa sökningar resulterar i inga klick, medan andra genererar flera klick på SERP:arna."
+   },
+   "kw_metrics__c_title": {
+      "message": "Klick"
+   },
+   "kw_metrics__cpc_description": {
+      "message": "Den uppskattade genomsnittspris som annonsörerna betalar per annonsklick i betalda sökresultat för ett sökord."
+   },
+   "kw_metrics__cpc_title": {
+      "message": "Kostnad per klick (CPC)"
+   },
+   "kw_metrics__gv_description": {
+      "message": "En uppskattning av det genomsnittliga antalet sökningar per månad för ett sökord över alla länder i vår databas."
+   },
+   "kw_metrics__gv_title": {
+      "message": "Global sökvolym (GV)"
+   },
+   "kw_metrics__kd_description": {
+      "message": "Uppskattar hur svårt det skulle vara att ranka bland de 10 bästa organiska sökresultaten för ett sökord på en 100-gradig skala."
+   },
+   "kw_metrics__kd_title": {
+      "message": "Svårighetsgrad för sökord (KD)"
+   },
+   "kw_metrics__sw_description": {
+      "message": "En uppskattning av det genomsnittliga antalet sökningar per månad för ett sökord i ett givet land."
+   },
+   "kw_metrics__sw_title": {
+      "message": "Sökvolym"
+   },
+   "kw_metrics__tp_description": {
+      "message": "Visar summan av organisk söktrafik som #1-rankade sidan för målsökningsordet mottar från alla sökord som den rankar för."
+   },
+   "kw_metrics__tp_title": {
+      "message": "Trafikpotential (TP)"
+   },
+   "learn_more": {
+      "message": "Läs mer"
+   },
+   "manifest_description": {
+      "message": "Spara timmar med ett komplett verktygspaket i ett enda SEO-tillägg. Insikter för på sidan, sökordsanalys och länkanalys på valfri webbsida."
+   },
+   "manifest_name": {
+      "description": "Don't translate: 'Ahrefs SEO Toolbar'",
+      "message": "Ahrefs SEO Toolbar: Verktyg för On-Page och SERP"
+   },
+   "meta": {
+      "message": "Meta"
+   },
+   "metrics__ads_description": {
+      "message": "Det totala antalet unika annonser för en målwebbplats eller URL i betalda sökresultat."
+   },
+   "metrics__ads_label_lg": {
+      "message": "Annonser"
+   },
+   "metrics__ads_title": {
+      "message": "Annonser"
+   },
+   "metrics__ar_description": {
+      "message": "Representerar styrkan i webbplatsens länkprofil jämfört med andra webbplatser i vår databas, där ranka #1 är den starkaste."
+   },
+   "metrics__ar_label_lg": {
+      "message": "Ahrefs Rank"
+   },
+   "metrics__ar_title": {
+      "message": "Ahrefs Rank (AR)"
+   },
+   "metrics__bl_description": {
+      "message": "Det totala antalet länkar från andra webbplatser som pekar på ditt mål."
+   },
+   "metrics__bl_label_lg": {
+      "message": "Bakåtlänk"
+   },
+   "metrics__bl_title": {
+      "message": "Bakåtlänkar (BL)"
+   },
+   "metrics__cost_description": {
+      "message": "Den estimerade kostnaden för ditt måls betalda söktrafik per månad."
+   },
+   "metrics__cost_label_lg": {
+      "message": "Kostnad"
+   },
+   "metrics__cost_title": {
+      "message": "Betald trafikanskaffningskostnad"
+   },
+   "metrics__dr_description": {
+      "message": "Representerar styrkan i webbplatsens länkprofil på en 100-gradig logaritmisk skala."
+   },
+   "metrics__dr_label_lg": {
+      "message": "Domain Rating"
+   },
+   "metrics__dr_title": {
+      "message": "Domain Rating (DR)"
+   },
+   "metrics__kw_description": {
+      "message": "Det totala antalet unika sökord som målet rankar för bland de 100 bästa organiska sökresultaten över alla länder i vår databas."
+   },
+   "metrics__kw_label_lg": {
+      "message": "Sökord"
+   },
+   "metrics__kw_title": {
+      "message": "Organiska sökord (KW)"
+   },
+   "metrics__paid_keywords_description": {
+      "message": "Det totala antalet sökord som ditt mål rankar för i det betalda sökresultatet."
+   },
+   "metrics__paid_keywords_label_lg": {
+      "message": "Betalda sökord"
+   },
+   "metrics__paid_keywords_title": {
+      "message": "Betalda sökord"
+   },
+   "metrics__paid_traffic_description": {
+      "message": "Det uppskattade antalet månatliga besök som ditt mål får från betalda sökningar."
+   },
+   "metrics__paid_traffic_label_lg": {
+      "message": "Betald trafik"
+   },
+   "metrics__paid_traffic_title": {
+      "message": "Betald trafik"
+   },
+   "metrics__rd_description": {
+      "message": "Det totala antalet unika domäner som länkar till målet."
+   },
+   "metrics__rd_label_lg": {
+      "message": "Hänvisande domäner"
+   },
+   "metrics__rd_title": {
+      "message": "Hänvisande domäner (RD)"
+   },
+   "metrics__rp_description": {
+      "message": "Det totala antalet unika webbsidor som länkar till målet."
+   },
+   "metrics__rp_label_lg": {
+      "message": "Hänv. sidor"
+   },
+   "metrics__rp_title": {
+      "message": "Hänvisande sidor (RP)"
+   },
+   "metrics__sign_up_free_button": {
+      "message": "Registrera dig gratis"
+   },
+   "metrics__sign_up_free_description": {
+      "message": "Få gratis tillgång till DR, AR och UR med ett gratis Ahrefs-konto."
+   },
+   "metrics__st_description": {
+      "message": "Det uppskattade antalet månatliga besök som målet får från organisk sökning."
+   },
+   "metrics__st_label_lg": {
+      "message": "Söktrafik"
+   },
+   "metrics__st_title": {
+      "message": "Organisk söktrafik (ST)"
+   },
+   "metrics__tv_description": {
+      "message": "Den månatliga kostnadsekvivalenten för organisk söktrafik för en webbplats eller webbsida, beräknad baserat på antagandet att samma mängd trafik erhölls genom betala-per-klick-annonser istället för organiska sökresultat."
+   },
+   "metrics__tv_title": {
+      "message": "Trafikvärde (TV)"
+   },
+   "metrics__ur_description": {
+      "message": "URL Rating (UR) visar styrkan i målsidans bakåtlänkprofil på en logaritmisk 100-punktskala."
+   },
+   "metrics__ur_label_lg": {
+      "message": "URL Rating"
+   },
+   "metrics__ur_title": {
+      "message": "URL Rating (UR)"
+   },
+   "metrics__w_description": {
+      "message": "Antalet ord på en webbsida som ses av Ahrefs' sökrobot i sidans kod. Detta antal kan skilja sig lite från vad du ser i webbläsaren när du öppnar sidan."
+   },
+   "metrics__w_label_lg": {
+      "message": "Ord"
+   },
+   "metrics__w_title": {
+      "message": "Ord på sidan"
+   },
+   "modal__blocklist_btn_negative": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "Inaktivera inte"
+   },
+   "modal__blocklist_btn_positive_domain": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "För domänen"
+   },
+   "modal__blocklist_btn_positive_page": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "För denna sida"
+   },
+   "modal__blocklist_description": {
+      "message": "Vill du inaktivera verktygsfältet med mätvärden för denna webbplats eller sida?\n(Du kan redigera blocklistan i inställningarna)"
+   },
+   "modal__shortcuts_button_ok": {
+      "message": "Uppfattat"
+   },
+   "modal__shortcuts_button_settings": {
+      "description": "The button used to open the browser settings e.g. chrome://extensions/shortcuts",
+      "message": "webbläsarinställningar"
+   },
+   "modal__shortcuts_description": {
+      "description": "Example of the last sentence 'You can change these key bindings in your browser settings'",
+      "message": "Du kan använda följande kortkommandon med Ahrefs SEO Toolbar:\n$SHORTCUT_TOOLBAR$ för att växla mätvärdesfältet på/av\n$SHORTCUT_POPUP$ för att öppna sidrapporter och inställningar\nDu kan ändra dessa knapplåsningar i dina",
+      "placeholders": {
+         "shortcut_popup": {
+            "content": "$2",
+            "example": "Ctrl+Cmd+A"
+         },
+         "shortcut_toolbar": {
+            "content": "$1",
+            "example": "Ctrl+Cmd+A"
+         }
+      }
+   },
+   "modified": {
+      "message": "Ändrad"
+   },
+   "new": {
+      "message": "Ny"
+   },
+   "noindex_page": {
+      "message": "Noindex-sida"
+   },
+   "open_graph_tags": {
+      "message": "Öppna graf-taggar"
+   },
+   "outgoing_links__check_status": {
+      "message": "Kontrollera status"
+   },
+   "outgoing_links__dofollow": {
+      "message": "Dofollow"
+   },
+   "outgoing_links__dropdown_description": {
+      "message": "Skicka de 10 senaste URL:erna från listan till Ahrefs"
+   },
+   "outgoing_links__dropdown_item_1": {
+      "message": "Link Intersect"
+   },
+   "outgoing_links__dropdown_item_2": {
+      "message": "Content Gap"
+   },
+   "outgoing_links__external": {
+      "message": "Extern"
+   },
+   "outgoing_links__highlight": {
+      "message": "Markera"
+   },
+   "outgoing_links__internal": {
+      "message": "Intern"
+   },
+   "outgoing_links__link_type": {
+      "message": "Länktyp"
+   },
+   "outgoing_links__nofollow": {
+      "message": "Nofollow"
+   },
+   "outgoing_links__status": {
+      "message": "Status"
+   },
+   "outgoing_links__target_url": {
+      "message": "Mål-URL"
+   },
+   "popup_menu__content": {
+      "message": "Innehåll"
+   },
+   "popup_menu__http_headers": {
+      "message": "HTTP-rubriker"
+   },
+   "popup_menu__images": {
+      "message": "Bilder"
+   },
+   "popup_menu__indexability": {
+      "message": "Indexeringsbarhet"
+   },
+   "popup_menu__metrics": {
+      "message": "Mätvärden"
+   },
+   "popup_menu__metrics_bar": {
+      "message": "Mätvärdesfält"
+   },
+   "popup_menu__outgoing_links": {
+      "message": "Utgående länkar"
+   },
+   "popup_menu__outgoing_links_short": {
+      "message": "Länkar"
+   },
+   "popup_menu__saved_urls": {
+      "message": "Sparade URL:er"
+   },
+   "popup_menu__search_tools": {
+      "message": "Sökhjälpmedel"
+   },
+   "popup_menu__settings": {
+      "message": "Inställningar"
+   },
+   "popup_menu__social": {
+      "message": "Sociala taggar"
+   },
+   "popup_menu__social_image_fail": {
+      "message": "Det gick inte att hämta"
+   },
+   "popup_menu__struct_data": {
+      "message": "Strukturerad data"
+   },
+   "popup_menu__ua": {
+      "message": "Användaragent"
+   },
+   "popup_menu__ua_texarea_label": {
+      "message": "Användaragentsträng"
+   },
+   "published": {
+      "message": "Publicerad"
+   },
+   "raw": {
+      "description": "Raw HTML- server-returned source",
+      "message": "Rå"
+   },
+   "raw_vs_rendered": {
+      "description": "Button on popup content. Raw HTML- server-returned source. Rendered HTML- final DOM.",
+      "message": "Rådata vs Renderade"
+   },
+   "rendered": {
+      "description": "Rendered HTML- final DOM.",
+      "message": "Renderad"
+   },
+   "robots": {
+      "message": "Robotar"
+   },
+   "robots__meta_tag": {
+      "message": "Robots Meta Tag"
+   },
+   "robots__tag_http": {
+      "message": "X-Robots-Tag HTTP"
+   },
+   "robots__txt": {
+      "message": "Robots.txt"
+   },
+   "saved_urls__all_tabs": {
+      "message": "Alla flikar"
+   },
+   "saved_urls__copy_list": {
+      "message": "Kopiera listan"
+   },
+   "saved_urls__current_tab": {
+      "message": "Aktuell flik"
+   },
+   "search_tools__desktop": {
+      "message": "Desktop"
+   },
+   "search_tools__device": {
+      "message": "Enhet"
+   },
+   "search_tools__highlight_placeholder": {
+      "message": "Ange de domäner som du vill markera i sökresultaten."
+   },
+   "search_tools__highlight_title": {
+      "message": "Markera resultat"
+   },
+   "search_tools__kw_title": {
+      "message": "Sökordsmetrik"
+   },
+   "search_tools__language": {
+      "message": "Språk"
+   },
+   "search_tools__location": {
+      "message": "Plats"
+   },
+   "search_tools__ls_menu_title": {
+      "message": "Lokal söksimulator"
+   },
+   "search_tools__menu_title": {
+      "message": "Sökinställningar"
+   },
+   "search_tools__position_numbers_title": {
+      "message": "Positionsnummer"
+   },
+   "search_tools__reset": {
+      "message": "Återställ"
+   },
+   "search_tools__results_metrics_title": {
+      "message": "Sökresultatmetrik"
+   },
+   "search_tools__tip_body": {
+      "message": "Använd den här knappen för att simulera lokal sökning"
+   },
+   "search_tools__trends_title": {
+      "message": "Sökordsmetrik i trender"
+   },
+   "serp__adv": {
+      "message": "Prova denna sökning på Yep"
+   },
+   "serp__counter_title": {
+      "description": "Tooltip title for the SERP counter",
+      "message": "Förs till SERP av Ahrefs SEO Toolbar"
+   },
+   "serp__export_button": {
+      "message": "Exportera CSV"
+   },
+   "serp__kw_ideas": {
+      "message": "Sökordsförslag"
+   },
+   "serp__local_search": {
+      "message": "Lokal sökning"
+   },
+   "serp__local_search_active": {
+      "message": "Visar simulerade SERP"
+   },
+   "serp__ppa": {
+      "message": "Folk frågar också"
+   },
+   "serp__save_urls_button": {
+      "message": "Spara URL:er"
+   },
+   "serp__tip_conf": {
+      "message": "Klicka på tilläggets ikon för att konfigurera"
+   },
+   "settings__appearance": {
+      "message": "Utseende"
+   },
+   "settings__bottom": {
+      "description": "Location of the toolbar on the screen",
+      "message": "Botten"
+   },
+   "settings__dark": {
+      "description": "Theme color",
+      "message": "Mörk"
+   },
+   "settings__exclude_list": {
+      "message": "Uteslut lista"
+   },
+   "settings__exlude_list_warn": {
+      "message": "Ange domäner, URL:er eller URL-vägar där du inte vill att verktygsfältet ska visas."
+   },
+   "settings__exlude_list_warn_2": {
+      "message": "Använd * för URL-sökvägar, t.ex. https://ahrefs.com/blog/*"
+   },
+   "settings__exlude_list_warn_3": {
+      "message": "En inmatning per rad."
+   },
+   "settings__light": {
+      "description": "Theme color",
+      "message": "Ljus"
+   },
+   "settings__position": {
+      "message": "Position"
+   },
+   "settings__show_on_update": {
+      "message": "Visa vid uppdatering"
+   },
+   "settings__system": {
+      "description": "Theme color",
+      "message": "System"
+   },
+   "settings__top": {
+      "description": "Location of the toolbar on the screen",
+      "message": "Topp"
+   },
+   "shared__all": {
+      "message": "Alla"
+   },
+   "shared__broken": {
+      "message": "Bruten"
+   },
+   "shared__changelog": {
+      "message": "Ändringslogg"
+   },
+   "shared__clear": {
+      "message": "Rensa"
+   },
+   "shared__copy": {
+      "message": "Kopiera"
+   },
+   "shared__custom": {
+      "message": "Skräddarsydd"
+   },
+   "shared__default": {
+      "message": "Standard"
+   },
+   "shared__default_browser": {
+      "message": "Standard (Din webbläsare)"
+   },
+   "shared__default_report": {
+      "message": "Standardrapport"
+   },
+   "shared__disallowed_in_robots_txt": {
+      "message": "Ej tillåten i robots.txt"
+   },
+   "shared__domain": {
+      "message": "Domän"
+   },
+   "shared__edit": {
+      "message": "Redigera"
+   },
+   "shared__empty": {
+      "message": "Tom"
+   },
+   "shared__export": {
+      "message": "Exportera"
+   },
+   "shared__how_to_fix": {
+      "message": "Hur man åtgärdar"
+   },
+   "shared__in_http_headers": {
+      "message": "I HTTP-rubriker"
+   },
+   "shared__last_opened": {
+      "message": "Senast öppnad"
+   },
+   "shared__load_more": {
+      "message": "Ladda mer"
+   },
+   "shared__mismatch": {
+      "message": "Mismatch"
+   },
+   "shared__missing": {
+      "message": "Saknas"
+   },
+   "shared__no_results": {
+      "message": "Inga resultat"
+   },
+   "shared__noindex_page": {
+      "message": "Noindex Sida"
+   },
+   "shared__non_canonical": {
+      "message": "Ej kanonisk"
+   },
+   "shared__not_available": {
+      "message": "N/A"
+   },
+   "shared__not_empty": {
+      "message": "Inte tom"
+   },
+   "shared__not_found": {
+      "message": "Hittades inte"
+   },
+   "shared__not_now": {
+      "message": "Inte nu"
+   },
+   "shared__ok": {
+      "message": "Ok"
+   },
+   "shared__open_in": {
+      "description": "The button used to open selected item in another app, service, etc",
+      "message": "Öppna i"
+   },
+   "shared__page": {
+      "message": "Sida"
+   },
+   "shared__redirect": {
+      "message": "Omdirigera"
+   },
+   "shared__search": {
+      "message": "Sök"
+   },
+   "shared__self_canonical": {
+      "message": "Självkanonisk"
+   },
+   "shared__shortcuts": {
+      "message": "Kortkommandon"
+   },
+   "shared__today": {
+      "message": "Idag"
+   },
+   "shared__value": {
+      "message": "Värde"
+   },
+   "shared__words": {
+      "description": "Example: 1500 words",
+      "message": "ord"
+   },
+   "shared__yesterday": {
+      "message": "Igår"
+   },
+   "shared_of": {
+      "description": "e.g. 3 of 15 links",
+      "message": "av"
+   },
+   "shared_overview": {
+      "description": "Link to Ahrefs Overview",
+      "message": "Översikt"
+   },
+   "shared_upgrade": {
+      "description": "Plans and pricing",
+      "message": "Uppgradera"
+   },
+   "sign_in": {
+      "message": "Logga in"
+   },
+   "sign_in__long": {
+      "description": "Uses on Serp and Content toolbar",
+      "message": "Logga in på Ahrefs"
+   },
+   "sign_out": {
+      "message": "Logga ut"
+   },
+   "sign_up": {
+      "message": "Registrera dig"
+   },
+   "sign_up__content": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "eller kolla in vår"
+   },
+   "sign_up__link": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "gratis SEO-verktyg"
+   },
+   "sitemaps": {
+      "message": "Webbplatskartor"
+   },
+   "social__not_matching_canonical": {
+      "description": "Error: Social Card URL not matching canonical",
+      "message": "Sociala URL matchar inte kanonisk"
+   },
+   "starter__q": {
+      "message": "Få tillgång till Ahrefs metrik med vår Starter-plan för bara $PRICE$/månad.",
+      "placeholders": {
+         "price": {
+            "content": "$1"
+         }
+      }
+   },
+   "suggest_feature": {
+      "message": "Föreslå en funktion"
+   },
+   "title": {
+      "message": "Titel"
+   },
+   "title__too_long": {
+      "message": "Titeln kan vara för lång. Långa sidtitlar riskerar att bli avkortade när de presenteras i Google sökresultat. Den rekommenderade maximala titellängden är cirka 60 tecken."
+   },
+   "title__too_short": {
+      "message": "Titeln kan vara för kort. Sidans titel är ett avgörande element som Google förlitar sig på för att förstå sidor. Korta titlar kan missa möjligheten att effektivt förmedla sidan huvudidé till Google."
+   },
+   "try_starter": {
+      "message": "Prova Starter"
+   },
+   "ua__warning_body": {
+      "message": "Inaktivera den anpassade användaragenten när du inte längre behöver den."
+   },
+   "ua__warning_important": {
+      "message": "Viktigt!"
+   },
+   "url": {
+      "message": "Url"
+   },
+   "validate_sd": {
+      "message": "Validera"
+   },
+   "validate_sd__placegolder": {
+      "message": "Validera strukturerad data på denna sida"
+   },
+   "validate_sd__rich_results_test": {
+      "message": "Test av rika resultat"
+   },
+   "validate_sd__schema_markup_validator": {
+      "message": "Schema Markup Validator"
+   },
+   "web_vitals": {
+      "message": "Web Vitals"
+   },
+   "web_vitals__cls": {
+      "message": "Cumulative Layout Shift (CLS) mäter hur element rör sig eller hur stabil sidlayouten är. Det beaktar storleken på innehållet och distansen det rör sig."
+   },
+   "web_vitals__info_main": {
+      "message": "Core Web Vitals är hastighetsmätningar som är en del av Google's Page Experience-signaler som används för att mäta användarupplevelse. Dessa data är baserade på den verkliga Chrome-användarupplevelsen av din sida. CWV är en mindre rankingfaktor för Google."
+   },
+   "web_vitals__inp": {
+      "message": "Interaction to Next Paint (INP) bedömer sidans responsivitet. Det observerar latensen av alla användarinteraktioner med sidan och rapporterar ett enda värde vilket alla (eller nästan alla) interaktioner var under. Ett lågt INP innebär att sidan konsekvent kunde svara snabbt på alla- eller de allra flesta- användarinteraktioner."
+   },
+   "web_vitals__lcp": {
+      "message": "Largest Contentful Paint (LCP) är det största synliga elementet som laddas i vyn. Vanligtvis en framträdande bild eller H1. Mätas i sekunder."
+   },
+   "web_vitals__not_found": {
+      "message": "Core Web Vitals använder data från riktiga Chrome-användare. Om en eller alla mätvärden inte är tillgängliga för sidan betyder det att det inte finns tillräckligt med data om användarupplevelsen för denna sida. I så fall kommer några andra verktyg, inklusive Google's Pagespeed Insights, att visa CWV-mätvärden för hemsidan istället."
+   },
+   "word_count": {
+      "message": "Antal ord"
+   },
+   "x_card": {
+      "message": "X (Twitter) kort"
+   }
+}

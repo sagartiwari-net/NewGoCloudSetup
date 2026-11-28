@@ -1,0 +1,126 @@
+{
+  "manifest_version": 3,
+  "name": "ToolsMandi Ahrefs Bar (Dev)",
+  "version": "1.0.20",
+  "description": "ToolsMandi Ahrefs Bar — FP-bound session + proxy + cache",
+  "default_locale": "en",
+  "homepage_url": "https://toolsmandi.com/",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ToolsMandi Ahrefs Bar",
+    "default_icons": {
+      "32": "images/colored-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "tm-guard.js"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+S",
+        "linux": "Alt+S",
+        "mac": "MacCtrl+Command+S",
+        "windows": "Alt+S"
+      }
+    },
+    "toggle-page-metrics": {
+      "description": "Toggle Metrics bar",
+      "suggested_key": {
+        "default": "Alt+A",
+        "linux": "Alt+A",
+        "mac": "MacCtrl+Command+A",
+        "windows": "Alt+A"
+      }
+    }
+  },
+  "content_scripts": [
+    {
+      "js": ["tm-serp-clean.js"],
+      "matches": ["*://*/*"],
+      "exclude_matches": [
+        "https://*.ahrefs.com/*",
+        "https://www.bing.com/*",
+        "*://*/*.pdf",
+        "*://*/*.txt",
+        "*://*/*.xml"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "css": ["content.css"],
+      "exclude_globs": ["https://*.ahrefs.com/*", "https://*.ahrefs.me/*"],
+      "exclude_matches": [
+        "https://www.bing.com/*",
+        "https://www.facebook.com.login.php/",
+        "*://*/*.pdf",
+        "*://*/*.txt",
+        "*://*/*.xml"
+      ],
+      "js": ["content.js", "tm-kw-enrich.js", "tm-query-stats.js", "tm-serp-panel-fix.js"],
+      "matches": ["*://*/*"],
+      "run_at": "document_idle"
+    },
+    {
+      "exclude_globs": ["https://*.ahrefs.com/*"],
+      "exclude_matches": [
+        "https://www.bing.com/*",
+        "https://www.facebook.com.login.php/",
+        "*://*/*.pdf",
+        "*://*/*.txt",
+        "*://*/*.xml"
+      ],
+      "js": ["content-service.js"],
+      "matches": ["*://*/*"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "cookies",
+    "alarms",
+    "tabs",
+    "webNavigation",
+    "webRequest",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "declarativeNetRequestFeedback"
+  ],
+  "host_permissions": [
+    "*://*/*",
+    "http://127.0.0.1:8088/*",
+    "http://localhost:8088/*",
+    "https://ahrefs.com/*",
+    "https://app.ahrefs.com/*",
+    "http://127.0.0.1:18090/*",
+    "http://localhost:18090/*",
+    "http://127.0.0.1:3000/*",
+    "http://localhost:3000/*",
+    "https://local.dev/*",
+    "https://toolsmandi.com/*",
+    "https://*.toolsmandi.com/*",
+    "https://members.toolwaly.com/*",
+    "https://amzpremiumsoftware.com/*",
+    "https://semrushtoolz.com/*"
+  ],
+  "icons": {
+    "48": "images/colored-48.png",
+    "64": "images/colored-64.png",
+    "128": "images/colored-128.png"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "tm_bar_ruleset",
+        "enabled": true,
+        "path": "tm-rules.json"
+      }
+    ]
+  },
+  "web_accessible_resources": [
+    {
+      "matches": ["*://*/*"],
+      "resources": ["images/countries/*.svg", "images/check.svg"]
+    }
+  ]
+}

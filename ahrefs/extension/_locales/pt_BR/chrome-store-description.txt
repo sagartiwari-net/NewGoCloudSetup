@@ -1,0 +1,27 @@
+Título:
+Barra de ferramentas da Ahrefs: Ferramentas on-page e SERP
+
+Resumo:
+Economize horas com um conjunto completo de ferramentas em uma extensão SEO. Insights sobre otimização on-page, pesquisa por palavras-chave e análise de links em qualquer página da web.
+
+Descrição:
+A barra de ferramentas da Ahrefs é gratuita e oferece insights detalhados de SEO sem sair do navegador.
+
+🌍 Pesquisa global de SEO (Não é necessário VPN)
+Altere regiões, domínios do Google, idiomas e obtenha novas ideias de palavras-chave diretamente nos resultados da pesquisa.
+
+📃 Dados de SEO na página com 1 clique
+Verifique títulos, metadescrições, cabeçalhos e fatores de SEO técnico como tags canônicas e diretivas de indexação com um clique.
+
+🔗 Análise facilitada de links
+Destaque links na página, rastreie redirecionamentos, filtre links de saída, identifique links desfeitos e exporte todos os dados em CSV. 
+
+🛠 Ferramentas detalhadas de pesquisa de SEO
+Salve URLs de abas abertas ou de uma SERP, alterne agentes de usuário para ver páginas como o Googlebot, leia cabeçalhos HTTP e obtenha dados de desempenho para insights de velocidade da página.
+
+✨ Usuários pagos da Ahrefs desbloqueiam métricas:
+Veja métricas de domínio e página como contagens de palavras-chave, estimativas de tráfego, domínios de referência e mais - diretamente em cada site ou resultado.
+
+🤝 Confiado por mais de 360.000 profissionais de SEO
+
+📌 Observação: é necessário uma assinatura da Ahrefs para acessar as métricas. As ferramentas principais desta extensão de SEO permanecem completamente gratuitas.

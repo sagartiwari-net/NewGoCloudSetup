@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      margin: 0;
+      min-width: 360px;
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #64748b;
+      flex: 0 0 auto;
+    }
+    .dot.ok { background: #22c55e; }
+    .dot.bad { background: #ef4444; }
+    .label { font-weight: 600; }
+    .status { color: #94a3b8; flex: 1; }
+    button {
+      background: #22c55e;
+      color: #04120a;
+      border: 0;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary { background: #334155; color: #e2e8f0; }
+    button.warn { background: #b45309; color: #fff7ed; }
+    button:disabled { opacity: 0.6; cursor: default; }
+    .body { padding: 12px 14px 16px; }
+    .row { margin: 6px 0; color: #cbd5e1; }
+    .muted { color: #64748b; font-size: 12px; margin-top: 8px; }
+    code { color: #93c5fd; word-break: break-all; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    pre {
+      margin: 8px 0 0;
+      padding: 8px;
+      background: #020617;
+      border-radius: 8px;
+      font-size: 11px;
+      max-height: 160px;
+      overflow: auto;
+      color: #94a3b8;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <span class="dot" id="dot"></span>
+    <span class="label">ToolsMandi</span>
+    <span class="status" id="status">checking…</span>
+    <button id="refresh" type="button">↻</button>
+  </div>
+  <div class="body">
+    <div class="row" id="user">—</div>
+    <div class="row" id="portal">—</div>
+    <div class="row" id="limits">—</div>
+    <div class="row" id="cache">Cache: —</div>
+    <div class="actions">
+      <button id="test" class="secondary" type="button">Test v4</button>
+      <button id="testFresh" class="secondary" type="button">Fresh</button>
+      <button id="clearCache" class="warn" type="button">Clear cache</button>
+    </div>
+    <pre id="diag">Proxy / cache output…</pre>
+    <div class="muted">FP-bound session · cache + Fresh · Ahrefs Bar</div>
+  </div>
+  <script src="tm-popup.js"></script>
+</body>
+</html>

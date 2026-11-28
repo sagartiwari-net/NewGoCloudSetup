@@ -1,0 +1,27 @@
+Judul:
+Ahrefs SEO Toolbar: Peralatan On-Page dan SERP
+
+Ringkasan:
+Hemat waktu dengan peralatan lengkap dalam satu ekstensi SEO. Wawasan untuk on-page, riset kata kunci, dan analisis tautan di halaman web mana pun.
+
+Deskripsi:
+Ahrefs Toolbar gratis dan memberikan wawasan SEO terperinci tanpa harus meninggalkan browser Anda.
+
+🌍 Riset SEO Global (Tidak perlu VPN)
+Beralih wilayah, domain Google, bahasa, dan dapatkan ide kata kunci baru secara langsung di hasil pencarian.
+
+📃 Data SEO On-Page dalam 1 klik
+Periksa judul, deskripsi meta, header, dan faktor SEO teknis seperti tag kanonikal dan perintah pengindeksan dengan sekali klik.
+
+🔗 Analisis tautan menjadi mudah
+Sorot tautan pada halaman, lacak pengalihan, filter tautan keluar, temukan tautan rusak, dan ekspor semua data ke CSV. 
+
+🛠 Peralatan riset SEO terperinci
+Simpan URL dari tab yang terbuka atau SERP, beralih user agent untuk melihat halaman seperti Googlebot, baca header HTTP, dan dapatkan data kinerja untuk wawasan kecepatan halaman.
+
+✨ Pengguna Ahrefs berbayar akan dapat membuka metrik Ahrefs:
+Lihat metrik tingkat domain dan halaman seperti jumlah kata kunci, perkiraan traffic, domain rujukan, dan lainnya, langsung di setiap situs atau hasil.
+
+🤝 Dipercaya oleh 360.000+ profesional SEO
+
+📌 Catatan: Diperlukan langganan Ahrefs untuk dapat mengakses metrik Ahrefs. Peralatan inti dari ekstensi SEO ini tetap sepenuhnya gratis.

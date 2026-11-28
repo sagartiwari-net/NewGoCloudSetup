@@ -8,6 +8,7 @@ import {
   ActivityIcon,
   BanIcon,
   MapPinIcon,
+  BarChart3Icon,
   BotIcon,
   ChartColumnIcon,
   CalendarClockIcon,
@@ -90,6 +91,8 @@ const nav: Array<{
     label: string
     icon: React.ComponentType
     masterOnly?: boolean
+    /** Only master + resellers with Ahrefs Bar access */
+    ahrefsBarOnly?: boolean
   }>
 }> = [
   {
@@ -132,6 +135,18 @@ const nav: Array<{
     ],
   },
   {
+    label: "Ahrefs Bar",
+    items: [
+      { href: "/ahrefs-bar", label: "Overview", icon: BarChart3Icon, ahrefsBarOnly: true },
+      { href: "/ahrefs-bar/accounts", label: "Accounts", icon: KeyRoundIcon, ahrefsBarOnly: true },
+      { href: "/ahrefs-bar/portals", label: "Portals", icon: GlobeIcon, ahrefsBarOnly: true },
+      { href: "/ahrefs-bar/defaults", label: "Limits", icon: GaugeIcon, ahrefsBarOnly: true },
+      { href: "/ahrefs-bar/users", label: "User limits", icon: UsersIcon, ahrefsBarOnly: true },
+      { href: "/ahrefs-bar/usage", label: "Usage", icon: ScrollTextIcon, ahrefsBarOnly: true },
+      { href: "/ahrefs-bar/download", label: "Download", icon: PackageIcon, ahrefsBarOnly: true },
+    ],
+  },
+  {
     label: "Automation",
     items: [
       { href: "/automation/credentials", label: "Credentials", icon: LockKeyholeIcon, masterOnly: true },
@@ -143,26 +158,19 @@ const nav: Array<{
 ]
 
 function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/"
+  if (href === "/" || href === "/ahrefs-bar") return pathname === href
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth()
+  const { session, ready } = useAuth()
   const pathname = usePathname()
   const router = useRouter()
-  const [signedOut, setSignedOut] = useState(false)
 
   useEffect(() => {
-    // Read storage here. The first paint can still have an empty session
-    // while localStorage already has the login, and that was sending people
-    // to the sign-in screen on refresh.
-    if (!readSession()) setSignedOut(true)
-  }, [])
-
-  useEffect(() => {
-    if (signedOut) router.replace("/login")
-  }, [signedOut, router])
+    if (!ready) return
+    if (!session && !readSession()) router.replace("/login")
+  }, [ready, session, router])
 
   useEffect(() => {
     if (session?.role === "reseller" && masterRoutes.includes(pathname)) {
@@ -170,7 +178,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [session, pathname, router])
 
-  if (!session) {
+  useEffect(() => {
+    if (!session) return
+    const onBar = pathname === "/ahrefs-bar" || pathname.startsWith("/ahrefs-bar/")
+    if (!onBar) return
+    const allowed = session.role === "master" || session.accountRole === "master" || !!session.ahrefs_bar_enabled
+    if (!allowed) router.replace("/")
+  }, [session, pathname, router])
+
+  if (!ready || !session) {
+    const signedOut = ready && !session
     return (
       <div className="flex min-h-svh flex-col items-center justify-center gap-3 bg-background p-6 text-center">
         <p className="text-sm text-muted-foreground">{signedOut ? "Redirecting to sign in…" : "Loading panel…"}</p>
@@ -184,7 +201,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ShellFrame role={session.role} accountRole={session.accountRole} username={session.username}>
+    <ShellFrame
+      role={session.role}
+      accountRole={session.accountRole}
+      username={session.username}
+      ahrefsBarEnabled={session.ahrefs_bar_enabled}
+    >
       {children}
     </ShellFrame>
   )
@@ -195,11 +217,13 @@ function ShellFrame({
   role,
   accountRole,
   username,
+  ahrefsBarEnabled,
 }: {
   children: React.ReactNode
   role: Role
   accountRole?: Role
   username: string
+  ahrefsBarEnabled?: boolean
 }) {
   const { signOut, setRole } = useAuth()
   const { theme, setTheme } = useTheme()
@@ -237,7 +261,12 @@ function ShellFrame({
         </SidebarHeader>
         <SidebarContent>
           {nav.map((group) => {
-            const items = group.items.filter((item) => role === "master" || !item.masterOnly)
+            const barOk = role === "master" || accountRole === "master" || !!ahrefsBarEnabled
+            const items = group.items.filter((item) => {
+              if (item.masterOnly && role !== "master") return false
+              if (item.ahrefsBarOnly && !barOk) return false
+              return true
+            })
             if (items.length === 0) return null
             return (
               <SidebarGroup key={group.label}>

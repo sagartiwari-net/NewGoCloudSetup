@@ -1,0 +1,883 @@
+{
+   "banner__cta_site_audit_header": {
+      "description": "Header of the banner CTA for the Site Audit",
+      "message": "Ahrefs 사이트 감사."
+   },
+   "banner__cta_site_audit_text": {
+      "description": "Text of the banner CTA for the Site Audit",
+      "message": "웹사이트의 전체 SEO 감사 수행. 170개 이상의 SEO 문제를 식별하고, 우선순위를 매기고, 수정하세요."
+   },
+   "banner__patch_it_description": {
+      "description": "Description of the banner CTA for the Site Audit Patches",
+      "message": "일반적인 SEO 문제를 해결하고 Ahrefs에서 직접 변경 사항을 웹사이트에 적용하세요."
+   },
+   "banner__patch_it_label": {
+      "description": "Label for the banner CTA for the Site Audit Patches",
+      "message": "패치하세요"
+   },
+   "banner__patch_it_title": {
+      "description": "Title of the banner CTA for the Site Audit Patches",
+      "message": "패치"
+   },
+   "canonical_url": {
+      "message": "캐노니컬 URL"
+   },
+   "card__missing_or_incomplete": {
+      "message": "누락되었거나 불완전함"
+   },
+   "content": {
+      "message": "콘텐츠"
+   },
+   "content__changes_button": {
+      "message": "변경 사항 보기"
+   },
+   "content__first_heading_not_h1": {
+      "description": "Error: the first heading on the page is not H1",
+      "message": "첫 번째 제목이 H1이 아닙니다"
+   },
+   "content__multiple_descriptions": {
+      "description": "Error: Multiple descriptions found on the page",
+      "message": "여러 설명이 있습니다"
+   },
+   "content__multiple_h1_tags": {
+      "description": "Error: Multiple H1 tags found on the page",
+      "message": "여러 개의 H1 태그"
+   },
+   "content__multiple_title_tags": {
+      "description": "Error: Multiple title tags found on the page",
+      "message": "타이틀 태그가 여러 개 있음"
+   },
+   "content__rendered_description_missing": {
+      "message": "렌더링된 설명이 누락되었습니다"
+   },
+   "content__rendered_title_missing": {
+      "message": "렌더링된 제목이 없음"
+   },
+   "copy_headings": {
+      "message": "헤딩 복사"
+   },
+   "dates": {
+      "message": "날짜"
+   },
+   "description": {
+      "message": "설명"
+   },
+   "description__too_long": {
+      "message": "메타 설명이 너무 길 수 있습니다. 메타 설명을 약 160자 이내로 유지하는 것이 좋습니다. 구글이 스니펫 텍스트로 표시하는 경우 설명 텍스트가 너무 길면 SERP에서 잘릴 위험이 있습니다."
+   },
+   "description__too_short": {
+      "message": "메타 설명이 너무 짧을 수 있습니다. 구글에 페이지 콘텐츠를 효과적으로 설명하려면 조금 더 길게 작성하는 것이 좋습니다."
+   },
+   "error__fetching_data": {
+      "message": "데이터를 가져오는 중 오류가 발생했습니다. 나중에 다시 시도해 주세요."
+   },
+   "error__inactive": {
+      "message": "연결된 작업 공간에서 사용자 상태는 현재 \"비활성화\"입니다."
+   },
+   "error__monthly_limit": {
+      "message": "워크스페이스의 월간 한도에 도달했습니다."
+   },
+   "error__too_many_sessions_sign_in": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "로그인"
+   },
+   "error__too_many_sessions_text_body": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "오류가 발생했습니다. 세션이 너무 많습니다. 이 계정은 다른 기기에서 사용되고 있을 수 있습니다."
+   },
+   "error__too_many_sessions_text_end": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "하세요."
+   },
+   "error__try_again_later": {
+      "message": "오류가 발생했습니다. 나중에 다시 시도해 주세요."
+   },
+   "error__usage_limit_body": {
+      "description": "Sentence with an inline error__usage_limit_body_button",
+      "message": "계속하려면 $UPGRADE_BUTTON$ 하시거나 한도가 초기화될 때까지 기다려 주세요.",
+      "placeholders": {
+         "upgrade_button": {
+            "content": "$1"
+         }
+      }
+   },
+   "error__usage_limit_body_button": {
+      "description": "The button used as the placeholder in error__usage_limit_body",
+      "message": "요금제를 업그레이드하세요."
+   },
+   "error__usage_limit_head": {
+      "message": "사용 한도에 도달했습니다."
+   },
+   "feedback__main_q": {
+      "message": "Ahrefs SEO 툴바를 즐기시나요?"
+   },
+   "feedback__negative_answ": {
+      "message": "더 나은 서비스를 제공할 수 있도록 도와주세요."
+   },
+   "feedback__negative_button_1": {
+      "message": "별로예요"
+   },
+   "feedback__positive_answ": {
+      "message": "좋습니다! 좋아하는 점을 알려주세요."
+   },
+   "feedback__positive_button_1": {
+      "message": "네!"
+   },
+   "feedback__positive_button_2": {
+      "message": "리뷰 작성"
+   },
+   "feedback__send_answ": {
+      "message": "피드백 전송"
+   },
+   "freeplan_banner__limit_description": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "SEO 지표는 툴바에서"
+   },
+   "freeplan_banner__limit_link": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "유료 플랜"
+   },
+   "get_started": {
+      "message": "시작하기"
+   },
+   "headings": {
+      "message": "헤딩"
+   },
+   "how_to_use": {
+      "message": "이용 방법"
+   },
+   "hreflangs": {
+      "message": "Hreflangs"
+   },
+   "icon_tip__add": {
+      "message": "이 URL을 목록에 저장합니다.\n저장된 URL에 접근하려면 확장 프로그램의 아이콘을 클릭하고 '저장됨' 탭으로 이동하세요.\n목록에서 가장 최근의 10개 URL은 신속하게 링크 인터섹트 또는 콘텐츠 갭 도구에 보낼 수 있습니다 (유료 사용자 전용)."
+   },
+   "icon_tip__hide_toolbar": {
+      "message": "해당 웹사이트, 페이지 또는 경로에서 툴바를 영구적으로 숨깁니다. \n(설정에서 차단 목록을 편집할 수 있습니다)"
+   },
+   "icon_tip__present": {
+      "message": "URL이 저장된 URL 목록에 있습니다.\n저장된 URL에 액세스하려면, 확장 프로그램 아이콘을 클릭하고 '저장됨' 탭으로 이동하세요.\n목록에서 최근 10개의 URL을 Ahrefs의 링크 인터섹트 또는 콘텐츠 갭 도구로 빠르게 보낼 수 있습니다."
+   },
+   "icon_tip__present_in_list": {
+      "message": "해당 URL은 저장된 URL 목록에 있으며, 링크 인터섹트 또는 콘텐츠 갭으로 보낼 수 있습니다.\n저장된 URL에 접근하려면 확장 프로그램의 아이콘을 클릭하고 '저장됨' 탭으로 이동하세요.\n목록에서 가장 최근의 10개 URL은 신속하게 링크 인터섹트 또는 콘텐츠 갭 도구에 보낼 수 있습니다."
+   },
+   "image__all": {
+      "message": "모두"
+   },
+   "image__alt": {
+      "message": "Alt"
+   },
+   "image__alt_empty": {
+      "message": "비어 있는 대체 텍스트"
+   },
+   "image__alt_missing": {
+      "message": "대체 텍스트 누락됨"
+   },
+   "image__alt_text": {
+      "message": "대체 텍스트"
+   },
+   "image__file_too_large": {
+      "message": "이미지 파일 크기가 너무 큼"
+   },
+   "image__image": {
+      "message": "이미지"
+   },
+   "image__not_found": {
+      "message": "이미지를 찾을 수 없습니다"
+   },
+   "image__url": {
+      "message": "URL"
+   },
+   "in_html_code": {
+      "description": "Means that the information is analyzed directly within the client-side rendered HTML code of the page",
+      "message": "렌더링된 HTML 에서"
+   },
+   "in_raw_html_code": {
+      "description": "Means that the information is analyzed directly within the server-returned source",
+      "message": "원시 HTML 에서"
+   },
+   "jsonld__not_found": {
+      "message": "JSON-LD 구조화된 데이터가 발견되지 않음"
+   },
+   "kw_metrics__c_description": {
+      "message": "주어진 키워드에 대한 검색 결과에서 사람들이 한 달 동안 클릭한 횟수를 추정한 값입니다. 일부 검색은 클릭을 생성하지 않거나 다른 검색은 SERP에서 여러 클릭을 생성합니다."
+   },
+   "kw_metrics__c_title": {
+      "message": "클릭 수"
+   },
+   "kw_metrics__cpc_description": {
+      "message": "키워드의 유료 검색 결과에서 광고 클릭 1회당 광고주가 지불하는 평균 가격을 추정한 값입니다."
+   },
+   "kw_metrics__cpc_title": {
+      "message": "클릭당 비용 (CPC)"
+   },
+   "kw_metrics__gv_description": {
+      "message": "당사의 데이터베이스의 모든 국가에서 키워드의 월평균 검색 횟수를 추정한 값입니다."
+   },
+   "kw_metrics__gv_title": {
+      "message": "글로벌 검색량 (GV)"
+   },
+   "kw_metrics__kd_description": {
+      "message": "특정 키워드로 자연 검색 결과 상위 10위 안에 들기 얼마나 어려운지를 100점 척도로 추정한 값입니다."
+   },
+   "kw_metrics__kd_title": {
+      "message": "키워드 난이도 (KD)"
+   },
+   "kw_metrics__sw_description": {
+      "message": "지정된 국가에서 키워드의 월평균 검색 횟수 추정치입니다."
+   },
+   "kw_metrics__sw_title": {
+      "message": "검색량"
+   },
+   "kw_metrics__tp_description": {
+      "message": "타겟 워드로 1위를 차지할 때 그 페이지가 모든 순위에 있는 키워드에서 받는 자연 검색 트래픽의 합을 보여줍니다."
+   },
+   "kw_metrics__tp_title": {
+      "message": "트래픽 잠재력 (TP)"
+   },
+   "learn_more": {
+      "message": "자세히 알아보기"
+   },
+   "manifest_description": {
+      "message": "하나의 SEO 확장 프로그램으로 완벽한 도구 모음을 사용하여 시간을 절약하세요. 모든 웹페이지에서 온페이지, 키워드 리서치 및 링크 분석에 대한 인사이트를 제공합니다."
+   },
+   "manifest_name": {
+      "description": "Don't translate: 'Ahrefs SEO Toolbar'",
+      "message": "Ahrefs SEO Toolbar: 온페이지 및 SERP 도구"
+   },
+   "meta": {
+      "message": "메타"
+   },
+   "metrics__ads_description": {
+      "message": "유료 검색 결과에서 타겟 웹사이트 또는 URL의 고유 광고 총 개수입니다."
+   },
+   "metrics__ads_label_lg": {
+      "message": "광고"
+   },
+   "metrics__ads_title": {
+      "message": "광고"
+   },
+   "metrics__ar_description": {
+      "message": "당사 데이터베이스에 있는 다른 웹사이트와 비교하여 해당 웹사이트의 백링크 프로필 강도를 나타냅니다. 1위는 백링크 프로필 강도가 가장 강력한 웹사이트라는 것을 의미합니다."
+   },
+   "metrics__ar_label_lg": {
+      "message": "Ahrefs 순위"
+   },
+   "metrics__ar_title": {
+      "message": "Ahrefs 순위 (AR)"
+   },
+   "metrics__bl_description": {
+      "message": "다른 웹사이트에서 목표 사이트로 연결된 링크의 총 수입니다."
+   },
+   "metrics__bl_label_lg": {
+      "message": "백링크"
+   },
+   "metrics__bl_title": {
+      "message": "백링크 (BL)"
+   },
+   "metrics__cost_description": {
+      "message": "타겟의 월간 유료 검색 트래픽의 추정 비용입니다."
+   },
+   "metrics__cost_label_lg": {
+      "message": "비용"
+   },
+   "metrics__cost_title": {
+      "message": "유료 트래픽 비용"
+   },
+   "metrics__dr_description": {
+      "message": "100점 로그 척도로 웹사이트의 백링크 프로필 강도를 나타냅니다."
+   },
+   "metrics__dr_label_lg": {
+      "message": "도메인 등급"
+   },
+   "metrics__dr_title": {
+      "message": "도메인 등급 (DR)"
+   },
+   "metrics__kw_description": {
+      "message": "당사 데이터베이스의 모든 국가에서 상위 100개의 자연 검색 결과에 타겟이 순위에 오른 고유한 키워드의 총 개수입니다."
+   },
+   "metrics__kw_label_lg": {
+      "message": "키워드"
+   },
+   "metrics__kw_title": {
+      "message": "자연 검색 키워드 (KW)"
+   },
+   "metrics__paid_keywords_description": {
+      "message": "목표 사이트가 유료 검색 결과에서 순위에 오른 키워드의 총 개수입니다."
+   },
+   "metrics__paid_keywords_label_lg": {
+      "message": "유료 키워드"
+   },
+   "metrics__paid_keywords_title": {
+      "message": "유료 키워드"
+   },
+   "metrics__paid_traffic_description": {
+      "message": "타겟이 유료 검색을 통해 한 달 동안 얻는 추정 방문 수입니다."
+   },
+   "metrics__paid_traffic_label_lg": {
+      "message": "유료 트래픽"
+   },
+   "metrics__paid_traffic_title": {
+      "message": "유료 트래픽"
+   },
+   "metrics__rd_description": {
+      "message": "타겟에 링크를 제공하는 고유 도메인의 총 개수입니다."
+   },
+   "metrics__rd_label_lg": {
+      "message": "참조 도메인"
+   },
+   "metrics__rd_title": {
+      "message": "참조 도메인 (RD)"
+   },
+   "metrics__rp_description": {
+      "message": "타겟에 연결된 고유한 웹페이지의 총 개수입니다."
+   },
+   "metrics__rp_label_lg": {
+      "message": "참조 페이지"
+   },
+   "metrics__rp_title": {
+      "message": "참조 페이지 (RP)"
+   },
+   "metrics__sign_up_free_button": {
+      "message": "무료로 가입하세요"
+   },
+   "metrics__sign_up_free_description": {
+      "message": "Ahrefs 무료 계정으로 DR, AR 및 UR를 무료로 이용하세요."
+   },
+   "metrics__st_description": {
+      "message": "타겟 사이트가 자연 검색을 통해 한 달 동안 얻는 추정 방문 수입니다."
+   },
+   "metrics__st_label_lg": {
+      "message": "검색 트래픽"
+   },
+   "metrics__st_title": {
+      "message": "자연 검색 트래픽 (ST)"
+   },
+   "metrics__tv_description": {
+      "message": "웹사이트 또는 웹페이지의 자연 검색 트래픽의 월간 비용을, 동일한 양의 트래픽이 유기적 검색 순위 대신 클릭당 과금(PPC) 광고를 통해 얻어진 것으로 가정하여 계산된 값입니다."
+   },
+   "metrics__tv_title": {
+      "message": "트래픽 가치 (TV)"
+   },
+   "metrics__ur_description": {
+      "message": "URL 등급(UR)은 목표 페이지의 백링크 프로필 강도를 100점 로그 척도로 나타냅니다."
+   },
+   "metrics__ur_label_lg": {
+      "message": "URL 등급"
+   },
+   "metrics__ur_title": {
+      "message": "URL 등급"
+   },
+   "metrics__w_description": {
+      "message": "페이지 코드에서 Ahrefs 크롤러가 본 웹페이지의 단어 수입니다. 이 수치는 브라우저로 페이지를 열었을 때 보이는 것과 약간 다를 수 있습니다."
+   },
+   "metrics__w_label_lg": {
+      "message": "단어"
+   },
+   "metrics__w_title": {
+      "message": "페이지의 단어 수"
+   },
+   "modal__blocklist_btn_negative": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "비활성화하지 않음"
+   },
+   "modal__blocklist_btn_positive_domain": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "도메인에 대해"
+   },
+   "modal__blocklist_btn_positive_page": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "이 페이지"
+   },
+   "modal__blocklist_description": {
+      "message": "이 웹사이트나 페이지에서 지표가 포함된 도구 모음을 비활성화하시겠습니까?\n(차단 목록은 설정에서 편집할 수 있습니다)"
+   },
+   "modal__shortcuts_button_ok": {
+      "message": "확인"
+   },
+   "modal__shortcuts_button_settings": {
+      "description": "The button used to open the browser settings e.g. chrome://extensions/shortcuts",
+      "message": "브라우저 설정"
+   },
+   "modal__shortcuts_description": {
+      "description": "Example of the last sentence 'You can change these key bindings in your browser settings'",
+      "message": "Ahrefs SEO 도구 모음과 함께 다음 단축키를 사용할 수 있습니다:\n지표 바를 켜거나 끄려면 $SHORTCUT_TOOLBAR$\n페이지 보고서와 설정을 열려면 $SHORTCUT_POPUP$\n사용자는 브라우저 설정에서 이러한 키 바인딩을 변경할 수 있습니다.",
+      "placeholders": {
+         "shortcut_popup": {
+            "content": "$2",
+            "example": "Ctrl+Cmd+A"
+         },
+         "shortcut_toolbar": {
+            "content": "$1",
+            "example": "Ctrl+Cmd+A"
+         }
+      }
+   },
+   "modified": {
+      "message": "수정됨"
+   },
+   "new": {
+      "message": "신규"
+   },
+   "noindex_page": {
+      "message": "노인덱스 페이지"
+   },
+   "open_graph_tags": {
+      "message": "Open Graph 태그"
+   },
+   "outgoing_links__check_status": {
+      "message": "상태 확인"
+   },
+   "outgoing_links__dofollow": {
+      "message": "두팔로우"
+   },
+   "outgoing_links__dropdown_description": {
+      "message": "목록에서 최대 10개의 최근 URL을 Ahrefs로 보내기"
+   },
+   "outgoing_links__dropdown_item_1": {
+      "message": "링크 인터섹트"
+   },
+   "outgoing_links__dropdown_item_2": {
+      "message": "콘텐츠 갭"
+   },
+   "outgoing_links__external": {
+      "message": "외부"
+   },
+   "outgoing_links__highlight": {
+      "message": "하이라이트"
+   },
+   "outgoing_links__internal": {
+      "message": "내부"
+   },
+   "outgoing_links__link_type": {
+      "message": "링크 유형"
+   },
+   "outgoing_links__nofollow": {
+      "message": "노팔로우"
+   },
+   "outgoing_links__status": {
+      "message": "상태"
+   },
+   "outgoing_links__target_url": {
+      "message": "타겟 URL"
+   },
+   "popup_menu__content": {
+      "message": "콘텐츠"
+   },
+   "popup_menu__http_headers": {
+      "message": "HTTP 헤더"
+   },
+   "popup_menu__images": {
+      "message": "이미지"
+   },
+   "popup_menu__indexability": {
+      "message": "인덱싱 가능성"
+   },
+   "popup_menu__metrics": {
+      "message": "지표"
+   },
+   "popup_menu__metrics_bar": {
+      "message": "지표 바"
+   },
+   "popup_menu__outgoing_links": {
+      "message": "외부 링크"
+   },
+   "popup_menu__outgoing_links_short": {
+      "message": "링크"
+   },
+   "popup_menu__saved_urls": {
+      "message": "저장된 URL"
+   },
+   "popup_menu__search_tools": {
+      "message": "검색 도구"
+   },
+   "popup_menu__settings": {
+      "message": "설정"
+   },
+   "popup_menu__social": {
+      "message": "소셜 태그"
+   },
+   "popup_menu__social_image_fail": {
+      "message": "가져오기 실패"
+   },
+   "popup_menu__struct_data": {
+      "message": "구조화된 데이터"
+   },
+   "popup_menu__ua": {
+      "message": "사용자 에이전트"
+   },
+   "popup_menu__ua_texarea_label": {
+      "message": "사용자 에이전트 문자열"
+   },
+   "published": {
+      "message": "게시됨"
+   },
+   "raw": {
+      "description": "Raw HTML- server-returned source",
+      "message": "원본"
+   },
+   "raw_vs_rendered": {
+      "description": "Button on popup content. Raw HTML- server-returned source. Rendered HTML- final DOM.",
+      "message": "원본 vs 렌더링"
+   },
+   "rendered": {
+      "description": "Rendered HTML- final DOM.",
+      "message": "렌더링"
+   },
+   "robots": {
+      "message": "로봇"
+   },
+   "robots__meta_tag": {
+      "message": "로봇 메타 태그"
+   },
+   "robots__tag_http": {
+      "message": "X-Robots-Tag HTTP"
+   },
+   "robots__txt": {
+      "message": "Robots.txt"
+   },
+   "saved_urls__all_tabs": {
+      "message": "모든 탭"
+   },
+   "saved_urls__copy_list": {
+      "message": "목록 복사"
+   },
+   "saved_urls__current_tab": {
+      "message": "현재 탭"
+   },
+   "search_tools__desktop": {
+      "message": "데스크탑"
+   },
+   "search_tools__device": {
+      "message": "기기"
+   },
+   "search_tools__highlight_placeholder": {
+      "message": "검색 결과에서 강조하고 싶은 도메인을 입력하세요."
+   },
+   "search_tools__highlight_title": {
+      "message": "결과 강조"
+   },
+   "search_tools__kw_title": {
+      "message": "키워드 지표"
+   },
+   "search_tools__language": {
+      "message": "언어"
+   },
+   "search_tools__location": {
+      "message": "위치"
+   },
+   "search_tools__ls_menu_title": {
+      "message": "지역 검색 시뮬레이터"
+   },
+   "search_tools__menu_title": {
+      "message": "검색 설정"
+   },
+   "search_tools__position_numbers_title": {
+      "message": "포지션 번호"
+   },
+   "search_tools__reset": {
+      "message": "재설정"
+   },
+   "search_tools__results_metrics_title": {
+      "message": "검색 결과 지표"
+   },
+   "search_tools__tip_body": {
+      "message": "이 버튼을 사용해 지역 검색을 시뮬레이션하세요."
+   },
+   "search_tools__trends_title": {
+      "message": "트렌드 내 키워드 지표"
+   },
+   "serp__adv": {
+      "message": "이 검색을 Yep에서 시도해 보세요"
+   },
+   "serp__counter_title": {
+      "description": "Tooltip title for the SERP counter",
+      "message": "Ahrefs SEO 툴바로 SERP에 제공됨"
+   },
+   "serp__export_button": {
+      "message": "CSV 내보내기"
+   },
+   "serp__kw_ideas": {
+      "message": "키워드 아이디어"
+   },
+   "serp__local_search": {
+      "message": "지역 검색"
+   },
+   "serp__local_search_active": {
+      "message": "시뮬레이션된 SERP 표시"
+   },
+   "serp__ppa": {
+      "message": "관련 질문"
+   },
+   "serp__save_urls_button": {
+      "message": "URL 저장"
+   },
+   "serp__tip_conf": {
+      "message": "확장 아이콘을 클릭하여 구성하세요"
+   },
+   "settings__appearance": {
+      "message": "외관"
+   },
+   "settings__bottom": {
+      "description": "Location of the toolbar on the screen",
+      "message": "하단"
+   },
+   "settings__dark": {
+      "description": "Theme color",
+      "message": "다크"
+   },
+   "settings__exclude_list": {
+      "message": "목록 제외"
+   },
+   "settings__exlude_list_warn": {
+      "message": "툴바를 표시하지 않을 도메인, URL 또는 URL 경로를 입력하세요."
+   },
+   "settings__exlude_list_warn_2": {
+      "message": "URL 경로에 * 를 사용하세요. 예: https://ahrefs.com/blog/*"
+   },
+   "settings__exlude_list_warn_3": {
+      "message": "한 줄에 하나의 항목."
+   },
+   "settings__light": {
+      "description": "Theme color",
+      "message": "라이트"
+   },
+   "settings__position": {
+      "message": "포지션"
+   },
+   "settings__show_on_update": {
+      "message": "업데이트 시 표시"
+   },
+   "settings__system": {
+      "description": "Theme color",
+      "message": "시스템"
+   },
+   "settings__top": {
+      "description": "Location of the toolbar on the screen",
+      "message": "상위"
+   },
+   "shared__all": {
+      "message": "모두"
+   },
+   "shared__broken": {
+      "message": "손상됨"
+   },
+   "shared__changelog": {
+      "message": "변경 로그"
+   },
+   "shared__clear": {
+      "message": "삭제"
+   },
+   "shared__copy": {
+      "message": "복사"
+   },
+   "shared__custom": {
+      "message": "사용자 지정"
+   },
+   "shared__default": {
+      "message": "기본"
+   },
+   "shared__default_browser": {
+      "message": "기본 설정 (브라우저)"
+   },
+   "shared__default_report": {
+      "message": "기본 보고서"
+   },
+   "shared__disallowed_in_robots_txt": {
+      "message": "robots.txt에서 허용되지 않음"
+   },
+   "shared__domain": {
+      "message": "도메인"
+   },
+   "shared__edit": {
+      "message": "편집"
+   },
+   "shared__empty": {
+      "message": "비어 있음"
+   },
+   "shared__export": {
+      "message": "내보내기"
+   },
+   "shared__how_to_fix": {
+      "message": "수정 방법"
+   },
+   "shared__in_http_headers": {
+      "message": "HTTP 헤더에 있는"
+   },
+   "shared__last_opened": {
+      "message": "마지막으로 열림"
+   },
+   "shared__load_more": {
+      "message": "더 보기"
+   },
+   "shared__mismatch": {
+      "message": "불일치"
+   },
+   "shared__missing": {
+      "message": "누락됨"
+   },
+   "shared__no_results": {
+      "message": "결과 없음"
+   },
+   "shared__noindex_page": {
+      "message": "NoindexPage"
+   },
+   "shared__non_canonical": {
+      "message": "비캐노니컬"
+   },
+   "shared__not_available": {
+      "message": "N/A"
+   },
+   "shared__not_empty": {
+      "message": "비어 있지 않음"
+   },
+   "shared__not_found": {
+      "message": "찾을 수 없음"
+   },
+   "shared__not_now": {
+      "message": "지금은 아님"
+   },
+   "shared__ok": {
+      "message": "확인"
+   },
+   "shared__open_in": {
+      "description": "The button used to open selected item in another app, service, etc",
+      "message": "다음으로 열기:"
+   },
+   "shared__page": {
+      "message": "페이지"
+   },
+   "shared__redirect": {
+      "message": "리디렉션"
+   },
+   "shared__search": {
+      "message": "검색"
+   },
+   "shared__self_canonical": {
+      "message": "자기 참조 캐노니컬"
+   },
+   "shared__shortcuts": {
+      "message": "단축키"
+   },
+   "shared__today": {
+      "message": "오늘"
+   },
+   "shared__value": {
+      "message": "값"
+   },
+   "shared__words": {
+      "description": "Example: 1500 words",
+      "message": "단어"
+   },
+   "shared__yesterday": {
+      "message": "어제"
+   },
+   "shared_of": {
+      "description": "e.g. 3 of 15 links",
+      "message": "의"
+   },
+   "shared_overview": {
+      "description": "Link to Ahrefs Overview",
+      "message": "개요"
+   },
+   "shared_upgrade": {
+      "description": "Plans and pricing",
+      "message": "업그레이드"
+   },
+   "sign_in": {
+      "message": "로그인"
+   },
+   "sign_in__long": {
+      "description": "Uses on Serp and Content toolbar",
+      "message": "Ahrefs로 로그인"
+   },
+   "sign_out": {
+      "message": "로그아웃"
+   },
+   "sign_up": {
+      "message": "가입하기"
+   },
+   "sign_up__content": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "또는 확인해 보세요."
+   },
+   "sign_up__link": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "무료 SEO 도구를 확인해 보세요"
+   },
+   "sitemaps": {
+      "message": "사이트맵"
+   },
+   "social__not_matching_canonical": {
+      "description": "Error: Social Card URL not matching canonical",
+      "message": "소셜 URL이 캐노니컬과 일치하지 않음"
+   },
+   "starter__q": {
+      "message": "Ahrefs 지표를 스타터 요금으로 월 $PRICE$에서 이용하세요.",
+      "placeholders": {
+         "price": {
+            "content": "$1"
+         }
+      }
+   },
+   "suggest_feature": {
+      "message": "기능 제안"
+   },
+   "title": {
+      "message": "제목"
+   },
+   "title__too_long": {
+      "message": "제목이 너무 길 수 있습니다. 페이지 제목이 너무 길면 구글 검색 결과에 표시될 때 잘릴 위험이 있습니다. 최대 제목 길이는 약 60자입니다."
+   },
+   "title__too_short": {
+      "message": "제목이 너무 짧을 수 있습니다. 페이지 제목은 구글이 페이지를 이해하는 데 중요합니다. 제목이 너무 짧으면 구글에 페이지의 주요 아이디어를 효과적으로 전달할 수 없습니다."
+   },
+   "try_starter": {
+      "message": "스타터 시도하기"
+   },
+   "ua__warning_body": {
+      "message": "더 이상 필요하지 않을 때는 사용자 지정 사용자 에이전트를 비활성화하세요."
+   },
+   "ua__warning_important": {
+      "message": "중요!"
+   },
+   "url": {
+      "message": "URL"
+   },
+   "validate_sd": {
+      "message": "유효성 검사"
+   },
+   "validate_sd__placegolder": {
+      "message": "이 페이지의 구조화된 데이터 확인"
+   },
+   "validate_sd__rich_results_test": {
+      "message": "리치 결과 테스트"
+   },
+   "validate_sd__schema_markup_validator": {
+      "message": "스키마 마크업 유효성 검사기"
+   },
+   "web_vitals": {
+      "message": "웹 바이탈스"
+   },
+   "web_vitals__cls": {
+      "message": "Cumulative Layout Shift (CLS)는 요소들이 이동하는지 또는 페이지 레이아웃이 얼마나 안정적인지를 측정합니다. 콘텐츠 크기와 이동 거리를 고려합니다."
+   },
+   "web_vitals__info_main": {
+      "message": "코어 웹 바이탈은 구글의 페이지 경험 신호 중 사용자의 경험을 측정하는 속도 지표입니다. 이 데이터는 실시간 Chrome 사용자의 페이지 경험을 기반으로 합니다. 코어 웹 바이탈은 구글의 순위 요소 중 하나입니다."
+   },
+   "web_vitals__inp": {
+      "message": "Interaction to Next Paint (INP)는 페이지의 반응성을 평가합니다. 페이지와의 모든 사용자 상호작용의 지연을 관찰하며, 모든(또는 거의 모든) 상호작용이 해당 범위 내에 있었던 단일 값을 보고합니다. 낮은 INP는 페이지가 대부분의 사용자 상호작용에 빠르게 반응할 수 있었음을 의미합니다."
+   },
+   "web_vitals__lcp": {
+      "message": "Largest Contentful Paint (LCP)는 뷰포트에서 로드된 가장 큰 단일 요소입니다. 일반적으로 주요 이미지 또는 H1 단위이며, 초 단위로 측정됩니다."
+   },
+   "web_vitals__not_found": {
+      "message": "코어 웹 바이탈은 실시간 Chrome 사용자의 데이터를 사용합니다. 페이지에 대해 하나 이상의 지표가 없는 경우 사용자의 페이지 경험에 대한 데이터가 충분하지 않음을 의미합니다. 이 경우 구글의 Pagespeed Insights를 포함한 다른 도구에서는 대신 홈페이지에 대한 코어 웹 바이탈 지표를 표시합니다."
+   },
+   "word_count": {
+      "message": "단어 수"
+   },
+   "x_card": {
+      "message": "X (트위터) 카드"
+   }
+}

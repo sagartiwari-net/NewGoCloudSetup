@@ -1,0 +1,883 @@
+{
+   "banner__cta_site_audit_header": {
+      "description": "Header of the banner CTA for the Site Audit",
+      "message": "Ahrefs サイト監査."
+   },
+   "banner__cta_site_audit_text": {
+      "description": "Text of the banner CTA for the Site Audit",
+      "message": "ウェブサイトの完全なSEO監査を実行します。170以上のSEOの問題を特定し、優先順位を付けて修正します。"
+   },
+   "banner__patch_it_description": {
+      "description": "Description of the banner CTA for the Site Audit Patches",
+      "message": "一般的なSEOの問題を修正し、Ahrefsから直接ウェブサイトに変更を適用します。"
+   },
+   "banner__patch_it_label": {
+      "description": "Label for the banner CTA for the Site Audit Patches",
+      "message": "パッチ適用"
+   },
+   "banner__patch_it_title": {
+      "description": "Title of the banner CTA for the Site Audit Patches",
+      "message": "パッチ"
+   },
+   "canonical_url": {
+      "message": "カノニカルタグの付いた正規 URL"
+   },
+   "card__missing_or_incomplete": {
+      "message": "欠落または不完成"
+   },
+   "content": {
+      "message": "コンテンツ"
+   },
+   "content__changes_button": {
+      "message": "変更を確認"
+   },
+   "content__first_heading_not_h1": {
+      "description": "Error: the first heading on the page is not H1",
+      "message": "最初の見出しがH1ではありません"
+   },
+   "content__multiple_descriptions": {
+      "description": "Error: Multiple descriptions found on the page",
+      "message": "複数の説明"
+   },
+   "content__multiple_h1_tags": {
+      "description": "Error: Multiple H1 tags found on the page",
+      "message": "複数の H1 タグ"
+   },
+   "content__multiple_title_tags": {
+      "description": "Error: Multiple title tags found on the page",
+      "message": "複数のタイトルタグ"
+   },
+   "content__rendered_description_missing": {
+      "message": "レンダリングされた説明が見つかりません"
+   },
+   "content__rendered_title_missing": {
+      "message": "レンダリングされたタイトルが見つかりません"
+   },
+   "copy_headings": {
+      "message": "見出しをコピー"
+   },
+   "dates": {
+      "message": "日付"
+   },
+   "description": {
+      "message": "概要"
+   },
+   "description__too_long": {
+      "message": "メタディスクリプションが長すぎる可能性があります。メタディスクリプションは、約 160 文字以内に収めることをおすすめします。長すぎるディスクリプションは、スニペットテキストとして表示される場合 SERP で切り捨てられる可能性があります。"
+   },
+   "description__too_short": {
+      "message": "メタディスクリプションが短すぎる可能性があります。ページコンテンツの説明を Google に提供するため、説明をもう少し長くすることをおすすめします。"
+   },
+   "error__fetching_data": {
+      "message": "データの取得エラーです。後でもう一度お試しください。"
+   },
+   "error__inactive": {
+      "message": "接続されているワークスペースのユーザーステータスは現在「非アクティブ」です。"
+   },
+   "error__monthly_limit": {
+      "message": "ワークスペースの月間制限に達しました。"
+   },
+   "error__too_many_sessions_sign_in": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": " ログイン"
+   },
+   "error__too_many_sessions_text_body": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "エラー：セッション数が多すぎます。このアカウントは別のデバイスで使用されている可能性があります。"
+   },
+   "error__too_many_sessions_text_end": {
+      "description": "Full text of the error: 'Error: too many sessions. This account may be used on another device. Please sign in again.'",
+      "message": "再度サインインしてください。"
+   },
+   "error__try_again_later": {
+      "message": "エラーです。後でもう一度お試しください。"
+   },
+   "error__usage_limit_body": {
+      "description": "Sentence with an inline error__usage_limit_body_button",
+      "message": "続行するには、$UPGRADE_BUTTON$するか、制限がリセットされるまでお待ちください。",
+      "placeholders": {
+         "upgrade_button": {
+            "content": "$1"
+         }
+      }
+   },
+   "error__usage_limit_body_button": {
+      "description": "The button used as the placeholder in error__usage_limit_body",
+      "message": "プランをアップグレード"
+   },
+   "error__usage_limit_head": {
+      "message": "使用制限に達しました"
+   },
+   "feedback__main_q": {
+      "message": "Ahrefs SEO ツールバーの機能はいかがですか？"
+   },
+   "feedback__negative_answ": {
+      "message": "改善にご協力ください。"
+   },
+   "feedback__negative_button_1": {
+      "message": "そう思わない"
+   },
+   "feedback__positive_answ": {
+      "message": "ありがとうございます！気に入った点を教えてください。"
+   },
+   "feedback__positive_button_1": {
+      "message": "そう思う"
+   },
+   "feedback__positive_button_2": {
+      "message": "レビューを書く"
+   },
+   "feedback__send_answ": {
+      "message": "フィードバックを送信する"
+   },
+   "freeplan_banner__limit_description": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "ツールバーの SEO 指標は"
+   },
+   "freeplan_banner__limit_link": {
+      "description": "Full sentence: SEO metrics for the Toolbar are available with one of the paid plans",
+      "message": "有料プラン"
+   },
+   "get_started": {
+      "message": "今すぐはじめる"
+   },
+   "headings": {
+      "message": "見出し"
+   },
+   "how_to_use": {
+      "message": "使用方法"
+   },
+   "hreflangs": {
+      "message": "hreflang"
+   },
+   "icon_tip__add": {
+      "message": "この URL をリストに保存します。\n保存した URL にアクセスするには、拡張機能のアイコンをクリックして [保存済み] タブに移動します。\nリストにある最新の 10 件の URL は、Ahrefs のリンクインターセクトまたはコンテンツギャップツールに簡単に送信できます（有料ユーザーのみ）。"
+   },
+   "icon_tip__hide_toolbar": {
+      "message": "このウェブサイト、ページ、またはパスのツールバーを永久に非表示にします \n設定でブロックリストを編集できます）。"
+   },
+   "icon_tip__present": {
+      "message": "URL は保存された URL のリストにあり、リンクインターセクトまたはコンテンツギャップに送信できます。\n保存された URL にアクセスするには、拡張機能のアイコンをクリックして [保存済み] タブに移動します。\nリストの最新の 10 件の URL は、Ahrefs の リンクインターセクトまたはコンテンツギャップツールに簡単に送信できます。"
+   },
+   "icon_tip__present_in_list": {
+      "message": "URL は保存された URL のリストにあり、リンクインターセクトまたはコンテンツギャップに送信できます。\n保存された URL にアクセスするには、拡張機能のアイコンをクリックして [保存済み] タブに移動します。\nリストの最新の 10 件の URL は、Ahrefs の リンクインターセクトまたはコンテンツギャップツールに簡単に送信できます。"
+   },
+   "image__all": {
+      "message": "すべて"
+   },
+   "image__alt": {
+      "message": "Alt"
+   },
+   "image__alt_empty": {
+      "message": "空のaltテキスト"
+   },
+   "image__alt_missing": {
+      "message": "alt テキストがありません"
+   },
+   "image__alt_text": {
+      "message": "代替テキスト"
+   },
+   "image__file_too_large": {
+      "message": "画像ファイルサイズが大きすぎる"
+   },
+   "image__image": {
+      "message": "画像"
+   },
+   "image__not_found": {
+      "message": "画像は見つかりませんでした"
+   },
+   "image__url": {
+      "message": "URL"
+   },
+   "in_html_code": {
+      "description": "Means that the information is analyzed directly within the client-side rendered HTML code of the page",
+      "message": "レンダリングされた HTML 内"
+   },
+   "in_raw_html_code": {
+      "description": "Means that the information is analyzed directly within the server-returned source",
+      "message": "Raw HTML 内"
+   },
+   "jsonld__not_found": {
+      "message": "JSON-LD 構造化データが見つかりません"
+   },
+   "kw_metrics__c_description": {
+      "message": "特定のキーワードの検索結果でユーザーが毎月クリックする回数の推定値。検索によってはクリックがまったく発生しないものもあれば、SERP で複数のクリックが発生するものもあります。"
+   },
+   "kw_metrics__c_title": {
+      "message": "クリック"
+   },
+   "kw_metrics__cpc_description": {
+      "message": "キーワードの有料検索結果のクリックごとに広告主が支払うと推定される平均価格。"
+   },
+   "kw_metrics__cpc_title": {
+      "message": "クリック単価（CPC）"
+   },
+   "kw_metrics__gv_description": {
+      "message": "Ahrefs のデータベース内のすべての国におけるキーワードの平均月間検索数の推定値。"
+   },
+   "kw_metrics__gv_title": {
+      "message": "グローバル検索ボリューム（GV）"
+   },
+   "kw_metrics__kd_description": {
+      "message": "キーワードのオーガニック検索結果の上位 10 位以内にランクインする難関度を 100 点満点で評価します。"
+   },
+   "kw_metrics__kd_title": {
+      "message": "キーワード難易度（KD）"
+   },
+   "kw_metrics__sw_description": {
+      "message": "特定の国におけるキーワードの平均月間検索数の推定値。"
+   },
+   "kw_metrics__sw_title": {
+      "message": "検索ボリューム"
+   },
+   "kw_metrics__tp_description": {
+      "message": "ターゲットキーワードで 1 位にランクインしているページが、ライクインしているすべてのキーワードから得ているオーガニック検索トラフィックの合計を示します。"
+   },
+   "kw_metrics__tp_title": {
+      "message": "想定トラフィック（TP）"
+   },
+   "learn_more": {
+      "message": "詳しくはこちら"
+   },
+   "manifest_description": {
+      "message": "1つのSEO拡張機能で完全なツールキットを使用して時間を節約しましょう。あらゆるウェブページでのオンページ、キーワードリサーチ、リンク分析のインサイト。"
+   },
+   "manifest_name": {
+      "description": "Don't translate: 'Ahrefs SEO Toolbar'",
+      "message": "Ahrefs SEO Toolbar: オンページおよびSERPツール"
+   },
+   "meta": {
+      "message": "メタ"
+   },
+   "metrics__ads_description": {
+      "message": "有料検索結果内のターゲットページのユニーク広告または URL の総数。"
+   },
+   "metrics__ads_label_lg": {
+      "message": "広告"
+   },
+   "metrics__ads_title": {
+      "message": "広告"
+   },
+   "metrics__ar_description": {
+      "message": "Ahrefs のデータベース内の他のウェブサイトと比較したウェブサイトの被リンクプロファイルの強さを表します。ランク 1 が最も強力です。"
+   },
+   "metrics__ar_label_lg": {
+      "message": "Ahrefs ランク"
+   },
+   "metrics__ar_title": {
+      "message": "Ahrefs ランク（AR）"
+   },
+   "metrics__bl_description": {
+      "message": "ターゲットにリンクしている他のウェブサイトからのリンクの総数"
+   },
+   "metrics__bl_label_lg": {
+      "message": "被リンク"
+   },
+   "metrics__bl_title": {
+      "message": "被リンク（BL）"
+   },
+   "metrics__cost_description": {
+      "message": "ターゲットの月間有料トラフィックの推定コスト。"
+   },
+   "metrics__cost_label_lg": {
+      "message": "費用"
+   },
+   "metrics__cost_title": {
+      "message": "有料トラフィックコスト"
+   },
+   "metrics__dr_description": {
+      "message": "ウェブサイトの被リンクプロファイルの強さを100点満点の対数スケールで表した指標です。"
+   },
+   "metrics__dr_label_lg": {
+      "message": "ドメイン評価"
+   },
+   "metrics__dr_title": {
+      "message": "ドメインレーティング（DR）"
+   },
+   "metrics__kw_description": {
+      "message": "データベース内のすべての国において、オーガニック検索結果の上位 100 件にターゲットがランクインしている固有のキーワードの合計数。"
+   },
+   "metrics__kw_label_lg": {
+      "message": "キーワード"
+   },
+   "metrics__kw_title": {
+      "message": "オーガニックキーワード（KW）"
+   },
+   "metrics__paid_keywords_description": {
+      "message": "ターゲットが有料検索結果にランクインしているキーワードの合計数です。"
+   },
+   "metrics__paid_keywords_label_lg": {
+      "message": "「有料キーワード」"
+   },
+   "metrics__paid_keywords_title": {
+      "message": "「有料キーワード」"
+   },
+   "metrics__paid_traffic_description": {
+      "message": "ターゲットが検索連動型広告から獲得する月間推定訪問数。"
+   },
+   "metrics__paid_traffic_label_lg": {
+      "message": "「有料トラフィック」"
+   },
+   "metrics__paid_traffic_title": {
+      "message": "「有料トラフィック」"
+   },
+   "metrics__rd_description": {
+      "message": "ターゲットにリンクしている固有のドメインの合計数。"
+   },
+   "metrics__rd_label_lg": {
+      "message": "参照ドメイン"
+   },
+   "metrics__rd_title": {
+      "message": "参照ドメイン（RD）"
+   },
+   "metrics__rp_description": {
+      "message": "ターゲットにリンクしている固有のウェブページの合計数。"
+   },
+   "metrics__rp_label_lg": {
+      "message": "参照ページ"
+   },
+   "metrics__rp_title": {
+      "message": "参照ページ（RP）"
+   },
+   "metrics__sign_up_free_button": {
+      "message": "無料で登録"
+   },
+   "metrics__sign_up_free_description": {
+      "message": "Ahrefs無料アカウントでDR、AR、URに無料でアクセスしましょう。"
+   },
+   "metrics__st_description": {
+      "message": "ターゲットがオーガニック検索から得る月間訪問数の推定値。"
+   },
+   "metrics__st_label_lg": {
+      "message": "検索トラフィック"
+   },
+   "metrics__st_title": {
+      "message": "オーガニック検索トラフィック（ST）"
+   },
+   "metrics__tv_description": {
+      "message": "ウェブサイトまたはウェブページのオーガニック検索トラフィックに相当する月間コスト。同じ量のトラフィックがオーガニック検索ランキングではなく、クリック課金型（PPC）広告を通じて獲得されたという仮定に基づいて計算されます。"
+   },
+   "metrics__tv_title": {
+      "message": "トラフィックバリュー（TV）"
+   },
+   "metrics__ur_description": {
+      "message": "URL レーティング（UR）は、対象ページの被リンクプロフィールの強さを 100 点満点の対数スケールで表示します。"
+   },
+   "metrics__ur_label_lg": {
+      "message": "URL レーティング"
+   },
+   "metrics__ur_title": {
+      "message": "URL レーティング（UR）"
+   },
+   "metrics__w_description": {
+      "message": "Ahrefs のクローラーがページのコード内で確認したウェブページ上の単語数です。この数値は、ページを開いたときにブラウザに表示される数値と若干異なる場合があります。"
+   },
+   "metrics__w_label_lg": {
+      "message": "単語数"
+   },
+   "metrics__w_title": {
+      "message": "ページの単語数"
+   },
+   "modal__blocklist_btn_negative": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "無効にしない"
+   },
+   "modal__blocklist_btn_positive_domain": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "当ドメイン"
+   },
+   "modal__blocklist_btn_positive_page": {
+      "description": "Button label in a modal that asks the user 'Do you want to disable the Toolbar with metrics for this website or page?'",
+      "message": "当ページ"
+   },
+   "modal__blocklist_description": {
+      "message": "このウェブサイト・ページのメトリクスバーを無効にしますか？\n（設定でブロックリストを編集できます）"
+   },
+   "modal__shortcuts_button_ok": {
+      "message": "OK"
+   },
+   "modal__shortcuts_button_settings": {
+      "description": "The button used to open the browser settings e.g. chrome://extensions/shortcuts",
+      "message": "ブラウザー設定"
+   },
+   "modal__shortcuts_description": {
+      "description": "Example of the last sentence 'You can change these key bindings in your browser settings'",
+      "message": "Ahrefs SEOツールバーでは以下のショートカットを使用できます：\n$SHORTCUT_TOOLBAR$ でメトリクスバーのオン/オフを切り替え\n$SHORTCUT_POPUP$ でオンページレポートと設定を開く\nこれらのキーバインドは",
+      "placeholders": {
+         "shortcut_popup": {
+            "content": "$2",
+            "example": "Ctrl+Cmd+A"
+         },
+         "shortcut_toolbar": {
+            "content": "$1",
+            "example": "Ctrl+Cmd+A"
+         }
+      }
+   },
+   "modified": {
+      "message": "変更済"
+   },
+   "new": {
+      "message": "新規"
+   },
+   "noindex_page": {
+      "message": "Noindex ページ"
+   },
+   "open_graph_tags": {
+      "message": "オープングラフタグ"
+   },
+   "outgoing_links__check_status": {
+      "message": "ステータスを確認"
+   },
+   "outgoing_links__dofollow": {
+      "message": "Dofollow"
+   },
+   "outgoing_links__dropdown_description": {
+      "message": "リストから最新の最大 10 件の URL を Ahrefs に送信"
+   },
+   "outgoing_links__dropdown_item_1": {
+      "message": "リンク交差"
+   },
+   "outgoing_links__dropdown_item_2": {
+      "message": "コンテンツギャップ"
+   },
+   "outgoing_links__external": {
+      "message": "外部リンク"
+   },
+   "outgoing_links__highlight": {
+      "message": "ハイライト"
+   },
+   "outgoing_links__internal": {
+      "message": "内部リンク"
+   },
+   "outgoing_links__link_type": {
+      "message": "リンクタイプ"
+   },
+   "outgoing_links__nofollow": {
+      "message": "Nofollow"
+   },
+   "outgoing_links__status": {
+      "message": "ステータス"
+   },
+   "outgoing_links__target_url": {
+      "message": "ターゲット URL"
+   },
+   "popup_menu__content": {
+      "message": "コンテンツ"
+   },
+   "popup_menu__http_headers": {
+      "message": "HTTP ヘッダー"
+   },
+   "popup_menu__images": {
+      "message": "画像"
+   },
+   "popup_menu__indexability": {
+      "message": "インデクサビリティ"
+   },
+   "popup_menu__metrics": {
+      "message": "評価指標"
+   },
+   "popup_menu__metrics_bar": {
+      "message": "指標表示バー"
+   },
+   "popup_menu__outgoing_links": {
+      "message": "発リンク"
+   },
+   "popup_menu__outgoing_links_short": {
+      "message": "リンク"
+   },
+   "popup_menu__saved_urls": {
+      "message": "保存された URL"
+   },
+   "popup_menu__search_tools": {
+      "message": "検索ツール"
+   },
+   "popup_menu__settings": {
+      "message": "設定"
+   },
+   "popup_menu__social": {
+      "message": "ソーシャルタグ"
+   },
+   "popup_menu__social_image_fail": {
+      "message": "取得に失敗しました"
+   },
+   "popup_menu__struct_data": {
+      "message": "構造化データ"
+   },
+   "popup_menu__ua": {
+      "message": "ユーザーエージェント"
+   },
+   "popup_menu__ua_texarea_label": {
+      "message": "ユーザーエージェント文字列"
+   },
+   "published": {
+      "message": "公開済"
+   },
+   "raw": {
+      "description": "Raw HTML- server-returned source",
+      "message": "生のHTML"
+   },
+   "raw_vs_rendered": {
+      "description": "Button on popup content. Raw HTML- server-returned source. Rendered HTML- final DOM.",
+      "message": "生データとレンダリングデータ"
+   },
+   "rendered": {
+      "description": "Rendered HTML- final DOM.",
+      "message": "レンダリング済み"
+   },
+   "robots": {
+      "message": "robots"
+   },
+   "robots__meta_tag": {
+      "message": "robots メタタグ"
+   },
+   "robots__tag_http": {
+      "message": "X-Robots-Tag HTTP"
+   },
+   "robots__txt": {
+      "message": "robots.txt"
+   },
+   "saved_urls__all_tabs": {
+      "message": "すべてのタブ"
+   },
+   "saved_urls__copy_list": {
+      "message": "リストをコピー"
+   },
+   "saved_urls__current_tab": {
+      "message": "現在のタブ"
+   },
+   "search_tools__desktop": {
+      "message": "デスクトップ"
+   },
+   "search_tools__device": {
+      "message": "デバイス"
+   },
+   "search_tools__highlight_placeholder": {
+      "message": "検索結果で強調表示するドメインを入力します。"
+   },
+   "search_tools__highlight_title": {
+      "message": "結果を強調表示"
+   },
+   "search_tools__kw_title": {
+      "message": "キーワード指標"
+   },
+   "search_tools__language": {
+      "message": "言語"
+   },
+   "search_tools__location": {
+      "message": "位置"
+   },
+   "search_tools__ls_menu_title": {
+      "message": "ローカル検索シミュレーター"
+   },
+   "search_tools__menu_title": {
+      "message": "検索設定"
+   },
+   "search_tools__position_numbers_title": {
+      "message": "順位番号"
+   },
+   "search_tools__reset": {
+      "message": "リセット"
+   },
+   "search_tools__results_metrics_title": {
+      "message": "検索結果の指標"
+   },
+   "search_tools__tip_body": {
+      "message": "このボタンを使用してローカル検索をシミュレートします"
+   },
+   "search_tools__trends_title": {
+      "message": "トレンド内のキーワード指標"
+   },
+   "serp__adv": {
+      "message": "Yep でこの検索を試す"
+   },
+   "serp__counter_title": {
+      "description": "Tooltip title for the SERP counter",
+      "message": "Ahrefs SEO ツールバーによりSERPに提供"
+   },
+   "serp__export_button": {
+      "message": "CSV をエクスポート"
+   },
+   "serp__kw_ideas": {
+      "message": "キーワードアイデア"
+   },
+   "serp__local_search": {
+      "message": "ローカル検索"
+   },
+   "serp__local_search_active": {
+      "message": "SERP シミュレーションを表示中"
+   },
+   "serp__ppa": {
+      "message": "その他の質問"
+   },
+   "serp__save_urls_button": {
+      "message": "URL を保存"
+   },
+   "serp__tip_conf": {
+      "message": "設定を行うには拡張機能アイコンをクリックしてください"
+   },
+   "settings__appearance": {
+      "message": "外観"
+   },
+   "settings__bottom": {
+      "description": "Location of the toolbar on the screen",
+      "message": "最下位"
+   },
+   "settings__dark": {
+      "description": "Theme color",
+      "message": "ダーク"
+   },
+   "settings__exclude_list": {
+      "message": "リストを除外"
+   },
+   "settings__exlude_list_warn": {
+      "message": "ツールバーを表示したくないドメイン、URL、または URL パスを入力します。"
+   },
+   "settings__exlude_list_warn_2": {
+      "message": "URL パスには * を使用します（例: https://ahrefs.com/blog/*）。"
+   },
+   "settings__exlude_list_warn_3": {
+      "message": "1 行につき1エントリ"
+   },
+   "settings__light": {
+      "description": "Theme color",
+      "message": "ライト"
+   },
+   "settings__position": {
+      "message": "位置"
+   },
+   "settings__show_on_update": {
+      "message": "アップデート時に表示"
+   },
+   "settings__system": {
+      "description": "Theme color",
+      "message": "システム"
+   },
+   "settings__top": {
+      "description": "Location of the toolbar on the screen",
+      "message": "最上位"
+   },
+   "shared__all": {
+      "message": "すべて"
+   },
+   "shared__broken": {
+      "message": "リンク切れ"
+   },
+   "shared__changelog": {
+      "message": "更新履歴"
+   },
+   "shared__clear": {
+      "message": "消去する"
+   },
+   "shared__copy": {
+      "message": "コピー"
+   },
+   "shared__custom": {
+      "message": "カスタム"
+   },
+   "shared__default": {
+      "message": "デフォルト"
+   },
+   "shared__default_browser": {
+      "message": "デフォルト（お使いのブラウザ）"
+   },
+   "shared__default_report": {
+      "message": "デフォルトレポート"
+   },
+   "shared__disallowed_in_robots_txt": {
+      "message": "robots.txt で許可されていません"
+   },
+   "shared__domain": {
+      "message": "ドメイン"
+   },
+   "shared__edit": {
+      "message": "編集"
+   },
+   "shared__empty": {
+      "message": "空"
+   },
+   "shared__export": {
+      "message": "エクスポート"
+   },
+   "shared__how_to_fix": {
+      "message": "解決方法"
+   },
+   "shared__in_http_headers": {
+      "message": "HTTPヘッダー内"
+   },
+   "shared__last_opened": {
+      "message": "最終閲覧"
+   },
+   "shared__load_more": {
+      "message": "さらに読み込む"
+   },
+   "shared__mismatch": {
+      "message": "ミスマッチ"
+   },
+   "shared__missing": {
+      "message": "不足"
+   },
+   "shared__no_results": {
+      "message": "結果はありません"
+   },
+   "shared__noindex_page": {
+      "message": "Noindex ページ"
+   },
+   "shared__non_canonical": {
+      "message": "非カノニカル"
+   },
+   "shared__not_available": {
+      "message": "N/A"
+   },
+   "shared__not_empty": {
+      "message": "空ではない"
+   },
+   "shared__not_found": {
+      "message": "見つかりません"
+   },
+   "shared__not_now": {
+      "message": "今はしない"
+   },
+   "shared__ok": {
+      "message": "OK"
+   },
+   "shared__open_in": {
+      "description": "The button used to open selected item in another app, service, etc",
+      "message": "開く:"
+   },
+   "shared__page": {
+      "message": "ページ"
+   },
+   "shared__redirect": {
+      "message": "リダイレクト"
+   },
+   "shared__search": {
+      "message": "検索"
+   },
+   "shared__self_canonical": {
+      "message": "自己参照カノニカル"
+   },
+   "shared__shortcuts": {
+      "message": "ショートカット"
+   },
+   "shared__today": {
+      "message": "今日"
+   },
+   "shared__value": {
+      "message": "値"
+   },
+   "shared__words": {
+      "description": "Example: 1500 words",
+      "message": "単語数"
+   },
+   "shared__yesterday": {
+      "message": "昨日"
+   },
+   "shared_of": {
+      "description": "e.g. 3 of 15 links",
+      "message": "の"
+   },
+   "shared_overview": {
+      "description": "Link to Ahrefs Overview",
+      "message": "概要"
+   },
+   "shared_upgrade": {
+      "description": "Plans and pricing",
+      "message": "アップグレード"
+   },
+   "sign_in": {
+      "message": "ログイン"
+   },
+   "sign_in__long": {
+      "description": "Uses on Serp and Content toolbar",
+      "message": "Ahrefs でログイン"
+   },
+   "sign_out": {
+      "message": "ログアウト"
+   },
+   "sign_up": {
+      "message": "今すぐはじめる"
+   },
+   "sign_up__content": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "または当社の"
+   },
+   "sign_up__link": {
+      "descriptions": "Full sentence: Sign up or check our free SEO tools",
+      "message": "無料版 SEO ツール"
+   },
+   "sitemaps": {
+      "message": "サイトマップ"
+   },
+   "social__not_matching_canonical": {
+      "description": "Error: Social Card URL not matching canonical",
+      "message": "ソーシャル URL が Canonical と一致していません"
+   },
+   "starter__q": {
+      "message": "月額わずか $PRICE$ で Ahrefs の様々なツールを利用できるスタータープランを利用しましょう。",
+      "placeholders": {
+         "price": {
+            "content": "$1"
+         }
+      }
+   },
+   "suggest_feature": {
+      "message": "機能を提案する"
+   },
+   "title": {
+      "message": "タイトル"
+   },
+   "title__too_long": {
+      "message": "タイトルが長すぎる可能性があります。ページタイトルが長いと、Google 検索結果で切り捨てられる可能性があります。推奨されるタイトルの長さは 60 文字までです。"
+   },
+   "title__too_short": {
+      "message": "タイトルが短すぎる可能性があります。ページタイトルは、Google がページを理解するために重視する要素です。タイトルが短いと、ページの主旨を Google に効果的に伝える機会を逃す可能性があります。"
+   },
+   "try_starter": {
+      "message": "スターターを試す"
+   },
+   "ua__warning_body": {
+      "message": "カスタムユーザーエージェントが不要になったら無効にしてください。"
+   },
+   "ua__warning_important": {
+      "message": "重要！"
+   },
+   "url": {
+      "message": "URL"
+   },
+   "validate_sd": {
+      "message": "検証"
+   },
+   "validate_sd__placegolder": {
+      "message": "このページの構造化データを検証"
+   },
+   "validate_sd__rich_results_test": {
+      "message": "リッチリザルトテスト"
+   },
+   "validate_sd__schema_markup_validator": {
+      "message": "スキーママークアップ検証ツール"
+   },
+   "web_vitals": {
+      "message": "ウェブバイタル"
+   },
+   "web_vitals__cls": {
+      "message": "Cumulative Layout Shift（CLS）は、要素がどの程度移動するか、またはページレイアウトがどの程度安定しているかを測定します。コンテンツのサイズと移動距離を考慮します。"
+   },
+   "web_vitals__info_main": {
+      "message": "コアウェブバイタルは、Google がユーザーエクスペリエンスを測定するために使用する Page Experience シグナルの一部となる速度指標です。このデータは、実際の Chrome ユーザーがサイトを利用した際の体験データに基づいて算出されています。CWV は Google の検索ランキングにおいて軽微な要因として扱われています。"
+   },
+   "web_vitals__inp": {
+      "message": "Interaction to Next Paint（INP）は、ページの応答性を評価します。ページでのすべてのユーザーインタラクションの遅延を観測し、すべて（またはほぼすべて）のインタラクションがその値を下回る単一の値を報告します。INP が低いということは、そのページがすべて、または大部分のユーザーインタラクションに対して一貫して迅速に応答できたことを意味します。"
+   },
+   "web_vitals__lcp": {
+      "message": "Largest Contentful Paint（LCP）は、ビューポート内に読み込まれる最大の可視要素です。通常、メイン画像やH1タグなどです。秒単位で測定されます。"
+   },
+   "web_vitals__not_found": {
+      "message": "コアウェブバイタルは、実際の Chrome ユーザーからのデータを使用しています。1 つまたは全ての指標がページで利用できない場合、そのページのユーザーエクスペリエンスに関する十分なデータがないことを意味します。この場合、Google の Pagespeed Insights を含む他のツールでは、代わりにホームページの CWV 指標を表示します。"
+   },
+   "word_count": {
+      "message": "ワード数"
+   },
+   "x_card": {
+      "message": "X (旧 Twitter) カード"
+   }
+}

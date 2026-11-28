@@ -1,0 +1,27 @@
+Tytuł:
+Pasek narzędzi Ahrefs na potrzeby SEO: narzędzia do analizy witryn i wyników wyszukiwania (SERP)
+
+Podsumowanie:
+Zaoszczędź czas, korzystając z kompletnego zestawu narzędzi w jednym rozszerzeniu SEO. Dane dotyczące strony internetowej, badanie słów kluczowych oraz analiza linków dla dowolnej witryny.
+
+Opis:
+Pasek narzędzi Ahrefs jest darmowy i dostarcza szczegółowych informacji dotyczących SEO bezpośrednio w przeglądarce.
+
+🌍 Globalne badania SEO (nie jest wymagany VPN)
+Przełączaj pomiędzy regionami, domenami Google i językami, aby odkrywać nowe pomysły na słowa kluczowe bezpośrednio w wynikach wyszukiwania.
+
+📃 Dane dotyczące SEO na stronie dostępne za 1 kliknięciem
+Jednym kliknięciem sprawdzaj tytuły, metaopisy, nagłówki oraz techniczne elementy SEO, takie jak tagi kanoniczne i dyrektywy indeksowania.
+
+🔗 Łatwa analiza linków
+Podświetlaj linki na stronie, śledź przekierowania, filtruj linki wychodzące, wykrywaj uszkodzone linki i eksportuj wszystkie dane do pliku CSV. 
+
+🛠 Zaawansowane narzędzia do analizy SEO
+Zapisuj adresy URL z otwartych kart lub wyników wyszukiwania, przełączaj agentów użytkownika, aby widzieć strony tak, jak widzi je Googlebot, sprawdzaj nagłówki HTTP i uzyskuj dane dotyczące wydajności, aby ocenić prędkość ładowania strony.
+
+✨ Dostęp do metryk Ahrefs dla subskrybentów Ahrefs:
+Zobacz metryki dotyczące domeny i strony, takie jak liczba słów kluczowych, szacowany ruch, domeny odsyłające i inne – bezpośrednio na każdej stronie lub w wyniku.
+
+🤝 Zaufało nam ponad 360 tys. specjalistów ds. SEO
+
+📌 Uwaga: Aby uzyskać dostęp do metryk Ahrefs, wymagana jest subskrypcja Ahrefs. Podstawowe narzędzia w ramach tego rozszerzenia SEO pozostają całkowicie darmowe.
