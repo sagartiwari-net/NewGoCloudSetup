@@ -369,13 +369,19 @@ importScripts('event.js');
   }
 
   // Read portal session cookie only — NEVER invent one.
-  // Auto-minting local.dev cookies made logout impossible (tb.* stayed valid).
-  // aMember Pro: same path — PHPSESSID / amember_* must exist on the portal host.
+  // aMember Pro often uses amember_nr (not PHPSESSID). Try configured name first, then common aliases.
   async function readPortalCookie(portal) {
     const site = portal.site_url;
-    const name = portal.cookie_name || 'PHPSESSID';
-    const val = await getCookie(site, name);
-    return { value: val || '', name, site };
+    const preferred = portal.cookie_name || 'PHPSESSID';
+    const names = [preferred, 'amember_nr', 'PHPSESSID', 'amember_ru', 'amember_r', 'amember_sess', 'amember', 'panel_session'];
+    const seen = {};
+    for (const name of names) {
+      if (!name || seen[name]) continue;
+      seen[name] = true;
+      const val = await getCookie(site, name);
+      if (val) return { value: val, name, site };
+    }
+    return { value: '', name: preferred, site };
   }
 
   async function verify(portal, cookieValue, cookieName) {

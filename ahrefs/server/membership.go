@@ -91,14 +91,21 @@ func (s *server) callMembershipCheck(portal *portalRow, sessionID, cookieName st
 	}
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
 	preferred := strings.TrimSpace(cookieName)
 	if preferred == "" {
 		preferred = portal.CookieName
 	}
+	payload, _ := json.Marshal(map[string]any{
+		"token":       sessionID,
+		"cookie_name": preferred,
+		"product_ids": q.Get("product_ids"),
+		"products":    q.Get("products"),
+	})
+	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cookie", buildCookieHeader(sessionID, preferred))
 	req.Header.Set("Accept", "application/json")
 	if secret := strings.TrimSpace(portal.SharedSecret); secret != "" {
@@ -112,12 +119,18 @@ func (s *server) callMembershipCheck(portal *portalRow, sessionID, cookieName st
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != 200 {
-		return &membershipCheckResult{OK: false, Error: fmt.Sprintf("check_http_%d", resp.StatusCode)}, nil
-	}
 	var parsed membershipCheckResult
 	if err := json.Unmarshal(body, &parsed); err != nil {
+		if resp.StatusCode != 200 {
+			return &membershipCheckResult{OK: false, Error: fmt.Sprintf("check_http_%d", resp.StatusCode)}, nil
+		}
 		return &membershipCheckResult{OK: false, Error: "check_bad_json"}, nil
+	}
+	if resp.StatusCode != 200 && !parsed.OK {
+		if parsed.Error == "" {
+			parsed.Error = fmt.Sprintf("check_http_%d", resp.StatusCode)
+		}
+		return &parsed, nil
 	}
 	if parsed.OK && parsed.User != nil {
 		if parsed.User.Portal == "" {

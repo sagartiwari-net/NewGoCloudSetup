@@ -151,15 +151,19 @@ export default function AhrefsBarDownloadPage() {
             <CardContent className="space-y-4">
               <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                 <li>Download tm-check.php.</li>
-                <li>Upload it to the aMember site.</li>
-                <li>Portals → set tm-check URL (+ shared secret if used).</li>
+                <li>
+                  Upload into the <span className="font-medium text-foreground">aMember root</span> (folder that has{" "}
+                  <span className="font-mono">library/Am/Lite.php</span>) — often{" "}
+                  <span className="font-mono">/member/tm-check.php</span>, not only the domain web root.
+                </li>
+                <li>Portals → set that full tm-check URL (+ cookie name, usually <span className="font-mono">amember_nr</span> or <span className="font-mono">PHPSESSID</span>).</li>
               </ol>
               <p className="text-xs text-muted-foreground">
                 Template {data?.template_ok ? "ready" : "missing — set AHREFS_BAR_TEMPLATE_DIR"}
               </p>
               <p className="text-xs text-muted-foreground">
-                Opening tm-check.php in a browser with no session cookie returns{" "}
-                <span className="font-mono">check_failed</span> — that is expected. The bar calls it with the member cookie.
+                Logged-out browser open should return <span className="font-mono">not_logged_in</span>.{" "}
+                <span className="font-mono">check_failed</span> / <span className="font-mono">amember_lite_missing</span> means wrong install path.
               </p>
               <Button
                 variant="outline"

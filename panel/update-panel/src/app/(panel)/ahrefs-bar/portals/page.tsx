@@ -337,10 +337,17 @@ function PortalForm({
         <Field>
           <FieldLabel htmlFor="ab-p-cookie">Cookie name</FieldLabel>
           <Input id="ab-p-cookie" {...form.register("cookie_name")} />
+          <FieldDescription>
+            aMember Pro is often <span className="font-mono">amember_nr</span>. Wrong name → bar stays unauthorized while the site looks logged in.
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="ab-p-check">tm-check URL</FieldLabel>
-          <Input id="ab-p-check" placeholder="https://…/tm-check.php (optional)" {...form.register("check_url")} />
+          <Input id="ab-p-check" placeholder="https://…/member/tm-check.php" {...form.register("check_url")} />
+          <FieldDescription>
+            Put the file in aMember root (next to <span className="font-mono">library/</span>), e.g.{" "}
+            <span className="font-mono">/member/tm-check.php</span>.
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="ab-p-products">Product IDs</FieldLabel>
