@@ -1577,14 +1577,15 @@ func (s *server) saveReseller(w http.ResponseWriter, r *http.Request) {
 		raw, _ := res.LastInsertId()
 		id = int(raw)
 	} else {
-		res, err := tx.Exec(`UPDATE operators SET username=?, status=? WHERE id=? AND role='reseller'`,
-			username, body.Status, id)
-		if err != nil {
-			writeErr(w, 400, "That username is already used")
+		// MySQL RowsAffected is 0 when username/status are unchanged — do not treat that as missing.
+		var role string
+		if tx.QueryRow(`SELECT role FROM operators WHERE id=?`, id).Scan(&role) != nil || role != "reseller" {
+			writeErr(w, 404, "Reseller not found")
 			return
 		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			writeErr(w, 404, "Reseller not found")
+		if _, err := tx.Exec(`UPDATE operators SET username=?, status=? WHERE id=? AND role='reseller'`,
+			username, body.Status, id); err != nil {
+			writeErr(w, 400, "That username is already used")
 			return
 		}
 		if password != "" {

@@ -5,13 +5,18 @@
 #   bash deploy/fix-ahrefs-bar-reseller-flag.sh SemrushToolz  # + set On
 set -euo pipefail
 
-: "${MYSQL_HOST:=127.0.0.1}"
-: "${MYSQL_PORT:=3306}"
-: "${MYSQL_USER:?set MYSQL_USER}"
-: "${MYSQL_PASSWORD:?set MYSQL_PASSWORD}"
-: "${MYSQL_DATABASE:=gt4rents}"
+HOST="${GT4RENTS_MYSQL_HOST:-${MYSQL_HOST:-127.0.0.1}}"
+PORT="${GT4RENTS_MYSQL_PORT:-${MYSQL_PORT:-3306}}"
+USER="${GT4RENTS_MYSQL_USER:-${MYSQL_USER:-gt4rents}}"
+PASS="${GT4RENTS_MYSQL_PASSWORD:-${MYSQL_PASSWORD:-}}"
+DB="${GT4RENTS_MYSQL_DB:-${MYSQL_DATABASE:-gt4rents}}"
 
-mysql_cmd=(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" "-p${MYSQL_PASSWORD}" "$MYSQL_DATABASE" -N -e)
+if [[ -z "${PASS}" ]]; then
+  echo "ERROR: set GT4RENTS_MYSQL_PASSWORD (source _secrets/mysql.env first)"
+  exit 1
+fi
+
+mysql_cmd=(mysql -h "$HOST" -P "$PORT" -u "$USER" "-p${PASS}" "$DB" -N -e)
 
 echo "== column =="
 "${mysql_cmd[@]}" "SHOW COLUMNS FROM operators LIKE 'ahrefs_bar_enabled';" || true
