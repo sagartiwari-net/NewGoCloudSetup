@@ -32,24 +32,59 @@ import type { AhrefsBarAccount } from "@/lib/api/types"
 import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
 
-/** Paste into official Ahrefs Toolbar service-worker console (chrome.storage — not page IndexedDB). */
-const EXTRACT_TOKEN_CONSOLE = `// Official Ahrefs SEO Toolbar → service worker console
-chrome.storage.local.get(['ahToken', 'ahUserData', 'ahIsAuth3'], (d) => {
-  console.log('ahIsAuth3', d.ahIsAuth3);
-  console.log('ahUserData', d.ahUserData);
-  console.log('ahToken', d.ahToken);
-  const json = JSON.stringify(d.ahToken || {}, null, 2);
-  copy(json);
-  console.log('Copied ahToken JSON — paste into panel → Ahrefs Bar → Accounts');
-});`
+/**
+ * Newer Ahrefs Toolbar builds keep the bearer in IndexedDB Auth/Token
+ * (chrome.storage.local.ahToken is often undefined). Run in the extension
+ * service-worker console — same context as Application → IndexedDB → Auth.
+ */
+const EXTRACT_TOKEN_CONSOLE = `// Official Ahrefs SEO Toolbar → Service worker console
+// Application → IndexedDB → Auth → Token → key "token"
+;(async () => {
+  const db = await new Promise((resolve, reject) => {
+    const req = indexedDB.open('Auth');
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+  });
+  const row = await new Promise((resolve, reject) => {
+    const tx = db.transaction('Token', 'readonly');
+    const req = tx.objectStore('Token').get('token');
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+  });
+  db.close();
+  if (!row || !row.accessToken) {
+    console.warn('No Auth/Token row — log into Ahrefs in the official toolbar first');
+    return;
+  }
+  const out = {
+    accessToken: row.accessToken,
+    expiresIn: row.expiresIn,
+    expiresAt: row.expiresAt,
+  };
+  console.log('IndexedDB Auth/Token', out);
+  copy(JSON.stringify(out, null, 2));
+  console.log('Copied token JSON — paste into panel → Ahrefs Bar → Accounts');
+})();`
 
-const EXTRACT_BEARER_ONLY_CONSOLE = `// Same SW console — plain bearer only
-chrome.storage.local.get(['ahToken'], (d) => {
-  const t = d.ahToken && d.ahToken.accessToken;
-  if (!t) { console.warn('No accessToken — log into Ahrefs in the official toolbar first'); return; }
+const EXTRACT_BEARER_ONLY_CONSOLE = `// Same SW console — plain bearer only (IndexedDB Auth/Token)
+;(async () => {
+  const db = await new Promise((resolve, reject) => {
+    const req = indexedDB.open('Auth');
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+  });
+  const row = await new Promise((resolve, reject) => {
+    const tx = db.transaction('Token', 'readonly');
+    const req = tx.objectStore('Token').get('token');
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+  });
+  db.close();
+  const t = row && row.accessToken;
+  if (!t) { console.warn('No accessToken in IndexedDB Auth/Token'); return; }
   copy(t);
   console.log('Copied bearer (' + t.length + ' chars)');
-});`
+})();`
 
 const schema = z.object({
   name: z.string().trim().min(1, "Enter a name"),
@@ -227,9 +262,11 @@ function TokenExtractHelp() {
         <Alert>
           <AlertTitle>Where the token lives</AlertTitle>
           <AlertDescription>
-            Official toolbar keeps <span className="font-mono">ahToken</span> in{" "}
-            <span className="font-mono">chrome.storage.local</span> (extension storage). That is not page
-            IndexedDB — open the extension service worker console, not a normal website console.
+            Current Ahrefs Toolbar builds store the bearer in extension IndexedDB{" "}
+            <span className="font-mono">Auth → Token → id &quot;token&quot;</span> (
+            <span className="font-mono">accessToken</span>).{" "}
+            <span className="font-mono">chrome.storage.local.ahToken</span> is often empty — use the snippets
+            below in the <span className="font-medium">service worker</span> console, not a website tab.
           </AlertDescription>
         </Alert>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
@@ -238,10 +275,11 @@ function TokenExtractHelp() {
             Chrome → <span className="font-mono">chrome://extensions</span> → Ahrefs SEO Toolbar →{" "}
             <span className="font-medium text-foreground">Service worker</span> / Inspect views.
           </li>
-          <li>Paste a snippet below → Enter. DevTools <span className="font-mono">copy()</span> puts JSON on the clipboard.</li>
           <li>
-            Confirm: Application → Extension storage → <span className="font-mono">ahToken.accessToken</span>.
+            Optional check: Application → IndexedDB → <span className="font-mono">Auth</span> →{" "}
+            <span className="font-mono">Token</span> → key <span className="font-mono">token</span>.
           </li>
+          <li>Paste a snippet below → Enter. DevTools <span className="font-mono">copy()</span> puts it on the clipboard.</li>
           <li>Panel → Add account → paste into Access token / JSON.</li>
         </ol>
         <SnippetBlock
