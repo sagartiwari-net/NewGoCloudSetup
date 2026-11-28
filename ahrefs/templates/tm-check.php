@@ -149,6 +149,48 @@ $productCsv = (string) (
 );
 $products = array_values(array_filter(array_map('trim', explode(',', $productCsv)), 'strlen'));
 
+/**
+ * Newer aMember builds expose instance methods; older docs show static Am_Lite::isLoggedIn().
+ * Prefer getInstance(), then new Am_Lite(), then static calls.
+ *
+ * @return object|string class name for static fallback
+ */
+function tm_am_lite()
+{
+    if (!class_exists('Am_Lite')) {
+        return null;
+    }
+    try {
+        if (method_exists('Am_Lite', 'getInstance')) {
+            $inst = Am_Lite::getInstance();
+            if (is_object($inst)) {
+                return $inst;
+            }
+        }
+    } catch (Throwable $ignored) {
+    }
+    try {
+        $inst = new Am_Lite();
+        if (is_object($inst)) {
+            return $inst;
+        }
+    } catch (Throwable $ignored) {
+    }
+    return 'Am_Lite';
+}
+
+/** @param object|string $am */
+function tm_am_call($am, string $method, array $args = [])
+{
+    if (is_object($am) && method_exists($am, $method)) {
+        return $am->{$method}(...$args);
+    }
+    if (is_string($am) && method_exists($am, $method)) {
+        return $am::{$method}(...$args);
+    }
+    throw new RuntimeException("Am_Lite::{$method} unavailable");
+}
+
 try {
     if (!class_exists('Am_Lite')) {
         tm_fail('amember_lite_missing', 500, 'Am_Lite class missing after require: ' . $lite);
@@ -177,40 +219,42 @@ try {
         }
     }
 
-    if (!Am_Lite::isLoggedIn()) {
+    $am = tm_am_lite();
+    if ($am === null) {
+        tm_fail('amember_lite_missing', 500, 'Could not construct Am_Lite');
+    }
+
+    if (!tm_am_call($am, 'isLoggedIn')) {
         tm_fail('not_logged_in');
     }
 
-    $user = Am_Lite::getUser();
+    $user = tm_am_call($am, 'getUser');
     if (!$user) {
         tm_fail('not_logged_in');
     }
 
     if ($products) {
         $okProduct = false;
-        foreach ($products as $pid) {
-            if (
-                (method_exists('Am_Lite', 'hasActiveProduct') && Am_Lite::hasActiveProduct($pid))
-                || (method_exists('Am_Lite', 'hasProduct') && Am_Lite::hasProduct($pid))
-            ) {
+        $productIds = array_values(array_filter(array_map('intval', $products)));
+        // Official Am_Lite API: haveSubscriptions(int|array|$ANY)
+        try {
+            if ($productIds && tm_am_call($am, 'haveSubscriptions', [count($productIds) === 1 ? $productIds[0] : $productIds])) {
                 $okProduct = true;
-                break;
             }
+        } catch (Throwable $ignored) {
         }
-        if (!$okProduct && method_exists('Am_Lite', 'hasSubscription')) {
+        if (!$okProduct) {
             foreach ($products as $pid) {
-                if (Am_Lite::hasSubscription((int) $pid)) {
-                    $okProduct = true;
-                    break;
+                foreach (['hasActiveProduct', 'hasProduct', 'hasSubscription'] as $m) {
+                    try {
+                        $arg = $m === 'hasSubscription' ? (int) $pid : $pid;
+                        if (tm_am_call($am, $m, [$arg])) {
+                            $okProduct = true;
+                            break 2;
+                        }
+                    } catch (Throwable $ignored) {
+                    }
                 }
-            }
-        }
-        if (!$okProduct && method_exists('Am_Lite', 'haveSubscriptions')) {
-            try {
-                if (Am_Lite::haveSubscriptions($products)) {
-                    $okProduct = true;
-                }
-            } catch (Throwable $ignored) {
             }
         }
         if (!$okProduct) {
@@ -218,6 +262,9 @@ try {
         }
     }
 
+    if (is_object($user)) {
+        $user = (array) $user;
+    }
     $login = (string) ($user['login'] ?? $user['username'] ?? '');
     $email = (string) ($user['email'] ?? '');
     $name = trim((string) ($user['name_f'] ?? '') . ' ' . (string) ($user['name_l'] ?? ''));
