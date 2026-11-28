@@ -175,6 +175,128 @@ function tm_am_call($am, string $method, array $args = [])
     return call_user_func_array([$am, $method], $args);
 }
 
+/** Am_Lite::ACTIVE value when defined (usually 1). */
+function tm_am_active_const()
+{
+    try {
+        $ref = new ReflectionClass('Am_Lite');
+        if ($ref->hasConstant('ACTIVE')) {
+            return $ref->getConstant('ACTIVE');
+        }
+    } catch (Throwable $ignored) {
+    }
+    return 1;
+}
+
+/** Row currently active: begin/expire window + status (drops expired). */
+function tm_access_row_is_active(array $row): bool
+{
+    $now = date('Y-m-d');
+    $begin = (string) ($row['begin_date'] ?? $row['begin'] ?? '');
+    $expire = (string) ($row['expire_date'] ?? $row['expire'] ?? '');
+    if ($begin !== '' && $begin > $now) {
+        return false;
+    }
+    if ($expire !== '' && $expire < $now) {
+        return false;
+    }
+    if (!array_key_exists('status', $row) || $row['status'] === '' || $row['status'] === null) {
+        return $begin !== '' || $expire !== '' || isset($row['product_id']) || isset($row['id']);
+    }
+    $status = $row['status'];
+    $active = tm_am_active_const();
+    if ($status == $active || $status === 1 || $status === '1') {
+        return true;
+    }
+    if (is_string($status) && strcasecmp($status, 'active') === 0) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Active product / plan IDs only — excludes expired aMember access.
+ *
+ * @param object $am Am_Lite instance
+ * @return list<int>
+ */
+function tm_active_plan_ids($am): array
+{
+    $ids = [];
+    $active = tm_am_active_const();
+
+    // 1) getAccessCache — same idea as admin "currently has access"
+    try {
+        if (method_exists($am, 'getAccessCache')) {
+            foreach ((array) tm_am_call($am, 'getAccessCache') as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (!is_array($row)) {
+                    continue;
+                }
+                $fn = (string) ($row['fn'] ?? 'product_id');
+                if ($fn !== '' && $fn !== 'product_id') {
+                    continue;
+                }
+                $id = (int) ($row['id'] ?? $row['product_id'] ?? 0);
+                if ($id <= 0) {
+                    continue;
+                }
+                $status = $row['status'] ?? null;
+                if ($status !== null && $status !== '' && $status != $active
+                    && $status !== 1 && $status !== '1'
+                    && !(is_string($status) && strcasecmp($status, 'active') === 0)) {
+                    continue;
+                }
+                $ids[] = $id;
+            }
+        }
+    } catch (Throwable $ignored) {
+    }
+
+    // 2) getAccess — MUST date-filter (raw list includes expired)
+    if ($ids === []) {
+        try {
+            if (method_exists($am, 'getAccess')) {
+                foreach ((array) tm_am_call($am, 'getAccess') as $row) {
+                    if (is_object($row)) {
+                        $row = (array) $row;
+                    }
+                    if (!is_array($row) || !tm_access_row_is_active($row)) {
+                        continue;
+                    }
+                    $id = (int) ($row['product_id'] ?? $row['id'] ?? 0);
+                    if ($id > 0) {
+                        $ids[] = $id;
+                    }
+                }
+            }
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    // 3) haveSubscriptions probe (official active-only API)
+    if ($ids === [] && method_exists($am, 'haveSubscriptions') && method_exists($am, 'getProducts')) {
+        try {
+            foreach (array_keys((array) tm_am_call($am, 'getProducts')) as $pid) {
+                $pid = (int) $pid;
+                if ($pid > 0 && tm_am_call($am, 'haveSubscriptions', [$pid])) {
+                    $ids[] = $pid;
+                }
+            }
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    $ids = array_values(array_filter($ids, static function ($id) {
+        return $id > 0;
+    }));
+    sort($ids);
+    return $ids;
+}
+
 try {
     // Adopt session cookie from bar-api (different server) before Am_Lite reads auth.
     if ($token !== '') {
@@ -209,11 +331,12 @@ try {
         tm_fail('not_logged_in');
     }
 
+    // Gate: only ACTIVE subscriptions (haveSubscriptions). Do not use hasProduct — that can include expired.
     if ($products) {
         $okProduct = false;
         $productIds = array_values(array_filter(array_map('intval', $products)));
         try {
-            if ($productIds) {
+            if ($productIds && method_exists($am, 'haveSubscriptions')) {
                 $search = count($productIds) === 1 ? $productIds[0] : $productIds;
                 if (tm_am_call($am, 'haveSubscriptions', [$search])) {
                     $okProduct = true;
@@ -222,21 +345,7 @@ try {
         } catch (Throwable $ignored) {
         }
         if (!$okProduct) {
-            foreach ($products as $pid) {
-                foreach (['hasActiveProduct', 'hasProduct', 'hasSubscription'] as $m) {
-                    try {
-                        $arg = ($m === 'hasSubscription') ? (int) $pid : $pid;
-                        if (tm_am_call($am, $m, [$arg])) {
-                            $okProduct = true;
-                            break 2;
-                        }
-                    } catch (Throwable $ignored) {
-                    }
-                }
-            }
-        }
-        if (!$okProduct) {
-            tm_fail('no_product', 200, 'Active subscription does not include product_ids=' . implode(',', $products));
+            tm_fail('no_product', 200, 'No active subscription for product_ids=' . implode(',', $products));
         }
     }
 
@@ -248,14 +357,19 @@ try {
     $name = trim((string) ($user['name_f'] ?? '') . ' ' . (string) ($user['name_l'] ?? ''));
     $uid = (int) ($user['user_id'] ?? $user['id'] ?? 0);
 
+    $planIds = tm_active_plan_ids($am);
+
     echo json_encode([
         'ok' => true,
+        'site' => $_SERVER['HTTP_HOST'] ?? '',
         'user' => [
             'login' => $login,
             'email' => $email,
             'name' => $name !== '' ? $name : $login,
             'uid' => $uid,
         ],
+        'products' => $planIds,
+        'plan_ids' => $planIds,
     ]);
 } catch (Throwable $e) {
     tm_fail('check_failed', 500, $e->getMessage());
