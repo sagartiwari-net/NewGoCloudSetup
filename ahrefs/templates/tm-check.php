@@ -1,22 +1,15 @@
 <?php
 /**
- * ToolsMandi Ahrefs Bar — aMember membership check endpoint
+ * ToolsMandi Ahrefs Bar — aMember membership check (upload to aMember host)
  *
- * Install next to aMember's library/ folder (same directory level):
- *   …/tm-check.php
- *   …/library/Am/Lite.php
+ * Place NEXT TO library/:
+ *   tm-check.php
+ *   library/Am/Lite.php
  *
- * Member URL path differs per site (/member, /amember, web root, …).
- * Put this file wherever Lite.php's parent tree lives, then set that
- * full URL as Portal "tm-check URL" in the panel.
+ * Panel (upays) and aMember can be on different servers — only this file
+ * must live on the aMember site. Set its public URL in panel → Portals.
  *
- * Optional shared secret: set TM_CHECK_SECRET below AND the same value
- * on the portal row (panel). Caller must send header X-TM-Check-Key.
- *
- * Request: Cookie header and/or JSON/query token + products
- * Response:
- *   { "ok": true, "user": { "login", "email", "name", "uid" } }
- *   { "ok": false, "error": "not_logged_in"|"no_product"|... }
+ * Optional: TM_CHECK_SECRET + panel portal shared secret → header X-TM-Check-Key
  */
 
 declare(strict_types=1);
@@ -24,13 +17,8 @@ declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-const TM_CHECK_SECRET = ''; // e.g. 'change-me-long-random'
-/**
- * Optional absolute path to Lite.php OR aMember root (folder containing library/).
- * Leave empty — auto-detect from this file's directory first.
- */
+const TM_CHECK_SECRET = '';
 const TM_AMEMBER_LITE_PATH = '';
-/** Comma-separated aMember product IDs that grant Ahrefs Bar access (fallback if request omits them). */
 const TM_DEFAULT_PRODUCT_IDS = '';
 
 function tm_fail(string $error, int $http = 200, string $detail = ''): void
@@ -53,11 +41,6 @@ if (TM_CHECK_SECRET !== '') {
     }
 }
 
-/**
- * Locate library/Am/Lite.php.
- * Primary rule: tm-check.php and library/ are siblings (same folder).
- * Extra candidates cover odd layouts without hardcoding one reseller domain.
- */
 function tm_find_lite_path(): string
 {
     if (TM_AMEMBER_LITE_PATH !== '') {
@@ -70,21 +53,9 @@ function tm_find_lite_path(): string
         }
     }
 
-    if (defined('AMEMBER_LITE_PATH') && AMEMBER_LITE_PATH !== '') {
-        $p = rtrim(str_replace('\\', '/', (string) AMEMBER_LITE_PATH), '/');
-        if (is_file($p) && strtolower(substr($p, -8)) === 'lite.php') {
-            return $p;
-        }
-        if (is_file($p . '/library/Am/Lite.php')) {
-            return $p . '/library/Am/Lite.php';
-        }
-    }
-
     $dir = str_replace('\\', '/', __DIR__);
     $parent = dirname($dir);
     $grand = dirname($parent);
-
-    // Order matters: same-level library/ wins (normal install).
     $candidates = [
         $dir . '/library/Am/Lite.php',
         $dir . '/amember/library/Am/Lite.php',
@@ -97,15 +68,6 @@ function tm_find_lite_path(): string
         $grand . '/amember/library/Am/Lite.php',
         $grand . '/member/library/Am/Lite.php',
     ];
-
-    // dirname(__DIR__, n) style extras when PHP supports it (already covered above).
-    foreach ([1, 2, 3] as $n) {
-        $base = dirname(__DIR__, $n);
-        $candidates[] = $base . '/library/Am/Lite.php';
-        $candidates[] = $base . '/amember/library/Am/Lite.php';
-        $candidates[] = $base . '/member/library/Am/Lite.php';
-    }
-
     $seen = [];
     foreach ($candidates as $path) {
         $path = str_replace('\\', '/', $path);
@@ -125,7 +87,7 @@ if ($lite === '') {
     tm_fail(
         'amember_lite_missing',
         500,
-        'Expected library/Am/Lite.php next to tm-check.php (same folder). Or set TM_AMEMBER_LITE_PATH.'
+        'Expected library/Am/Lite.php next to this tm-check.php. Or set TM_AMEMBER_LITE_PATH.'
     );
 }
 require_once $lite;
@@ -150,53 +112,71 @@ $productCsv = (string) (
 $products = array_values(array_filter(array_map('trim', explode(',', $productCsv)), 'strlen'));
 
 /**
- * Newer aMember builds expose instance methods; older docs show static Am_Lite::isLoggedIn().
- * Prefer getInstance(), then new Am_Lite(), then static calls.
+ * aMember Pro: isLoggedIn / getUser / haveSubscriptions are INSTANCE methods.
+ * Official usage: Am_Lite::getInstance()->isLoggedIn()
+ * Never call Am_Lite::isLoggedIn() statically (PHP 8 fatals).
  *
- * @return object|string class name for static fallback
+ * @return Am_Lite
  */
-function tm_am_lite()
+function tm_am_lite_instance()
 {
     if (!class_exists('Am_Lite')) {
-        return null;
+        tm_fail('amember_lite_missing', 500, 'Am_Lite class missing');
     }
-    try {
-        if (method_exists('Am_Lite', 'getInstance')) {
+
+    $errs = [];
+
+    if (method_exists('Am_Lite', 'getInstance')) {
+        try {
             $inst = Am_Lite::getInstance();
             if (is_object($inst)) {
                 return $inst;
             }
+            $errs[] = 'getInstance returned non-object';
+        } catch (Throwable $e) {
+            $errs[] = 'getInstance: ' . $e->getMessage();
         }
-    } catch (Throwable $ignored) {
     }
+
+    if (method_exists('Am_Lite', 'i')) {
+        try {
+            $inst = Am_Lite::i();
+            if (is_object($inst)) {
+                return $inst;
+            }
+            $errs[] = 'i() returned non-object';
+        } catch (Throwable $e) {
+            $errs[] = 'i(): ' . $e->getMessage();
+        }
+    }
+
     try {
         $inst = new Am_Lite();
         if (is_object($inst)) {
             return $inst;
         }
-    } catch (Throwable $ignored) {
+        $errs[] = 'new Am_Lite returned non-object';
+    } catch (Throwable $e) {
+        $errs[] = 'new Am_Lite: ' . $e->getMessage();
     }
-    return 'Am_Lite';
+
+    tm_fail('amember_lite_missing', 500, 'No Am_Lite instance: ' . implode(' | ', $errs));
 }
 
-/** @param object|string $am */
+/** @param object $am */
 function tm_am_call($am, string $method, array $args = [])
 {
-    if (is_object($am) && method_exists($am, $method)) {
-        return $am->{$method}(...$args);
+    if (!is_object($am)) {
+        throw new RuntimeException('Am_Lite instance required for ' . $method);
     }
-    if (is_string($am) && method_exists($am, $method)) {
-        return $am::{$method}(...$args);
+    if (!method_exists($am, $method)) {
+        throw new RuntimeException('Am_Lite method missing: ' . $method);
     }
-    throw new RuntimeException("Am_Lite::{$method} unavailable");
+    return call_user_func_array([$am, $method], $args);
 }
 
 try {
-    if (!class_exists('Am_Lite')) {
-        tm_fail('amember_lite_missing', 500, 'Am_Lite class missing after require: ' . $lite);
-    }
-
-    // Adopt session cookie from bar-api before Am_Lite reads login state.
+    // Adopt session cookie from bar-api (different server) before Am_Lite reads auth.
     if ($token !== '') {
         $names = [];
         if ($cookieName !== '') {
@@ -205,8 +185,7 @@ try {
         $names = array_merge($names, [
             'PHPSESSID', 'amember_nr', 'amember_ru', 'amember_r', 'amember_sess', 'amember',
         ]);
-        $names = array_values(array_unique($names));
-        foreach ($names as $n) {
+        foreach (array_values(array_unique($names)) as $n) {
             if (empty($_COOKIE[$n])) {
                 $_COOKIE[$n] = $token;
             }
@@ -219,10 +198,7 @@ try {
         }
     }
 
-    $am = tm_am_lite();
-    if ($am === null) {
-        tm_fail('amember_lite_missing', 500, 'Could not construct Am_Lite');
-    }
+    $am = tm_am_lite_instance();
 
     if (!tm_am_call($am, 'isLoggedIn')) {
         tm_fail('not_logged_in');
@@ -236,10 +212,12 @@ try {
     if ($products) {
         $okProduct = false;
         $productIds = array_values(array_filter(array_map('intval', $products)));
-        // Official Am_Lite API: haveSubscriptions(int|array|$ANY)
         try {
-            if ($productIds && tm_am_call($am, 'haveSubscriptions', [count($productIds) === 1 ? $productIds[0] : $productIds])) {
-                $okProduct = true;
+            if ($productIds) {
+                $search = count($productIds) === 1 ? $productIds[0] : $productIds;
+                if (tm_am_call($am, 'haveSubscriptions', [$search])) {
+                    $okProduct = true;
+                }
             }
         } catch (Throwable $ignored) {
         }
@@ -247,7 +225,7 @@ try {
             foreach ($products as $pid) {
                 foreach (['hasActiveProduct', 'hasProduct', 'hasSubscription'] as $m) {
                     try {
-                        $arg = $m === 'hasSubscription' ? (int) $pid : $pid;
+                        $arg = ($m === 'hasSubscription') ? (int) $pid : $pid;
                         if (tm_am_call($am, $m, [$arg])) {
                             $okProduct = true;
                             break 2;
