@@ -57,13 +57,22 @@ export default function AhrefsBarUsagePage() {
   const [resetting, setResetting] = useState(false)
   const { page, setPage, pageSize } = useListPage()
 
-  const { data, loading, reload } = useResource(
-    `ab-usage-${session?.role ?? "none"}-${selectedUser ?? "all"}-${selectedResellerId ?? 0}-${page}-${pageSize}-${query}`,
+  const { data: usageData, loading: usageLoading, reload: reloadUsage } = useResource(
+    `ab-usage-detail-${session?.role ?? "none"}-${selectedUser ?? ""}-${page}-${pageSize}-${query}`,
     () =>
       selectedUser
         ? listAhrefsBarUsage({ page, pageSize, query, login: selectedUser })
+        : Promise.resolve({ items: [] as AhrefsBarUsageRow[], page: 1, total: 0, pageSize }),
+  )
+  const { data: usersData, loading: usersLoading, reload: reloadUsers } = useResource(
+    `ab-usage-users-${session?.role ?? "none"}-${page}-${pageSize}-${query}`,
+    () =>
+      selectedUser
+        ? Promise.resolve({ items: [] as AhrefsBarUsageUserRow[], page: 1, total: 0, pageSize })
         : listAhrefsBarUsageUsers({ page, pageSize, query }),
   )
+  const loading = selectedUser ? usageLoading : usersLoading
+  const reload = () => (selectedUser ? reloadUsage() : reloadUsers())
 
   const {
     data: meters,
@@ -299,13 +308,13 @@ export default function AhrefsBarUsagePage() {
         <CardContent>
           {selectedUser ? (
             <DataTable
-              rows={(data?.items as AhrefsBarUsageRow[]) ?? []}
+              rows={usageData?.items ?? []}
               columns={detailColumns}
               rowKey={(row) => row.id}
               loading={loading}
               paging={{
-                page: data?.page ?? page,
-                total: data?.total ?? 0,
+                page: usageData?.page ?? page,
+                total: usageData?.total ?? 0,
                 pageSize,
                 onPageChange: setPage,
               }}
@@ -315,13 +324,13 @@ export default function AhrefsBarUsagePage() {
             />
           ) : (
             <DataTable
-              rows={(data?.items as AhrefsBarUsageUserRow[]) ?? []}
+              rows={usersData?.items ?? []}
               columns={userColumns}
               rowKey={(row) => `${row.reseller_id ?? 0}:${row.amember_login}`}
               loading={loading}
               paging={{
-                page: data?.page ?? page,
-                total: data?.total ?? 0,
+                page: usersData?.page ?? page,
+                total: usersData?.total ?? 0,
                 pageSize,
                 onPageChange: setPage,
               }}
