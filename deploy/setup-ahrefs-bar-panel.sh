@@ -21,7 +21,8 @@ if [[ -f "${MAP_SRC}" ]]; then
   cp "${MAP_SRC}" "${MAP_DST}"
   nginx -t
   nginx -s reload
-  echo "OK: map reloaded (barapi.upays.in → 8088)"
+  echo "OK: map reloaded"
+  grep -n 'barapi' "${MAP_DST}" || echo "WARN: barapi line missing in ${MAP_DST}"
 else
   echo "WARN: missing ${MAP_SRC}"
 fi
@@ -35,6 +36,12 @@ echo "== 3) restart panel only (not gt4-* tools)"
 "${ROOT}/deploy/start-panel-ui.sh"
 
 echo ""
-echo "Done. Hard-refresh panel.upays.in — sidebar should show Ahrefs Bar."
-echo "Smoke: curl -sI https://barapi.upays.in/v1/portals | head -5"
-echo "Local: curl -s http://127.0.0.1:8088/v1/portals"
+echo "== 4) smoke"
+echo -n "bar-api local: "
+curl -s http://127.0.0.1:8088/v1/portals || true
+echo ""
+echo -n "nginx Host barapi → : "
+curl -sI -H 'Host: barapi.upays.in' http://127.0.0.1/v1/portals | head -3 || true
+echo ""
+echo "Done. Hard-refresh panel.upays.in — Ahrefs Bar in sidebar."
+echo "If browser still 404 on https://barapi.upays.in: check aaPanel SSL vhost uses same map (\$tool_port)."
