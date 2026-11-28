@@ -170,6 +170,16 @@ func (s *server) handleSessionVerify(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if want := parseProductIDs(p.ProductIDs); len(want) > 0 {
+		have := membershipActiveProductIDs(result)
+		if !productIDsIntersect(have, want) {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{
+				"success": false, "valid": false, "error": "no_product", "deny": "no_access",
+				"want_products": want, "have_products": have,
+			})
+			return
+		}
+	}
 
 	u := result.User
 	if s.cfg.RequireFingerprint && strings.TrimSpace(fp) == "" {

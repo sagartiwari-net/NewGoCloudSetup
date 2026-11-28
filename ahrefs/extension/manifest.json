@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ToolsMandi Ahrefs Bar (Dev)",
-  "version": "1.0.30",
-  "description": "ToolsMandi Ahrefs Bar — FP-bound session + proxy + cache",
+  "name": "Ahrefs SEO Toolbar",
+  "version": "1.0.31",
+  "description": "Ahrefs SEO Toolbar",
   "default_locale": "en",
   "homepage_url": "https://toolsmandi.com/",
   "action": {

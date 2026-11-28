@@ -504,6 +504,7 @@ importScripts('event.js');
 
     const prev = await getLocal(['tm_bar_session']);
     let sawCookie = false;
+    let lastDeny = '';
 
     for (const p of portals) {
       try {
@@ -520,9 +521,12 @@ importScripts('event.js');
             log('AUTHED', p.site_url, mask(j.session_token), 'via', c.name, c.site);
             return { authed: true, portal: p.site_url };
           }
-          log('verify denied', p.site_url, c.name, j && j.error, j && j.deny);
+          const detail = (j && (j.error || j.deny)) || 'unauthorized';
+          lastDeny = detail;
+          log('verify denied', p.site_url, c.name, detail, j && j.have_products, j && j.want_products);
         }
       } catch (e) {
+        lastDeny = e.message || 'verify_error';
         log('verify error', p.site_url, e.message);
       }
     }
@@ -530,7 +534,7 @@ importScripts('event.js');
     if (prev.tm_bar_session) {
       await revokeServerSession(prev.tm_bar_session);
     }
-    const err = sawCookie ? 'unauthorized' : 'not_logged_in';
+    const err = !sawCookie ? 'not_logged_in' : (lastDeny || 'unauthorized');
     await applyParked(err);
     log('NOT AUTHED', err, 'reason=' + reason);
     return { authed: false, error: err };

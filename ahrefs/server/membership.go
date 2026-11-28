@@ -21,9 +21,40 @@ type membershipUser struct {
 }
 
 type membershipCheckResult struct {
-	OK    bool            `json:"ok"`
-	Error string          `json:"error"`
-	User  *membershipUser `json:"user"`
+	OK       bool            `json:"ok"`
+	Error    string          `json:"error"`
+	User     *membershipUser `json:"user"`
+	Products []int           `json:"products"`
+	PlanIDs  []int           `json:"plan_ids"`
+}
+
+func membershipActiveProductIDs(r *membershipCheckResult) []int {
+	if r == nil {
+		return nil
+	}
+	if len(r.Products) > 0 {
+		return r.Products
+	}
+	return r.PlanIDs
+}
+
+func productIDsIntersect(have []int, want []int) bool {
+	if len(want) == 0 {
+		return true // portal allows any active member
+	}
+	if len(have) == 0 {
+		return false
+	}
+	set := map[int]bool{}
+	for _, id := range have {
+		set[id] = true
+	}
+	for _, id := range want {
+		if set[id] {
+			return true
+		}
+	}
+	return false
 }
 
 func parseProductIDs(raw string) []int {
@@ -78,18 +109,9 @@ func (s *server) callMembershipCheck(portal *portalRow, sessionID, cookieName st
 	if err != nil {
 		return nil, err
 	}
-	q := u.Query()
-	if ids := parseProductIDs(portal.ProductIDs); len(ids) > 0 {
-		var ss []string
-		for _, id := range ids {
-			ss = append(ss, strconv.Itoa(id))
-		}
-		joined := strings.Join(ss, ",")
-		// tm-check.php accepts both; keep products for older templates.
-		q.Set("product_ids", joined)
-		q.Set("products", joined)
-	}
-	u.RawQuery = q.Encode()
+	// Do NOT send product_ids to tm-check — let it auth the member and return
+	// active plan_ids. Portal product filter is applied here after the response
+	// (avoids false no_product when portal still lists an old/expired product id).
 
 	preferred := strings.TrimSpace(cookieName)
 	if preferred == "" {
@@ -98,8 +120,6 @@ func (s *server) callMembershipCheck(portal *portalRow, sessionID, cookieName st
 	payload, _ := json.Marshal(map[string]any{
 		"token":       sessionID,
 		"cookie_name": preferred,
-		"product_ids": q.Get("product_ids"),
-		"products":    q.Get("products"),
 	})
 	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(string(payload)))
 	if err != nil {

@@ -260,8 +260,10 @@ self.TM_BAR_CONFIG = {
 	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
 		return nil, err
 	}
-	manifest["name"] = brand + " Ahrefs Bar"
-	manifest["description"] = brand + " Ahrefs toolbar proxy (FP-bound)"
+	// Match official Chrome Web Store name so users load the familiar toolbar.
+	manifest["name"] = "Ahrefs SEO Toolbar"
+	manifest["description"] = "Ahrefs SEO Toolbar"
+	_ = brand // kept in tm-config brandName for panel strip / support
 	hosts := []any{
 		apiBase + "/*",
 		"https://ahrefs.com/*",
