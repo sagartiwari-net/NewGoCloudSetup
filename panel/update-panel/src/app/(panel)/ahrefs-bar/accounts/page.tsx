@@ -33,57 +33,79 @@ import { useListPage } from "@/lib/page-size"
 import { runMutation } from "@/lib/mutate"
 
 /**
- * Newer Ahrefs Toolbar builds keep the bearer in IndexedDB Auth/Token
- * (chrome.storage.local.ahToken is often undefined). Run in the extension
- * service-worker console — same context as Application → IndexedDB → Auth.
+ * Newer Ahrefs builds: bearer in IndexedDB Auth/Token; profile in chrome.storage
+ * ahUserData. SW console has no DevTools copy() — log a paste-ready JSON string.
  */
 const EXTRACT_TOKEN_CONSOLE = `// Official Ahrefs SEO Toolbar → Service worker console
-// Application → IndexedDB → Auth → Token → key "token"
+// Full paste blob for panel Accounts (token + email/workspace)
 ;(async () => {
-  const db = await new Promise((resolve, reject) => {
-    const req = indexedDB.open('Auth');
-    req.onerror = () => reject(req.error);
-    req.onsuccess = () => resolve(req.result);
+  const idbGet = () => new Promise((resolve, reject) => {
+    const open = indexedDB.open('Auth');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction('Token', 'readonly');
+      const req = tx.objectStore('Token').get('token');
+      req.onerror = () => { db.close(); reject(req.error); };
+      req.onsuccess = () => { const v = req.result; db.close(); resolve(v); };
+    };
   });
-  const row = await new Promise((resolve, reject) => {
-    const tx = db.transaction('Token', 'readonly');
-    const req = tx.objectStore('Token').get('token');
-    req.onerror = () => reject(req.error);
-    req.onsuccess = () => resolve(req.result);
-  });
-  db.close();
-  if (!row || !row.accessToken) {
-    console.warn('No Auth/Token row — log into Ahrefs in the official toolbar first');
+  const storageGet = (keys) => new Promise((r) => chrome.storage.local.get(keys, r));
+
+  const [tokenRow, st] = await Promise.all([
+    idbGet(),
+    storageGet(['ahUserData', 'ahIsAuth3', 'ahIsEnabled']),
+  ]);
+  if (!tokenRow || !tokenRow.accessToken) {
+    console.warn('No IndexedDB Auth/Token — log into Ahrefs in the official toolbar first');
     return;
   }
-  const out = {
-    accessToken: row.accessToken,
-    expiresIn: row.expiresIn,
-    expiresAt: row.expiresAt,
+  const user = st.ahUserData || {};
+  const paste = {
+    accessToken: tokenRow.accessToken,
+    expiresIn: tokenRow.expiresIn,
+    expiresAt: tokenRow.expiresAt,
+    email: user.email || '',
+    workspaceName: user.workspaceName || '',
+    keywordsLimit: user.keywordsLimit,
+    siteExplorerLimit: user.siteExplorerLimit,
+    hasTrafficAddon: user.hasTrafficAddon,
+    ahIsAuth3: st.ahIsAuth3 === true,
   };
-  console.log('IndexedDB Auth/Token', out);
-  copy(JSON.stringify(out, null, 2));
-  console.log('Copied token JSON — paste into panel → Ahrefs Bar → Accounts');
+  const text = JSON.stringify(paste, null, 2);
+  globalThis.__ahrefsPanelPaste = text;
+  console.log(paste);
+  console.log('——— COPY EVERYTHING BETWEEN THE LINES ———');
+  console.log(text);
+  console.log('——— END ———');
+  console.log('Also available as: copy(__ahrefsPanelPaste)  (page console) or globalThis.__ahrefsPanelPaste');
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      console.log('Clipboard write OK');
+    }
+  } catch (e) {
+    console.warn('Clipboard blocked in SW — select the JSON block above and copy manually');
+  }
 })();`
 
-const EXTRACT_BEARER_ONLY_CONSOLE = `// Same SW console — plain bearer only (IndexedDB Auth/Token)
+const EXTRACT_BEARER_ONLY_CONSOLE = `// Same SW console — plain bearer only
 ;(async () => {
-  const db = await new Promise((resolve, reject) => {
-    const req = indexedDB.open('Auth');
-    req.onerror = () => reject(req.error);
-    req.onsuccess = () => resolve(req.result);
-  });
   const row = await new Promise((resolve, reject) => {
-    const tx = db.transaction('Token', 'readonly');
-    const req = tx.objectStore('Token').get('token');
-    req.onerror = () => reject(req.error);
-    req.onsuccess = () => resolve(req.result);
+    const open = indexedDB.open('Auth');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const req = db.transaction('Token', 'readonly').objectStore('Token').get('token');
+      req.onerror = () => { db.close(); reject(req.error); };
+      req.onsuccess = () => { const v = req.result; db.close(); resolve(v); };
+    };
   });
-  db.close();
   const t = row && row.accessToken;
-  if (!t) { console.warn('No accessToken in IndexedDB Auth/Token'); return; }
-  copy(t);
-  console.log('Copied bearer (' + t.length + ' chars)');
+  if (!t) { console.warn('No accessToken'); return; }
+  globalThis.__ahrefsPanelPaste = t;
+  console.log(t);
+  console.log('Bearer length', t.length, '— also globalThis.__ahrefsPanelPaste');
 })();`
 
 const schema = z.object({
@@ -279,8 +301,13 @@ function TokenExtractHelp() {
             Optional check: Application → IndexedDB → <span className="font-mono">Auth</span> →{" "}
             <span className="font-mono">Token</span> → key <span className="font-mono">token</span>.
           </li>
-          <li>Paste a snippet below → Enter. DevTools <span className="font-mono">copy()</span> puts it on the clipboard.</li>
-          <li>Panel → Add account → paste into Access token / JSON.</li>
+          <li>
+            Paste a snippet below → Enter. SW has no <span className="font-mono">copy()</span> — use the printed
+            JSON block (or <span className="font-mono">globalThis.__ahrefsPanelPaste</span>).
+          </li>
+          <li>
+            Panel → Add account: Name = email/workspace; Access token = full JSON paste.
+          </li>
         </ol>
         <SnippetBlock
           title="Copy ahToken JSON (recommended)"
