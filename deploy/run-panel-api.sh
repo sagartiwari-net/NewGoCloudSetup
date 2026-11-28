@@ -15,6 +15,14 @@ if [[ -f "${ENV_FILE}" ]]; then
   source "${ENV_FILE}"
   set +a
 fi
+# Ahrefs Bar zip stamp + extension paths (optional; created by build-ahrefs-bar.sh)
+AHREFS_ENV="${BASE}/_secrets/ahrefs-bar-api.env"
+if [[ -f "${AHREFS_ENV}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${AHREFS_ENV}"
+  set +a
+fi
 export PANEL_API_ADDR="${PANEL_API_ADDR:-127.0.0.1:18090}"
 export GT4RENTS_MYSQL_HOST="${GT4RENTS_MYSQL_HOST:-127.0.0.1}"
 export GT4RENTS_MYSQL_PORT="${GT4RENTS_MYSQL_PORT:-3306}"

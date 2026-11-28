@@ -70,15 +70,19 @@ nginx -t && nginx -s reload
 
 ---
 
-## Panel merge (later — alag step)
+## Panel menu + barapi nginx (same as other tools)
+
+Bar-api alone = no sidebar (UI binary purana) + `barapi.upays.in` 404 (`$tool_port=0`).
 
 ```bash
 cd /www/wwwroot/gt4rents.com/_repo
 git pull origin main
 source /www/wwwroot/gt4rents.com/_secrets/mysql.env
-./deploy/build-panel.sh
-./deploy/build-panel-ui.sh
-# then restart panel-api once — NOT all tools
+chmod +x deploy/*.sh
+
+# map barapi.upays.in → 8088 + build/restart panel only
+./deploy/setup-ahrefs-bar-panel.sh
 ```
 
-Export `AHREFS_BAR_*` from `_secrets/ahrefs-bar-api.env` into panel run env so Download zip stamps `https://barapi.upays.in`.
+Hard-refresh `panel.upays.in` → sidebar **Ahrefs Bar**.  
+`curl -sI https://barapi.upays.in/v1/portals` should not be nginx 404.
