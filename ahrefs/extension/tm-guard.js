@@ -368,20 +368,101 @@ importScripts('event.js');
     });
   }
 
-  // Read portal session cookie only — NEVER invent one.
-  // aMember Pro often uses amember_nr (not PHPSESSID). Try configured name first, then common aliases.
-  async function readPortalCookie(portal) {
-    const site = portal.site_url;
-    const preferred = portal.cookie_name || 'PHPSESSID';
-    const names = [preferred, 'amember_nr', 'PHPSESSID', 'amember_ru', 'amember_r', 'amember_sess', 'amember', 'panel_session'];
+  // Cookie URL bases — aMember often sets path=/member so root URL misses the cookie.
+  function portalCookieUrls(portal) {
+    const urls = [];
+    const push = (u) => {
+      u = String(u || '').trim();
+      if (!u) return;
+      if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+      try {
+        const x = new URL(u);
+        const origin = x.origin;
+        urls.push(origin + '/');
+        urls.push(origin + '/member/');
+        urls.push(origin + '/amember/');
+        urls.push(origin + '/members/');
+        if (x.pathname && x.pathname !== '/') {
+          urls.push(origin + x.pathname.replace(/\/?$/, '/'));
+        }
+      } catch (_) {
+        urls.push(u);
+      }
+    };
+    push(portal.site_url);
+    push(portal.check_url);
+    return [...new Set(urls)];
+  }
+
+  /**
+   * Collect live portal cookies (never invent). Prefer amember_* over bare PHPSESSID —
+   * PHPSESSID often exists as an empty session while login lives in amember_nr (path=/member).
+   */
+  async function listPortalCookies(portal) {
+    const preferred = portal.cookie_name || '';
+    const nameOrder = [
+      'amember_nr', 'amember_ru', 'amember_r', 'amember_sess', 'amember',
+      preferred, 'PHPSESSID', 'panel_session',
+    ].filter(Boolean);
+    const urls = portalCookieUrls(portal);
+    const found = [];
     const seen = {};
-    for (const name of names) {
-      if (!name || seen[name]) continue;
-      seen[name] = true;
-      const val = await getCookie(site, name);
-      if (val) return { value: val, name, site };
+
+    for (const url of urls) {
+      for (const name of nameOrder) {
+        const key = name + '@' + url;
+        if (seen[key]) continue;
+        seen[key] = true;
+        const val = await getCookie(url, name);
+        if (!val) continue;
+        const dedupe = name + '=' + val;
+        if (seen[dedupe]) continue;
+        seen[dedupe] = true;
+        found.push({ value: val, name, site: url });
+      }
     }
-    return { value: '', name: preferred, site };
+
+    // Domain-wide sweep (catches path=/member cookies root URL cannot see via get).
+    try {
+      const host = new URL(portal.site_url).hostname.replace(/^www\./, '');
+      const all = await new Promise((res) => {
+        try {
+          chrome.cookies.getAll({ domain: host }, (list) => res(list || []));
+        } catch (_) {
+          res([]);
+        }
+      });
+      const want = new Set(nameOrder);
+      for (const c of all) {
+        if (!c || !c.name || !c.value || !want.has(c.name)) continue;
+        const dedupe = c.name + '=' + c.value;
+        if (seen[dedupe]) continue;
+        seen[dedupe] = true;
+        const scheme = c.secure ? 'https' : 'http';
+        const path = c.path || '/';
+        found.push({
+          value: c.value,
+          name: c.name,
+          site: scheme + '://' + (c.domain || host).replace(/^\./, '') + (path.endsWith('/') ? path : path + '/'),
+        });
+      }
+    } catch (e) {
+      log('cookies.getAll failed', e && e.message);
+    }
+
+    // Rank: amember_* first, then preferred, PHPSESSID last
+    const rank = (name) => {
+      const i = nameOrder.indexOf(name);
+      return i >= 0 ? i : 99;
+    };
+    found.sort((a, b) => rank(a.name) - rank(b.name));
+    return found;
+  }
+
+  async function readPortalCookie(portal) {
+    const list = await listPortalCookies(portal);
+    if (list.length) return list[0];
+    return { value: '', name: portal.cookie_name || 'amember_nr', site: portal.site_url };
   }
 
   async function verify(portal, cookieValue, cookieName) {
@@ -426,19 +507,21 @@ importScripts('event.js');
 
     for (const p of portals) {
       try {
-        const c = await readPortalCookie(p);
-        if (!c.value) {
-          log('no portal cookie', p.site_url, c.name);
+        const cookies = await listPortalCookies(p);
+        if (!cookies.length) {
+          log('no portal cookie', p.site_url);
           continue;
         }
         sawCookie = true;
-        const j = await verify(p, c.value, c.name);
-        if (j && j.success && j.valid && j.session_token) {
-          await applyAuthed(j.session_token, j.user, j.portal || p.site_url);
-          log('AUTHED', p.site_url, mask(j.session_token), 'via', c.name);
-          return { authed: true, portal: p.site_url };
+        for (const c of cookies) {
+          const j = await verify(p, c.value, c.name);
+          if (j && j.success && j.valid && j.session_token) {
+            await applyAuthed(j.session_token, j.user, j.portal || p.site_url);
+            log('AUTHED', p.site_url, mask(j.session_token), 'via', c.name, c.site);
+            return { authed: true, portal: p.site_url };
+          }
+          log('verify denied', p.site_url, c.name, j && j.error, j && j.deny);
         }
-        log('verify denied', p.site_url, j && j.error);
       } catch (e) {
         log('verify error', p.site_url, e.message);
       }

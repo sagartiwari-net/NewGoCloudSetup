@@ -69,7 +69,7 @@ func (s *server) listEnabledPortalsPublic(resellerID int) ([]map[string]any, err
 		return []map[string]any{}, nil
 	}
 	rows, err := s.db.Query(`
-SELECT id, name, site_url, cookie_name FROM ahrefs_bar_portals
+SELECT id, name, site_url, cookie_name, COALESCE(check_url,'') FROM ahrefs_bar_portals
 WHERE enabled = 1 AND reseller_id = ? ORDER BY id ASC`, resellerID)
 	if err != nil {
 		return nil, err
@@ -78,18 +78,19 @@ WHERE enabled = 1 AND reseller_id = ? ORDER BY id ASC`, resellerID)
 	out := []map[string]any{}
 	for rows.Next() {
 		var id int64
-		var name, site, cookie string
-		if err := rows.Scan(&id, &name, &site, &cookie); err != nil {
+		var name, site, cookie, check string
+		if err := rows.Scan(&id, &name, &site, &cookie, &check); err != nil {
 			return nil, err
 		}
 		if cookie == "" {
-			cookie = "PHPSESSID"
+			cookie = "amember_nr"
 		}
 		out = append(out, map[string]any{
 			"id":          id,
 			"name":        name,
 			"site_url":    site,
 			"cookie_name": cookie,
+			"check_url":   check,
 		})
 	}
 	return out, rows.Err()

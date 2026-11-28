@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ToolsMandi Ahrefs Bar (Dev)",
-  "version": "1.0.20",
+  "version": "1.0.30",
   "description": "ToolsMandi Ahrefs Bar — FP-bound session + proxy + cache",
   "default_locale": "en",
   "homepage_url": "https://toolsmandi.com/",
