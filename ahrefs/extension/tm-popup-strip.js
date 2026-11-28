@@ -8,6 +8,7 @@
 (() => {
   const GENERIC_FETCH_ERR = 'Error fetching data. Please try again later.';
   const SUB_EXPIRED_MSG = 'Subscription expired. Contact to admin.';
+  const USAGE_LIMIT_ERR = "You've reached your usage limit";
 
   const bar = document.createElement('div');
   bar.id = 'tm-auth-strip';
@@ -38,6 +39,7 @@
   const upd = document.getElementById('tm-update');
 
   let liveBlock = null;
+  let lastAuth = { ok: false, error: '' };
   let tickTimer = null;
   const replaced = new WeakSet();
   const manVer = (chrome.runtime.getManifest() && chrome.runtime.getManifest().version) || '';
@@ -53,6 +55,38 @@
     const h = Math.floor(min / 60);
     const m = min % 60;
     return m ? h + 'h ' + m + 'm' : h + 'h';
+  }
+
+  /** Map tm_bar_error codes → clear UX (cookie / login / plan). */
+  function humanizeAuthError(err) {
+    const e = String(err || '').trim();
+    if (!e) return 'Not signed in — log in on your membership site, then Refresh.';
+    const low = e.toLowerCase();
+    if (low === 'not_logged_in' || low === 'logged_out') {
+      return 'Not logged in — open your aMember site, sign in, then click Refresh.';
+    }
+    if (low === 'no_portals') {
+      return 'No portal bound — ask admin to add your aMember site in Ahrefs Bar → Portals.';
+    }
+    if (low.indexOf('no_cookie') >= 0 || low.indexOf('cookie') >= 0) {
+      return 'Membership cookie missing — log in again on your aMember site, then Refresh.';
+    }
+    if (low.indexOf('mint_failed') >= 0) {
+      return 'Session mint failed — click Refresh. If it keeps failing, contact admin.';
+    }
+    if (low.indexOf('subscription expired') >= 0) {
+      return e;
+    }
+    if (low.indexOf('unauthorized') >= 0 || low.indexOf('deny') >= 0 || low.indexOf('plan') >= 0) {
+      return 'No active plan on this membership — renew or contact admin. (' + e + ')';
+    }
+    if (low === 'check_timeout' || low === 'verify_timeout') {
+      return 'Membership check timed out — click Refresh.';
+    }
+    if (low.indexOf('verify') >= 0) {
+      return 'Membership check failed — confirm you are logged in on aMember. (' + e + ')';
+    }
+    return e;
   }
 
   function blockMessage(block) {
@@ -75,6 +109,14 @@
     return block.message || '';
   }
 
+  function diagnosticMessage() {
+    const fromBlock = blockMessage(liveBlock);
+    if (fromBlock) return fromBlock;
+    if (liveBlock && liveBlock.kind === 'pool') return SUB_EXPIRED_MSG;
+    if (!lastAuth.ok) return humanizeAuthError(lastAuth.error);
+    return '';
+  }
+
   function paintNotice() {
     const msg = blockMessage(liveBlock);
     if (!msg) {
@@ -90,7 +132,7 @@
   }
 
   function rewriteGenericErrors() {
-    const msg = blockMessage(liveBlock) || (liveBlock && liveBlock.kind === 'pool' ? SUB_EXPIRED_MSG : '');
+    const msg = diagnosticMessage() || (lastAuth.ok ? SUB_EXPIRED_MSG : humanizeAuthError(lastAuth.error));
     if (!msg) return;
     const nodes = document.querySelectorAll('div, span, p, h1, h2, h3, h4');
     for (let i = 0; i < nodes.length; i++) {
@@ -101,7 +143,7 @@
       }
       if (el.childElementCount > 0) continue;
       const t = (el.textContent || '').trim();
-      if (t === GENERIC_FETCH_ERR || t === "You've reached your usage limit") {
+      if (t === GENERIC_FETCH_ERR || t === USAGE_LIMIT_ERR) {
         el.textContent = msg;
         replaced.add(el);
       }
@@ -125,26 +167,25 @@
 
   function paint(r) {
     const ok = !!(r && r.tm_bar_authed);
+    lastAuth = { ok: ok, error: (r && r.tm_bar_error) || '' };
     dot.style.background = ok ? '#22c55e' : '#ef4444';
     if (ok) {
       const u = (r.tm_bar_user && (r.tm_bar_user.login || r.tm_bar_user.name)) || 'ok';
       status.textContent = u + (r.tm_bar_portal ? ' · ' + r.tm_bar_portal : '');
       status.style.color = '#86efac';
     } else {
-      const err = (r && r.tm_bar_error) || '';
-      if (err && /subscription expired/i.test(err)) {
-        status.textContent = err;
-      } else if (liveBlock && blockMessage(liveBlock)) {
-        status.textContent = blockMessage(liveBlock);
-      } else {
-        status.textContent = err || 'not signed in — log in to panel / aMember';
-      }
+      status.textContent = humanizeAuthError(lastAuth.error);
       status.style.color = '#fca5a5';
     }
     verEl.textContent = 'v' + ((r && r.version) || manVer || '');
 
     liveBlock = (r && r.tm_bar_block) || null;
     if (liveBlock && liveBlock.retry_at && liveBlock.retry_at <= Date.now()) liveBlock = null;
+    // When metrics fail with a pool message, also mirror on the strip if authed.
+    if (ok && liveBlock && blockMessage(liveBlock)) {
+      status.textContent = blockMessage(liveBlock);
+      status.style.color = '#fcd34d';
+    }
     paintNotice();
     rewriteGenericErrors();
     if (liveBlock && liveBlock.retry_at) startTick();

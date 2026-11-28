@@ -119,7 +119,7 @@ importScripts('event.js');
       return;
     }
     if (body[0] !== 'Error') return;
-    const code = body[1];
+    const code = String(body[1] || '');
     const detail = body[2] && typeof body[2] === 'object' ? body[2] : null;
     const hdrRetry = parseInt((headers && headers.get && headers.get('X-TM-Bar-Retry-After')) || '0', 10) || 0;
     const hdrMsg = (headers && headers.get && headers.get('X-TM-Bar-Limit-Message')) || '';
@@ -150,6 +150,34 @@ importScripts('event.js');
         window: '',
         retry_after_sec: retry,
         retry_at: retry > 0 ? Date.now() + retry * 1000 : 0,
+        message: message,
+      });
+      return;
+    }
+    // Raw Ahrefs auth / network codes — never leave Melange's generic fetch text.
+    if (
+      code === 'Unauthorized' ||
+      code === 'Forbidden' ||
+      code === 'InvalidToken' ||
+      code === 'invalid_token'
+    ) {
+      const message = hdrMsg || 'Subscription expired. Contact to admin.';
+      await setBarBlock({
+        kind: 'pool',
+        window: '',
+        retry_after_sec: 0,
+        retry_at: 0,
+        message: message,
+      });
+      return;
+    }
+    if (code === 'NetworkError' || code === 'InternalError' || code === 'NotFound') {
+      const message = hdrMsg || ('Metrics unavailable (' + code + '). Try Refresh, or contact admin.');
+      await setBarBlock({
+        kind: 'upstream',
+        window: '',
+        retry_after_sec: hdrRetry || 0,
+        retry_at: hdrRetry > 0 ? Date.now() + hdrRetry * 1000 : 0,
         message: message,
       });
     }

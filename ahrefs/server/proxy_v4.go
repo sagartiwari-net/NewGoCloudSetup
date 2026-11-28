@@ -205,18 +205,7 @@ func (s *server) handleV4(w http.ResponseWriter, r *http.Request) {
 			_ = s.refundMeters(sess.ResellerID, sess.AmemberLogin, cost)
 		}
 		s.alertPoolEmpty(sess.ResellerID)
-		retrySec, retryAt, poolMsg := s.poolUnavailableDetail(sess.ResellerID)
-		detail := map[string]any{
-			"retry_after_sec": retrySec,
-			"retry_at":        retryAt,
-			"message":         poolMsg,
-		}
-		raw, _ := json.Marshal([]any{"Error", "DataSourceUnavailable", detail})
-		if retrySec > 0 {
-			w.Header().Set("X-TM-Bar-Retry-After", itoa(retrySec))
-		}
-		w.Header().Set("X-TM-Bar-Limit-Message", poolMsg)
-		respond(http.StatusServiceUnavailable, raw, "BYPASS")
+		s.writePoolUnavailable(w, respond, sess.ResellerID)
 		return
 	}
 
@@ -286,8 +275,11 @@ func (s *server) handleV4(w http.ResponseWriter, r *http.Request) {
 		_ = s.refundMeters(sess.ResellerID, sess.AmemberLogin, cost)
 	}
 	_, _ = s.logUsage(sess, lastAccID, endpoint, queryTarget(query), 0, false, lastStatus)
-	if lastStatus == 0 {
-		writeAhrefsError(w, http.StatusServiceUnavailable, "DataSourceUnavailable")
+	if lastStatus == 0 || isUpstreamAuthFail(lastStatus) {
+		// Never pass raw 401/403 Unauthorized through — Melange shows only
+		// "Error fetching data. Please try again later." + Starter promo.
+		s.alertPoolEmpty(sess.ResellerID)
+		s.writePoolUnavailable(w, respond, sess.ResellerID)
 		return
 	}
 	// All pool accounts rate-limited — soft message, do not park the pool.
@@ -304,10 +296,51 @@ func (s *server) handleV4(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !looksLikeAhrefsToolbar(lastBody) && lastStatus >= 500 {
-		writeAhrefsError(w, http.StatusServiceUnavailable, "DataSourceUnavailable")
+		s.writePoolUnavailable(w, respond, sess.ResellerID)
 		return
 	}
+	// Melange Error tuples (Unauthorized etc.) without failover → still rewrite.
+	if looksLikeAhrefsToolbar(lastBody) && bytesContainsError(lastBody) && !looksLikeAhrefsOK(lastBody) {
+		if isAuthErrorBody(lastBody) {
+			s.alertPoolEmpty(sess.ResellerID)
+			s.writePoolUnavailable(w, respond, sess.ResellerID)
+			return
+		}
+	}
 	respond(lastStatus, lastBody, cacheTag)
+}
+
+// writePoolUnavailable returns Melange Error/DataSourceUnavailable with a clear
+// admin message. Always HTTP 200 so the toolbar parses the Error tuple instead
+// of treating 503 as a generic network failure ("Error fetching data…").
+func (s *server) writePoolUnavailable(w http.ResponseWriter, respond func(int, []byte, string), resellerID int) {
+	retrySec, retryAt, poolMsg := s.poolUnavailableDetail(resellerID)
+	if strings.TrimSpace(poolMsg) == "" {
+		poolMsg = "Subscription expired. Contact to admin."
+	}
+	detail := map[string]any{
+		"retry_after_sec": retrySec,
+		"retry_at":        retryAt,
+		"message":         poolMsg,
+	}
+	raw, _ := json.Marshal([]any{"Error", "DataSourceUnavailable", detail})
+	if retrySec > 0 {
+		w.Header().Set("X-TM-Bar-Retry-After", itoa(retrySec))
+	}
+	w.Header().Set("X-TM-Bar-Limit-Message", poolMsg)
+	respond(http.StatusOK, raw, "BYPASS")
+}
+
+func bytesContainsError(body []byte) bool {
+	return strings.Contains(string(body), `"Error"`)
+}
+
+func isAuthErrorBody(body []byte) bool {
+	trim := string(body)
+	return strings.Contains(trim, `"Unauthorized"`) ||
+		strings.Contains(trim, `"Forbidden"`) ||
+		strings.Contains(trim, `"invalid_token"`) ||
+		strings.Contains(trim, `"InvalidToken"`)
 }
 
 // writeLimitReached returns Melange-compatible LimitReached and never touches upstream.
