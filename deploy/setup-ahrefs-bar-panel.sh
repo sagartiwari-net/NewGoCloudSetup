@@ -38,16 +38,31 @@ else
   echo "WARN: missing ${MAP_SRC}"
 fi
 
-echo "== 2) build panel-api + UI"
+echo "== 2) sync extension + templates (zip source for Download)"
+OUTDIR="${BASE}/ahrefs-bar-api"
+if [[ -d "${ROOT}/ahrefs/extension" ]]; then
+  mkdir -p "${OUTDIR}/extension"
+  rsync -a --delete --exclude '_metadata' "${ROOT}/ahrefs/extension/" "${OUTDIR}/extension/"
+  echo "OK: ${OUTDIR}/extension  (manifest $(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "${OUTDIR}/extension/manifest.json" 2>/dev/null || echo '?'))"
+else
+  echo "WARN: missing ${ROOT}/ahrefs/extension"
+fi
+if [[ -d "${ROOT}/ahrefs/templates" ]]; then
+  mkdir -p "${OUTDIR}/templates"
+  rsync -a "${ROOT}/ahrefs/templates/" "${OUTDIR}/templates/"
+  echo "OK: ${OUTDIR}/templates"
+fi
+
+echo "== 3) build panel-api + UI"
 "${ROOT}/deploy/build-panel.sh"
 "${ROOT}/deploy/build-panel-ui.sh"
 
-echo "== 3) restart panel only (not gt4-* tools)"
+echo "== 4) restart panel only (not gt4-* tools)"
 "${ROOT}/deploy/start-panel-api.sh"
 "${ROOT}/deploy/start-panel-ui.sh"
 
 echo ""
-echo "== 4) smoke"
+echo "== 5) smoke"
 echo -n "bar-api local: "
 curl -s http://127.0.0.1:8088/v1/portals || true
 echo ""
